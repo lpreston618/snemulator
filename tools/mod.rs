@@ -5,18 +5,27 @@ pub fn hexdump(bytes: &[u8], startval: usize) {
     let mut index = startval;
     println!();
     for chunk in bytes.chunks(8) {
-        print!("{:08X}", index);
+        let l = chunk.len();
+        print!("{:08X}: ", index);
         for b in chunk.iter() {
-            print!("{b:02X}");
+            print!("{b:02X} ");
         }
-        print!(" | ");
+
+        print!("{:>width$} ", "|", width = (8 - l) * 3 + 1);
         for b in chunk.iter() {
             match b {
-                32..=126 => print!("{}", b as char),
+                32..=126 => print!("{}", *b as char),
                 _ => print!("."),
             }
         }
         println!();
         index += 8;
     }
+}
+
+/// Prints out a slice of bytes in hex and ASCII format, side by side. When
+/// startval is specified, indeces beginning at the startval will be printed
+/// before each line. If startval is unspecified, indeces start at 0.
+pub fn hexdump(bytes: &[u8]) {
+    hexdump(bytes, 0);
 }
