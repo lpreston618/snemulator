@@ -4,3 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+args = "2.2.0"
+getopts = "0.2.21"
+
+[profile.dev]
+overflow-checks = false
+

@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub enum MappingMode {
     LoROM,
     HiROM,
@@ -73,5 +74,19 @@ impl Header {
             is_ntsc,
             interrupt_vectors,
         }
+    }
+
+    pub fn print(&self) {
+        println!("title: {:?}", std::str::from_utf8(&self.title).unwrap());
+        println!("fast_rom: {:?}", self.fast_rom);
+        println!("map_mode: {:?}", self.map_mode);
+        println!("extra_ram: {:?}", self.extra_ram);
+        println!("battery: {:?}", self.battery);
+        println!("coprocessor: {:?}", self.coprocessor);
+        println!("coprocessor_id: {:?}", self.coprocessor_id);
+        println!("rom_size: {:?}", self.rom_size);
+        println!("ram_size: {:?}", self.ram_size);
+        println!("is_ntsc: {:?}", self.is_ntsc);
+        println!("interrupt_vectors: {:?}", self.interrupt_vectors);
     }
 }
