@@ -1,5 +1,6 @@
 mod cartridge;
 mod header;
+mod scpu;
 
 pub struct Config {
     pub rom_path: String,
