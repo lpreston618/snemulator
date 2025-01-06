@@ -1,5 +1,4 @@
 mod cartridge;
-mod header;
 mod scpu;
 
 pub struct Config {

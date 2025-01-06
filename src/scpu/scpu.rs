@@ -1,10 +1,32 @@
+#![allow(dead_code)]
+
 use serde::{ser::SerializeStruct, Serialize};
 
-#[derive(Default, Clone, Copy, PartialEq)]
+use crate::cartridge::Cartridge;
+
+const WRAM_SIZE: usize = 128 * 1024; // 128 KiB
+
+#[derive(Debug, Clone, Copy)]
+pub enum MappingMode {
+    LoROM,
+    HiROM,
+    ExHiROM,
+}
+
+#[derive(Clone, Copy, PartialEq)]
 enum CpuMode {
-    #[default]
     Emulation,
     Native
+}
+
+enum RegSize {
+    Byte,
+    TwoBytes,
+}
+
+enum MemSel {
+    FastROM,
+    SlowROM,
 }
 
 pub enum Flag {
@@ -22,18 +44,29 @@ pub enum Flag {
 trait CpuAddress {
     fn bank(self) -> u8;
     fn bank_addr(self) -> u16;
+    fn page(self) -> u8;
+    fn page_addr(self) -> u8;
     fn with_bank(self, bank: u8) -> Self;
     fn with_bank_addr(self, bank_addr: u16) -> Self;
+    fn with_page(self, page: u8) -> Self;
+    fn with_page_addr(self, page_addr: u8) -> Self;
+    fn from_parts(bank: u8, page: u8, page_addr: u8) -> Self;
 }
 
 impl CpuAddress for u32 {
     fn bank(self) -> u8 { (self >> 16) as u8 }
     fn bank_addr(self) -> u16 { self as u16 }
-    fn with_bank(self, bank: u8) -> Self { (self & 0x00FFFF) | (bank as u32) }
+    fn page(self) -> u8 { (self >> 8) as u8 }
+    fn page_addr(self) -> u8 { self as u8 }
+    fn with_bank(self, bank: u8) -> Self { ((bank as u32) << 16) | (self & 0x00FFFF) }
     fn with_bank_addr(self, bank_addr: u16) -> Self { (self & 0xFF0000) | (bank_addr as u32) }
+    fn with_page(self, page: u8) -> Self { ((page as u32) << 8) | (self & 0xFF00FF) }
+    fn with_page_addr(self, page_addr: u8) -> Self { (self & 0xFFFF00) | (page_addr as u32) }
+    fn from_parts(bank: u8, page: u8, page_addr: u8) -> Self {
+        ((bank as u32) << 16) | ((page as u32) << 8) | (page_addr as u32)
+    }
 }
 
-#[derive(Default)]
 pub struct Cpu65c816 {
     // Internal Registers
     acc: u16,
@@ -47,11 +80,17 @@ pub struct Cpu65c816 {
     status: u8,
 
     mode: CpuMode,
+    mapping_mode: MappingMode,
+    mem_sel: MemSel,
     branch_taken: bool,
     stopped: bool,
     awaiting_interrupt: bool,
+    total_clocks: u64,
 
-    wram: Vec<u8>,
+    wram: [u8; WRAM_SIZE],
+    rom: Vec<u8>,
+    rom_mirror: usize,
+    has_sram: bool,
 }
 
 impl Serialize for Cpu65c816 {
@@ -78,28 +117,268 @@ impl Serialize for Cpu65c816 {
 impl Cpu65c816 {
     // Creates a new, uninitialized 65c816 CPU
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            acc: 0,
+            x: 0,
+            y: 0,
+            pc: 0,
+            stk_ptr: 0,
+            direct_page: 0,
+            data_bank: 0,
+            prg_bank: 0,
+            status: 0,
+
+            mode: CpuMode::Emulation,
+            mapping_mode: MappingMode::LoROM,
+            mem_sel: MemSel::SlowROM,
+            branch_taken: false,
+            stopped: false,
+            awaiting_interrupt: false,
+            total_clocks: 0,
+
+            wram: [0; WRAM_SIZE],
+            rom: Vec::new(),
+            rom_mirror: 0,
+            has_sram: false,
+        }
+    }
+
+    pub fn load_cart(&mut self, cart: &Cartridge) {
+        self.mapping_mode = cart.mapping_mode();
+        self.rom_mirror = cart.rom_size() - 1;
+        self.rom = cart.rom_data();
     }
 }
 
 // Internal Helper Functions
 impl Cpu65c816 {
-    fn read8(&self, address: u32) -> u8 { self.wram[address as usize] }
-    fn write8(&mut self, address: u32, data: u8) { self.wram[address as usize] = data; }
-    fn read16(&self, address_lo: u32, address_hi: u32) -> u16 {
+    const ONE_CYCLE: u64 = 6;
+    const ONE_CYCLE_SLOW: u64 = 8;
+    const TWO_CYCLE: u64 = 12;
+
+    fn add_clocks(&mut self, clocks: u64) {
+        self.total_clocks += clocks;
+    }
+
+    fn read(&mut self, address: u32) -> u8 {
+        let data: u8;
+        let clocks: u64;
+
+        match self.mapping_mode {
+            MappingMode::LoROM => {
+                // Memory map diagram here: https://snes.nesdev.org/wiki/Memory_map#LoROM
+                match (address.bank(), address.bank_addr()) {
+                    // ROM Mirror (Slow)
+                    (bank @ 0x00..=0x7D, bank_addr @ 0x8000..=0xFFFF) => {
+                        let addr = ((bank as u32) << 15) | ((bank_addr - 0x8000) as u32);
+                        data = self.rom[(addr as usize) & self.rom_mirror];
+                        clocks = Cpu65c816::ONE_CYCLE_SLOW;
+                    },
+                    // ROM Mirror (SLow)
+                    (bank @ 0x40..=0x6F, bank_addr @ 0x0000..=0x7FFF) => {
+                        let addr = ((bank as u32) << 15) | (bank_addr as u32);
+                        data = self.rom[(addr as usize) & self.rom_mirror];
+                        clocks = Cpu65c816::ONE_CYCLE_SLOW;
+                    },
+                    // SRAM or ROM Mirror (Slow)
+                    (bank @ 0x70..=0x7F, bank_addr @ 0x0000..=0x7FFF) => {
+                        if self.has_sram {
+                            todo!("Access SRAM");
+                        } else {
+                            let addr = ((bank as u32) << 15) | (bank_addr as u32);
+                            data = self.rom[(addr as usize) & self.rom_mirror];
+                        }
+                        clocks = Cpu65c816::ONE_CYCLE_SLOW;
+                    },
+                    // Work RAM
+                    (0x7E..=0x7F, ..) => {
+                        data = self.wram[(address - 0x7E0000) as usize];
+                        clocks = Cpu65c816::ONE_CYCLE_SLOW;
+                    },
+                    // ROM Mirror (Slow)
+                    (bank @ 0xC0..=0xFF, bank_addr @ 0x0000..=0x7FFF) => {
+                        let addr = (((bank - 0x80) as u32) << 15) | (bank_addr as u32);
+                        data = self.rom[(addr as usize) & self.rom_mirror];
+                        clocks = Cpu65c816::ONE_CYCLE_SLOW;
+                    },
+                    // ROM (Fast)
+                    (bank @ 0x80..=0xFF, bank_addr @ 0x8000..=0xFFFF) => {
+                        let addr = (((bank - 0x80) as u32) << 15) | ((bank_addr - 0x8000) as u32);
+                        data = self.rom[(addr as usize) & self.rom_mirror];
+
+                        clocks = match self.mem_sel {
+                            MemSel::FastROM => { Cpu65c816::ONE_CYCLE },
+                            MemSel::SlowROM => { Cpu65c816::ONE_CYCLE_SLOW },
+                        };
+                    }
+                    // Mirror of Low RAM
+                    (0x00..=0x3F, bank_addr @ 0x0000..=0x1FFF) |
+                    (0x80..=0xBF, bank_addr @ 0x0000..=0x1FFF) => {
+                        data = self.wram[bank_addr as usize];
+                        clocks = Cpu65c816::ONE_CYCLE_SLOW;
+                    },
+                    // PPU Registers
+                    (0x00..=0x3F, 0x2100..=0x21FF) |
+                    (0x80..=0xBF, 0x2100..=0x21FF) => {
+                        data = 0;
+                        clocks = 0;
+                        todo!("PPU Registers");
+                    },
+                    // CPU Registers
+                    (0x00..=0x3F, 0x4200..=0x43FF) |
+                    (0x80..=0xBF, 0x4200..=0x43FF) => {
+                        data = 0;
+                        clocks = 0;
+                        todo!("CPU Registers");
+                    },
+                    // Controller Registers
+                    (bank @ 0x00..=0x3F, bank_addr @ 0x4016) |
+                    (bank @ 0x00..=0x3F, bank_addr @ 0x4017) |
+                    (bank @ 0x80..=0xBF, bank_addr @ 0x4016) |
+                    (bank @ 0x80..=0xBF, bank_addr @ 0x4017) => {
+                        data = 0;
+                        clocks = 0;
+                        todo!("Controller Registers");
+                    },
+                    _ => {
+                        data = 0;
+                        clocks = 0;
+                    }
+                }
+            },
+
+            // Notes: wram always 0x7E000..=0x7FFFFF regardless of mapping mode
+
+            MappingMode::HiROM => {
+                data = 0;
+                clocks = 0;
+                todo!("HiROM Mapping");
+            }
+            MappingMode::ExHiROM => {
+                data = 0;
+                clocks = 0;
+                todo!("ExHiROM Mapping");
+            }
+        }
+
+        self.add_clocks(clocks);
+
+        data
+    }
+
+    fn write(&mut self, address: u32, data: u8) {
+        let clocks: u64;
+
+        match self.mapping_mode {
+            MappingMode::LoROM => {
+                // Memory map diagram here: https://snes.nesdev.org/wiki/Memory_map#LoROM
+                match (address.bank(), address.bank_addr()) {
+                    // ROM Mirror (Slow)
+                    (bank @ 0x00..=0x7D, bank_addr @ 0x8000..=0xFFFF) => {
+                        let addr = ((bank as u32) << 15) | ((bank_addr - 0x8000) as u32);
+                        self.rom[(addr as usize) & self.rom_mirror] = data;
+                        clocks = Cpu65c816::ONE_CYCLE_SLOW;
+                    },
+                    // ROM Mirror (SLow)
+                    (bank @ 0x40..=0x6F, bank_addr @ 0x0000..=0x7FFF) => {
+                        let addr = ((bank as u32) << 15) | (bank_addr as u32);
+                        self.rom[(addr as usize) & self.rom_mirror] = data;
+                        clocks = Cpu65c816::ONE_CYCLE_SLOW;
+                    },
+                    // SRAM or ROM Mirror (Slow)
+                    (bank @ 0x70..=0x7F, bank_addr @ 0x0000..=0x7FFF) => {
+                        if self.has_sram {
+                            todo!("Access SRAM");
+                        } else {
+                            let addr = ((bank as u32) << 15) | (bank_addr as u32);
+                            self.rom[(addr as usize) & self.rom_mirror] = data;
+                        }
+                        clocks = Cpu65c816::ONE_CYCLE_SLOW;
+                    },
+                    // Work RAM
+                    (0x7E..=0x7F, ..) => {
+                        self.wram[(address - 0x7E0000) as usize] = data;
+                        clocks = Cpu65c816::ONE_CYCLE_SLOW;
+                    },
+                    // ROM Mirror (Slow)
+                    (bank @ 0xC0..=0xFF, bank_addr @ 0x0000..=0x7FFF) => {
+                        let addr = (((bank - 0x80) as u32) << 15) | (bank_addr as u32);
+                        self.rom[(addr as usize) & self.rom_mirror] = data;
+                        clocks = Cpu65c816::ONE_CYCLE_SLOW;
+                    },
+                    // ROM (Fast)
+                    (bank @ 0x80..=0xFF, bank_addr @ 0x8000..=0xFFFF) => {
+                        let addr = (((bank - 0x80) as u32) << 15) | ((bank_addr - 0x8000) as u32);
+                        self.rom[(addr as usize) & self.rom_mirror] = data;
+
+                        clocks = match self.mem_sel {
+                            MemSel::FastROM => { Cpu65c816::ONE_CYCLE },
+                            MemSel::SlowROM => { Cpu65c816::ONE_CYCLE_SLOW },
+                        };
+                    }
+                    // Mirror of Low RAM
+                    (0x00..=0x3F, bank_addr @ 0x0000..=0x1FFF) |
+                    (0x80..=0xBF, bank_addr @ 0x0000..=0x1FFF) => {
+                        self.wram[bank_addr as usize] = data;
+                        clocks = Cpu65c816::ONE_CYCLE_SLOW;
+                    },
+                    // PPU Registers
+                    (0x00..=0x3F, 0x2100..=0x21FF) |
+                    (0x80..=0xBF, 0x2100..=0x21FF) => {
+                        clocks = 0;
+                        todo!("PPU Registers");
+                    },
+                    // CPU Registers
+                    (0x00..=0x3F, 0x4200..=0x43FF) |
+                    (0x80..=0xBF, 0x4200..=0x43FF) => {
+                        clocks = 0;
+                        todo!("CPU Registers");
+                    },
+                    // Controller Registers
+                    (bank @ 0x00..=0x3F, bank_addr @ 0x4016) |
+                    (bank @ 0x00..=0x3F, bank_addr @ 0x4017) |
+                    (bank @ 0x80..=0xBF, bank_addr @ 0x4016) |
+                    (bank @ 0x80..=0xBF, bank_addr @ 0x4017) => {
+                        clocks = 0;
+                        todo!("Controller Registers");
+                    },
+                    _ => {
+                        clocks = 0;
+                    }
+                }
+            },
+
+            // Notes: wram always 0x7E000..=0x7FFFFF regardless of mapping mode
+
+            MappingMode::HiROM => {
+                clocks = 0;
+                todo!("HiROM Mapping");
+            }
+            MappingMode::ExHiROM => {
+                clocks = 0;
+                todo!("ExHiROM Mapping");
+            }
+        }
+
+        self.add_clocks(clocks);
+    }
+
+    // fn read8(&self, address: u32) -> u8 { self.wram[address as usize] }
+    // fn write8(&mut self, address: u32, data: u8) { self.wram[address as usize] = data; }
+    fn read16(&mut self, address_lo: u32, address_hi: u32) -> u16 {
         u16::from_le_bytes([
-            self.read8(address_lo),
-            self.read8(address_hi)
+            self.read(address_lo),
+            self.read(address_hi)
         ])
     }
     fn write16(&mut self, address_lo: u32, address_hi: u32, data: u16) {
-        self.write8(address_lo, data as u8);
-        self.write8(address_hi, (data >> 8) as u8);
+        self.write(address_lo, data as u8);
+        self.write(address_hi, (data >> 8) as u8);
     }
 
     fn pop8_n(&mut self) -> u8 {
         self.stk_ptr += 1;
-        self.read8(self.stk_ptr as u32)
+        self.read(self.stk_ptr as u32)
     }
     fn pop16_n(&mut self) -> u16 {
         u16::from_le_bytes([
@@ -109,7 +388,7 @@ impl Cpu65c816 {
     }
     fn pop8_e(&mut self) -> u8 {
         self.stk_ptr = inc_low_byte(self.stk_ptr);
-        self.read8(self.stk_ptr as u32)
+        self.read(self.stk_ptr as u32)
     }
     fn pop16_e(&mut self) -> u16 {
         u16::from_le_bytes([
@@ -119,7 +398,7 @@ impl Cpu65c816 {
     }
     
     fn push8_n(&mut self, data: u8) {
-        self.write8(self.stk_ptr as u32, data);
+        self.write(self.stk_ptr as u32, data);
         self.stk_ptr -= 1;
     }
     fn push16_n(&mut self, data: u16) {
@@ -127,7 +406,7 @@ impl Cpu65c816 {
         self.push8_n(data as u8);
     }
     fn push8_e(&mut self, data: u8) {
-        self.write8(self.stk_ptr as u32, data);
+        self.write(self.stk_ptr as u32, data);
         self.stk_ptr = dec_low_byte(self.stk_ptr);
     }
     fn push16_e(&mut self, data: u16) {
@@ -179,6 +458,21 @@ impl Cpu65c816 {
         self.y = (self.y & 0xFF00) | val as u16;
     }
 
+    fn acc_size(&self) -> RegSize {
+        if self.is_flag_set(Flag::FlagM) {
+            RegSize::Byte
+        } else {
+            RegSize::TwoBytes
+        }
+    }
+
+    fn idx_size(&self) -> RegSize {
+        if self.is_flag_set(Flag::FlagX) {
+            RegSize::Byte
+        } else {
+            RegSize::TwoBytes
+        }
+    }
 }
 
 
@@ -227,11 +521,87 @@ fn bcd_sub_digit(lhs: u8, rhs: u8, borrow: &mut bool) -> u8 {
 }
 
 
-// INSTRUCTIONS
+// Addressing Modes
+impl Cpu65c816 {
+    fn absolute8(&self) -> u32 {
+        let (lo, hi) = self.immediate16();
+        ((self.data_bank as u32) << 16) | (lo << 8) | hi
+    }
+    fn absolute16(&self) -> (u32, u32) {
+        let address_lo = self.absolute8();
+        (address_lo, address_lo + 1)
+    }
 
+    fn absolute_long(&self) -> u32 {
+        
+    }
+
+    fn absolute_x8(&self) -> u32 {
+        self.absolute8() + self.x as u32
+    }
+    fn absolute_x16(&self) -> (u32, u32) {
+        let (address_lo, address_hi) = self.absolute16();
+        (address_lo + self.x as u32, address_hi + self.x as u32)
+    }
+
+    fn absolute_y8(&self) -> u32 {
+        self.absolute8() + self.y as u32
+    }
+    fn absolute_y16(&self) -> (u32, u32) {
+        let (address_lo, address_hi) = self.absolute16();
+        (address_lo + self.y as u32, address_hi + self.y as u32)
+    }
+
+    fn absolute_indirect(&mut self) -> u32 {
+        let (ptr_lo, ptr_hi) = self.absolute16();
+        let address_lo = self.read(ptr_lo.with_bank(0));
+        let address_hi = self.read(ptr_hi.with_bank(0));
+        u32::from_parts(self.prg_bank, address_hi, address_lo)
+    }
+    fn absolute_indirect_long(&mut self) -> u32 {
+        let (ptr_lo, ptr_mi) = self.absolute16();
+        let ptr_hi = ptr_mi + 1;
+        let address_lo = self.read(ptr_lo.with_bank(0));
+        let address_mi = self.read(ptr_mi.with_bank(0));
+        let address_hi = self.read(ptr_hi.with_bank(0));
+        u32::from_parts(address_hi, address_mi, address_lo)
+    }
+
+    fn absolute_x_indirect8(&mut self) -> u32 {
+        let ptr_lo = self.absolute_x8().with_bank(self.prg_bank);
+        let ptr_hi = (ptr_lo + 1).with_bank(self.prg_bank); // Wrap on bank
+        let address_lo = self.read(ptr_lo);
+        let address_hi = self.read(ptr_hi);
+        u32::from_parts(self.prg_bank, address_hi, address_lo)
+    }
+
+    fn immediate8(&self) -> u32 {
+        ((self.prg_bank as u32) << 16) | (self.pc + 1) as u32
+    }
+    fn immediate16(&self) -> (u32, u32) {
+        (
+            ((self.prg_bank as u32) << 16) | (self.pc + 1) as u32,
+            ((self.prg_bank as u32) << 16) | (self.pc + 2) as u32
+        )
+    }
+
+    fn direct8(&mut self) -> u32 {
+        (self.direct_page + self.read(self.immediate8()) as u16) as u32
+    }
+
+    fn direct16(&mut self) -> (u32, u32) {
+        let data = self.read(self.immediate8()) as u16;
+        (
+            (self.direct_page + data) as u32,
+            (self.direct_page + data + 1) as u32
+        )
+    }
+}
+
+// Instructions
 impl Cpu65c816 {
     fn adc_m8(&mut self, address: u32) {
-        let data = self.read8(address);
+        let data = self.read(address);
         let result: u8;
 
         // Decimal Mode
@@ -261,7 +631,7 @@ impl Cpu65c816 {
         self.acc = result as u16;
     }
 
-    fn adc_m16(&mut self, address_lo: u32, address_hi: u32) {
+    fn adc_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let data = self.read16(address_lo, address_hi);
         let result: u16;
 
@@ -297,7 +667,7 @@ impl Cpu65c816 {
     }
 
     fn and_m8(&mut self, address: u32) {
-        let result = self.get_acc_lo() & self.read8(address);
+        let result = self.get_acc_lo() & self.read(address);
         
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
@@ -305,7 +675,7 @@ impl Cpu65c816 {
         self.set_acc_lo(result);
     }
 
-    fn and_m16(&mut self, address_lo: u32, address_hi: u32) {
+    fn and_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let result = self.acc & self.read16(address_lo, address_hi);
         
         self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
@@ -314,7 +684,7 @@ impl Cpu65c816 {
         self.acc = result;
     }
 
-    fn asl_acc_m8(&mut self, address: u32) {
+    fn asl_acc_m8(&mut self) {
         self.set_flag_to_bool(Flag::FlagC, self.get_acc_lo() & 0x80 != 0);
         
         self.set_acc_lo(self.get_acc_lo() << 1);
@@ -323,7 +693,7 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagZ, self.get_acc_lo() == 0);
     }
 
-    fn asl_acc_m16(&mut self, address_lo: u32, address_hi: u32) {
+    fn asl_acc_m16(&mut self) {
         self.set_flag_to_bool(Flag::FlagC, self.acc & 0x8000 != 0);
 
         self.acc <<= 1;
@@ -333,18 +703,18 @@ impl Cpu65c816 {
     }
 
     fn asl_mem_m8(&mut self, address: u32) {
-        let data = self.read8(address);
+        let data = self.read(address);
         let result = data << 1;
         
         self.set_flag_to_bool(Flag::FlagC, data & 0x80 != 0);
         
-        self.write8(address, result);
+        self.write(address, result);
         
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
-    fn asl_mem_m16(&mut self, address_lo: u32, address_hi: u32) {
+    fn asl_mem_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let data = self.read16(address_lo, address_hi);
         let result = data << 1;
         
@@ -378,13 +748,13 @@ impl Cpu65c816 {
     }
 
     fn bit_m8(&mut self, address: u32) {
-        let result = self.get_acc_lo() & self.read8(address);
+        let result = self.get_acc_lo() & self.read(address);
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
-    fn bit_m16(&mut self, address_lo: u32, address_hi: u32) {
+    fn bit_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let result = self.acc & self.read16(address_lo, address_hi);
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
@@ -393,6 +763,13 @@ impl Cpu65c816 {
 
     fn bmi_all(&mut self, address: u32) {
         if self.is_flag_set(Flag::FlagN) {
+            self.pc = address.bank_addr();
+            self.branch_taken = true;
+        }
+    }
+
+    fn bne_all(&mut self, address: u32) {
+        if !self.is_flag_set(Flag::FlagZ) {
             self.pc = address.bank_addr();
             self.branch_taken = true;
         }
@@ -455,14 +832,14 @@ impl Cpu65c816 {
     fn clv_all(&mut self) { self.clear_flag(Flag::FlagV); }
 
     fn cmp_m8(&mut self, address: u32) {
-        let data = self.read8(address);
+        let data = self.read(address);
         let result = self.get_acc_lo() - data;
 
         self.set_flag_to_bool(Flag::FlagC, self.get_acc_lo() >= data);
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
-    fn cmp_m16(&mut self, address_lo: u32, address_hi: u32) {
+    fn cmp_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let data = self.read16(address_lo, address_hi);
         let result = self.acc - data;
 
@@ -472,7 +849,7 @@ impl Cpu65c816 {
     }
 
     fn cop_n(&mut self, address: u32) {
-        let _ = self.read8(address); // read is discarded here
+        let _ = self.read(address); // read is discarded here
 
         self.push8_n(self.prg_bank);
         self.push16_n(self.pc); // push the address of the COP instruction + 2 (2 has already been added to pc)
@@ -485,7 +862,7 @@ impl Cpu65c816 {
         self.pc = self.read16(N_COP_VECTOR_LO, N_COP_VECTOR_HI);
     }
     fn cop_e(&mut self, address: u32) {
-        let _ = self.read8(address); // read is discarded here
+        let _ = self.read(address); // read is discarded here
 
         self.push16_n(self.pc); // push the address of the COP instruction + 2 (2 has already been added to pc)
         self.push8_n(self.status);
@@ -498,14 +875,14 @@ impl Cpu65c816 {
     }
 
     fn cpx_x8(&mut self, address: u32) {
-        let data = self.read8(address);
+        let data = self.read(address);
         let result = self.get_x_lo() - data;
 
         self.set_flag_to_bool(Flag::FlagC, self.get_x_lo() >= data);
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
-    fn cpx_x16(&mut self, address_lo: u32, address_hi: u32) {
+    fn cpx_x16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let data = self.read16(address_lo, address_hi);
         let result = self.x - data;
 
@@ -515,14 +892,14 @@ impl Cpu65c816 {
     }
 
     fn cpy_x8(&mut self, address: u32) {
-        let data = self.read8(address);
+        let data = self.read(address);
         let result = self.get_y_lo() - data;
 
         self.set_flag_to_bool(Flag::FlagC, self.get_y_lo() >= data);
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
-    fn cpy_x16(&mut self, address_lo: u32, address_hi: u32) {
+    fn cpy_x16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let data = self.read16(address_lo, address_hi);
         let result = self.y - data;
 
@@ -544,14 +921,14 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
     fn dec_mem_m8(&mut self, address: u32) {
-        let result = self.read8(address) - 1;
+        let result = self.read(address) - 1;
 
-        self.write8(address, result);
+        self.write(address, result);
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
-    fn dec_mem_m16(&mut self, address_lo: u32, address_hi: u32) {
+    fn dec_mem_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let result = self.read16(address_lo, address_hi) - 1;
 
         self.write16(address_lo, address_hi, result);
@@ -587,14 +964,14 @@ impl Cpu65c816 {
     }
 
     fn eor_m8(&mut self, address: u32) {
-        let result = self.get_acc_lo() ^ self.read8(address);
+        let result = self.get_acc_lo() ^ self.read(address);
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
         
         self.set_acc_lo(result);
     }
-    fn eor_m16(&mut self, address_lo: u32, address_hi: u32) {
+    fn eor_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let result = self.acc ^ self.read16(address_lo, address_hi);
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
@@ -616,14 +993,14 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
     fn inc_mem_m8(&mut self, address: u32) {
-        let result = self.read8(address) + 1;
+        let result = self.read(address) + 1;
 
-        self.write8(address, result);
+        self.write(address, result);
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
-    fn inc_mem_m16(&mut self, address_lo: u32, address_hi: u32) {
+    fn inc_mem_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let result = self.read16(address_lo, address_hi) + 1;
 
         self.write16(address_lo, address_hi, result);
@@ -694,12 +1071,13 @@ impl Cpu65c816 {
     }
 
     fn lda_m8(&mut self, address: u32) {
-        self.set_acc_lo(self.read8(address));
+        let data = self.read(address);
+        self.set_acc_lo(data);
 
         self.set_flag_to_bool(Flag::FlagN, self.acc & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
-    fn lda_m16(&mut self, address_lo: u32, address_hi: u32) {
+    fn lda_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         self.acc = self.read16(address_lo, address_hi);
 
         self.set_flag_to_bool(Flag::FlagN, self.acc & 0x8000 != 0);
@@ -707,12 +1085,13 @@ impl Cpu65c816 {
     }
 
     fn ldx_x8(&mut self, address: u32) {
-        self.set_x_lo(self.read8(address));
+        let data = self.read(address);
+        self.set_x_lo(data);
 
         self.set_flag_to_bool(Flag::FlagN, self.x & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
     }
-    fn ldx_x16(&mut self, address_lo: u32, address_hi: u32) {
+    fn ldx_x16(&mut self, (address_lo, address_hi): (u32, u32)) {
         self.x = self.read16(address_lo, address_hi);
 
         self.set_flag_to_bool(Flag::FlagN, self.x & 0x8000 != 0);
@@ -720,12 +1099,13 @@ impl Cpu65c816 {
     }
 
     fn ldy_x8(&mut self, address: u32) {
-        self.set_y_lo(self.read8(address));
+        let data = self.read(address);
+        self.set_y_lo(data);
 
         self.set_flag_to_bool(Flag::FlagN, self.y & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
     }
-    fn ldy_x16(&mut self, address_lo: u32, address_hi: u32) {
+    fn ldy_x16(&mut self, (address_lo, address_hi): (u32, u32)) {
         self.y = self.read16(address_lo, address_hi);
 
         self.set_flag_to_bool(Flag::FlagN, self.y & 0x8000 != 0);
@@ -749,17 +1129,17 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
     fn lsr_mem_m8(&mut self, address: u32) {
-        let data = self.read8(address);
+        let data = self.read(address);
         let result = data >> 1;
 
         self.set_flag_to_bool(Flag::FlagC, data & 1 != 0);
         self.clear_flag(Flag::FlagN); // 0 shifted into high bit, result always positive
 
-        self.write8(address, result);
+        self.write(address, result);
 
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
-    fn lsr_mem_m16(&mut self, address_lo: u32, address_hi: u32) {
+    fn lsr_mem_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let data = self.read16(address_lo, address_hi);
         let result = data >> 1;
 
@@ -778,7 +1158,8 @@ impl Cpu65c816 {
         self.x += 1;
         self.y += 1;
 
-        self.write8(dest_address, self.read8(src_address));
+        let data = self.read(src_address);
+        self.write(dest_address, data);
 
         self.acc -= 1;
 
@@ -800,7 +1181,8 @@ impl Cpu65c816 {
         self.x -= 1;
         self.y -= 1;
 
-        self.write8(dest_address, self.read8(src_address));
+        let data = self.read(src_address);
+        self.write(dest_address, data);
 
         self.acc -= 1;
 
@@ -818,14 +1200,14 @@ impl Cpu65c816 {
     fn nop_all(&mut self) {}
 
     fn ora_m8(&mut self, address: u32) {
-        let result = self.get_acc_lo() | self.read8(address);
+        let result = self.get_acc_lo() | self.read(address);
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
         
         self.set_acc_lo(result);
     }
-    fn ora_m16(&mut self, address_lo: u32, address_hi: u32) {
+    fn ora_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let result = self.acc | self.read16(address_lo, address_hi);
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
@@ -999,10 +1381,10 @@ impl Cpu65c816 {
     }
 
     fn rep_n(&mut self, address: u32) {
-        self.status &= !self.read8(address);
+        self.status &= !self.read(address);
     }
     fn rep_e(&mut self, address: u32) {
-        self.status &= !self.read8(address);
+        self.status &= !self.read(address);
         self.set_flag(Flag::FlagM);
         self.set_flag(Flag::FlagX);
     }
@@ -1029,17 +1411,17 @@ impl Cpu65c816 {
     }
     fn rol_mem_m8(&mut self, address: u32) {
         let c = self.is_flag_set(Flag::FlagC);
-        let data = self.read8(address);
+        let data = self.read(address);
         let result = (data << 1) | bool2byte!(c);
 
         self.set_flag_to_bool(Flag::FlagC, data & 0x80 != 0);
 
-        self.write8(address, result);
+        self.write(address, result);
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
-    fn rol_mem_m16(&mut self, address_lo: u32, address_hi: u32) {
+    fn rol_mem_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let c = self.is_flag_set(Flag::FlagC);
         let data = self.read16(address_lo, address_hi);
         let result = (data << 1) | bool2byte!(c);
@@ -1075,17 +1457,17 @@ impl Cpu65c816 {
     fn ror_mem_m8(&mut self, address: u32) {
         let c = self.is_flag_set(Flag::FlagC);
 
-        let data = self.read8(address);
+        let data = self.read(address);
         let result = (data >> 1) | (bool2byte!(c) << 7);
 
         self.set_flag_to_bool(Flag::FlagC, data & 1 != 0);
 
-        self.write8(address, result);
+        self.write(address, result);
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
-    fn ror_mem_m16(&mut self, address_lo: u32, address_hi: u32) {
+    fn ror_mem_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let c = self.is_flag_set(Flag::FlagC);
 
         let data = self.read16(address_lo, address_hi);
@@ -1128,7 +1510,7 @@ impl Cpu65c816 {
     }
 
     fn sbc_m8(&mut self, address: u32) {
-        let data = self.read8(address);
+        let data = self.read(address);
         let result;
 
         if self.is_flag_set(Flag::FlagD) {
@@ -1155,7 +1537,7 @@ impl Cpu65c816 {
 
         self.set_acc_lo(result);
     }
-    fn sbc_m16(&mut self, address_lo: u32, address_hi: u32) {
+    fn sbc_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let data = self.read16(address_lo, address_hi);
         let result;
 
@@ -1195,36 +1577,36 @@ impl Cpu65c816 {
     fn sei_all(&mut self) { self.set_flag(Flag::FlagI); }
 
     fn sep_all(&mut self, address: u32) {
-        self.status |= self.read8(address);
+        self.status |= self.read(address);
     }
 
     fn sta_m8(&mut self, address: u32) {
-        self.write8(address, self.get_acc_lo());
+        self.write(address, self.get_acc_lo());
     }
-    fn sta_m16(&mut self, address_lo: u32, address_hi: u32) {
+    fn sta_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         self.write16(address_lo, address_hi, self.acc)
     }
 
     fn stp_all(&mut self) { self.stopped = true; }
 
     fn stx_x8(&mut self, address: u32) {
-        self.write8(address, self.get_x_lo());
+        self.write(address, self.get_x_lo());
     }
-    fn stx_x16(&mut self, address_lo: u32, address_hi: u32) {
+    fn stx_x16(&mut self, (address_lo, address_hi): (u32, u32)) {
         self.write16(address_lo, address_hi, self.x)
     }
 
     fn sty_x8(&mut self, address: u32) {
-        self.write8(address, self.get_y_lo());
+        self.write(address, self.get_y_lo());
     }
-    fn sty_x16(&mut self, address_lo: u32, address_hi: u32) {
+    fn sty_x16(&mut self, (address_lo, address_hi): (u32, u32)) {
         self.write16(address_lo, address_hi, self.y)
     }
 
     fn stz_m8(&mut self, address: u32) {
-        self.write8(address, 0);
+        self.write(address, 0);
     }
-    fn stz_m16(&mut self, address_lo: u32, address_hi: u32) {
+    fn stz_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         self.write16(address_lo, address_hi, 0)
     }
 
@@ -1272,13 +1654,13 @@ impl Cpu65c816 {
     }
 
     fn trb_m8(&mut self, address: u32) {
-        let result = self.read8(address) & (!self.get_acc_lo());
+        let result = self.read(address) & (!self.get_acc_lo());
 
-        self.write8(address, result);
+        self.write(address, result);
 
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
-    fn trb_m16(&mut self, address_lo: u32, address_hi: u32) {
+    fn trb_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let result = self.read16(address_lo, address_hi) & (!self.acc);
 
         self.write16(address_lo, address_hi, result);
@@ -1287,13 +1669,13 @@ impl Cpu65c816 {
     }
 
     fn tsb_m8(&mut self, address: u32) {
-        let result = self.read8(address) | self.get_acc_lo();
+        let result = self.read(address) | self.get_acc_lo();
 
-        self.write8(address, result);
+        self.write(address, result);
 
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
-    fn tsb_m16(&mut self, address_lo: u32, address_hi: u32) {
+    fn tsb_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let result = self.read16(address_lo, address_hi) | self.acc;
 
         self.write16(address_lo, address_hi, result);
@@ -1420,5 +1802,57 @@ impl Cpu65c816 {
             self.set_flag_to_bool(Flag::FlagC, self.mode == CpuMode::Emulation);
             self.mode = CpuMode::Native;
         }
+    }
+}
+
+
+impl Cpu65c816 {
+    fn read_prg(&mut self) -> u8 {
+        self.read(((self.prg_bank as u32) << 16) | (self.pc as u32))
+    }
+
+    fn exec_instr(&mut self) {
+        let opcode = self.read_prg();
+
+        match (opcode, self.mode, self.acc_size(), self.idx_size()) {
+            (0x00, CpuMode::Native, ..) => { self.brk_n(); }
+            (0x00, CpuMode::Emulation, ..) => { self.brk_e(); }
+
+            // (0x01, _, RegSize::Byte, _) => { ORA, (dir,X) }
+            // (0x01, _, RegSize::TwoBytes, _) => { ORA, (dir,X) }
+
+            (0x02, CpuMode::Native, ..) => { self.cop_n(self.immediate8()); }
+            (0x02, CpuMode::Emulation, ..) => { self.cop_e(self.immediate8()); }
+
+            // (0x03, _, RegSize::Byte, _) => { ORA, stk,S }
+            // (0x03, _, RegSize::TwoBytes, _) => { ORA, stk,S }
+
+            (0x04, _, RegSize::Byte, _) => { self.tsb_m8(self.immediate8()); }
+            (0x04, _, RegSize::TwoBytes, _) => { self.tsb_m16(self.immediate16()); }
+
+            (0x05, _, RegSize::Byte, _) => { 
+                let address = self.direct8(); 
+                self.ora_m8(address); 
+            }
+            (0x05, _, RegSize::TwoBytes, _) => { 
+                let addresses = self.direct16(); 
+                self.ora_m16(addresses); 
+            }
+
+
+            _ => {}
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+
+    #[test]
+    fn test() {
+
     }
 }

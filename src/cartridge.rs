@@ -1,13 +1,100 @@
 use std::{io::Read, path::Path};
 
-use crate::header::Header;
+use crate::scpu;
+
+struct Header {
+    title: [u8; 0x15],
+    
+    fast_rom: bool,
+    map_mode: scpu::MappingMode,
+
+    extra_ram: bool,
+    battery: bool,
+    coprocessor: bool,
+    coprocessor_id: u8,
+
+    rom_size: u8, // ROM size is (1 << rom_size) kb
+
+    ram_size: u8, // RAM size is (1 << ram_size) kb
+
+    is_ntsc: bool,
+
+    interrupt_vectors: [u8; 32]
+}
+
+impl Header {
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        let mut title: [u8; 0x15] = [0; 0x15];
+        title.clone_from_slice(&bytes[..0x15]);
+
+        let fast_rom = (bytes[0x15] & 0x10) > 0;
+        let map_mode = match bytes[0x15] & 0x0F {
+            0 => scpu::MappingMode::LoROM,
+            1 => scpu::MappingMode::HiROM,
+            5 => scpu::MappingMode::ExHiROM,
+            _ => { panic!("unimplemented mapping mode"); }
+        };
+
+        let (extra_ram, battery, coprocessor) = match bytes[0x16] & 0x0F {
+            0 => (false, false, false), // $00 - ROM only
+            1 => (true, false, false),  // $01 - ROM + RAM
+            2 => (true, true, false),   // $02 - ROM + RAM + battery
+            3 => (false, false, true),  // $x3 - ROM + coprocessor
+            4 => (true, false, true),   // $x4 - ROM + coprocessor + RAM
+            5 => (true, true, true),    // $x5 - ROM + coprocessor + RAM + battery
+            6 => (false, true, true),   // $x6 - ROM + coprocessor + battery
+
+            _ => (false, false, false) // Should not happen
+        };
+        let coprocessor_id = bytes[0x16] >> 4;
+
+        let rom_size = bytes[0x17];
+
+        let ram_size = bytes[0x18];
+
+        let is_ntsc = bytes[0x19] > 0;
+
+        let mut interrupt_vectors: [u8; 0x20] = [0; 0x20];
+        interrupt_vectors.clone_from_slice(&bytes[0x20..0x40]);
+
+        Self {
+            title,
+            fast_rom,
+            map_mode,
+            extra_ram,
+            battery,
+            coprocessor,
+            coprocessor_id,
+            rom_size,
+            ram_size,
+            is_ntsc,
+            interrupt_vectors,
+        }
+    }
+
+    pub fn print(&self) {
+        println!("title: {:?}", std::str::from_utf8(&self.title).unwrap());
+        println!("fast_rom: {:?}", self.fast_rom);
+        println!("map_mode: {:?}", self.map_mode);
+        println!("extra_ram: {:?}", self.extra_ram);
+        println!("battery: {:?}", self.battery);
+        println!("coprocessor: {:?}", self.coprocessor);
+        println!("coprocessor_id: {:?}", self.coprocessor_id);
+        println!("rom_size: {:?}", self.rom_size);
+        println!("ram_size: {:?}", self.ram_size);
+        println!("is_ntsc: {:?}", self.is_ntsc);
+        println!("interrupt_vectors: {:?}", self.interrupt_vectors);
+    }
+}
 
 pub struct Cartridge {
     cart_rom: Vec<u8>,
     header: Header,
 }
 
+// Reading Cartridge
 impl Cartridge {
+    // Read in a cartridge from the given path to an spc or sfc file
     pub fn from_path(path: &Path) -> Result<Self, String> {        
         let rom_file = std::fs::File::open(path).unwrap();
 
@@ -85,6 +172,7 @@ impl Cartridge {
         Err(String::from("ROM header not found"))
     }
 
+    // Compute the checksum of the cartridge using the proper mirroring
     fn compute_checksum(cart_rom: &Vec<u8>) -> Result<u16, String> {
         let size = cart_rom.len();
         let on_bits = size.count_ones();
@@ -130,5 +218,23 @@ impl Cartridge {
         }
 
         Ok(checksum)
+    }
+}
+
+// Public Access
+impl Cartridge {
+    // The mapping mode of the cartridge as determined by the location of the header in the ROM
+    pub fn mapping_mode(&self) -> scpu::MappingMode {
+        self.header.map_mode
+    }
+
+    // The entire cartridge rom
+    pub fn rom_data(&self) -> Vec<u8> {
+        self.cart_rom.clone()
+    }
+
+    // The size of the cartridge ROM. Always a power of 2.
+    pub fn rom_size(&self) -> usize {
+        1 << self.header.rom_size
     }
 }
