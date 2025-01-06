@@ -1,6 +1,6 @@
-use std::{io::Read, path::Path};
+use std::{io::Read, path::Path, str::FromStr};
 
-use crate::scpu;
+use crate::scpu::{self, MappingMode};
 
 struct Header {
     title: [u8; 0x15],
@@ -100,6 +100,8 @@ impl Cartridge {
 
         let mut cart_rom: Vec<u8> = rom_file.bytes().map(|b| b.unwrap()).collect();
 
+        println!("ROM LEN: {}", cart_rom.len());
+
         // Ignore optional 512 byte header
         if cart_rom.len() % 1024 == 512 {
             cart_rom.drain(0..512);
@@ -107,6 +109,36 @@ impl Cartridge {
         let cart_rom = cart_rom;
 
         let header_start = Cartridge::find_header(&cart_rom)? as usize;
+        let header_end = header_start + 0x40 as usize;
+
+        let header = Header::from_bytes(&cart_rom[header_start..header_end]);
+
+        header.print();
+
+        Ok(Self {
+            cart_rom,
+            header
+        })
+    }
+
+    // Used for testing purposes. Forcibly loads a cart using the given mapping
+    // mode, ignoring the checksum.
+    pub fn from_path_with_mode(path: &Path, mode: MappingMode) -> Result<Cartridge, String> {
+        let rom_file = std::fs::File::open(path).unwrap();
+
+        let mut cart_rom: Vec<u8> = rom_file.bytes().map(|b| b.unwrap()).collect();
+
+        // Ignore optional 512 byte header
+        if cart_rom.len() % 1024 == 512 {
+            cart_rom.drain(0..512);
+        }
+        let cart_rom = cart_rom;
+
+        let header_start = match mode {
+            MappingMode::LoROM => 0x007FC0,
+            MappingMode::HiROM => 0x00FFC0,
+            MappingMode::ExHiROM => 0x40FFC0,
+        };
         let header_end = header_start + 0x40 as usize;
 
         let header = Header::from_bytes(&cart_rom[header_start..header_end]);
@@ -132,6 +164,11 @@ impl Cartridge {
         let checksum = Cartridge::compute_checksum(cart_rom)?;
         let complement = !checksum;
 
+        println!("Checksum: 0x{checksum:02X}, Complement: 0x{complement:02X}");
+
+        if cart_rom.len() < LoROM_POS + 2 {
+            return Err(String::from("cart too small for LoROM check"));
+        }
         let maybe_checksum = u16::from_le_bytes([
             cart_rom[LoROM_POS + CHECKSUM_OFFSET],
             cart_rom[LoROM_POS + CHECKSUM_OFFSET + 1]
@@ -140,11 +177,13 @@ impl Cartridge {
             cart_rom[LoROM_POS + COMPLEMENT_OFFSET],
             cart_rom[LoROM_POS + COMPLEMENT_OFFSET + 1]
         ]);
-
         if (checksum == maybe_checksum) && (complement == maybe_complement) {
             return Ok(LoROM_POS);
         }
 
+        if cart_rom.len() < HiROM_POS + 2 {
+            return Err(String::from("cart too small for HiROM check"));
+        }
         let maybe_checksum = u16::from_le_bytes([
             cart_rom[HiROM_POS + CHECKSUM_OFFSET],
             cart_rom[HiROM_POS + CHECKSUM_OFFSET + 1]
@@ -157,6 +196,9 @@ impl Cartridge {
             return Ok(HiROM_POS);
         }
 
+        if cart_rom.len() < ExHiROM_POS + 2 {
+            return Err(String::from("cart too small for ExHiROM check"));
+        }
         let maybe_checksum = u16::from_le_bytes([
             cart_rom[ExHiROM_POS + CHECKSUM_OFFSET],
             cart_rom[ExHiROM_POS + CHECKSUM_OFFSET + 1]
@@ -176,7 +218,9 @@ impl Cartridge {
     fn compute_checksum(cart_rom: &Vec<u8>) -> Result<u16, String> {
         let size = cart_rom.len();
         let on_bits = size.count_ones();
-        let bits = size.ilog2() as usize;
+        let bits = size.ilog2() as usize + 1;
+
+        println!("Size: 0x{size:02X}, on_bits: {on_bits}, bits: {bits}");
 
         let checksum: u16;
         

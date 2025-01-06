@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use std::ptr;
+
 use serde::{ser::SerializeStruct, Serialize};
 
 use crate::cartridge::Cartridge;
@@ -13,7 +15,7 @@ pub enum MappingMode {
     ExHiROM,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum CpuMode {
     Emulation,
     Native
@@ -24,6 +26,7 @@ enum RegSize {
     TwoBytes,
 }
 
+#[derive(Debug)]
 enum MemSel {
     FastROM,
     SlowROM,
@@ -39,6 +42,14 @@ pub enum Flag {
     FlagV = 64,  // Overflow
     FlagN = 128, // Negative
     // FLAG_B = 16, // Break (Emulation mode only, same place as X flag)
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum CpuInterrupt {
+    IRQ,
+    NMI,
+    Reset,
+    Abort,
 }
 
 trait CpuAddress {
@@ -95,21 +106,28 @@ pub struct Cpu65c816 {
 
 impl Serialize for Cpu65c816 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer {
-                let mut s = serializer.serialize_struct("Cpu65c816", 11)?;
-                s.serialize_field("acc", &self.acc)?;
-                s.serialize_field("x", &self.x);
-                s.serialize_field("y", &self.y);
-                s.serialize_field("pc", &self.pc);
-                s.serialize_field("stk_ptr", &self.stk_ptr);
-                s.serialize_field("direct", &self.direct_page);
-                s.serialize_field("data_bank", &self.data_bank);
-                s.serialize_field("prg_bank", &self.prg_bank);
-                s.serialize_field("status", &self.status);
-                s.serialize_field("mode", &(self.mode as u8));
-                s.serialize_field("branch_taken", &self.branch_taken);
-                s.end()
+        where S: serde::Serializer 
+    {
+        let mut s = serializer.serialize_struct("Cpu65c816", 11)?;
+        s.serialize_field("acc", &self.acc)?;
+        s.serialize_field("x", &self.x)?;
+        s.serialize_field("y", &self.y)?;
+        s.serialize_field("pc", &self.pc)?;
+        s.serialize_field("stk_ptr", &self.stk_ptr)?;
+        s.serialize_field("direct", &self.direct_page)?;
+        s.serialize_field("data_bank", &self.data_bank)?;
+        s.serialize_field("prg_bank", &self.prg_bank)?;
+        s.serialize_field("status", &self.status)?;
+
+        s.serialize_field("mode", &format!("{:?}", self.mode))?;
+        s.serialize_field("mapping_mode", &format!("{:?}", self.mapping_mode))?;
+        s.serialize_field("mem_sel", &format!("{:?}", self.mem_sel))?;
+        s.serialize_field("branch_taken", &self.branch_taken)?;
+        s.serialize_field("stopped", &self.stopped)?;
+        s.serialize_field("awaiting_interrupt", &self.awaiting_interrupt)?;
+        s.serialize_field("total_clocks", &self.total_clocks)?;
+
+        s.end()
     }
 }
 
@@ -148,6 +166,10 @@ impl Cpu65c816 {
         self.rom_mirror = cart.rom_size() - 1;
         self.rom = cart.rom_data();
     }
+
+    pub fn reset(&mut self) {
+        self.hardware_interrupt(CpuInterrupt::Reset);
+    }
 }
 
 // Internal Helper Functions
@@ -171,6 +193,7 @@ impl Cpu65c816 {
                     // ROM Mirror (Slow)
                     (bank @ 0x00..=0x7D, bank_addr @ 0x8000..=0xFFFF) => {
                         let addr = ((bank as u32) << 15) | ((bank_addr - 0x8000) as u32);
+                        println!("Addr: 0x{address:04X}, ROM Addr: 0x{addr:04X}");
                         data = self.rom[(addr as usize) & self.rom_mirror];
                         clocks = Cpu65c816::ONE_CYCLE_SLOW;
                     },
@@ -473,6 +496,63 @@ impl Cpu65c816 {
             RegSize::TwoBytes
         }
     }
+
+    fn set_mode(&mut self, mode: CpuMode) {
+        self.mode = mode;
+
+        match mode {
+            CpuMode::Native => {
+                
+            }
+
+            CpuMode::Emulation => {
+                self.set_flag(Flag::FlagM);
+                self.set_flag(Flag::FlagX);
+
+                self.x &= 0x00FF;
+                self.y &= 0x00FF;
+                self.stk_ptr = 0x100 | (self.stk_ptr & 0x00FF);
+            }
+        }
+    }
+
+    fn hardware_interrupt(&mut self, interrupt: CpuInterrupt) {
+        if interrupt == CpuInterrupt::Reset {
+            self.set_mode(CpuMode::Emulation);
+        }
+
+        let vector_lo: u32;
+        let vector_hi: u32;
+
+        match self.mode {
+            CpuMode::Native => {
+                self.push8_n(self.prg_bank);
+                self.push16_n(self.pc);
+                self.push8_n(self.status);
+
+                (vector_lo, vector_hi) = match interrupt {
+                    CpuInterrupt::IRQ => (0x00FFEE, 0x00FFEF),
+                    CpuInterrupt::NMI => (0x00FFEA, 0x00FFEB),
+                    CpuInterrupt::Abort => (0x00FFE8, 0x00FFE9),
+                    _ => { unreachable!() } // reset sets mode to emulation
+                }
+            }
+
+            CpuMode::Emulation => {
+                self.push16_e(self.pc);
+                self.push8_e(self.status);
+
+                (vector_lo, vector_hi) = match interrupt {
+                    CpuInterrupt::IRQ => (0x00FFFE, 0x00FFFF),
+                    CpuInterrupt::NMI => (0x00FFFA, 0x00FFFB),
+                    CpuInterrupt::Reset => (0x00FFFC, 0x00FFFD),
+                    CpuInterrupt::Abort => (0x00FFF8, 0x00FFF9),
+                }
+            }
+        }
+
+        self.pc = self.read16(vector_lo, vector_hi)
+    }
 }
 
 
@@ -523,33 +603,67 @@ fn bcd_sub_digit(lhs: u8, rhs: u8, borrow: &mut bool) -> u8 {
 
 // Addressing Modes
 impl Cpu65c816 {
-    fn absolute8(&self) -> u32 {
+    fn absolute8(&mut self) -> u32 {
         let (lo, hi) = self.immediate16();
-        ((self.data_bank as u32) << 16) | (lo << 8) | hi
+        let address_lo = self.read(lo);
+        let address_hi = self.read(hi);
+        u32::from_parts(self.data_bank, address_hi, address_lo)
     }
-    fn absolute16(&self) -> (u32, u32) {
+    fn absolute16(&mut self) -> (u32, u32) {
         let address_lo = self.absolute8();
-        (address_lo, address_lo + 1)
+        (address_lo, (address_lo + 1) & 0xFFFFFF)
     }
 
-    fn absolute_long(&self) -> u32 {
+    fn absolute_long8(&mut self) -> u32 {
+        let (lo, mi) = self.immediate16();
+        let hi = (mi + 1).with_bank(mi.bank());
+        let address_lo = self.read(lo);
+        let address_mi = self.read(mi);
+        let address_hi = self.read(hi);
+        u32::from_parts(address_hi, address_mi, address_lo)
+    }
+    fn absolute_long16(&mut self) -> (u32, u32) {
+        let (lo, mi) = self.immediate16();
+        let hi = (mi + 1).with_bank(mi.bank());
+        let address_lo = self.read(lo);
+        let address_mi = self.read(mi);
+        let address_hi = self.read(hi);
         
+        let addr = u32::from_parts(address_hi, address_mi, address_lo);
+        (addr, (addr + 1) & 0xFFFFFF)
     }
 
-    fn absolute_x8(&self) -> u32 {
-        self.absolute8() + self.x as u32
+    fn absolute_long_x8(&mut self) -> u32 {
+        (self.absolute_long8() + self.x as u32) & 0xFFFFFF
     }
-    fn absolute_x16(&self) -> (u32, u32) {
-        let (address_lo, address_hi) = self.absolute16();
-        (address_lo + self.x as u32, address_hi + self.x as u32)
+    fn absolute_long_x16(&mut self) -> (u32, u32) {
+        let (address_lo, address_hi) = self.absolute_long16();
+        (
+            (address_lo + self.x as u32) & 0xFFFFFF, 
+            (address_hi + self.x as u32) & 0xFFFFFF
+        )
     }
 
-    fn absolute_y8(&self) -> u32 {
-        self.absolute8() + self.y as u32
+    fn absolute_x8(&mut self) -> u32 {
+        (self.absolute8() + self.x as u32) & 0xFFFFFF
     }
-    fn absolute_y16(&self) -> (u32, u32) {
+    fn absolute_x16(&mut self) -> (u32, u32) {
         let (address_lo, address_hi) = self.absolute16();
-        (address_lo + self.y as u32, address_hi + self.y as u32)
+        (
+            (address_lo + self.x as u32) & 0xFFFFFF, 
+            (address_hi + self.x as u32) & 0xFFFFFF
+        )
+    }
+
+    fn absolute_y8(&mut self) -> u32 {
+        (self.absolute8() + self.y as u32) & 0xFFFFFF
+    }
+    fn absolute_y16(&mut self) -> (u32, u32) {
+        let (address_lo, address_hi) = self.absolute16();
+        (
+            (address_lo + self.y as u32) & 0xFFFFFF, 
+            (address_hi + self.y as u32) & 0xFFFFFF
+        )
     }
 
     fn absolute_indirect(&mut self) -> u32 {
@@ -586,9 +700,13 @@ impl Cpu65c816 {
     }
 
     fn direct8(&mut self) -> u32 {
+        // Direct addressing takes an extra cycle when DL != 0
+        if self.direct_page & 0xFF != 0 {
+            self.add_clocks(Cpu65c816::ONE_CYCLE);
+        }
+
         (self.direct_page + self.read(self.immediate8()) as u16) as u32
     }
-
     fn direct16(&mut self) -> (u32, u32) {
         let data = self.read(self.immediate8()) as u16;
         (
@@ -596,6 +714,254 @@ impl Cpu65c816 {
             (self.direct_page + data + 1) as u32
         )
     }
+
+    fn direct_x8(&mut self) -> u32 {
+        match self.mode {
+            CpuMode::Emulation => {
+                let addr = self.direct8();
+
+                if self.direct_page & 0xFF == 0 {
+                    addr.with_page_addr(addr.page_addr() + self.get_x_lo())
+                } else {
+                    (addr + self.x as u32).with_bank(0)
+                }
+            }
+
+            CpuMode::Native => {
+                (self.direct8() + self.x as u32).with_bank(0)
+            }
+        }
+    }
+    fn direct_x16(&mut self) -> (u32, u32) {
+        let addr = (self.direct8() + self.x as u32).with_bank(0);
+        (addr, (addr + 1).with_bank(0))
+    }
+
+    fn direct_y8(&mut self) -> u32 {
+        match self.mode {
+            CpuMode::Emulation => {
+                let addr = self.direct8();
+
+                if self.direct_page & 0xFF == 0 {
+                    addr.with_page_addr(addr.page_addr() + self.get_y_lo())
+                } else {
+                    (addr + self.y as u32).with_bank(0)
+                }
+            }
+
+            CpuMode::Native => {
+                (self.direct8() + self.y as u32).with_bank(0)
+            }
+        }
+    }
+    fn direct_y16(&mut self) -> (u32, u32) {
+        let addr = (self.direct8() + self.y as u32).with_bank(0);
+        (addr, (addr + 1).with_bank(0))
+    }
+
+    fn direct_indirect8(&mut self) -> u32 {
+        let ptr_lo = self.direct8();
+        let ptr_hi = match self.mode {
+            CpuMode::Native => { (ptr_lo + 1).with_bank(0) }
+            CpuMode::Emulation => { ptr_lo.with_page_addr(ptr_lo.page_addr() + 1) }
+        };
+
+        u32::from_parts(
+            self.data_bank,
+            self.read(ptr_hi),
+            self.read(ptr_lo)
+        )
+    }
+    fn direct_indirect16(&mut self) -> (u32, u32) {
+        let ptr_lo = self.direct8();
+        let ptr_hi = (ptr_lo + 1).with_bank(0);
+
+        let address_lo = u32::from_parts(
+            self.data_bank,
+            self.read(ptr_hi),
+            self.read(ptr_lo)
+        );
+        let address_hi = (address_lo + 1) & 0xFFFFFF;
+
+        (address_lo, address_hi)
+    }
+
+    fn direct_indirect_long8(&mut self) -> u32 {
+        let ptr_lo = self.direct8();
+        let ptr_mi = (ptr_lo + 1).with_bank(0);
+        let ptr_hi = (ptr_lo + 2).with_bank(0);
+
+        u32::from_parts(
+            self.read(ptr_hi),
+            self.read(ptr_mi),
+            self.read(ptr_lo)
+        )
+    }
+    fn direct_indirect_long16(&mut self) -> (u32, u32) {
+        let ptr_lo = self.direct8();
+        let ptr_mi = (ptr_lo + 1).with_bank(0);
+        let ptr_hi = (ptr_lo + 2).with_bank(0);
+
+        let address_lo = u32::from_parts(
+            self.read(ptr_hi),
+            self.read(ptr_mi),
+            self.read(ptr_lo)
+        );
+        let address_hi = (address_lo + 1) & 0xFFFFFF;
+
+        (address_lo, address_hi)
+    }
+
+    fn direct_x_indirect8(&mut self) -> u32 {
+        let ptr_lo = self.direct_x8();
+        let ptr_hi = match self.mode {
+            CpuMode::Native => { (ptr_lo + 1).with_bank(0) }
+            CpuMode::Emulation => { ptr_lo.with_page_addr(ptr_lo.page_addr() + 1) }
+        };
+
+        let address_hi = self.read(ptr_hi);
+        let address_lo = self.read(ptr_lo);
+
+        u32::from_parts(self.data_bank, address_hi, address_lo)
+    }
+    fn direct_x_indirect16(&mut self) -> (u32, u32) {
+        let ptr_lo = self.direct_x8();
+        let ptr_hi = match self.mode {
+            CpuMode::Native => { (ptr_lo + 1).with_bank(0) }
+            CpuMode::Emulation => { ptr_lo.with_page_addr(ptr_lo.page_addr() + 1) }
+        };
+
+        let address_hi = self.read(ptr_hi);
+        let address_lo = self.read(ptr_lo);
+
+        let addr = u32::from_parts(self.data_bank, address_hi, address_lo);
+
+        (addr, (addr + 1) & 0xFFFFFF)
+    }
+
+    fn direct_indirect_y8(&mut self) -> u32 {
+        let ptr_lo = self.direct8();
+        let ptr_hi = match self.mode {
+            CpuMode::Native => { (ptr_lo + 1).with_bank(0) }
+            CpuMode::Emulation => { ptr_lo.with_page_addr(ptr_lo.page_addr() + 1) }
+        };
+
+        (u32::from_parts(
+            self.data_bank, 
+            self.read(ptr_hi), 
+            self.read(ptr_lo)
+        ) + self.y as u32) & 0xFFFFFF
+    }
+    fn direct_indirect_y16(&mut self) -> (u32, u32) {
+        let ptr_lo = self.direct8();
+        let ptr_hi = match self.mode {
+            CpuMode::Native => { (ptr_lo + 1).with_bank(0) }
+            CpuMode::Emulation => { ptr_lo.with_page_addr(ptr_lo.page_addr() + 1) }
+        };
+
+        let addr = (u32::from_parts(
+            self.data_bank, 
+            self.read(ptr_hi), 
+            self.read(ptr_lo)
+        ) + self.y as u32) & 0xFFFFFF;
+
+        (addr, (addr + 1) & 0xFFFFFF)
+    }
+
+    fn direct_indirect_long_y8(&mut self) -> u32 {
+        let ptr_lo = self.direct8();
+        let ptr_mi = (ptr_lo + 1).with_bank(0);
+        let ptr_hi = (ptr_lo + 2).with_bank(0);
+
+        (u32::from_parts(
+            self.read(ptr_hi),
+            self.read(ptr_mi), 
+            self.read(ptr_lo)
+        ) + self.y as u32) & 0xFFFFFF
+    }
+    fn direct_indirect_long_y16(&mut self) -> (u32, u32) {
+        let ptr_lo = self.direct8();
+        let ptr_mi = (ptr_lo + 1).with_bank(0);
+        let ptr_hi = (ptr_lo + 2).with_bank(0);
+
+        let addr = (u32::from_parts(
+            self.read(ptr_hi),
+            self.read(ptr_mi), 
+            self.read(ptr_lo)
+        ) + self.y as u32) & 0xFFFFFF;
+
+        (addr, (addr + 1) & 0xFFFFFF)
+    }
+
+    fn relative8(&mut self) -> u32 {
+        let offset = (self.read(self.immediate8()) as i8) as u16;
+        ((self.pc + offset + 2) as u32).with_bank(self.prg_bank)
+    }
+    fn relative16(&mut self) -> u32 {
+        let (offset_lo, offset_hi) = self.immediate16();
+        let offset = u16::from_le_bytes([
+            self.read(offset_lo),
+            self.read(offset_hi)
+        ]);
+        ((self.pc + offset + 3) as u32).with_bank(self.prg_bank)
+    }
+
+    fn src_dst(&mut self) -> (u32, u32) {
+        let (address_src, address_dst) = self.immediate16();
+       
+        let src_bank = self.read(address_src);
+        let src = (self.x as u32).with_bank(src_bank);
+
+        let dst_bank = self.read(address_dst);
+        let dst = (self.y as u32).with_bank(dst_bank);
+
+        (src, dst)
+    }
+
+    fn stack_s8(&mut self) -> u32 {
+        let val = self.read(self.immediate8()) as u16;
+        
+        (val + self.stk_ptr) as u32
+    }
+    fn stack_s16(&mut self) -> (u32, u32) {
+        let val = self.read(self.immediate8()) as u16;
+        
+        ((val + self.stk_ptr) as u32, (val + self.stk_ptr + 1) as u32)
+    }
+
+    fn stack_indirect_y8(&mut self) -> u32 {
+        let (ptr_lo, ptr_hi) = self.stack_s16();
+
+        let address_lo = self.read(ptr_lo);
+        let address_hi = self.read(ptr_hi);
+
+        let addr = u32::from_parts(
+            self.data_bank,
+            address_hi,
+            address_lo
+        );
+
+        (addr + self.y as u32) & 0xFFFFFF
+    }
+    fn stack_indirect_y16(&mut self) -> (u32, u32) {
+        let (ptr_lo, ptr_hi) = self.stack_s16();
+
+        let address_lo = self.read(ptr_lo);
+        let address_hi = self.read(ptr_hi);
+
+        let addr = u32::from_parts(
+            self.data_bank,
+            address_hi,
+            address_lo
+        );
+
+        (
+            (addr + self.y as u32) & 0xFFFFFF, 
+            (addr + self.y as u32 + 1) & 0xFFFFFF
+        )
+    }
+
+
 }
 
 // Instructions
@@ -1151,7 +1517,7 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
-    fn mvn_all(&mut self, src_address: u32, dest_address: u32) {
+    fn mvn_all(&mut self, (src_address, dest_address): (u32, u32)) {
         // Idx registers incremented in block move negative (it's backwards, I know)
         // "Negative" actually refers to where the destination address is relative
         // to the source address.
@@ -1174,7 +1540,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn mvp_all(&mut self, src_address: u32, dest_address: u32) {
+    fn mvp_all(&mut self, (src_address, dest_address): (u32, u32)) {
         // Idx registers decremented in block move positive (it's backwards, I know)
         // "Positive" actually refers to where the destination address is relative
         // to the source address.
@@ -1815,32 +2181,2859 @@ impl Cpu65c816 {
         let opcode = self.read_prg();
 
         match (opcode, self.mode, self.acc_size(), self.idx_size()) {
-            (0x00, CpuMode::Native, ..) => { self.brk_n(); }
-            (0x00, CpuMode::Emulation, ..) => { self.brk_e(); }
-
-            // (0x01, _, RegSize::Byte, _) => { ORA, (dir,X) }
-            // (0x01, _, RegSize::TwoBytes, _) => { ORA, (dir,X) }
-
-            (0x02, CpuMode::Native, ..) => { self.cop_n(self.immediate8()); }
-            (0x02, CpuMode::Emulation, ..) => { self.cop_e(self.immediate8()); }
-
-            // (0x03, _, RegSize::Byte, _) => { ORA, stk,S }
-            // (0x03, _, RegSize::TwoBytes, _) => { ORA, stk,S }
-
-            (0x04, _, RegSize::Byte, _) => { self.tsb_m8(self.immediate8()); }
-            (0x04, _, RegSize::TwoBytes, _) => { self.tsb_m16(self.immediate16()); }
-
-            (0x05, _, RegSize::Byte, _) => { 
-                let address = self.direct8(); 
-                self.ora_m8(address); 
+            // brk, imp
+            (0x00, CpuMode::Native, ..) => {
+                self.brk_n();
+                self.pc += 1;
             }
-            (0x05, _, RegSize::TwoBytes, _) => { 
-                let addresses = self.direct16(); 
-                self.ora_m16(addresses); 
+            (0x00, CpuMode::Emulation, ..) => {
+                self.brk_e();
+                self.pc += 1;
             }
 
+            // ora, (dir,X)
+            (0x01, _, RegSize::Byte, _) => {
+                let addr = self.direct_x_indirect8();
+                self.ora_m8(addr);
+                self.pc += 2;
+            }
+            (0x01, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x_indirect16();
+                self.ora_m16(addr);
+                self.pc += 2;
+            }
 
-            _ => {}
+            // cop, imm
+            (0x02, CpuMode::Native, ..) => {
+                let addr = self.immediate8();
+                self.cop_n(addr);
+                self.pc += 2;
+            }
+            (0x02, CpuMode::Emulation, ..) => {
+                let addr = self.immediate8();
+                self.cop_e(addr);
+                self.pc += 2;
+            }
+
+            // ora, stk,S
+            (0x03, _, RegSize::Byte, _) => {
+                let addr = self.stack_s8();
+                self.ora_m8(addr);
+                self.pc += 2;
+            }
+            (0x03, _, RegSize::TwoBytes, _) => {
+                let addr = self.stack_s16();
+                self.ora_m16(addr);
+                self.pc += 2;
+            }
+
+            // tsb, dir
+            (0x04, _, RegSize::Byte, _) => {
+                let addr = self.direct8();
+                self.tsb_m8(addr);
+                self.pc += 2;
+            }
+            (0x04, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct16();
+                self.tsb_m16(addr);
+                self.pc += 2;
+            }
+
+            // ora, dir
+            (0x05, _, RegSize::Byte, _) => {
+                let addr = self.direct8();
+                self.ora_m8(addr);
+                self.pc += 2;
+            }
+            (0x05, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct16();
+                self.ora_m16(addr);
+                self.pc += 2;
+            }
+
+            // asl, dir
+            (0x06, _, RegSize::Byte, _) => {
+                let addr = self.direct8();
+                self.asl_mem_m8(addr);
+                self.pc += 2;
+            }
+            (0x06, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct16();
+                self.asl_mem_m16(addr);
+                self.pc += 2;
+            }
+
+            // ora, [dir]
+            (0x07, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_long8();
+                self.ora_m8(addr);
+                self.pc += 2;
+            }
+            (0x07, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_long16();
+                self.ora_m16(addr);
+                self.pc += 2;
+            }
+
+            // php, imp
+            (0x08, CpuMode::Native, ..) => {
+                self.php_n();
+                self.pc += 1;
+            }
+            (0x08, CpuMode::Emulation, ..) => {
+                self.php_e();
+                self.pc += 1;
+            }
+
+            // ora, imm
+            (0x09, _, RegSize::Byte, _) => {
+                let addr = self.immediate8();
+                self.ora_m8(addr);
+                self.pc += 2;
+            }
+            (0x09, _, RegSize::TwoBytes, _) => {
+                let addr = self.immediate16();
+                self.ora_m16(addr);
+                self.pc += 3;
+            }
+
+            // asl, acc
+            (0x0A, _, RegSize::Byte, _) => {
+                self.asl_acc_m8();
+                self.pc += 1;
+            }
+            (0x0A, _, RegSize::TwoBytes, _) => {
+                self.asl_acc_m16();
+                self.pc += 1;
+            }
+
+            // phd, imp
+            (0x0B, CpuMode::Native, ..) => {
+                self.phd_n();
+                self.pc += 1;
+            }
+            (0x0B, CpuMode::Emulation, ..) => {
+                self.phd_e();
+                self.pc += 1;
+            }
+
+            // tsb, abs
+            (0x0C, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.tsb_m8(addr);
+                self.pc += 3;
+            }
+            (0x0C, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.tsb_m16(addr);
+                self.pc += 3;
+            }
+
+            // ora, abs
+            (0x0D, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.ora_m8(addr);
+                self.pc += 3;
+            }
+            (0x0D, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.ora_m16(addr);
+                self.pc += 3;
+            }
+
+            // asl, abs
+            (0x0E, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.asl_mem_m8(addr);
+                self.pc += 3;
+            }
+            (0x0E, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.asl_mem_m16(addr);
+                self.pc += 3;
+            }
+
+            // ora, long
+            (0x0F, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.ora_m8(addr);
+                self.pc += 4;
+            }
+            (0x0F, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.ora_m16(addr);
+                self.pc += 4;
+            }
+
+            // bpl, rel8
+            (0x10, ..) => {
+                let addr = self.relative8();
+                self.bpl_all(addr);
+                self.pc += 2;
+            }
+
+            // ora, (dir),Y
+            (0x11, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_y8();
+                self.ora_m8(addr);
+                self.pc += 2;
+            }
+            (0x11, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_y16();
+                self.ora_m16(addr);
+                self.pc += 2;
+            }
+
+            // ora, (dir)
+            (0x12, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect8();
+                self.ora_m8(addr);
+                self.pc += 2;
+            }
+            (0x12, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect16();
+                self.ora_m16(addr);
+                self.pc += 2;
+            }
+
+            // ora, (stk,S),Y
+            (0x13, _, RegSize::Byte, _) => {
+                let addr = self.stack_indirect_y8();
+                self.ora_m8(addr);
+                self.pc += 2;
+            }
+            (0x13, _, RegSize::TwoBytes, _) => {
+                let addr = self.stack_indirect_y16();
+                self.ora_m16(addr);
+                self.pc += 2;
+            }
+
+            // trb, dir
+            (0x14, _, RegSize::Byte, _) => {
+                let addr = self.direct8();
+                self.trb_m8(addr);
+                self.pc += 2;
+            }
+            (0x14, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct16();
+                self.trb_m16(addr);
+                self.pc += 2;
+            }
+
+            // ora, dir,X
+            (0x15, _, RegSize::Byte, _) => {
+                let addr = self.direct_x8();
+                self.ora_m8(addr);
+                self.pc += 2;
+            }
+            (0x15, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x16();
+                self.ora_m16(addr);
+                self.pc += 2;
+            }
+
+            // asl, dir,X
+            (0x16, _, RegSize::Byte, _) => {
+                let addr = self.direct_x8();
+                self.asl_mem_m8(addr);
+                self.pc += 2;
+            }
+            (0x16, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x16();
+                self.asl_mem_m16(addr);
+                self.pc += 2;
+            }
+
+            // ora, [dir],Y
+            (0x17, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_long_y8();
+                self.ora_m8(addr);
+                self.pc += 2;
+            }
+            (0x17, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_long_y16();
+                self.ora_m16(addr);
+                self.pc += 2;
+            }
+
+            // clc, imp
+            (0x18, ..) => {
+                self.clc_all();
+                self.pc += 1;
+            }
+
+            // ora, abs,Y
+            (0x19, _, RegSize::Byte, _) => {
+                let addr = self.absolute_y8();
+                self.ora_m8(addr);
+                self.pc += 3;
+            }
+            (0x19, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_y16();
+                self.ora_m16(addr);
+                self.pc += 3;
+            }
+
+            // inc, acc
+            (0x1A, _, RegSize::Byte, _) => {
+                self.inc_acc_m8();
+                self.pc += 1;
+            }
+            (0x1A, _, RegSize::TwoBytes, _) => {
+                self.inc_acc_m16();
+                self.pc += 1;
+            }
+
+            // tcs, imp
+            (0x1B, CpuMode::Native, ..) => {
+                self.tcs_n();
+                self.pc += 1;
+            }
+            (0x1B, CpuMode::Emulation, ..) => {
+                self.tcs_e();
+                self.pc += 1;
+            }
+
+            // trb, abs
+            (0x1C, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.trb_m8(addr);
+                self.pc += 3;
+            }
+            (0x1C, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.trb_m16(addr);
+                self.pc += 3;
+            }
+
+            // ora, abs,X
+            (0x1D, _, RegSize::Byte, _) => {
+                let addr = self.absolute_x8();
+                self.ora_m8(addr);
+                self.pc += 3;
+            }
+            (0x1D, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_x16();
+                self.ora_m16(addr);
+                self.pc += 3;
+            }
+
+            // asl, abs,X
+            (0x1E, _, RegSize::Byte, _) => {
+                let addr = self.absolute_x8();
+                self.asl_mem_m8(addr);
+                self.pc += 3;
+            }
+            (0x1E, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_x16();
+                self.asl_mem_m16(addr);
+                self.pc += 3;
+            }
+
+            // ora, long,X
+            (0x1F, _, RegSize::Byte, _) => {
+                let addr = self.absolute_long_x8();
+                self.ora_m8(addr);
+                self.pc += 4;
+            }
+            (0x1F, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_long_x16();
+                self.ora_m16(addr);
+                self.pc += 4;
+            }
+
+            // jsr, abs
+            (0x20, CpuMode::Native, ..) => {
+                let addr = self.absolute8();
+                self.jsr_n(addr);
+                self.pc += 3;
+            }
+            (0x20, CpuMode::Emulation, ..) => {
+                let addr = self.absolute8();
+                self.jsr_e(addr);
+                self.pc += 3;
+            }
+
+            // and, (dir,X)
+            (0x21, _, RegSize::Byte, _) => {
+                let addr = self.direct_x_indirect8();
+                self.and_m8(addr);
+                self.pc += 2;
+            }
+            (0x21, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x_indirect16();
+                self.and_m16(addr);
+                self.pc += 2;
+            }
+
+            // jsl, long
+            (0x22, CpuMode::Native, ..) => {
+                let addr = self.absolute8();
+                self.jsl_n(addr);
+                self.pc += 4;
+            }
+            (0x22, CpuMode::Emulation, ..) => {
+                let addr = self.absolute8();
+                self.jsl_e(addr);
+                self.pc += 4;
+            }
+
+            // and, stk,S
+            (0x23, _, RegSize::Byte, _) => {
+                let addr = self.stack_s8();
+                self.and_m8(addr);
+                self.pc += 2;
+            }
+            (0x23, _, RegSize::TwoBytes, _) => {
+                let addr = self.stack_s16();
+                self.and_m16(addr);
+                self.pc += 2;
+            }
+
+            // bit, dir
+            (0x24, _, RegSize::Byte, _) => {
+                let addr = self.direct8();
+                self.bit_m8(addr);
+                self.pc += 2;
+            }
+            (0x24, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct16();
+                self.bit_m16(addr);
+                self.pc += 2;
+            }
+
+            // and, dir
+            (0x25, _, RegSize::Byte, _) => {
+                let addr = self.direct8();
+                self.and_m8(addr);
+                self.pc += 2;
+            }
+            (0x25, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct16();
+                self.and_m16(addr);
+                self.pc += 2;
+            }
+
+            // rol, dir
+            (0x26, _, RegSize::Byte, _) => {
+                let addr = self.direct8();
+                self.rol_mem_m8(addr);
+                self.pc += 2;
+            }
+            (0x26, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct16();
+                self.rol_mem_m16(addr);
+                self.pc += 2;
+            }
+
+            // and, [dir]
+            (0x27, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_long8();
+                self.and_m8(addr);
+                self.pc += 2;
+            }
+            (0x27, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_long16();
+                self.and_m16(addr);
+                self.pc += 2;
+            }
+
+            // plp, imp
+            (0x28, CpuMode::Native, ..) => {
+                self.plp_n();
+                self.pc += 1;
+            }
+            (0x28, CpuMode::Emulation, ..) => {
+                self.plp_e();
+                self.pc += 1;
+            }
+
+            // and, imm
+            (0x29, _, RegSize::Byte, _) => {
+                let addr = self.immediate8();
+                self.and_m8(addr);
+                self.pc += 2;
+            }
+            (0x29, _, RegSize::TwoBytes, _) => {
+                let addr = self.immediate16();
+                self.and_m16(addr);
+                self.pc += 3;
+            }
+
+            // rol, acc
+            (0x2A, _, RegSize::Byte, _) => {
+                self.rol_acc_m8();
+                self.pc += 1;
+            }
+            (0x2A, _, RegSize::TwoBytes, _) => {
+                self.rol_acc_m16();
+                self.pc += 1;
+            }
+
+            // pld, imp
+            (0x2B, CpuMode::Native, ..) => {
+                self.pld_n();
+                self.pc += 1;
+            }
+            (0x2B, CpuMode::Emulation, ..) => {
+                self.pld_e();
+                self.pc += 1;
+            }
+
+            // bit, abs
+            (0x2C, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.bit_m8(addr);
+                self.pc += 3;
+            }
+            (0x2C, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.bit_m16(addr);
+                self.pc += 3;
+            }
+
+            // and, abs
+            (0x2D, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.and_m8(addr);
+                self.pc += 3;
+            }
+            (0x2D, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.and_m16(addr);
+                self.pc += 3;
+            }
+
+            // rol, abs
+            (0x2E, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.rol_mem_m8(addr);
+                self.pc += 3;
+            }
+            (0x2E, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.rol_mem_m16(addr);
+                self.pc += 3;
+            }
+
+            // and, long
+            (0x2F, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.and_m8(addr);
+                self.pc += 4;
+            }
+            (0x2F, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.and_m16(addr);
+                self.pc += 4;
+            }
+
+            // bmi, rel8
+            (0x30, ..) => {
+                let addr = self.relative8();
+                self.bmi_all(addr);
+                self.pc += 2;
+            }
+
+            // and, (dir),Y
+            (0x31, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_y8();
+                self.and_m8(addr);
+                self.pc += 2;
+            }
+            (0x31, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_y16();
+                self.and_m16(addr);
+                self.pc += 2;
+            }
+
+            // and, (dir)
+            (0x32, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect8();
+                self.and_m8(addr);
+                self.pc += 2;
+            }
+            (0x32, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect16();
+                self.and_m16(addr);
+                self.pc += 2;
+            }
+
+            // and, (stk,S),Y
+            (0x33, _, RegSize::Byte, _) => {
+                let addr = self.stack_indirect_y8();
+                self.and_m8(addr);
+                self.pc += 2;
+            }
+            (0x33, _, RegSize::TwoBytes, _) => {
+                let addr = self.stack_indirect_y16();
+                self.and_m16(addr);
+                self.pc += 2;
+            }
+
+            // bit, dir,X
+            (0x34, _, RegSize::Byte, _) => {
+                let addr = self.direct_x8();
+                self.bit_m8(addr);
+                self.pc += 2;
+            }
+            (0x34, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x16();
+                self.bit_m16(addr);
+                self.pc += 2;
+            }
+
+            // and, dir,X
+            (0x35, _, RegSize::Byte, _) => {
+                let addr = self.direct_x8();
+                self.and_m8(addr);
+                self.pc += 2;
+            }
+            (0x35, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x16();
+                self.and_m16(addr);
+                self.pc += 2;
+            }
+
+            // rol, dir,X
+            (0x36, _, RegSize::Byte, _) => {
+                let addr = self.direct_x8();
+                self.rol_mem_m8(addr);
+                self.pc += 2;
+            }
+            (0x36, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x16();
+                self.rol_mem_m16(addr);
+                self.pc += 2;
+            }
+
+            // and, [dir],Y
+            (0x37, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_long_y8();
+                self.and_m8(addr);
+                self.pc += 2;
+            }
+            (0x37, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_long_y16();
+                self.and_m16(addr);
+                self.pc += 2;
+            }
+
+            // sec, imp
+            (0x38, ..) => {
+                self.sec_all();
+                self.pc += 1;
+            }
+
+            // and, abs,Y
+            (0x39, _, RegSize::Byte, _) => {
+                let addr = self.absolute_y8();
+                self.and_m8(addr);
+                self.pc += 3;
+            }
+            (0x39, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_y16();
+                self.and_m16(addr);
+                self.pc += 3;
+            }
+
+            // dec, acc
+            (0x3A, _, RegSize::Byte, _) => {
+                self.dec_acc_m8();
+                self.pc += 1;
+            }
+            (0x3A, _, RegSize::TwoBytes, _) => {
+                self.dec_acc_m16();
+                self.pc += 1;
+            }
+
+            // tsc, imp
+            (0x3B, CpuMode::Emulation, ..) => {
+                self.tsc_e();
+                self.pc += 1;
+            }
+            (0x3B, _, RegSize::Byte, _) => {
+                self.tsc_m8();
+                self.pc += 1;
+            }
+            (0x3B, _, RegSize::TwoBytes, _) => {
+                self.tsc_m16();
+                self.pc += 1;
+            }
+
+            // bit, abs,X
+            (0x3C, _, RegSize::Byte, _) => {
+                let addr = self.absolute_x8();
+                self.bit_m8(addr);
+                self.pc += 3;
+            }
+            (0x3C, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_x16();
+                self.bit_m16(addr);
+                self.pc += 3;
+            }
+
+            // and, abs,X
+            (0x3D, _, RegSize::Byte, _) => {
+                let addr = self.absolute_x8();
+                self.and_m8(addr);
+                self.pc += 3;
+            }
+            (0x3D, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_x16();
+                self.and_m16(addr);
+                self.pc += 3;
+            }
+
+            // rol, abs,X
+            (0x3E, _, RegSize::Byte, _) => {
+                let addr = self.absolute_x8();
+                self.rol_mem_m8(addr);
+                self.pc += 3;
+            }
+            (0x3E, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_x16();
+                self.rol_mem_m16(addr);
+                self.pc += 3;
+            }
+
+            // and, long,X
+            (0x3F, _, RegSize::Byte, _) => {
+                let addr = self.absolute_long_x8();
+                self.and_m8(addr);
+                self.pc += 4;
+            }
+            (0x3F, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_long_x16();
+                self.and_m16(addr);
+                self.pc += 4;
+            }
+
+            // rti, imp
+            (0x40, CpuMode::Native, ..) => {
+                self.rti_n();
+                self.pc += 1;
+            }
+            (0x40, CpuMode::Emulation, ..) => {
+                self.rti_e();
+                self.pc += 1;
+            }
+
+            // eor, (dir,X)
+            (0x41, _, RegSize::Byte, _) => {
+                let addr = self.direct_x_indirect8();
+                self.eor_m8(addr);
+                self.pc += 2;
+            }
+            (0x41, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x_indirect16();
+                self.eor_m16(addr);
+                self.pc += 2;
+            }
+
+            // wdm, imm
+            (0x42, ..) => {
+                self.wdm_all();
+                self.pc += 2;
+            }
+
+            // eor, stk,S
+            (0x43, _, RegSize::Byte, _) => {
+                let addr = self.stack_s8();
+                self.eor_m8(addr);
+                self.pc += 2;
+            }
+            (0x43, _, RegSize::TwoBytes, _) => {
+                let addr = self.stack_s16();
+                self.eor_m16(addr);
+                self.pc += 2;
+            }
+
+            // mvp, src,dest
+            (0x44, ..) => {
+                let addr = self.src_dst();
+                self.mvp_all(addr);
+                self.pc += 3;
+            }
+
+            // eor, dir
+            (0x45, _, RegSize::Byte, _) => {
+                let addr = self.direct8();
+                self.eor_m8(addr);
+                self.pc += 2;
+            }
+            (0x45, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct16();
+                self.eor_m16(addr);
+                self.pc += 2;
+            }
+
+            // lsr, dir
+            (0x46, _, RegSize::Byte, _) => {
+                let addr = self.direct8();
+                self.lsr_mem_m8(addr);
+                self.pc += 2;
+            }
+            (0x46, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct16();
+                self.lsr_mem_m16(addr);
+                self.pc += 2;
+            }
+
+            // eor, [dir]
+            (0x47, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_long8();
+                self.eor_m8(addr);
+                self.pc += 2;
+            }
+            (0x47, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_long16();
+                self.eor_m16(addr);
+                self.pc += 2;
+            }
+
+            // pha, imp
+            (0x48, CpuMode::Emulation, ..) => {
+                self.pha_e();
+                self.pc += 1;
+            }
+            (0x48, _, RegSize::Byte, _) => {
+                self.pha_m8();
+                self.pc += 1;
+            }
+            (0x48, _, RegSize::TwoBytes, _) => {
+                self.pha_m16();
+                self.pc += 1;
+            }
+
+            // eor, imm
+            (0x49, _, RegSize::Byte, _) => {
+                let addr = self.immediate8();
+                self.eor_m8(addr);
+                self.pc += 2;
+            }
+            (0x49, _, RegSize::TwoBytes, _) => {
+                let addr = self.immediate16();
+                self.eor_m16(addr);
+                self.pc += 3;
+            }
+
+            // lsr, acc
+            (0x4A, _, RegSize::Byte, _) => {
+                self.lsr_acc_m8();
+                self.pc += 1;
+            }
+            (0x4A, _, RegSize::TwoBytes, _) => {
+                self.lsr_acc_m16();
+                self.pc += 1;
+            }
+
+            // phk, imp
+            (0x4B, CpuMode::Native, ..) => {
+                self.phk_n();
+                self.pc += 1;
+            }
+            (0x4B, CpuMode::Emulation, ..) => {
+                self.phk_e();
+                self.pc += 1;
+            }
+
+            // jmp, abs
+            (0x4C, ..) => {
+                let addr = self.absolute8();
+                self.jmp_all(addr);
+                self.pc += 3;
+            }
+
+            // eor, abs
+            (0x4D, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.eor_m8(addr);
+                self.pc += 3;
+            }
+            (0x4D, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.eor_m16(addr);
+                self.pc += 3;
+            }
+
+            // lsr, abs
+            (0x4E, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.lsr_mem_m8(addr);
+                self.pc += 3;
+            }
+            (0x4E, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.lsr_mem_m16(addr);
+                self.pc += 3;
+            }
+
+            // eor, long
+            (0x4F, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.eor_m8(addr);
+                self.pc += 4;
+            }
+            (0x4F, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.eor_m16(addr);
+                self.pc += 4;
+            }
+
+            // bvc, rel8
+            (0x50, ..) => {
+                let addr = self.relative8();
+                self.bvc_all(addr);
+                self.pc += 2;
+            }
+
+            // eor, (dir),Y
+            (0x51, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_y8();
+                self.eor_m8(addr);
+                self.pc += 2;
+            }
+            (0x51, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_y16();
+                self.eor_m16(addr);
+                self.pc += 2;
+            }
+
+            // eor, (dir)
+            (0x52, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect8();
+                self.eor_m8(addr);
+                self.pc += 2;
+            }
+            (0x52, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect16();
+                self.eor_m16(addr);
+                self.pc += 2;
+            }
+
+            // eor, (stk,S),Y
+            (0x53, _, RegSize::Byte, _) => {
+                let addr = self.stack_indirect_y8();
+                self.eor_m8(addr);
+                self.pc += 2;
+            }
+            (0x53, _, RegSize::TwoBytes, _) => {
+                let addr = self.stack_indirect_y16();
+                self.eor_m16(addr);
+                self.pc += 2;
+            }
+
+            // mvn, src,dest
+            (0x54, ..) => {
+                let addr = self.src_dst();
+                self.mvn_all(addr);
+                self.pc += 3;
+            }
+
+            // eor, dir,X
+            (0x55, _, RegSize::Byte, _) => {
+                let addr = self.direct_x8();
+                self.eor_m8(addr);
+                self.pc += 2;
+            }
+            (0x55, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x16();
+                self.eor_m16(addr);
+                self.pc += 2;
+            }
+
+            // lsr, dir,X
+            (0x56, _, RegSize::Byte, _) => {
+                let addr = self.direct_x8();
+                self.lsr_mem_m8(addr);
+                self.pc += 2;
+            }
+            (0x56, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x16();
+                self.lsr_mem_m16(addr);
+                self.pc += 2;
+            }
+
+            // eor, [dir],Y
+            (0x57, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_long_y8();
+                self.eor_m8(addr);
+                self.pc += 2;
+            }
+            (0x57, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_long_y16();
+                self.eor_m16(addr);
+                self.pc += 2;
+            }
+
+            // cli, imp
+            (0x58, ..) => {
+                self.cli_all();
+                self.pc += 1;
+            }
+
+            // eor, abs,Y
+            (0x59, _, RegSize::Byte, _) => {
+                let addr = self.absolute_y8();
+                self.eor_m8(addr);
+                self.pc += 3;
+            }
+            (0x59, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_y16();
+                self.eor_m16(addr);
+                self.pc += 3;
+            }
+
+            // phy, imp
+            (0x5A, CpuMode::Emulation, ..) => {
+                self.phy_e();
+                self.pc += 1;
+            }
+            (0x5A, _, _, RegSize::Byte) => {
+                self.phy_x8();
+                self.pc += 1;
+            }
+            (0x5A, _, _, RegSize::TwoBytes) => {
+                self.phy_x16();
+                self.pc += 1;
+            }
+
+            // tcd, imp
+            (0x5B, ..) => {
+                self.tcd_all();
+                self.pc += 1;
+            }
+
+            // jmp, long
+            (0x5C, ..) => {
+                let addr = self.absolute8();
+                self.jmp_all(addr);
+                self.pc += 4;
+            }
+
+            // eor, abs,X
+            (0x5D, _, RegSize::Byte, _) => {
+                let addr = self.absolute_x8();
+                self.eor_m8(addr);
+                self.pc += 3;
+            }
+            (0x5D, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_x16();
+                self.eor_m16(addr);
+                self.pc += 3;
+            }
+
+            // lsr, abs,X
+            (0x5E, _, RegSize::Byte, _) => {
+                let addr = self.absolute_x8();
+                self.lsr_mem_m8(addr);
+                self.pc += 3;
+            }
+            (0x5E, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_x16();
+                self.lsr_mem_m16(addr);
+                self.pc += 3;
+            }
+
+            // eor, long,X
+            (0x5F, _, RegSize::Byte, _) => {
+                let addr = self.absolute_long_x8();
+                self.eor_m8(addr);
+                self.pc += 4;
+            }
+            (0x5F, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_long_x16();
+                self.eor_m16(addr);
+                self.pc += 4;
+            }
+
+            // rts, imp
+            (0x60, CpuMode::Native, ..) => {
+                self.rts_n();
+                self.pc += 1;
+            }
+            (0x60, CpuMode::Emulation, ..) => {
+                self.rts_e();
+                self.pc += 1;
+            }
+
+            // adc, (dir,X)
+            (0x61, _, RegSize::Byte, _) => {
+                let addr = self.direct_x_indirect8();
+                self.adc_m8(addr);
+                self.pc += 2;
+            }
+            (0x61, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x_indirect16();
+                self.adc_m16(addr);
+                self.pc += 2;
+            }
+
+            // pex, imm
+            (0x62, CpuMode::Native, ..) => {
+                let addr = self.immediate8();
+                self.pex_n(addr);
+                self.pc += 3;
+            }
+            (0x62, CpuMode::Emulation, ..) => {
+                let addr = self.immediate8();
+                self.pex_e(addr);
+                self.pc += 3;
+            }
+
+            // adc, stk,S
+            (0x63, _, RegSize::Byte, _) => {
+                let addr = self.stack_s8();
+                self.adc_m8(addr);
+                self.pc += 2;
+            }
+            (0x63, _, RegSize::TwoBytes, _) => {
+                let addr = self.stack_s16();
+                self.adc_m16(addr);
+                self.pc += 2;
+            }
+
+            // stz, dir
+            (0x64, _, RegSize::Byte, _) => {
+                let addr = self.direct8();
+                self.stz_m8(addr);
+                self.pc += 2;
+            }
+            (0x64, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct16();
+                self.stz_m16(addr);
+                self.pc += 2;
+            }
+
+            // adc, dir
+            (0x65, _, RegSize::Byte, _) => {
+                let addr = self.direct8();
+                self.adc_m8(addr);
+                self.pc += 2;
+            }
+            (0x65, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct16();
+                self.adc_m16(addr);
+                self.pc += 2;
+            }
+
+            // ror, dir
+            (0x66, _, RegSize::Byte, _) => {
+                let addr = self.direct8();
+                self.ror_mem_m8(addr);
+                self.pc += 2;
+            }
+            (0x66, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct16();
+                self.ror_mem_m16(addr);
+                self.pc += 2;
+            }
+
+            // adc, [dir]
+            (0x67, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_long8();
+                self.adc_m8(addr);
+                self.pc += 2;
+            }
+            (0x67, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_long16();
+                self.adc_m16(addr);
+                self.pc += 2;
+            }
+
+            // pla, imp
+            (0x68, CpuMode::Emulation, ..) => {
+                self.pla_e();
+                self.pc += 1;
+            }
+            (0x68, _, RegSize::Byte, _) => {
+                self.pla_m8();
+                self.pc += 1;
+            }
+            (0x68, _, RegSize::TwoBytes, _) => {
+                self.pla_m16();
+                self.pc += 1;
+            }
+
+            // adc, imm
+            (0x69, _, RegSize::Byte, _) => {
+                let addr = self.immediate8();
+                self.adc_m8(addr);
+                self.pc += 2;
+            }
+            (0x69, _, RegSize::TwoBytes, _) => {
+                let addr = self.immediate16();
+                self.adc_m16(addr);
+                self.pc += 3;
+            }
+
+            // ror, acc
+            (0x6A, _, RegSize::Byte, _) => {
+                self.ror_acc_m8();
+                self.pc += 1;
+            }
+            (0x6A, _, RegSize::TwoBytes, _) => {
+                self.ror_acc_m16();
+                self.pc += 1;
+            }
+
+            // rtl, imp
+            (0x6B, CpuMode::Native, ..) => {
+                self.rtl_n();
+                self.pc += 1;
+            }
+            (0x6B, CpuMode::Emulation, ..) => {
+                self.rtl_e();
+                self.pc += 1;
+            }
+
+            // jmp, (abs)
+            (0x6C, ..) => {
+                let addr = self.absolute_indirect();
+                self.jmp_all(addr);
+                self.pc += 3;
+            }
+
+            // adc, abs
+            (0x6D, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.adc_m8(addr);
+                self.pc += 3;
+            }
+            (0x6D, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.adc_m16(addr);
+                self.pc += 3;
+            }
+
+            // ror, abs
+            (0x6E, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.ror_mem_m8(addr);
+                self.pc += 3;
+            }
+            (0x6E, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.ror_mem_m16(addr);
+                self.pc += 3;
+            }
+
+            // adc, long
+            (0x6F, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.adc_m8(addr);
+                self.pc += 4;
+            }
+            (0x6F, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.adc_m16(addr);
+                self.pc += 4;
+            }
+
+            // bvs, rel8
+            (0x70, ..) => {
+                let addr = self.relative8();
+                self.bvs_all(addr);
+                self.pc += 2;
+            }
+
+            // adc, (dir),Y
+            (0x71, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_y8();
+                self.adc_m8(addr);
+                self.pc += 2;
+            }
+            (0x71, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_y16();
+                self.adc_m16(addr);
+                self.pc += 2;
+            }
+
+            // adc, (dir)
+            (0x72, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect8();
+                self.adc_m8(addr);
+                self.pc += 2;
+            }
+            (0x72, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect16();
+                self.adc_m16(addr);
+                self.pc += 2;
+            }
+
+            // adc, (stk,S),Y
+            (0x73, _, RegSize::Byte, _) => {
+                let addr = self.stack_indirect_y8();
+                self.adc_m8(addr);
+                self.pc += 2;
+            }
+            (0x73, _, RegSize::TwoBytes, _) => {
+                let addr = self.stack_indirect_y16();
+                self.adc_m16(addr);
+                self.pc += 2;
+            }
+
+            // stz, dir,X
+            (0x74, _, RegSize::Byte, _) => {
+                let addr = self.direct_x8();
+                self.stz_m8(addr);
+                self.pc += 2;
+            }
+            (0x74, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x16();
+                self.stz_m16(addr);
+                self.pc += 2;
+            }
+
+            // adc, dir,X
+            (0x75, _, RegSize::Byte, _) => {
+                let addr = self.direct_x8();
+                self.adc_m8(addr);
+                self.pc += 2;
+            }
+            (0x75, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x16();
+                self.adc_m16(addr);
+                self.pc += 2;
+            }
+
+            // ror, dir,X
+            (0x76, _, RegSize::Byte, _) => {
+                let addr = self.direct_x8();
+                self.ror_mem_m8(addr);
+                self.pc += 2;
+            }
+            (0x76, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x16();
+                self.ror_mem_m16(addr);
+                self.pc += 2;
+            }
+
+            // adc, [dir],Y
+            (0x77, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_long_y8();
+                self.adc_m8(addr);
+                self.pc += 2;
+            }
+            (0x77, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_long_y16();
+                self.adc_m16(addr);
+                self.pc += 2;
+            }
+
+            // sei, imp
+            (0x78, ..) => {
+                self.sei_all();
+                self.pc += 1;
+            }
+
+            // adc, abs,Y
+            (0x79, _, RegSize::Byte, _) => {
+                let addr = self.absolute_y8();
+                self.adc_m8(addr);
+                self.pc += 3;
+            }
+            (0x79, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_y16();
+                self.adc_m16(addr);
+                self.pc += 3;
+            }
+
+            // ply, imp
+            (0x7A, CpuMode::Emulation, ..) => {
+                self.ply_e();
+                self.pc += 1;
+            }
+            (0x7A, _, _, RegSize::Byte) => {
+                self.ply_x8();
+                self.pc += 1;
+            }
+            (0x7A, _, _, RegSize::TwoBytes) => {
+                self.ply_x16();
+                self.pc += 1;
+            }
+
+            // tdc, imp
+            (0x7B, ..) => {
+                self.tdc_all();
+                self.pc += 1;
+            }
+
+            // jmp, (abs,X)
+            (0x7C, ..) => {
+                let addr = self.absolute_x_indirect8();
+                self.jmp_all(addr);
+                self.pc += 3;
+            }
+
+            // adc, abs,X
+            (0x7D, _, RegSize::Byte, _) => {
+                let addr = self.absolute_x8();
+                self.adc_m8(addr);
+                self.pc += 3;
+            }
+            (0x7D, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_x16();
+                self.adc_m16(addr);
+                self.pc += 3;
+            }
+
+            // ror, abs,X
+            (0x7E, _, RegSize::Byte, _) => {
+                let addr = self.absolute_x8();
+                self.ror_mem_m8(addr);
+                self.pc += 3;
+            }
+            (0x7E, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_x16();
+                self.ror_mem_m16(addr);
+                self.pc += 3;
+            }
+
+            // adc, long,X
+            (0x7F, _, RegSize::Byte, _) => {
+                let addr = self.absolute_long_x8();
+                self.adc_m8(addr);
+                self.pc += 4;
+            }
+            (0x7F, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_long_x16();
+                self.adc_m16(addr);
+                self.pc += 4;
+            }
+
+            // bra, rel8
+            (0x80, ..) => {
+                let addr = self.relative8();
+                self.bra_all(addr);
+                self.pc += 2;
+            }
+
+            // sta, (dir,X)
+            (0x81, _, RegSize::Byte, _) => {
+                let addr = self.direct_x_indirect8();
+                self.sta_m8(addr);
+                self.pc += 2;
+            }
+            (0x81, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x_indirect16();
+                self.sta_m16(addr);
+                self.pc += 2;
+            }
+
+            // bra, rel16
+            (0x82, ..) => {
+                let addr = self.relative16();
+                self.bra_all(addr);
+                self.pc += 3;
+            }
+
+            // sta, stk,S
+            (0x83, _, RegSize::Byte, _) => {
+                let addr = self.stack_s8();
+                self.sta_m8(addr);
+                self.pc += 2;
+            }
+            (0x83, _, RegSize::TwoBytes, _) => {
+                let addr = self.stack_s16();
+                self.sta_m16(addr);
+                self.pc += 2;
+            }
+
+            // sty, dir
+            (0x84, _, _, RegSize::Byte) => {
+                let addr = self.direct8();
+                self.sty_x8(addr);
+                self.pc += 2;
+            }
+            (0x84, _, _, RegSize::TwoBytes) => {
+                let addr = self.direct16();
+                self.sty_x16(addr);
+                self.pc += 2;
+            }
+
+            // sta, dir
+            (0x85, _, RegSize::Byte, _) => {
+                let addr = self.direct8();
+                self.sta_m8(addr);
+                self.pc += 2;
+            }
+            (0x85, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct16();
+                self.sta_m16(addr);
+                self.pc += 2;
+            }
+
+            // stx, dir
+            (0x86, _, _, RegSize::Byte) => {
+                let addr = self.direct8();
+                self.stx_x8(addr);
+                self.pc += 2;
+            }
+            (0x86, _, _, RegSize::TwoBytes) => {
+                let addr = self.direct16();
+                self.stx_x16(addr);
+                self.pc += 2;
+            }
+
+            // sta, [dir]
+            (0x87, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_long8();
+                self.sta_m8(addr);
+                self.pc += 2;
+            }
+            (0x87, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_long16();
+                self.sta_m16(addr);
+                self.pc += 2;
+            }
+
+            // dey, imp
+            (0x88, _, _, RegSize::Byte) => {
+                self.dey_x8();
+                self.pc += 1;
+            }
+            (0x88, _, _, RegSize::TwoBytes) => {
+                self.dey_x16();
+                self.pc += 1;
+            }
+
+            // bit, imm
+            (0x89, _, RegSize::Byte, _) => {
+                let addr = self.immediate8();
+                self.bit_m8(addr);
+                self.pc += 2;
+            }
+            (0x89, _, RegSize::TwoBytes, _) => {
+                let addr = self.immediate16();
+                self.bit_m16(addr);
+                self.pc += 3;
+            }
+
+            // txa, imp
+            (0x8A, _, RegSize::Byte, _) => {
+                self.txa_m8();
+                self.pc += 1;
+            }
+            (0x8A, _, RegSize::TwoBytes, _) => {
+                self.txa_m16();
+                self.pc += 1;
+            }
+
+            // phb, imp
+            (0x8B, CpuMode::Native, ..) => {
+                self.phb_n();
+                self.pc += 1;
+            }
+            (0x8B, CpuMode::Emulation, ..) => {
+                self.phb_e();
+                self.pc += 1;
+            }
+
+            // sty, abs
+            (0x8C, _, _, RegSize::Byte) => {
+                let addr = self.absolute8();
+                self.sty_x8(addr);
+                self.pc += 3;
+            }
+            (0x8C, _, _, RegSize::TwoBytes) => {
+                let addr = self.absolute16();
+                self.sty_x16(addr);
+                self.pc += 3;
+            }
+
+            // sta, abs
+            (0x8D, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.sta_m8(addr);
+                self.pc += 3;
+            }
+            (0x8D, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.sta_m16(addr);
+                self.pc += 3;
+            }
+
+            // stx, abs
+            (0x8E, _, _, RegSize::Byte) => {
+                let addr = self.absolute8();
+                self.stx_x8(addr);
+                self.pc += 3;
+            }
+            (0x8E, _, _, RegSize::TwoBytes) => {
+                let addr = self.absolute16();
+                self.stx_x16(addr);
+                self.pc += 3;
+            }
+
+            // sta, long
+            (0x8F, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.sta_m8(addr);
+                self.pc += 4;
+            }
+            (0x8F, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.sta_m16(addr);
+                self.pc += 4;
+            }
+
+            // bcc, rel8
+            (0x90, ..) => {
+                let addr = self.relative8();
+                self.bcc_all(addr);
+                self.pc += 2;
+            }
+
+            // sta, (dir),Y
+            (0x91, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_y8();
+                self.sta_m8(addr);
+                self.pc += 2;
+            }
+            (0x91, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_y16();
+                self.sta_m16(addr);
+                self.pc += 2;
+            }
+
+            // sta, (dir)
+            (0x92, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect8();
+                self.sta_m8(addr);
+                self.pc += 2;
+            }
+            (0x92, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect16();
+                self.sta_m16(addr);
+                self.pc += 2;
+            }
+
+            // sta, (stk,S),Y
+            (0x93, _, RegSize::Byte, _) => {
+                let addr = self.stack_indirect_y8();
+                self.sta_m8(addr);
+                self.pc += 2;
+            }
+            (0x93, _, RegSize::TwoBytes, _) => {
+                let addr = self.stack_indirect_y16();
+                self.sta_m16(addr);
+                self.pc += 2;
+            }
+
+            // sty, dir,X
+            (0x94, _, _, RegSize::Byte) => {
+                let addr = self.direct_x8();
+                self.sty_x8(addr);
+                self.pc += 2;
+            }
+            (0x94, _, _, RegSize::TwoBytes) => {
+                let addr = self.direct_x16();
+                self.sty_x16(addr);
+                self.pc += 2;
+            }
+
+            // sta, dir,X
+            (0x95, _, RegSize::Byte, _) => {
+                let addr = self.direct_x8();
+                self.sta_m8(addr);
+                self.pc += 2;
+            }
+            (0x95, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x16();
+                self.sta_m16(addr);
+                self.pc += 2;
+            }
+
+            // stx, dir,Y
+            (0x96, _, _, RegSize::Byte) => {
+                let addr = self.direct_y8();
+                self.stx_x8(addr);
+                self.pc += 2;
+            }
+            (0x96, _, _, RegSize::TwoBytes) => {
+                let addr = self.direct_y16();
+                self.stx_x16(addr);
+                self.pc += 2;
+            }
+
+            // sta, [dir],Y
+            (0x97, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_long_y8();
+                self.sta_m8(addr);
+                self.pc += 2;
+            }
+            (0x97, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_long_y16();
+                self.sta_m16(addr);
+                self.pc += 2;
+            }
+
+            // tya, imp
+            (0x98, _, RegSize::Byte, _) => {
+                self.tya_m8();
+                self.pc += 1;
+            }
+            (0x98, _, RegSize::TwoBytes, _) => {
+                self.tya_m16();
+                self.pc += 1;
+            }
+
+            // sta, abs,Y
+            (0x99, _, RegSize::Byte, _) => {
+                let addr = self.absolute_y8();
+                self.sta_m8(addr);
+                self.pc += 3;
+            }
+            (0x99, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_y16();
+                self.sta_m16(addr);
+                self.pc += 3;
+            }
+
+            // txs, imp
+            (0x9A, CpuMode::Native, ..) => {
+                self.txs_n();
+                self.pc += 1;
+            }
+            (0x9A, CpuMode::Emulation, ..) => {
+                self.txs_e();
+                self.pc += 1;
+            }
+
+            // txy, imp
+            (0x9B, _, _, RegSize::Byte) => {
+                self.txy_x8();
+                self.pc += 1;
+            }
+            (0x9B, _, _, RegSize::TwoBytes) => {
+                self.txy_x16();
+                self.pc += 1;
+            }
+
+            // stz, abs
+            (0x9C, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.stz_m8(addr);
+                self.pc += 3;
+            }
+            (0x9C, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.stz_m16(addr);
+                self.pc += 3;
+            }
+
+            // sta, abs,X
+            (0x9D, _, RegSize::Byte, _) => {
+                let addr = self.absolute_x8();
+                self.sta_m8(addr);
+                self.pc += 3;
+            }
+            (0x9D, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_x16();
+                self.sta_m16(addr);
+                self.pc += 3;
+            }
+
+            // stz, abs,X
+            (0x9E, _, RegSize::Byte, _) => {
+                let addr = self.absolute_x8();
+                self.stz_m8(addr);
+                self.pc += 3;
+            }
+            (0x9E, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_x16();
+                self.stz_m16(addr);
+                self.pc += 3;
+            }
+
+            // sta, long,X
+            (0x9F, _, RegSize::Byte, _) => {
+                let addr = self.absolute_long_x8();
+                self.sta_m8(addr);
+                self.pc += 4;
+            }
+            (0x9F, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_long_x16();
+                self.sta_m16(addr);
+                self.pc += 4;
+            }
+
+            // ldy, imm
+            (0xA0, _, _, RegSize::Byte) => {
+                let addr = self.immediate8();
+                self.ldy_x8(addr);
+                self.pc += 2;
+            }
+            (0xA0, _, _, RegSize::TwoBytes) => {
+                let addr = self.immediate16();
+                self.ldy_x16(addr);
+                self.pc += 3;
+            }
+
+            // lda, (dir,X)
+            (0xA1, _, RegSize::Byte, _) => {
+                let addr = self.direct_x_indirect8();
+                self.lda_m8(addr);
+                self.pc += 2;
+            }
+            (0xA1, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x_indirect16();
+                self.lda_m16(addr);
+                self.pc += 2;
+            }
+
+            // ldx, imm
+            (0xA2, _, _, RegSize::Byte) => {
+                let addr = self.immediate8();
+                self.ldx_x8(addr);
+                self.pc += 2;
+            }
+            (0xA2, _, _, RegSize::TwoBytes) => {
+                let addr = self.immediate16();
+                self.ldx_x16(addr);
+                self.pc += 3;
+            }
+
+            // lda, stk,S
+            (0xA3, _, RegSize::Byte, _) => {
+                let addr = self.stack_s8();
+                self.lda_m8(addr);
+                self.pc += 2;
+            }
+            (0xA3, _, RegSize::TwoBytes, _) => {
+                let addr = self.stack_s16();
+                self.lda_m16(addr);
+                self.pc += 2;
+            }
+
+            // ldy, dir
+            (0xA4, _, _, RegSize::Byte) => {
+                let addr = self.direct8();
+                self.ldy_x8(addr);
+                self.pc += 2;
+            }
+            (0xA4, _, _, RegSize::TwoBytes) => {
+                let addr = self.direct16();
+                self.ldy_x16(addr);
+                self.pc += 2;
+            }
+
+            // lda, dir
+            (0xA5, _, RegSize::Byte, _) => {
+                let addr = self.direct8();
+                self.lda_m8(addr);
+                self.pc += 2;
+            }
+            (0xA5, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct16();
+                self.lda_m16(addr);
+                self.pc += 2;
+            }
+
+            // ldx, dir
+            (0xA6, _, _, RegSize::Byte) => {
+                let addr = self.direct8();
+                self.ldx_x8(addr);
+                self.pc += 2;
+            }
+            (0xA6, _, _, RegSize::TwoBytes) => {
+                let addr = self.direct16();
+                self.ldx_x16(addr);
+                self.pc += 2;
+            }
+
+            // lda, [dir]
+            (0xA7, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_long8();
+                self.lda_m8(addr);
+                self.pc += 2;
+            }
+            (0xA7, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_long16();
+                self.lda_m16(addr);
+                self.pc += 2;
+            }
+
+            // tay, imp
+            (0xA8, _, _, RegSize::Byte) => {
+                self.tay_x8();
+                self.pc += 1;
+            }
+            (0xA8, _, _, RegSize::TwoBytes) => {
+                self.tay_x16();
+                self.pc += 1;
+            }
+
+            // lda, imm
+            (0xA9, _, RegSize::Byte, _) => {
+                let addr = self.immediate8();
+                self.lda_m8(addr);
+                self.pc += 2;
+            }
+            (0xA9, _, RegSize::TwoBytes, _) => {
+                let addr = self.immediate16();
+                self.lda_m16(addr);
+                self.pc += 3;
+            }
+
+            // tax, imp
+            (0xAA, _, _, RegSize::Byte) => {
+                self.tax_x8();
+                self.pc += 1;
+            }
+            (0xAA, _, _, RegSize::TwoBytes) => {
+                self.tax_x16();
+                self.pc += 1;
+            }
+
+            // plb, imp
+            (0xAB, CpuMode::Native, ..) => {
+                self.plb_n();
+                self.pc += 1;
+            }
+            (0xAB, CpuMode::Emulation, ..) => {
+                self.plb_e();
+                self.pc += 1;
+            }
+
+            // ldy, abs
+            (0xAC, _, _, RegSize::Byte) => {
+                let addr = self.absolute8();
+                self.ldy_x8(addr);
+                self.pc += 3;
+            }
+            (0xAC, _, _, RegSize::TwoBytes) => {
+                let addr = self.absolute16();
+                self.ldy_x16(addr);
+                self.pc += 3;
+            }
+
+            // lda, abs
+            (0xAD, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.lda_m8(addr);
+                self.pc += 3;
+            }
+            (0xAD, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.lda_m16(addr);
+                self.pc += 3;
+            }
+
+            // ldx, abs
+            (0xAE, _, _, RegSize::Byte) => {
+                let addr = self.absolute8();
+                self.ldx_x8(addr);
+                self.pc += 3;
+            }
+            (0xAE, _, _, RegSize::TwoBytes) => {
+                let addr = self.absolute16();
+                self.ldx_x16(addr);
+                self.pc += 3;
+            }
+
+            // lda, long
+            (0xAF, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.lda_m8(addr);
+                self.pc += 4;
+            }
+            (0xAF, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.lda_m16(addr);
+                self.pc += 4;
+            }
+
+            // bcs, rel8
+            (0xB0, ..) => {
+                let addr = self.relative8();
+                self.bcs_all(addr);
+                self.pc += 2;
+            }
+
+            // lda, (dir),Y
+            (0xB1, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_y8();
+                self.lda_m8(addr);
+                self.pc += 2;
+            }
+            (0xB1, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_y16();
+                self.lda_m16(addr);
+                self.pc += 2;
+            }
+
+            // lda, (dir)
+            (0xB2, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect8();
+                self.lda_m8(addr);
+                self.pc += 2;
+            }
+            (0xB2, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect16();
+                self.lda_m16(addr);
+                self.pc += 2;
+            }
+
+            // lda, (stk,S),Y
+            (0xB3, _, RegSize::Byte, _) => {
+                let addr = self.stack_indirect_y8();
+                self.lda_m8(addr);
+                self.pc += 2;
+            }
+            (0xB3, _, RegSize::TwoBytes, _) => {
+                let addr = self.stack_indirect_y16();
+                self.lda_m16(addr);
+                self.pc += 2;
+            }
+
+            // ldy, dir,X
+            (0xB4, _, _, RegSize::Byte) => {
+                let addr = self.direct_x8();
+                self.ldy_x8(addr);
+                self.pc += 2;
+            }
+            (0xB4, _, _, RegSize::TwoBytes) => {
+                let addr = self.direct_x16();
+                self.ldy_x16(addr);
+                self.pc += 2;
+            }
+
+            // lda, dir,X
+            (0xB5, _, RegSize::Byte, _) => {
+                let addr = self.direct_x8();
+                self.lda_m8(addr);
+                self.pc += 2;
+            }
+            (0xB5, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x16();
+                self.lda_m16(addr);
+                self.pc += 2;
+            }
+
+            // ldx, dir,Y
+            (0xB6, _, _, RegSize::Byte) => {
+                let addr = self.direct_y8();
+                self.ldx_x8(addr);
+                self.pc += 2;
+            }
+            (0xB6, _, _, RegSize::TwoBytes) => {
+                let addr = self.direct_y16();
+                self.ldx_x16(addr);
+                self.pc += 2;
+            }
+
+            // lda, [dir],Y
+            (0xB7, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_long_y8();
+                self.lda_m8(addr);
+                self.pc += 2;
+            }
+            (0xB7, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_long_y16();
+                self.lda_m16(addr);
+                self.pc += 2;
+            }
+
+            // clv, imp
+            (0xB8, ..) => {
+                self.clv_all();
+                self.pc += 1;
+            }
+
+            // lda, abs,Y
+            (0xB9, _, RegSize::Byte, _) => {
+                let addr = self.absolute_y8();
+                self.lda_m8(addr);
+                self.pc += 3;
+            }
+            (0xB9, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_y16();
+                self.lda_m16(addr);
+                self.pc += 3;
+            }
+
+            // tsx, imp
+            (0xBA, CpuMode::Emulation, ..) => {
+                self.tsx_e();
+                self.pc += 1;
+            }
+            (0xBA, _, _, RegSize::Byte) => {
+                self.tsx_x8();
+                self.pc += 1;
+            }
+            (0xBA, _, _, RegSize::TwoBytes) => {
+                self.tsx_x16();
+                self.pc += 1;
+            }
+
+            // tyx, imp
+            (0xBB, _, _, RegSize::Byte) => {
+                self.tyx_x8();
+                self.pc += 1;
+            }
+            (0xBB, _, _, RegSize::TwoBytes) => {
+                self.tyx_x16();
+                self.pc += 1;
+            }
+
+            // ldy, abs,X
+            (0xBC, _, _, RegSize::Byte) => {
+                let addr = self.absolute_x8();
+                self.ldy_x8(addr);
+                self.pc += 3;
+            }
+            (0xBC, _, _, RegSize::TwoBytes) => {
+                let addr = self.absolute_x16();
+                self.ldy_x16(addr);
+                self.pc += 3;
+            }
+
+            // lda, abs,X
+            (0xBD, _, RegSize::Byte, _) => {
+                let addr = self.absolute_x8();
+                self.lda_m8(addr);
+                self.pc += 3;
+            }
+            (0xBD, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_x16();
+                self.lda_m16(addr);
+                self.pc += 3;
+            }
+
+            // ldx, abs,Y
+            (0xBE, _, _, RegSize::Byte) => {
+                let addr = self.absolute_y8();
+                self.ldx_x8(addr);
+                self.pc += 3;
+            }
+            (0xBE, _, _, RegSize::TwoBytes) => {
+                let addr = self.absolute_y16();
+                self.ldx_x16(addr);
+                self.pc += 3;
+            }
+
+            // lda, long,X
+            (0xBF, _, RegSize::Byte, _) => {
+                let addr = self.absolute_long_x8();
+                self.lda_m8(addr);
+                self.pc += 4;
+            }
+            (0xBF, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_long_x16();
+                self.lda_m16(addr);
+                self.pc += 4;
+            }
+
+            // cpy, imm
+            (0xC0, _, _, RegSize::Byte) => {
+                let addr = self.immediate8();
+                self.cpy_x8(addr);
+                self.pc += 2;
+            }
+            (0xC0, _, _, RegSize::TwoBytes) => {
+                let addr = self.immediate16();
+                self.cpy_x16(addr);
+                self.pc += 3;
+            }
+
+            // cmp, (dir,X)
+            (0xC1, _, RegSize::Byte, _) => {
+                let addr = self.direct_x_indirect8();
+                self.cmp_m8(addr);
+                self.pc += 2;
+            }
+            (0xC1, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x_indirect16();
+                self.cmp_m16(addr);
+                self.pc += 2;
+            }
+
+            // rep, imm
+            (0xC2, CpuMode::Native, ..) => {
+                let addr = self.immediate8();
+                self.rep_n(addr);
+                self.pc += 2;
+            }
+            (0xC2, CpuMode::Emulation, ..) => {
+                let addr = self.immediate8();
+                self.rep_e(addr);
+                self.pc += 2;
+            }
+
+            // cmp, stk,S
+            (0xC3, _, RegSize::Byte, _) => {
+                let addr = self.stack_s8();
+                self.cmp_m8(addr);
+                self.pc += 2;
+            }
+            (0xC3, _, RegSize::TwoBytes, _) => {
+                let addr = self.stack_s16();
+                self.cmp_m16(addr);
+                self.pc += 2;
+            }
+
+            // cpy, dir
+            (0xC4, _, _, RegSize::Byte) => {
+                let addr = self.direct8();
+                self.cpy_x8(addr);
+                self.pc += 2;
+            }
+            (0xC4, _, _, RegSize::TwoBytes) => {
+                let addr = self.direct16();
+                self.cpy_x16(addr);
+                self.pc += 2;
+            }
+
+            // cmp, dir
+            (0xC5, _, RegSize::Byte, _) => {
+                let addr = self.direct8();
+                self.cmp_m8(addr);
+                self.pc += 2;
+            }
+            (0xC5, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct16();
+                self.cmp_m16(addr);
+                self.pc += 2;
+            }
+
+            // dec, dir
+            (0xC6, _, RegSize::Byte, _) => {
+                let addr = self.direct8();
+                self.dec_mem_m8(addr);
+                self.pc += 2;
+            }
+            (0xC6, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct16();
+                self.dec_mem_m16(addr);
+                self.pc += 2;
+            }
+
+            // cmp, [dir]
+            (0xC7, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_long8();
+                self.cmp_m8(addr);
+                self.pc += 2;
+            }
+            (0xC7, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_long16();
+                self.cmp_m16(addr);
+                self.pc += 2;
+            }
+
+            // iny, imp
+            (0xC8, _, _, RegSize::Byte) => {
+                self.iny_x8();
+                self.pc += 1;
+            }
+            (0xC8, _, _, RegSize::TwoBytes) => {
+                self.iny_x16();
+                self.pc += 1;
+            }
+
+            // cmp, imm
+            (0xC9, _, RegSize::Byte, _) => {
+                let addr = self.immediate8();
+                self.cmp_m8(addr);
+                self.pc += 2;
+            }
+            (0xC9, _, RegSize::TwoBytes, _) => {
+                let addr = self.immediate16();
+                self.cmp_m16(addr);
+                self.pc += 3;
+            }
+
+            // dex, imp
+            (0xCA, _, _, RegSize::Byte) => {
+                self.dex_x8();
+                self.pc += 1;
+            }
+            (0xCA, _, _, RegSize::TwoBytes) => {
+                self.dex_x16();
+                self.pc += 1;
+            }
+
+            // wai, imp
+            (0xCB, ..) => {
+                self.wai_all();
+                self.pc += 1;
+            }
+
+            // cpy, abs
+            (0xCC, _, _, RegSize::Byte) => {
+                let addr = self.absolute8();
+                self.cpy_x8(addr);
+                self.pc += 3;
+            }
+            (0xCC, _, _, RegSize::TwoBytes) => {
+                let addr = self.absolute16();
+                self.cpy_x16(addr);
+                self.pc += 3;
+            }
+
+            // cmp, abs
+            (0xCD, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.cmp_m8(addr);
+                self.pc += 3;
+            }
+            (0xCD, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.cmp_m16(addr);
+                self.pc += 3;
+            }
+
+            // dec, abs
+            (0xCE, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.dec_mem_m8(addr);
+                self.pc += 3;
+            }
+            (0xCE, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.dec_mem_m16(addr);
+                self.pc += 3;
+            }
+
+            // cmp, long
+            (0xCF, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.cmp_m8(addr);
+                self.pc += 4;
+            }
+            (0xCF, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.cmp_m16(addr);
+                self.pc += 4;
+            }
+
+            // bne, rel8
+            (0xD0, ..) => {
+                let addr = self.relative8();
+                self.bne_all(addr);
+                self.pc += 2;
+            }
+
+            // cmp, (dir),Y
+            (0xD1, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_y8();
+                self.cmp_m8(addr);
+                self.pc += 2;
+            }
+            (0xD1, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_y16();
+                self.cmp_m16(addr);
+                self.pc += 2;
+            }
+
+            // cmp, (dir)
+            (0xD2, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect8();
+                self.cmp_m8(addr);
+                self.pc += 2;
+            }
+            (0xD2, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect16();
+                self.cmp_m16(addr);
+                self.pc += 2;
+            }
+
+            // cmp, (stk,S),Y
+            (0xD3, _, RegSize::Byte, _) => {
+                let addr = self.stack_indirect_y8();
+                self.cmp_m8(addr);
+                self.pc += 2;
+            }
+            (0xD3, _, RegSize::TwoBytes, _) => {
+                let addr = self.stack_indirect_y16();
+                self.cmp_m16(addr);
+                self.pc += 2;
+            }
+
+            // pex, dir
+            (0xD4, CpuMode::Native, ..) => {
+                let addr = self.direct8();
+                self.pex_n(addr);
+                self.pc += 2;
+            }
+            (0xD4, CpuMode::Emulation, ..) => {
+                let addr = self.direct8();
+                self.pex_e(addr);
+                self.pc += 2;
+            }
+
+            // cmp, dir,X
+            (0xD5, _, RegSize::Byte, _) => {
+                let addr = self.direct_x8();
+                self.cmp_m8(addr);
+                self.pc += 2;
+            }
+            (0xD5, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x16();
+                self.cmp_m16(addr);
+                self.pc += 2;
+            }
+
+            // dec, dir,X
+            (0xD6, _, RegSize::Byte, _) => {
+                let addr = self.direct_x8();
+                self.dec_mem_m8(addr);
+                self.pc += 2;
+            }
+            (0xD6, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x16();
+                self.dec_mem_m16(addr);
+                self.pc += 2;
+            }
+
+            // cmp, [dir],Y
+            (0xD7, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_long_y8();
+                self.cmp_m8(addr);
+                self.pc += 2;
+            }
+            (0xD7, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_long_y16();
+                self.cmp_m16(addr);
+                self.pc += 2;
+            }
+
+            // cld, imp
+            (0xD8, ..) => {
+                self.cld_all();
+                self.pc += 1;
+            }
+
+            // cmp, abs,Y
+            (0xD9, _, RegSize::Byte, _) => {
+                let addr = self.absolute_y8();
+                self.cmp_m8(addr);
+                self.pc += 3;
+            }
+            (0xD9, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_y16();
+                self.cmp_m16(addr);
+                self.pc += 3;
+            }
+
+            // phx, imp
+            (0xDA, CpuMode::Emulation, ..) => {
+                self.phx_e();
+                self.pc += 1;
+            }
+            (0xDA, _, _, RegSize::Byte) => {
+                self.phx_x8();
+                self.pc += 1;
+            }
+            (0xDA, _, _, RegSize::TwoBytes) => {
+                self.phx_x16();
+                self.pc += 1;
+            }
+
+            // stp, imp
+            (0xDB, ..) => {
+                self.stp_all();
+                self.pc += 1;
+            }
+
+            // jmp, [abs]
+            (0xDC, ..) => {
+                let addr = self.absolute_indirect_long();
+                self.jmp_all(addr);
+                self.pc += 3;
+            }
+
+            // cmp, abs,X
+            (0xDD, _, RegSize::Byte, _) => {
+                let addr = self.absolute_x8();
+                self.cmp_m8(addr);
+                self.pc += 3;
+            }
+            (0xDD, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_x16();
+                self.cmp_m16(addr);
+                self.pc += 3;
+            }
+
+            // dec, abs,X
+            (0xDE, _, RegSize::Byte, _) => {
+                let addr = self.absolute_x8();
+                self.dec_mem_m8(addr);
+                self.pc += 3;
+            }
+            (0xDE, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_x16();
+                self.dec_mem_m16(addr);
+                self.pc += 3;
+            }
+
+            // cmp, long,X
+            (0xDF, _, RegSize::Byte, _) => {
+                let addr = self.absolute_long_x8();
+                self.cmp_m8(addr);
+                self.pc += 4;
+            }
+            (0xDF, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_long_x16();
+                self.cmp_m16(addr);
+                self.pc += 4;
+            }
+
+            // cpx, imm
+            (0xE0, _, _, RegSize::Byte) => {
+                let addr = self.immediate8();
+                self.cpx_x8(addr);
+                self.pc += 2;
+            }
+            (0xE0, _, _, RegSize::TwoBytes) => {
+                let addr = self.immediate16();
+                self.cpx_x16(addr);
+                self.pc += 3;
+            }
+
+            // sbc, (dir,X)
+            (0xE1, _, RegSize::Byte, _) => {
+                let addr = self.direct_x_indirect8();
+                self.sbc_m8(addr);
+                self.pc += 2;
+            }
+            (0xE1, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x_indirect16();
+                self.sbc_m16(addr);
+                self.pc += 2;
+            }
+
+            // sep, imm
+            (0xE2, ..) => {
+                let addr = self.immediate8();
+                self.sep_all(addr);
+                self.pc += 2;
+            }
+
+            // sbc, stk,S
+            (0xE3, _, RegSize::Byte, _) => {
+                let addr = self.stack_s8();
+                self.sbc_m8(addr);
+                self.pc += 2;
+            }
+            (0xE3, _, RegSize::TwoBytes, _) => {
+                let addr = self.stack_s16();
+                self.sbc_m16(addr);
+                self.pc += 2;
+            }
+
+            // cpx, dir
+            (0xE4, _, _, RegSize::Byte) => {
+                let addr = self.direct8();
+                self.cpx_x8(addr);
+                self.pc += 2;
+            }
+            (0xE4, _, _, RegSize::TwoBytes) => {
+                let addr = self.direct16();
+                self.cpx_x16(addr);
+                self.pc += 2;
+            }
+
+            // sbc, dir
+            (0xE5, _, RegSize::Byte, _) => {
+                let addr = self.direct8();
+                self.sbc_m8(addr);
+                self.pc += 2;
+            }
+            (0xE5, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct16();
+                self.sbc_m16(addr);
+                self.pc += 2;
+            }
+
+            // inc, dir
+            (0xE6, _, RegSize::Byte, _) => {
+                let addr = self.direct8();
+                self.inc_mem_m8(addr);
+                self.pc += 2;
+            }
+            (0xE6, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct16();
+                self.inc_mem_m16(addr);
+                self.pc += 2;
+            }
+
+            // sbc, [dir]
+            (0xE7, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_long8();
+                self.sbc_m8(addr);
+                self.pc += 2;
+            }
+            (0xE7, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_long16();
+                self.sbc_m16(addr);
+                self.pc += 2;
+            }
+
+            // inx, imp
+            (0xE8, _, _, RegSize::Byte) => {
+                self.inx_x8();
+                self.pc += 1;
+            }
+            (0xE8, _, _, RegSize::TwoBytes) => {
+                self.inx_x16();
+                self.pc += 1;
+            }
+
+            // sbc, imm
+            (0xE9, _, RegSize::Byte, _) => {
+                let addr = self.immediate8();
+                self.sbc_m8(addr);
+                self.pc += 2;
+            }
+            (0xE9, _, RegSize::TwoBytes, _) => {
+                let addr = self.immediate16();
+                self.sbc_m16(addr);
+                self.pc += 3;
+            }
+
+            // nop, imp
+            (0xEA, ..) => {
+                self.nop_all();
+                self.pc += 1;
+            }
+
+            // xba, imp
+            (0xEB, _, RegSize::Byte, _) => {
+                self.xba_m8();
+                self.pc += 1;
+            }
+            (0xEB, _, RegSize::TwoBytes, _) => {
+                self.xba_m16();
+                self.pc += 1;
+            }
+
+            // cpx, abs
+            (0xEC, _, _, RegSize::Byte) => {
+                let addr = self.absolute8();
+                self.cpx_x8(addr);
+                self.pc += 3;
+            }
+            (0xEC, _, _, RegSize::TwoBytes) => {
+                let addr = self.absolute16();
+                self.cpx_x16(addr);
+                self.pc += 3;
+            }
+
+            // sbc, abs
+            (0xED, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.sbc_m8(addr);
+                self.pc += 3;
+            }
+            (0xED, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.sbc_m16(addr);
+                self.pc += 3;
+            }
+
+            // inc, abs
+            (0xEE, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.inc_mem_m8(addr);
+                self.pc += 3;
+            }
+            (0xEE, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.inc_mem_m16(addr);
+                self.pc += 3;
+            }
+
+            // sbc, long
+            (0xEF, _, RegSize::Byte, _) => {
+                let addr = self.absolute8();
+                self.sbc_m8(addr);
+                self.pc += 4;
+            }
+            (0xEF, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute16();
+                self.sbc_m16(addr);
+                self.pc += 4;
+            }
+
+            // beq, rel8
+            (0xF0, ..) => {
+                let addr = self.relative8();
+                self.beq_all(addr);
+                self.pc += 2;
+            }
+
+            // sbc, (dir),Y
+            (0xF1, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_y8();
+                self.sbc_m8(addr);
+                self.pc += 2;
+            }
+            (0xF1, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_y16();
+                self.sbc_m16(addr);
+                self.pc += 2;
+            }
+
+            // sbc, (dir)
+            (0xF2, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect8();
+                self.sbc_m8(addr);
+                self.pc += 2;
+            }
+            (0xF2, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect16();
+                self.sbc_m16(addr);
+                self.pc += 2;
+            }
+
+            // sbc, (stk,S),Y
+            (0xF3, _, RegSize::Byte, _) => {
+                let addr = self.stack_indirect_y8();
+                self.sbc_m8(addr);
+                self.pc += 2;
+            }
+            (0xF3, _, RegSize::TwoBytes, _) => {
+                let addr = self.stack_indirect_y16();
+                self.sbc_m16(addr);
+                self.pc += 2;
+            }
+
+            // pex, imm
+            (0xF4, CpuMode::Native, ..) => {
+                let addr = self.immediate8();
+                self.pex_n(addr);
+                self.pc += 3;
+            }
+            (0xF4, CpuMode::Emulation, ..) => {
+                let addr = self.immediate8();
+                self.pex_e(addr);
+                self.pc += 3;
+            }
+
+            // sbc, dir,X
+            (0xF5, _, RegSize::Byte, _) => {
+                let addr = self.direct_x8();
+                self.sbc_m8(addr);
+                self.pc += 2;
+            }
+            (0xF5, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x16();
+                self.sbc_m16(addr);
+                self.pc += 2;
+            }
+
+            // inc, dir,X
+            (0xF6, _, RegSize::Byte, _) => {
+                let addr = self.direct_x8();
+                self.inc_mem_m8(addr);
+                self.pc += 2;
+            }
+            (0xF6, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_x16();
+                self.inc_mem_m16(addr);
+                self.pc += 2;
+            }
+
+            // sbc, [dir],Y
+            (0xF7, _, RegSize::Byte, _) => {
+                let addr = self.direct_indirect_long_y8();
+                self.sbc_m8(addr);
+                self.pc += 2;
+            }
+            (0xF7, _, RegSize::TwoBytes, _) => {
+                let addr = self.direct_indirect_long_y16();
+                self.sbc_m16(addr);
+                self.pc += 2;
+            }
+
+            // sed, imp
+            (0xF8, ..) => {
+                self.sed_all();
+                self.pc += 1;
+            }
+
+            // sbc, abs,Y
+            (0xF9, _, RegSize::Byte, _) => {
+                let addr = self.absolute_y8();
+                self.sbc_m8(addr);
+                self.pc += 3;
+            }
+            (0xF9, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_y16();
+                self.sbc_m16(addr);
+                self.pc += 3;
+            }
+
+            // plx, imp
+            (0xFA, CpuMode::Emulation, ..) => {
+                self.plx_e();
+                self.pc += 1;
+            }
+            (0xFA, _, _, RegSize::Byte) => {
+                self.plx_x8();
+                self.pc += 1;
+            }
+            (0xFA, _, _, RegSize::TwoBytes) => {
+                self.plx_x16();
+                self.pc += 1;
+            }
+
+            // xce, imp
+            (0xFB, ..) => {
+                self.xce_all();
+                self.pc += 1;
+            }
+
+            // jsr, (abs,X)
+            (0xFC, CpuMode::Native, ..) => {
+                let addr = self.absolute_x_indirect8();
+                self.jsr_n(addr);
+                self.pc += 3;
+            }
+            (0xFC, CpuMode::Emulation, ..) => {
+                let addr = self.absolute_x_indirect8();
+                self.jsr_e(addr);
+                self.pc += 3;
+            }
+
+            // sbc, abs,X
+            (0xFD, _, RegSize::Byte, _) => {
+                let addr = self.absolute_x8();
+                self.sbc_m8(addr);
+                self.pc += 3;
+            }
+            (0xFD, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_x16();
+                self.sbc_m16(addr);
+                self.pc += 3;
+            }
+
+            // inc, abs,X
+            (0xFE, _, RegSize::Byte, _) => {
+                let addr = self.absolute_x8();
+                self.inc_mem_m8(addr);
+                self.pc += 3;
+            }
+            (0xFE, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_x16();
+                self.inc_mem_m16(addr);
+                self.pc += 3;
+            }
+
+            // sbc, long,X
+            (0xFF, _, RegSize::Byte, _) => {
+                let addr = self.absolute_long_x8();
+                self.sbc_m8(addr);
+                self.pc += 4;
+            }
+            (0xFF, _, RegSize::TwoBytes, _) => {
+                let addr = self.absolute_long_x16();
+                self.sbc_m16(addr);
+                self.pc += 4;
+            }
         }
     }
 }
@@ -1848,11 +5041,47 @@ impl Cpu65c816 {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
+    use crate::cartridge::Cartridge;
 
     #[test]
-    fn test() {
+    fn test_lorom() {
+        let test_path = Path::new("games/cputest.sfc");
+        let cart = Cartridge::from_path_with_mode(test_path, MappingMode::LoROM).unwrap();
+        
+        let mut cpu = Cpu65c816::new();
 
+        cpu.load_cart(&cart);
+
+        let expected_name = b"65C816 TEST          ";
+
+        let title_pos = (0..cpu.rom.len()-expected_name.len()+1)
+            .filter(|&i| cpu.rom[i..i+expected_name.len()] == expected_name[..])
+            .next().unwrap();
+
+        println!("TITLE POS: 0x{:06X}", title_pos);
+
+        for i in 0..21 {
+            let expected_char = expected_name[i];
+            let actual_char = cpu.read(0x00FFC0 + i as u32);
+
+            println!("Expected: '{}' ({}), Actual: '{}' ({})", expected_char as char, expected_char, actual_char as char, actual_char);
+
+            assert_eq!(expected_char, actual_char);
+        }
+
+        // cpu.reset();
+
+        // println!("{}", serde_json::to_string(&cpu).unwrap());
+        
+        // for i in 0..10 {
+        //     println!("PRG_BANK: 0x{:02X}, PC: 0x{:04X}", cpu.prg_bank, cpu.pc);
+        //     println!("INSTR: {}", cpu.read_prg());
+    
+        //     cpu.exec_instr();
+        // }
     }
 }

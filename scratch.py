@@ -19,7 +19,9 @@ for line in instr_lines:
     split = line.split()
 
     opcode = split[0]
-    addr_mode = split[3]
+    instr_len: str = split[1]
+    cycles = split[2]
+    addr_mode: str = split[3]
     name = split[6]
 
     if name == "PEA" or name == "PEI" or name == "PER":
@@ -28,7 +30,7 @@ for line in instr_lines:
     if name == "BRL":
         name = "BRA"
 
-    f.write(f"0x{opcode} {name} {addr_mode}\n")
-    print(f"0x{opcode} {name} {addr_mode}")
+    f.write(f"0x{opcode} {name} {addr_mode.ljust(9)} {instr_len.ljust(3)} {cycles}\n")
+    # print(f"0x{opcode} {name} {addr_mode}")
 
 f.close()
