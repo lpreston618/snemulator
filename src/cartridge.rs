@@ -113,7 +113,7 @@ impl Cartridge {
 
         let header = Header::from_bytes(&cart_rom[header_start..header_end]);
 
-        header.print();
+        // header.print();
 
         Ok(Self {
             cart_rom,
@@ -143,7 +143,7 @@ impl Cartridge {
 
         let header = Header::from_bytes(&cart_rom[header_start..header_end]);
 
-        header.print();
+        // header.print();
 
         Ok(Self {
             cart_rom,
@@ -163,8 +163,6 @@ impl Cartridge {
 
         let checksum = Cartridge::compute_checksum(cart_rom)?;
         let complement = !checksum;
-
-        println!("Checksum: 0x{checksum:02X}, Complement: 0x{complement:02X}");
 
         if cart_rom.len() < LoROM_POS + 2 {
             return Err(String::from("cart too small for LoROM check"));
@@ -277,8 +275,8 @@ impl Cartridge {
         self.cart_rom.clone()
     }
 
-    // The size of the cartridge ROM. Always a power of 2.
+    // The size of the cartridge ROM (in KiB). Always a power of 2.
     pub fn rom_size(&self) -> usize {
-        1 << self.header.rom_size
+        (1 << self.header.rom_size) * 1024
     }
 }

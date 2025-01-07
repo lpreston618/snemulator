@@ -1,7 +1,7 @@
 /// Prints out a slice of bytes in hex and ASCII format, side by side. When
 /// startval is specified, indeces beginning at the startval will be printed
 /// before each line. If startval is unspecified, indeces start at 0.
-pub fn hexdump(bytes: &[u8], startval: usize) {
+pub fn hexdump_at(bytes: &[u8], startval: usize) {
     let mut index = startval;
     println!();
     for chunk in bytes.chunks(8) {
@@ -27,5 +27,5 @@ pub fn hexdump(bytes: &[u8], startval: usize) {
 /// startval is specified, indeces beginning at the startval will be printed
 /// before each line. If startval is unspecified, indeces start at 0.
 pub fn hexdump(bytes: &[u8]) {
-    hexdump(bytes, 0);
+    hexdump_at(bytes, 0);
 }

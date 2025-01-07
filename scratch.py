@@ -15,6 +15,8 @@ f.close()
 
 f = open("opcodes.txt", "w")
 
+ops = []
+
 for line in instr_lines:
     split = line.split()
 
@@ -29,8 +31,15 @@ for line in instr_lines:
     
     if name == "BRL":
         name = "BRA"
+    
+    ops.append(name)
 
     f.write(f"0x{opcode} {name} {addr_mode.ljust(9)} {instr_len.ljust(3)} {cycles}\n")
     # print(f"0x{opcode} {name} {addr_mode}")
 
 f.close()
+
+for i in range(16):
+    for j in range(16):
+        print(f'"{ops[i * 16 + j]}", ', end="")
+    print()

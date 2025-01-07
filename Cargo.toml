@@ -1,3 +1,5 @@
+[workspace]
+
 [package]
 name = "snemulator"
 version = "0.1.0"

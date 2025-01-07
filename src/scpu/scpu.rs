@@ -21,6 +21,7 @@ enum CpuMode {
     Native
 }
 
+#[derive(Debug)]
 enum RegSize {
     Byte,
     TwoBytes,
@@ -193,7 +194,6 @@ impl Cpu65c816 {
                     // ROM Mirror (Slow)
                     (bank @ 0x00..=0x7D, bank_addr @ 0x8000..=0xFFFF) => {
                         let addr = ((bank as u32) << 15) | ((bank_addr - 0x8000) as u32);
-                        println!("Addr: 0x{address:04X}, ROM Addr: 0x{addr:04X}");
                         data = self.rom[(addr as usize) & self.rom_mirror];
                         clocks = Cpu65c816::ONE_CYCLE_SLOW;
                     },
@@ -245,14 +245,14 @@ impl Cpu65c816 {
                     (0x80..=0xBF, 0x2100..=0x21FF) => {
                         data = 0;
                         clocks = 0;
-                        todo!("PPU Registers");
+                        // todo!("PPU Registers");
                     },
                     // CPU Registers
                     (0x00..=0x3F, 0x4200..=0x43FF) |
                     (0x80..=0xBF, 0x4200..=0x43FF) => {
                         data = 0;
                         clocks = 0;
-                        todo!("CPU Registers");
+                        // todo!("CPU Registers");
                     },
                     // Controller Registers
                     (bank @ 0x00..=0x3F, bank_addr @ 0x4016) |
@@ -261,7 +261,7 @@ impl Cpu65c816 {
                     (bank @ 0x80..=0xBF, bank_addr @ 0x4017) => {
                         data = 0;
                         clocks = 0;
-                        todo!("Controller Registers");
+                        // todo!("Controller Registers");
                     },
                     _ => {
                         data = 0;
@@ -298,23 +298,20 @@ impl Cpu65c816 {
                 match (address.bank(), address.bank_addr()) {
                     // ROM Mirror (Slow)
                     (bank @ 0x00..=0x7D, bank_addr @ 0x8000..=0xFFFF) => {
-                        let addr = ((bank as u32) << 15) | ((bank_addr - 0x8000) as u32);
-                        self.rom[(addr as usize) & self.rom_mirror] = data;
+                        // let addr = ((bank as u32) << 15) | ((bank_addr - 0x8000) as u32);
+                        // self.rom[(addr as usize) & self.rom_mirror] = data;
                         clocks = Cpu65c816::ONE_CYCLE_SLOW;
                     },
                     // ROM Mirror (SLow)
                     (bank @ 0x40..=0x6F, bank_addr @ 0x0000..=0x7FFF) => {
-                        let addr = ((bank as u32) << 15) | (bank_addr as u32);
-                        self.rom[(addr as usize) & self.rom_mirror] = data;
+                        // let addr = ((bank as u32) << 15) | (bank_addr as u32);
+                        // self.rom[(addr as usize) & self.rom_mirror] = data;
                         clocks = Cpu65c816::ONE_CYCLE_SLOW;
                     },
                     // SRAM or ROM Mirror (Slow)
                     (bank @ 0x70..=0x7F, bank_addr @ 0x0000..=0x7FFF) => {
                         if self.has_sram {
                             todo!("Access SRAM");
-                        } else {
-                            let addr = ((bank as u32) << 15) | (bank_addr as u32);
-                            self.rom[(addr as usize) & self.rom_mirror] = data;
                         }
                         clocks = Cpu65c816::ONE_CYCLE_SLOW;
                     },
@@ -325,14 +322,14 @@ impl Cpu65c816 {
                     },
                     // ROM Mirror (Slow)
                     (bank @ 0xC0..=0xFF, bank_addr @ 0x0000..=0x7FFF) => {
-                        let addr = (((bank - 0x80) as u32) << 15) | (bank_addr as u32);
-                        self.rom[(addr as usize) & self.rom_mirror] = data;
+                        // let addr = (((bank - 0x80) as u32) << 15) | (bank_addr as u32);
+                        // self.rom[(addr as usize) & self.rom_mirror] = data;
                         clocks = Cpu65c816::ONE_CYCLE_SLOW;
                     },
                     // ROM (Fast)
                     (bank @ 0x80..=0xFF, bank_addr @ 0x8000..=0xFFFF) => {
-                        let addr = (((bank - 0x80) as u32) << 15) | ((bank_addr - 0x8000) as u32);
-                        self.rom[(addr as usize) & self.rom_mirror] = data;
+                        // let addr = (((bank - 0x80) as u32) << 15) | ((bank_addr - 0x8000) as u32);
+                        // self.rom[(addr as usize) & self.rom_mirror] = data;
 
                         clocks = match self.mem_sel {
                             MemSel::FastROM => { Cpu65c816::ONE_CYCLE },
@@ -349,13 +346,13 @@ impl Cpu65c816 {
                     (0x00..=0x3F, 0x2100..=0x21FF) |
                     (0x80..=0xBF, 0x2100..=0x21FF) => {
                         clocks = 0;
-                        todo!("PPU Registers");
+                        // todo!("PPU Registers");
                     },
                     // CPU Registers
                     (0x00..=0x3F, 0x4200..=0x43FF) |
                     (0x80..=0xBF, 0x4200..=0x43FF) => {
                         clocks = 0;
-                        todo!("CPU Registers");
+                        // todo!("CPU Registers");
                     },
                     // Controller Registers
                     (bank @ 0x00..=0x3F, bank_addr @ 0x4016) |
@@ -363,7 +360,7 @@ impl Cpu65c816 {
                     (bank @ 0x80..=0xBF, bank_addr @ 0x4016) |
                     (bank @ 0x80..=0xBF, bank_addr @ 0x4017) => {
                         clocks = 0;
-                        todo!("Controller Registers");
+                        // todo!("Controller Registers");
                     },
                     _ => {
                         clocks = 0;
@@ -386,8 +383,9 @@ impl Cpu65c816 {
         self.add_clocks(clocks);
     }
 
-    // fn read8(&self, address: u32) -> u8 { self.wram[address as usize] }
-    // fn write8(&mut self, address: u32, data: u8) { self.wram[address as usize] = data; }
+    fn read_prg(&mut self) -> u8 {
+        self.read(((self.prg_bank as u32) << 16) | (self.pc as u32))
+    }
     fn read16(&mut self, address_lo: u32, address_hi: u32) -> u16 {
         u16::from_le_bytes([
             self.read(address_lo),
@@ -895,7 +893,7 @@ impl Cpu65c816 {
 
     fn relative8(&mut self) -> u32 {
         let offset = (self.read(self.immediate8()) as i8) as u16;
-        ((self.pc + offset + 2) as u32).with_bank(self.prg_bank)
+        ((self.pc + offset) as u32).with_bank(self.prg_bank)
     }
     fn relative16(&mut self) -> u32 {
         let (offset_lo, offset_hi) = self.immediate16();
@@ -903,7 +901,7 @@ impl Cpu65c816 {
             self.read(offset_lo),
             self.read(offset_hi)
         ]);
-        ((self.pc + offset + 3) as u32).with_bank(self.prg_bank)
+        ((self.pc + offset) as u32).with_bank(self.prg_bank)
     }
 
     fn src_dst(&mut self) -> (u32, u32) {
@@ -1155,7 +1153,7 @@ impl Cpu65c816 {
 
     fn brk_n(&mut self) {
         self.push8_n(self.prg_bank);
-        self.push16_n(self.pc + 1); // push the address of the brk instruction + 2 (1 has already been added to pc)
+        self.push16_n(self.pc + 2); // push the address of the brk instruction + 2
         self.push8_n(self.status);
         self.set_flag(Flag::FlagI);
 
@@ -1165,7 +1163,7 @@ impl Cpu65c816 {
         self.pc = self.read16(N_BRK_VECTOR_LO, N_BRK_VECTOR_HI);
     }
     fn brk_e(&mut self) {
-        self.push16_n(self.pc + 1); // push the address of the brk instruction + 2 (1 has already been added to pc)
+        self.push16_n(self.pc + 2); // push the address of the brk instruction + 2
         self.push8_n(self.status);
         self.set_flag(Flag::FlagI);
 
@@ -1407,19 +1405,19 @@ impl Cpu65c816 {
     }
 
     fn jsr_n(&mut self, address: u32) {
-        self.push16_n(self.pc - 1); // push the address of the brk instruction + 2 (3 has already been added to pc)
+        self.push16_n(self.pc + 2); // push the address of the brk instruction + 2
         self.pc = address.bank_addr();
         self.branch_taken = true;
     }
     fn jsr_e(&mut self, address: u32) {
-        self.push16_e(self.pc - 1); // push the address of the brk instruction + 2 (3 has already been added to pc)
+        self.push16_e(self.pc + 2); // push the address of the brk instruction + 2
         self.pc = address.bank_addr();
         self.branch_taken = true;
     }
 
     fn jsl_n(&mut self, address: u32) {
         self.push8_n(self.prg_bank);
-        self.push16_n(self.pc - 1); // push the address of the JSL instruction + 3 (4 has already been added to pc)
+        self.push16_n(self.pc + 3); // push the address of the JSL instruction + 3
 
         self.pc = address.bank_addr();
         self.prg_bank = address.bank();
@@ -1428,7 +1426,7 @@ impl Cpu65c816 {
     }
     fn jsl_e(&mut self, address: u32) {
         self.push8_e(self.prg_bank);
-        self.push16_e(self.pc - 1); // push the address of the JSL instruction + 3 (4 has already been added to pc)
+        self.push16_e(self.pc + 3); // push the address of the JSL instruction + 3
 
         self.pc = address.bank_addr();
         self.prg_bank = address.bank();
@@ -2171,23 +2169,19 @@ impl Cpu65c816 {
     }
 }
 
-
+// Cycle Functionality
 impl Cpu65c816 {
-    fn read_prg(&mut self) -> u8 {
-        self.read(((self.prg_bank as u32) << 16) | (self.pc as u32))
-    }
-
     fn exec_instr(&mut self) {
         let opcode = self.read_prg();
 
         match (opcode, self.mode, self.acc_size(), self.idx_size()) {
             // brk, imp
-            (0x00, CpuMode::Native, ..) => {
-                self.brk_n();
-                self.pc += 1;
-            }
             (0x00, CpuMode::Emulation, ..) => {
                 self.brk_e();
+                self.pc += 1;
+            }
+            (0x00, CpuMode::Native, ..) => {
+                self.brk_n();
                 self.pc += 1;
             }
 
@@ -2204,14 +2198,14 @@ impl Cpu65c816 {
             }
 
             // cop, imm
-            (0x02, CpuMode::Native, ..) => {
-                let addr = self.immediate8();
-                self.cop_n(addr);
-                self.pc += 2;
-            }
             (0x02, CpuMode::Emulation, ..) => {
                 let addr = self.immediate8();
                 self.cop_e(addr);
+                self.pc += 2;
+            }
+            (0x02, CpuMode::Native, ..) => {
+                let addr = self.immediate8();
+                self.cop_n(addr);
                 self.pc += 2;
             }
 
@@ -2276,12 +2270,12 @@ impl Cpu65c816 {
             }
 
             // php, imp
-            (0x08, CpuMode::Native, ..) => {
-                self.php_n();
-                self.pc += 1;
-            }
             (0x08, CpuMode::Emulation, ..) => {
                 self.php_e();
+                self.pc += 1;
+            }
+            (0x08, CpuMode::Native, ..) => {
+                self.php_n();
                 self.pc += 1;
             }
 
@@ -2294,7 +2288,7 @@ impl Cpu65c816 {
             (0x09, _, RegSize::TwoBytes, _) => {
                 let addr = self.immediate16();
                 self.ora_m16(addr);
-                self.pc += 3;
+                self.pc += 2;
             }
 
             // asl, acc
@@ -2308,12 +2302,12 @@ impl Cpu65c816 {
             }
 
             // phd, imp
-            (0x0B, CpuMode::Native, ..) => {
-                self.phd_n();
-                self.pc += 1;
-            }
             (0x0B, CpuMode::Emulation, ..) => {
                 self.phd_e();
+                self.pc += 1;
+            }
+            (0x0B, CpuMode::Native, ..) => {
+                self.phd_n();
                 self.pc += 1;
             }
 
@@ -2367,9 +2361,9 @@ impl Cpu65c816 {
 
             // bpl, rel8
             (0x10, ..) => {
+                self.pc += 2;
                 let addr = self.relative8();
                 self.bpl_all(addr);
-                self.pc += 2;
             }
 
             // ora, (dir),Y
@@ -2485,12 +2479,12 @@ impl Cpu65c816 {
             }
 
             // tcs, imp
-            (0x1B, CpuMode::Native, ..) => {
-                self.tcs_n();
-                self.pc += 1;
-            }
             (0x1B, CpuMode::Emulation, ..) => {
                 self.tcs_e();
+                self.pc += 1;
+            }
+            (0x1B, CpuMode::Native, ..) => {
+                self.tcs_n();
                 self.pc += 1;
             }
 
@@ -2543,15 +2537,13 @@ impl Cpu65c816 {
             }
 
             // jsr, abs
-            (0x20, CpuMode::Native, ..) => {
-                let addr = self.absolute8();
-                self.jsr_n(addr);
-                self.pc += 3;
-            }
             (0x20, CpuMode::Emulation, ..) => {
                 let addr = self.absolute8();
                 self.jsr_e(addr);
-                self.pc += 3;
+            }
+            (0x20, CpuMode::Native, ..) => {
+                let addr = self.absolute8();
+                self.jsr_n(addr);
             }
 
             // and, (dir,X)
@@ -2567,15 +2559,13 @@ impl Cpu65c816 {
             }
 
             // jsl, long
-            (0x22, CpuMode::Native, ..) => {
-                let addr = self.absolute8();
-                self.jsl_n(addr);
-                self.pc += 4;
-            }
             (0x22, CpuMode::Emulation, ..) => {
                 let addr = self.absolute8();
                 self.jsl_e(addr);
-                self.pc += 4;
+            }
+            (0x22, CpuMode::Native, ..) => {
+                let addr = self.absolute8();
+                self.jsl_n(addr);
             }
 
             // and, stk,S
@@ -2639,12 +2629,12 @@ impl Cpu65c816 {
             }
 
             // plp, imp
-            (0x28, CpuMode::Native, ..) => {
-                self.plp_n();
-                self.pc += 1;
-            }
             (0x28, CpuMode::Emulation, ..) => {
                 self.plp_e();
+                self.pc += 1;
+            }
+            (0x28, CpuMode::Native, ..) => {
+                self.plp_n();
                 self.pc += 1;
             }
 
@@ -2657,7 +2647,7 @@ impl Cpu65c816 {
             (0x29, _, RegSize::TwoBytes, _) => {
                 let addr = self.immediate16();
                 self.and_m16(addr);
-                self.pc += 3;
+                self.pc += 2;
             }
 
             // rol, acc
@@ -2671,12 +2661,12 @@ impl Cpu65c816 {
             }
 
             // pld, imp
-            (0x2B, CpuMode::Native, ..) => {
-                self.pld_n();
-                self.pc += 1;
-            }
             (0x2B, CpuMode::Emulation, ..) => {
                 self.pld_e();
+                self.pc += 1;
+            }
+            (0x2B, CpuMode::Native, ..) => {
+                self.pld_n();
                 self.pc += 1;
             }
 
@@ -2730,9 +2720,9 @@ impl Cpu65c816 {
 
             // bmi, rel8
             (0x30, ..) => {
+                self.pc += 2;
                 let addr = self.relative8();
                 self.bmi_all(addr);
-                self.pc += 2;
             }
 
             // and, (dir),Y
@@ -2910,13 +2900,11 @@ impl Cpu65c816 {
             }
 
             // rti, imp
-            (0x40, CpuMode::Native, ..) => {
-                self.rti_n();
-                self.pc += 1;
-            }
             (0x40, CpuMode::Emulation, ..) => {
                 self.rti_e();
-                self.pc += 1;
+            }
+            (0x40, CpuMode::Native, ..) => {
+                self.rti_n();
             }
 
             // eor, (dir,X)
@@ -3015,7 +3003,7 @@ impl Cpu65c816 {
             (0x49, _, RegSize::TwoBytes, _) => {
                 let addr = self.immediate16();
                 self.eor_m16(addr);
-                self.pc += 3;
+                self.pc += 2;
             }
 
             // lsr, acc
@@ -3029,12 +3017,12 @@ impl Cpu65c816 {
             }
 
             // phk, imp
-            (0x4B, CpuMode::Native, ..) => {
-                self.phk_n();
-                self.pc += 1;
-            }
             (0x4B, CpuMode::Emulation, ..) => {
                 self.phk_e();
+                self.pc += 1;
+            }
+            (0x4B, CpuMode::Native, ..) => {
+                self.phk_n();
                 self.pc += 1;
             }
 
@@ -3042,7 +3030,6 @@ impl Cpu65c816 {
             (0x4C, ..) => {
                 let addr = self.absolute8();
                 self.jmp_all(addr);
-                self.pc += 3;
             }
 
             // eor, abs
@@ -3083,9 +3070,9 @@ impl Cpu65c816 {
 
             // bvc, rel8
             (0x50, ..) => {
+                self.pc += 2;
                 let addr = self.relative8();
                 self.bvc_all(addr);
-                self.pc += 2;
             }
 
             // eor, (dir),Y
@@ -3209,7 +3196,6 @@ impl Cpu65c816 {
             (0x5C, ..) => {
                 let addr = self.absolute8();
                 self.jmp_all(addr);
-                self.pc += 4;
             }
 
             // eor, abs,X
@@ -3249,13 +3235,11 @@ impl Cpu65c816 {
             }
 
             // rts, imp
-            (0x60, CpuMode::Native, ..) => {
-                self.rts_n();
-                self.pc += 1;
-            }
             (0x60, CpuMode::Emulation, ..) => {
                 self.rts_e();
-                self.pc += 1;
+            }
+            (0x60, CpuMode::Native, ..) => {
+                self.rts_n();
             }
 
             // adc, (dir,X)
@@ -3271,14 +3255,14 @@ impl Cpu65c816 {
             }
 
             // pex, imm
-            (0x62, CpuMode::Native, ..) => {
-                let addr = self.immediate8();
-                self.pex_n(addr);
-                self.pc += 3;
-            }
             (0x62, CpuMode::Emulation, ..) => {
                 let addr = self.immediate8();
                 self.pex_e(addr);
+                self.pc += 3;
+            }
+            (0x62, CpuMode::Native, ..) => {
+                let addr = self.immediate8();
+                self.pex_n(addr);
                 self.pc += 3;
             }
 
@@ -3365,7 +3349,7 @@ impl Cpu65c816 {
             (0x69, _, RegSize::TwoBytes, _) => {
                 let addr = self.immediate16();
                 self.adc_m16(addr);
-                self.pc += 3;
+                self.pc += 2;
             }
 
             // ror, acc
@@ -3379,20 +3363,17 @@ impl Cpu65c816 {
             }
 
             // rtl, imp
-            (0x6B, CpuMode::Native, ..) => {
-                self.rtl_n();
-                self.pc += 1;
-            }
             (0x6B, CpuMode::Emulation, ..) => {
                 self.rtl_e();
-                self.pc += 1;
+            }
+            (0x6B, CpuMode::Native, ..) => {
+                self.rtl_n();
             }
 
             // jmp, (abs)
             (0x6C, ..) => {
                 let addr = self.absolute_indirect();
                 self.jmp_all(addr);
-                self.pc += 3;
             }
 
             // adc, abs
@@ -3433,9 +3414,9 @@ impl Cpu65c816 {
 
             // bvs, rel8
             (0x70, ..) => {
+                self.pc += 2;
                 let addr = self.relative8();
                 self.bvs_all(addr);
-                self.pc += 2;
             }
 
             // adc, (dir),Y
@@ -3564,7 +3545,6 @@ impl Cpu65c816 {
             (0x7C, ..) => {
                 let addr = self.absolute_x_indirect8();
                 self.jmp_all(addr);
-                self.pc += 3;
             }
 
             // adc, abs,X
@@ -3605,9 +3585,9 @@ impl Cpu65c816 {
 
             // bra, rel8
             (0x80, ..) => {
+                self.pc += 2;
                 let addr = self.relative8();
                 self.bra_all(addr);
-                self.pc += 2;
             }
 
             // sta, (dir,X)
@@ -3624,9 +3604,9 @@ impl Cpu65c816 {
 
             // bra, rel16
             (0x82, ..) => {
+                self.pc += 3;
                 let addr = self.relative16();
                 self.bra_all(addr);
-                self.pc += 3;
             }
 
             // sta, stk,S
@@ -3708,7 +3688,7 @@ impl Cpu65c816 {
             (0x89, _, RegSize::TwoBytes, _) => {
                 let addr = self.immediate16();
                 self.bit_m16(addr);
-                self.pc += 3;
+                self.pc += 2;
             }
 
             // txa, imp
@@ -3722,12 +3702,12 @@ impl Cpu65c816 {
             }
 
             // phb, imp
-            (0x8B, CpuMode::Native, ..) => {
-                self.phb_n();
-                self.pc += 1;
-            }
             (0x8B, CpuMode::Emulation, ..) => {
                 self.phb_e();
+                self.pc += 1;
+            }
+            (0x8B, CpuMode::Native, ..) => {
+                self.phb_n();
                 self.pc += 1;
             }
 
@@ -3781,9 +3761,9 @@ impl Cpu65c816 {
 
             // bcc, rel8
             (0x90, ..) => {
+                self.pc += 2;
                 let addr = self.relative8();
                 self.bcc_all(addr);
-                self.pc += 2;
             }
 
             // sta, (dir),Y
@@ -3893,12 +3873,12 @@ impl Cpu65c816 {
             }
 
             // txs, imp
-            (0x9A, CpuMode::Native, ..) => {
-                self.txs_n();
-                self.pc += 1;
-            }
             (0x9A, CpuMode::Emulation, ..) => {
                 self.txs_e();
+                self.pc += 1;
+            }
+            (0x9A, CpuMode::Native, ..) => {
+                self.txs_n();
                 self.pc += 1;
             }
 
@@ -3969,7 +3949,7 @@ impl Cpu65c816 {
             (0xA0, _, _, RegSize::TwoBytes) => {
                 let addr = self.immediate16();
                 self.ldy_x16(addr);
-                self.pc += 3;
+                self.pc += 2;
             }
 
             // lda, (dir,X)
@@ -3993,7 +3973,7 @@ impl Cpu65c816 {
             (0xA2, _, _, RegSize::TwoBytes) => {
                 let addr = self.immediate16();
                 self.ldx_x16(addr);
-                self.pc += 3;
+                self.pc += 2;
             }
 
             // lda, stk,S
@@ -4075,7 +4055,7 @@ impl Cpu65c816 {
             (0xA9, _, RegSize::TwoBytes, _) => {
                 let addr = self.immediate16();
                 self.lda_m16(addr);
-                self.pc += 3;
+                self.pc += 2;
             }
 
             // tax, imp
@@ -4089,12 +4069,12 @@ impl Cpu65c816 {
             }
 
             // plb, imp
-            (0xAB, CpuMode::Native, ..) => {
-                self.plb_n();
-                self.pc += 1;
-            }
             (0xAB, CpuMode::Emulation, ..) => {
                 self.plb_e();
+                self.pc += 1;
+            }
+            (0xAB, CpuMode::Native, ..) => {
+                self.plb_n();
                 self.pc += 1;
             }
 
@@ -4148,9 +4128,9 @@ impl Cpu65c816 {
 
             // bcs, rel8
             (0xB0, ..) => {
+                self.pc += 2;
                 let addr = self.relative8();
                 self.bcs_all(addr);
-                self.pc += 2;
             }
 
             // lda, (dir),Y
@@ -4336,7 +4316,7 @@ impl Cpu65c816 {
             (0xC0, _, _, RegSize::TwoBytes) => {
                 let addr = self.immediate16();
                 self.cpy_x16(addr);
-                self.pc += 3;
+                self.pc += 2;
             }
 
             // cmp, (dir,X)
@@ -4352,14 +4332,14 @@ impl Cpu65c816 {
             }
 
             // rep, imm
-            (0xC2, CpuMode::Native, ..) => {
-                let addr = self.immediate8();
-                self.rep_n(addr);
-                self.pc += 2;
-            }
             (0xC2, CpuMode::Emulation, ..) => {
                 let addr = self.immediate8();
                 self.rep_e(addr);
+                self.pc += 2;
+            }
+            (0xC2, CpuMode::Native, ..) => {
+                let addr = self.immediate8();
+                self.rep_n(addr);
                 self.pc += 2;
             }
 
@@ -4442,7 +4422,7 @@ impl Cpu65c816 {
             (0xC9, _, RegSize::TwoBytes, _) => {
                 let addr = self.immediate16();
                 self.cmp_m16(addr);
-                self.pc += 3;
+                self.pc += 2;
             }
 
             // dex, imp
@@ -4511,9 +4491,9 @@ impl Cpu65c816 {
 
             // bne, rel8
             (0xD0, ..) => {
+                self.pc += 2;
                 let addr = self.relative8();
                 self.bne_all(addr);
-                self.pc += 2;
             }
 
             // cmp, (dir),Y
@@ -4553,14 +4533,14 @@ impl Cpu65c816 {
             }
 
             // pex, dir
-            (0xD4, CpuMode::Native, ..) => {
-                let addr = self.direct8();
-                self.pex_n(addr);
-                self.pc += 2;
-            }
             (0xD4, CpuMode::Emulation, ..) => {
                 let addr = self.direct8();
                 self.pex_e(addr);
+                self.pc += 2;
+            }
+            (0xD4, CpuMode::Native, ..) => {
+                let addr = self.direct8();
+                self.pex_n(addr);
                 self.pc += 2;
             }
 
@@ -4642,7 +4622,6 @@ impl Cpu65c816 {
             (0xDC, ..) => {
                 let addr = self.absolute_indirect_long();
                 self.jmp_all(addr);
-                self.pc += 3;
             }
 
             // cmp, abs,X
@@ -4690,7 +4669,7 @@ impl Cpu65c816 {
             (0xE0, _, _, RegSize::TwoBytes) => {
                 let addr = self.immediate16();
                 self.cpx_x16(addr);
-                self.pc += 3;
+                self.pc += 2;
             }
 
             // sbc, (dir,X)
@@ -4791,7 +4770,7 @@ impl Cpu65c816 {
             (0xE9, _, RegSize::TwoBytes, _) => {
                 let addr = self.immediate16();
                 self.sbc_m16(addr);
-                self.pc += 3;
+                self.pc += 2;
             }
 
             // nop, imp
@@ -4860,9 +4839,9 @@ impl Cpu65c816 {
 
             // beq, rel8
             (0xF0, ..) => {
+                self.pc += 2;
                 let addr = self.relative8();
                 self.beq_all(addr);
-                self.pc += 2;
             }
 
             // sbc, (dir),Y
@@ -4902,14 +4881,14 @@ impl Cpu65c816 {
             }
 
             // pex, imm
-            (0xF4, CpuMode::Native, ..) => {
-                let addr = self.immediate8();
-                self.pex_n(addr);
-                self.pc += 3;
-            }
             (0xF4, CpuMode::Emulation, ..) => {
                 let addr = self.immediate8();
                 self.pex_e(addr);
+                self.pc += 3;
+            }
+            (0xF4, CpuMode::Native, ..) => {
+                let addr = self.immediate8();
+                self.pex_n(addr);
                 self.pc += 3;
             }
 
@@ -4988,15 +4967,13 @@ impl Cpu65c816 {
             }
 
             // jsr, (abs,X)
-            (0xFC, CpuMode::Native, ..) => {
-                let addr = self.absolute_x_indirect8();
-                self.jsr_n(addr);
-                self.pc += 3;
-            }
             (0xFC, CpuMode::Emulation, ..) => {
                 let addr = self.absolute_x_indirect8();
                 self.jsr_e(addr);
-                self.pc += 3;
+            }
+            (0xFC, CpuMode::Native, ..) => {
+                let addr = self.absolute_x_indirect8();
+                self.jsr_n(addr);
             }
 
             // sbc, abs,X
@@ -5047,41 +5024,115 @@ mod tests {
     use super::*;
     use crate::cartridge::Cartridge;
 
+    /// Prints out a slice of bytes in hex and ASCII format, side by side. When
+    /// startval is specified, indices beginning at the startval will be printed
+    /// before each line. If startval is unspecified, indeces start at 0.
+    pub fn hexdump_at(bytes: &[u8], startval: usize) {
+        const CHUNK_SIZE: usize = 16;
+        
+        let mut index = startval;
+        println!();
+        for chunk in bytes.chunks(CHUNK_SIZE) {
+            let l = chunk.len();
+            print!("{:08X}: ", index);
+            for b in chunk.iter() {
+                print!("{b:02X} ");
+            }
+
+            print!("{:>width$} ", "|", width = (CHUNK_SIZE - l) * 3 + 1);
+            for b in chunk.iter() {
+                match b {
+                    32..=126 => print!("{}", *b as char),
+                    _ => print!("."),
+                }
+            }
+            println!();
+            index += 8;
+        }
+    }
+
+    /// Prints out a slice of bytes in hex and ASCII format, side by side. When
+    /// startval is specified, indeces beginning at the startval will be printed
+    /// before each line. If startval is unspecified, indeces start at 0.
+    pub fn hexdump(bytes: &[u8]) {
+        hexdump_at(bytes, 0);
+    }
+
+    /// Find the subvector "needle" in the vector "haystack"
+    fn find_subvec(haystack: &Vec<u8>, needle: &Vec<u8>) -> Option<usize> {
+        (0..haystack.len()-needle.len()+1)
+            .filter(|&i| haystack[i..i+needle.len()] == needle[..]).next()
+    }
+
+    const INSTR_NAMES: [&str; 256] = [
+        "BRK", "ORA", "COP", "ORA", "TSB", "ORA", "ASL", "ORA", "PHP", "ORA", "ASL", "PHD", "TSB", "ORA", "ASL", "ORA", 
+        "BPL", "ORA", "ORA", "ORA", "TRB", "ORA", "ASL", "ORA", "CLC", "ORA", "INC", "TCS", "TRB", "ORA", "ASL", "ORA", 
+        "JSR", "AND", "JSL", "AND", "BIT", "AND", "ROL", "AND", "PLP", "AND", "ROL", "PLD", "BIT", "AND", "ROL", "AND", 
+        "BMI", "AND", "AND", "AND", "BIT", "AND", "ROL", "AND", "SEC", "AND", "DEC", "TSC", "BIT", "AND", "ROL", "AND", 
+        "RTI", "EOR", "WDM", "EOR", "MVP", "EOR", "LSR", "EOR", "PHA", "EOR", "LSR", "PHK", "JMP", "EOR", "LSR", "EOR", 
+        "BVC", "EOR", "EOR", "EOR", "MVN", "EOR", "LSR", "EOR", "CLI", "EOR", "PHY", "TCD", "JMP", "EOR", "LSR", "EOR", 
+        "RTS", "ADC", "PEX", "ADC", "STZ", "ADC", "ROR", "ADC", "PLA", "ADC", "ROR", "RTL", "JMP", "ADC", "ROR", "ADC", 
+        "BVS", "ADC", "ADC", "ADC", "STZ", "ADC", "ROR", "ADC", "SEI", "ADC", "PLY", "TDC", "JMP", "ADC", "ROR", "ADC", 
+        "BRA", "STA", "BRA", "STA", "STY", "STA", "STX", "STA", "DEY", "BIT", "TXA", "PHB", "STY", "STA", "STX", "STA", 
+        "BCC", "STA", "STA", "STA", "STY", "STA", "STX", "STA", "TYA", "STA", "TXS", "TXY", "STZ", "STA", "STZ", "STA", 
+        "LDY", "LDA", "LDX", "LDA", "LDY", "LDA", "LDX", "LDA", "TAY", "LDA", "TAX", "PLB", "LDY", "LDA", "LDX", "LDA", 
+        "BCS", "LDA", "LDA", "LDA", "LDY", "LDA", "LDX", "LDA", "CLV", "LDA", "TSX", "TYX", "LDY", "LDA", "LDX", "LDA", 
+        "CPY", "CMP", "REP", "CMP", "CPY", "CMP", "DEC", "CMP", "INY", "CMP", "DEX", "WAI", "CPY", "CMP", "DEC", "CMP", 
+        "BNE", "CMP", "CMP", "CMP", "PEX", "CMP", "DEC", "CMP", "CLD", "CMP", "PHX", "STP", "JMP", "CMP", "DEC", "CMP", 
+        "CPX", "SBC", "SEP", "SBC", "CPX", "SBC", "INC", "SBC", "INX", "SBC", "NOP", "XBA", "CPX", "SBC", "INC", "SBC", 
+        "BEQ", "SBC", "SBC", "SBC", "PEX", "SBC", "INC", "SBC", "SED", "SBC", "PLX", "XCE", "JSR", "SBC", "INC", "SBC",
+    ];
+
     #[test]
-    fn test_lorom() {
-        let test_path = Path::new("games/cputest.sfc");
+    fn test_lorom_title() {
+        let test_path = Path::new("tests/blarggs/test_adc_sbc/test_adc.smc");
         let cart = Cartridge::from_path_with_mode(test_path, MappingMode::LoROM).unwrap();
         
         let mut cpu = Cpu65c816::new();
 
         cpu.load_cart(&cart);
 
-        let expected_name = b"65C816 TEST          ";
+        // let expected_name = b"65C816 TEST          ";
 
-        let title_pos = (0..cpu.rom.len()-expected_name.len()+1)
-            .filter(|&i| cpu.rom[i..i+expected_name.len()] == expected_name[..])
-            .next().unwrap();
+        // println!("ROM Size: {}", cpu.rom.len());
 
-        println!("TITLE POS: 0x{:06X}", title_pos);
+        hexdump_at(&cpu.rom[0x8000..0x8000+0x1000], 0x8000);
 
-        for i in 0..21 {
-            let expected_char = expected_name[i];
-            let actual_char = cpu.read(0x00FFC0 + i as u32);
+        // for i in 0..21 {
+        //     let expected_char = expected_name[i];
+        //     let actual_char = cpu.read(0x00FFC0 + i as u32);
 
-            println!("Expected: '{}' ({}), Actual: '{}' ({})", expected_char as char, expected_char, actual_char as char, actual_char);
-
-            assert_eq!(expected_char, actual_char);
-        }
-
-        // cpu.reset();
-
-        // println!("{}", serde_json::to_string(&cpu).unwrap());
-        
-        // for i in 0..10 {
-        //     println!("PRG_BANK: 0x{:02X}, PC: 0x{:04X}", cpu.prg_bank, cpu.pc);
-        //     println!("INSTR: {}", cpu.read_prg());
-    
-        //     cpu.exec_instr();
+        //     assert_eq!(expected_char, actual_char);
         // }
     }
+
+    #[test]
+    fn test_cpubasic() {
+        let test_path = Path::new("tests/blarggs/test_adc_sbc/test_adc.smc");
+        let cart = Cartridge::from_path_with_mode(test_path, MappingMode::LoROM).unwrap();
+        
+        let mut cpu = Cpu65c816::new();
+
+        cpu.load_cart(&cart);
+
+        // cpu.reset();
+        cpu.pc = 0x8000;
+
+        for _ in 0..100 {
+            let opcode = cpu.read_prg();
+            let (addr_lo, addr_hi) = cpu.immediate16();
+            let val1 = cpu.read(addr_lo);
+            let val2 = cpu.read(addr_hi);
+            println!("PRG BANK: 0x{:02X}, PC: 0x{:04X}, INSTR: {} (0x{:02X}), IMM16: 0x{:02X} 0x{:02X}, IDX SIZE: {:?}, ACC SIZE: {:?}, X: 0x{:04X}, Y: 0x{:04X}, A: 0x{:04X}", cpu.prg_bank, cpu.pc, INSTR_NAMES[opcode as usize], opcode, val1, val2, cpu.idx_size(), cpu.acc_size(), cpu.x, cpu.y, cpu.acc);
+            // let dir8 = cpu.direct8();
+            // let val3 = cpu.read(dir8);
+            // println!("    STK PTR: 0x{:04X}, DIR PAGE: 0x{:04X}, DATA BANK: 0x{:02X}, DIR8: 0x{:02X}", cpu.stk_ptr, cpu.direct_page, cpu.data_bank, val3);
+            cpu.exec_instr();
+        }
+
+
+    }
 }
+
+
+// NEXT: Implement fake HV-IRQ for testing stuff

@@ -12,8 +12,8 @@ addr_mode_map = {
     "long,X": "self.absolute_long_x[[SIZE]]()",
     "abs,X": "self.absolute_x[[SIZE]]()",
     "abs,Y": "self.absolute_y[[SIZE]]()",
-    "(abs)": "self.absolute_indirect[[SIZE]]()",
-    "[abs]": "self.absolute_indirect_long[[SIZE]]()",
+    "(abs)": "self.absolute_indirect()",
+    "[abs]": "self.absolute_indirect_long()",
     "(abs,X)": "self.absolute_x_indirect[[SIZE]]()",
 
     "dir": "self.direct[[SIZE]]()",
@@ -50,6 +50,15 @@ mode_case_map = {
     "mem_m16": "([[OPCODE]], _, RegSize::TwoBytes, _)",
 }
 
+def is_branch_instr(instr_name) -> bool:
+    return instr_name.lower() in "BCC BCS BEQ BMI BNE BPL BRA BVC BVS".lower()
+
+def is_jump_instr(instr_name) -> bool:
+    return instr_name.lower() in "JMP JSR JSL".lower()
+
+def is_return_instr(instr_name) -> bool:
+    return instr_name.lower() in "RTS RTL RTI".lower()
+
 f = open("match.txt", "w")
 
 for opcode_line in opcodes:
@@ -61,6 +70,7 @@ for opcode_line in opcodes:
     instr_len = int(opcode_data[3][0])
     instr_len_m_diff = "-m" in opcode_data[3]
     instr_len_x_diff = "-x" in opcode_data[3]
+    instr_len_str = str(instr_len)
 
     func_headers = []
     for header in headers:
@@ -89,18 +99,23 @@ for opcode_line in opcodes:
 
     case_str = f"// {instr_name}, {addr_mode}\n"
 
+    if "e" in modes:
+        modes.remove("e")
+        modes.insert(0, "e")
+
     for mode in modes:
         case_str += mode_case_map[mode] + " => {\n"
 
         addr_mode_func = addr_mode_map[addr_mode]
 
         if addr_mode != "imp" and addr_mode != "acc":
+            if is_branch_instr(instr_name):
+                case_str += f"    self.pc += {instr_len_str};\n"
             case_str += f"    let addr = {addr_mode_func};\n"
             case_str += f"    self.{instr_name}_{mode}(addr);\n"
         else:
             case_str += f"    self.{instr_name}_{mode}();\n"
         
-        instr_len_str = str(instr_len)
         if instr_len_m_diff:
             if mode == "m8" or mode == "acc_m8" or mode == "mem_m8":
                 instr_len_str = str(instr_len - 1)
@@ -108,10 +123,11 @@ for opcode_line in opcodes:
             if mode == "x8":
                 instr_len_str = str(instr_len - 1)
 
-        case_str += f"    self.pc += {instr_len_str};\n"
+        if not is_jump_instr(instr_name) and not is_branch_instr(instr_name) and not is_return_instr(instr_name):
+            case_str += f"    self.pc += {instr_len_str};\n"
         case_str += "}\n"
 
-        if "8" in mode or mode == "e" or mode == "all":
+        if "8" in mode or mode == "e" or mode == "all" or mode == "n":
             case_str = case_str.replace("[[SIZE]]", "8")
         elif "16" in mode:
             case_str = case_str.replace("[[SIZE]]", "16")

@@ -1,10 +1,10 @@
 // brk, imp
-(0x00, CpuMode::Native, ..) => {
-    self.brk_n();
-    self.pc += 1;
-}
 (0x00, CpuMode::Emulation, ..) => {
     self.brk_e();
+    self.pc += 1;
+}
+(0x00, CpuMode::Native, ..) => {
+    self.brk_n();
     self.pc += 1;
 }
 
@@ -21,14 +21,14 @@
 }
 
 // cop, imm
-(0x02, CpuMode::Native, ..) => {
-    let addr = self.immediate8();
-    self.cop_n(addr);
-    self.pc += 2;
-}
 (0x02, CpuMode::Emulation, ..) => {
     let addr = self.immediate8();
     self.cop_e(addr);
+    self.pc += 2;
+}
+(0x02, CpuMode::Native, ..) => {
+    let addr = self.immediate8();
+    self.cop_n(addr);
     self.pc += 2;
 }
 
@@ -93,12 +93,12 @@
 }
 
 // php, imp
-(0x08, CpuMode::Native, ..) => {
-    self.php_n();
-    self.pc += 1;
-}
 (0x08, CpuMode::Emulation, ..) => {
     self.php_e();
+    self.pc += 1;
+}
+(0x08, CpuMode::Native, ..) => {
+    self.php_n();
     self.pc += 1;
 }
 
@@ -111,7 +111,7 @@
 (0x09, _, RegSize::TwoBytes, _) => {
     let addr = self.immediate16();
     self.ora_m16(addr);
-    self.pc += 3;
+    self.pc += 2;
 }
 
 // asl, acc
@@ -125,12 +125,12 @@
 }
 
 // phd, imp
-(0x0B, CpuMode::Native, ..) => {
-    self.phd_n();
-    self.pc += 1;
-}
 (0x0B, CpuMode::Emulation, ..) => {
     self.phd_e();
+    self.pc += 1;
+}
+(0x0B, CpuMode::Native, ..) => {
+    self.phd_n();
     self.pc += 1;
 }
 
@@ -184,9 +184,9 @@
 
 // bpl, rel8
 (0x10, ..) => {
+    self.pc += 2;
     let addr = self.relative8();
     self.bpl_all(addr);
-    self.pc += 2;
 }
 
 // ora, (dir),Y
@@ -302,12 +302,12 @@
 }
 
 // tcs, imp
-(0x1B, CpuMode::Native, ..) => {
-    self.tcs_n();
-    self.pc += 1;
-}
 (0x1B, CpuMode::Emulation, ..) => {
     self.tcs_e();
+    self.pc += 1;
+}
+(0x1B, CpuMode::Native, ..) => {
+    self.tcs_n();
     self.pc += 1;
 }
 
@@ -360,15 +360,13 @@
 }
 
 // jsr, abs
-(0x20, CpuMode::Native, ..) => {
-    let addr = self.absolute8();
-    self.jsr_n(addr);
-    self.pc += 3;
-}
 (0x20, CpuMode::Emulation, ..) => {
     let addr = self.absolute8();
     self.jsr_e(addr);
-    self.pc += 3;
+}
+(0x20, CpuMode::Native, ..) => {
+    let addr = self.absolute8();
+    self.jsr_n(addr);
 }
 
 // and, (dir,X)
@@ -384,15 +382,13 @@
 }
 
 // jsl, long
-(0x22, CpuMode::Native, ..) => {
-    let addr = self.absolute8();
-    self.jsl_n(addr);
-    self.pc += 4;
-}
 (0x22, CpuMode::Emulation, ..) => {
     let addr = self.absolute8();
     self.jsl_e(addr);
-    self.pc += 4;
+}
+(0x22, CpuMode::Native, ..) => {
+    let addr = self.absolute8();
+    self.jsl_n(addr);
 }
 
 // and, stk,S
@@ -456,12 +452,12 @@
 }
 
 // plp, imp
-(0x28, CpuMode::Native, ..) => {
-    self.plp_n();
-    self.pc += 1;
-}
 (0x28, CpuMode::Emulation, ..) => {
     self.plp_e();
+    self.pc += 1;
+}
+(0x28, CpuMode::Native, ..) => {
+    self.plp_n();
     self.pc += 1;
 }
 
@@ -474,7 +470,7 @@
 (0x29, _, RegSize::TwoBytes, _) => {
     let addr = self.immediate16();
     self.and_m16(addr);
-    self.pc += 3;
+    self.pc += 2;
 }
 
 // rol, acc
@@ -488,12 +484,12 @@
 }
 
 // pld, imp
-(0x2B, CpuMode::Native, ..) => {
-    self.pld_n();
-    self.pc += 1;
-}
 (0x2B, CpuMode::Emulation, ..) => {
     self.pld_e();
+    self.pc += 1;
+}
+(0x2B, CpuMode::Native, ..) => {
+    self.pld_n();
     self.pc += 1;
 }
 
@@ -547,9 +543,9 @@
 
 // bmi, rel8
 (0x30, ..) => {
+    self.pc += 2;
     let addr = self.relative8();
     self.bmi_all(addr);
-    self.pc += 2;
 }
 
 // and, (dir),Y
@@ -665,16 +661,16 @@
 }
 
 // tsc, imp
+(0x3B, CpuMode::Emulation, ..) => {
+    self.tsc_e();
+    self.pc += 1;
+}
 (0x3B, _, RegSize::Byte, _) => {
     self.tsc_m8();
     self.pc += 1;
 }
 (0x3B, _, RegSize::TwoBytes, _) => {
     self.tsc_m16();
-    self.pc += 1;
-}
-(0x3B, CpuMode::Emulation, ..) => {
-    self.tsc_e();
     self.pc += 1;
 }
 
@@ -727,13 +723,11 @@
 }
 
 // rti, imp
-(0x40, CpuMode::Native, ..) => {
-    self.rti_n();
-    self.pc += 1;
-}
 (0x40, CpuMode::Emulation, ..) => {
     self.rti_e();
-    self.pc += 1;
+}
+(0x40, CpuMode::Native, ..) => {
+    self.rti_n();
 }
 
 // eor, (dir,X)
@@ -811,16 +805,16 @@
 }
 
 // pha, imp
+(0x48, CpuMode::Emulation, ..) => {
+    self.pha_e();
+    self.pc += 1;
+}
 (0x48, _, RegSize::Byte, _) => {
     self.pha_m8();
     self.pc += 1;
 }
 (0x48, _, RegSize::TwoBytes, _) => {
     self.pha_m16();
-    self.pc += 1;
-}
-(0x48, CpuMode::Emulation, ..) => {
-    self.pha_e();
     self.pc += 1;
 }
 
@@ -833,7 +827,7 @@
 (0x49, _, RegSize::TwoBytes, _) => {
     let addr = self.immediate16();
     self.eor_m16(addr);
-    self.pc += 3;
+    self.pc += 2;
 }
 
 // lsr, acc
@@ -847,12 +841,12 @@
 }
 
 // phk, imp
-(0x4B, CpuMode::Native, ..) => {
-    self.phk_n();
-    self.pc += 1;
-}
 (0x4B, CpuMode::Emulation, ..) => {
     self.phk_e();
+    self.pc += 1;
+}
+(0x4B, CpuMode::Native, ..) => {
+    self.phk_n();
     self.pc += 1;
 }
 
@@ -860,7 +854,6 @@
 (0x4C, ..) => {
     let addr = self.absolute8();
     self.jmp_all(addr);
-    self.pc += 3;
 }
 
 // eor, abs
@@ -901,9 +894,9 @@
 
 // bvc, rel8
 (0x50, ..) => {
+    self.pc += 2;
     let addr = self.relative8();
     self.bvc_all(addr);
-    self.pc += 2;
 }
 
 // eor, (dir),Y
@@ -1004,16 +997,16 @@
 }
 
 // phy, imp
+(0x5A, CpuMode::Emulation, ..) => {
+    self.phy_e();
+    self.pc += 1;
+}
 (0x5A, _, _, RegSize::Byte) => {
     self.phy_x8();
     self.pc += 1;
 }
 (0x5A, _, _, RegSize::TwoBytes) => {
     self.phy_x16();
-    self.pc += 1;
-}
-(0x5A, CpuMode::Emulation, ..) => {
-    self.phy_e();
     self.pc += 1;
 }
 
@@ -1027,7 +1020,6 @@
 (0x5C, ..) => {
     let addr = self.absolute8();
     self.jmp_all(addr);
-    self.pc += 4;
 }
 
 // eor, abs,X
@@ -1067,13 +1059,11 @@
 }
 
 // rts, imp
-(0x60, CpuMode::Native, ..) => {
-    self.rts_n();
-    self.pc += 1;
-}
 (0x60, CpuMode::Emulation, ..) => {
     self.rts_e();
-    self.pc += 1;
+}
+(0x60, CpuMode::Native, ..) => {
+    self.rts_n();
 }
 
 // adc, (dir,X)
@@ -1089,14 +1079,14 @@
 }
 
 // pex, imm
-(0x62, CpuMode::Native, ..) => {
-    let addr = self.immediate8();
-    self.pex_n(addr);
-    self.pc += 3;
-}
 (0x62, CpuMode::Emulation, ..) => {
     let addr = self.immediate8();
     self.pex_e(addr);
+    self.pc += 3;
+}
+(0x62, CpuMode::Native, ..) => {
+    let addr = self.immediate8();
+    self.pex_n(addr);
     self.pc += 3;
 }
 
@@ -1161,16 +1151,16 @@
 }
 
 // pla, imp
+(0x68, CpuMode::Emulation, ..) => {
+    self.pla_e();
+    self.pc += 1;
+}
 (0x68, _, RegSize::Byte, _) => {
     self.pla_m8();
     self.pc += 1;
 }
 (0x68, _, RegSize::TwoBytes, _) => {
     self.pla_m16();
-    self.pc += 1;
-}
-(0x68, CpuMode::Emulation, ..) => {
-    self.pla_e();
     self.pc += 1;
 }
 
@@ -1183,7 +1173,7 @@
 (0x69, _, RegSize::TwoBytes, _) => {
     let addr = self.immediate16();
     self.adc_m16(addr);
-    self.pc += 3;
+    self.pc += 2;
 }
 
 // ror, acc
@@ -1197,20 +1187,17 @@
 }
 
 // rtl, imp
-(0x6B, CpuMode::Native, ..) => {
-    self.rtl_n();
-    self.pc += 1;
-}
 (0x6B, CpuMode::Emulation, ..) => {
     self.rtl_e();
-    self.pc += 1;
+}
+(0x6B, CpuMode::Native, ..) => {
+    self.rtl_n();
 }
 
 // jmp, (abs)
 (0x6C, ..) => {
-    let addr = self.absolute_indirect8();
+    let addr = self.absolute_indirect();
     self.jmp_all(addr);
-    self.pc += 3;
 }
 
 // adc, abs
@@ -1251,9 +1238,9 @@
 
 // bvs, rel8
 (0x70, ..) => {
+    self.pc += 2;
     let addr = self.relative8();
     self.bvs_all(addr);
-    self.pc += 2;
 }
 
 // adc, (dir),Y
@@ -1359,16 +1346,16 @@
 }
 
 // ply, imp
+(0x7A, CpuMode::Emulation, ..) => {
+    self.ply_e();
+    self.pc += 1;
+}
 (0x7A, _, _, RegSize::Byte) => {
     self.ply_x8();
     self.pc += 1;
 }
 (0x7A, _, _, RegSize::TwoBytes) => {
     self.ply_x16();
-    self.pc += 1;
-}
-(0x7A, CpuMode::Emulation, ..) => {
-    self.ply_e();
     self.pc += 1;
 }
 
@@ -1382,7 +1369,6 @@
 (0x7C, ..) => {
     let addr = self.absolute_x_indirect8();
     self.jmp_all(addr);
-    self.pc += 3;
 }
 
 // adc, abs,X
@@ -1423,9 +1409,9 @@
 
 // bra, rel8
 (0x80, ..) => {
+    self.pc += 2;
     let addr = self.relative8();
     self.bra_all(addr);
-    self.pc += 2;
 }
 
 // sta, (dir,X)
@@ -1442,9 +1428,9 @@
 
 // bra, rel16
 (0x82, ..) => {
+    self.pc += 3;
     let addr = self.relative16();
     self.bra_all(addr);
-    self.pc += 3;
 }
 
 // sta, stk,S
@@ -1526,7 +1512,7 @@
 (0x89, _, RegSize::TwoBytes, _) => {
     let addr = self.immediate16();
     self.bit_m16(addr);
-    self.pc += 3;
+    self.pc += 2;
 }
 
 // txa, imp
@@ -1540,12 +1526,12 @@
 }
 
 // phb, imp
-(0x8B, CpuMode::Native, ..) => {
-    self.phb_n();
-    self.pc += 1;
-}
 (0x8B, CpuMode::Emulation, ..) => {
     self.phb_e();
+    self.pc += 1;
+}
+(0x8B, CpuMode::Native, ..) => {
+    self.phb_n();
     self.pc += 1;
 }
 
@@ -1599,9 +1585,9 @@
 
 // bcc, rel8
 (0x90, ..) => {
+    self.pc += 2;
     let addr = self.relative8();
     self.bcc_all(addr);
-    self.pc += 2;
 }
 
 // sta, (dir),Y
@@ -1711,12 +1697,12 @@
 }
 
 // txs, imp
-(0x9A, CpuMode::Native, ..) => {
-    self.txs_n();
-    self.pc += 1;
-}
 (0x9A, CpuMode::Emulation, ..) => {
     self.txs_e();
+    self.pc += 1;
+}
+(0x9A, CpuMode::Native, ..) => {
+    self.txs_n();
     self.pc += 1;
 }
 
@@ -1787,7 +1773,7 @@
 (0xA0, _, _, RegSize::TwoBytes) => {
     let addr = self.immediate16();
     self.ldy_x16(addr);
-    self.pc += 3;
+    self.pc += 2;
 }
 
 // lda, (dir,X)
@@ -1811,7 +1797,7 @@
 (0xA2, _, _, RegSize::TwoBytes) => {
     let addr = self.immediate16();
     self.ldx_x16(addr);
-    self.pc += 3;
+    self.pc += 2;
 }
 
 // lda, stk,S
@@ -1893,7 +1879,7 @@
 (0xA9, _, RegSize::TwoBytes, _) => {
     let addr = self.immediate16();
     self.lda_m16(addr);
-    self.pc += 3;
+    self.pc += 2;
 }
 
 // tax, imp
@@ -1907,12 +1893,12 @@
 }
 
 // plb, imp
-(0xAB, CpuMode::Native, ..) => {
-    self.plb_n();
-    self.pc += 1;
-}
 (0xAB, CpuMode::Emulation, ..) => {
     self.plb_e();
+    self.pc += 1;
+}
+(0xAB, CpuMode::Native, ..) => {
+    self.plb_n();
     self.pc += 1;
 }
 
@@ -1966,9 +1952,9 @@
 
 // bcs, rel8
 (0xB0, ..) => {
+    self.pc += 2;
     let addr = self.relative8();
     self.bcs_all(addr);
-    self.pc += 2;
 }
 
 // lda, (dir),Y
@@ -2074,16 +2060,16 @@
 }
 
 // tsx, imp
+(0xBA, CpuMode::Emulation, ..) => {
+    self.tsx_e();
+    self.pc += 1;
+}
 (0xBA, _, _, RegSize::Byte) => {
     self.tsx_x8();
     self.pc += 1;
 }
 (0xBA, _, _, RegSize::TwoBytes) => {
     self.tsx_x16();
-    self.pc += 1;
-}
-(0xBA, CpuMode::Emulation, ..) => {
-    self.tsx_e();
     self.pc += 1;
 }
 
@@ -2154,7 +2140,7 @@
 (0xC0, _, _, RegSize::TwoBytes) => {
     let addr = self.immediate16();
     self.cpy_x16(addr);
-    self.pc += 3;
+    self.pc += 2;
 }
 
 // cmp, (dir,X)
@@ -2170,14 +2156,14 @@
 }
 
 // rep, imm
-(0xC2, CpuMode::Native, ..) => {
-    let addr = self.immediate8();
-    self.rep_n(addr);
-    self.pc += 2;
-}
 (0xC2, CpuMode::Emulation, ..) => {
     let addr = self.immediate8();
     self.rep_e(addr);
+    self.pc += 2;
+}
+(0xC2, CpuMode::Native, ..) => {
+    let addr = self.immediate8();
+    self.rep_n(addr);
     self.pc += 2;
 }
 
@@ -2260,7 +2246,7 @@
 (0xC9, _, RegSize::TwoBytes, _) => {
     let addr = self.immediate16();
     self.cmp_m16(addr);
-    self.pc += 3;
+    self.pc += 2;
 }
 
 // dex, imp
@@ -2329,9 +2315,9 @@
 
 // bne, rel8
 (0xD0, ..) => {
+    self.pc += 2;
     let addr = self.relative8();
     self.bne_all(addr);
-    self.pc += 2;
 }
 
 // cmp, (dir),Y
@@ -2371,14 +2357,14 @@
 }
 
 // pex, dir
-(0xD4, CpuMode::Native, ..) => {
-    let addr = self.direct8();
-    self.pex_n(addr);
-    self.pc += 2;
-}
 (0xD4, CpuMode::Emulation, ..) => {
     let addr = self.direct8();
     self.pex_e(addr);
+    self.pc += 2;
+}
+(0xD4, CpuMode::Native, ..) => {
+    let addr = self.direct8();
+    self.pex_n(addr);
     self.pc += 2;
 }
 
@@ -2437,16 +2423,16 @@
 }
 
 // phx, imp
+(0xDA, CpuMode::Emulation, ..) => {
+    self.phx_e();
+    self.pc += 1;
+}
 (0xDA, _, _, RegSize::Byte) => {
     self.phx_x8();
     self.pc += 1;
 }
 (0xDA, _, _, RegSize::TwoBytes) => {
     self.phx_x16();
-    self.pc += 1;
-}
-(0xDA, CpuMode::Emulation, ..) => {
-    self.phx_e();
     self.pc += 1;
 }
 
@@ -2458,9 +2444,8 @@
 
 // jmp, [abs]
 (0xDC, ..) => {
-    let addr = self.absolute_indirect_long8();
+    let addr = self.absolute_indirect_long();
     self.jmp_all(addr);
-    self.pc += 3;
 }
 
 // cmp, abs,X
@@ -2508,7 +2493,7 @@
 (0xE0, _, _, RegSize::TwoBytes) => {
     let addr = self.immediate16();
     self.cpx_x16(addr);
-    self.pc += 3;
+    self.pc += 2;
 }
 
 // sbc, (dir,X)
@@ -2609,7 +2594,7 @@
 (0xE9, _, RegSize::TwoBytes, _) => {
     let addr = self.immediate16();
     self.sbc_m16(addr);
-    self.pc += 3;
+    self.pc += 2;
 }
 
 // nop, imp
@@ -2678,9 +2663,9 @@
 
 // beq, rel8
 (0xF0, ..) => {
+    self.pc += 2;
     let addr = self.relative8();
     self.beq_all(addr);
-    self.pc += 2;
 }
 
 // sbc, (dir),Y
@@ -2720,14 +2705,14 @@
 }
 
 // pex, imm
-(0xF4, CpuMode::Native, ..) => {
-    let addr = self.immediate8();
-    self.pex_n(addr);
-    self.pc += 3;
-}
 (0xF4, CpuMode::Emulation, ..) => {
     let addr = self.immediate8();
     self.pex_e(addr);
+    self.pc += 3;
+}
+(0xF4, CpuMode::Native, ..) => {
+    let addr = self.immediate8();
+    self.pex_n(addr);
     self.pc += 3;
 }
 
@@ -2786,16 +2771,16 @@
 }
 
 // plx, imp
+(0xFA, CpuMode::Emulation, ..) => {
+    self.plx_e();
+    self.pc += 1;
+}
 (0xFA, _, _, RegSize::Byte) => {
     self.plx_x8();
     self.pc += 1;
 }
 (0xFA, _, _, RegSize::TwoBytes) => {
     self.plx_x16();
-    self.pc += 1;
-}
-(0xFA, CpuMode::Emulation, ..) => {
-    self.plx_e();
     self.pc += 1;
 }
 
@@ -2806,15 +2791,13 @@
 }
 
 // jsr, (abs,X)
-(0xFC, CpuMode::Native, ..) => {
-    let addr = self.absolute_x_indirect8();
-    self.jsr_n(addr);
-    self.pc += 3;
-}
 (0xFC, CpuMode::Emulation, ..) => {
     let addr = self.absolute_x_indirect8();
     self.jsr_e(addr);
-    self.pc += 3;
+}
+(0xFC, CpuMode::Native, ..) => {
+    let addr = self.absolute_x_indirect8();
+    self.jsr_n(addr);
 }
 
 // sbc, abs,X
