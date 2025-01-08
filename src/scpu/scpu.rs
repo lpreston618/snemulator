@@ -179,7 +179,7 @@ impl Cpu65c816 {
             rom_mirror: 0,
             has_sram: false,
 
-            debug_nmi: 0x42,
+            debug_nmi: 0xc2, // for testing porpuses
         }
     }
 
@@ -271,11 +271,6 @@ impl Cpu65c816 {
                     // NOTE: This read is only for cpu debugging purposes, and
                     // will be removed later.
                     (0x00, 0x4210) | (0x80, 0x4210) => {
-                        if self.debug_nmi == 0x42 {
-                            self.debug_nmi = 0xc2;
-                        } else if self.debug_nmi == 0xc2 {
-                            self.debug_nmi = 0x42
-                        }
                         data = self.debug_nmi;
                         clocks = Cpu65c816::ONE_CYCLE;
                     }
@@ -896,11 +891,6 @@ impl Cpu65c816 {
 
     fn relative8(&mut self) -> u32 {
         let offset = (self.read(self.immediate8()) as i8) as u16;
-        println!(
-            "{:x}, {:x}",
-            offset,
-            ((self.pc + offset) as u32).with_bank(self.prg_bank)
-        );
         ((self.pc + offset + 2) as u32).with_bank(self.prg_bank)
     }
     fn relative16(&mut self) -> u32 {
@@ -971,10 +961,10 @@ impl Cpu65c816 {
 
             let mut carry = self.is_flag_set(Flag::FlagC);
 
-            o_place = bcd_add_digit(self.get_acc_lo(), data & 0x0F, &mut carry);
+            o_place = bcd_add_digit(self.get_acc_lo() & 0x0F, data & 0x0F, &mut carry);
             t_place = bcd_add_digit(
-                (self.get_acc_lo() >> 4) & 0x0F,
-                (data >> 4) & 0x0F,
+                self.get_acc_lo() >> 4,
+                data >> 4,
                 &mut carry,
             );
 
@@ -985,16 +975,16 @@ impl Cpu65c816 {
             result = self.get_acc_lo() + data + bool2byte!(self.is_flag_set(Flag::FlagC));
 
             self.set_flag_to_bool(Flag::FlagC, result < self.get_acc_lo());
+            self.set_flag_to_bool(
+                Flag::FlagV,
+                (!(self.get_acc_lo() ^ data)) & (data ^ result) & 0x80 != 0,
+            );
         }
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
-        self.set_flag_to_bool(
-            Flag::FlagV,
-            (!(self.get_acc_lo() ^ data)) & (data ^ result) & 0x80 != 0,
-        );
 
-        self.acc = result as u16;
+        self.set_acc_lo(result);
     }
 
     fn adc_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
@@ -1011,10 +1001,10 @@ impl Cpu65c816 {
 
             let mut carry = self.is_flag_set(Flag::FlagC);
 
-            o_place = bcd_add_digit(self.get_acc_lo(), (data & 0x0F) as u8, &mut carry) as u16;
+            o_place = bcd_add_digit(self.get_acc_lo() & 0x0F, (data & 0x0F) as u8, &mut carry) as u16;
             t_place = bcd_add_digit(
-                (self.get_acc_lo() >> 4) & 0x0F,
-                ((data >> 4) & 0x0F) as u8,
+                self.get_acc_lo() >> 4,
+                (data as u8) >> 4,
                 &mut carry,
             ) as u16;
             h_place = bcd_add_digit(
@@ -1023,8 +1013,8 @@ impl Cpu65c816 {
                 &mut carry,
             ) as u16;
             th_place = bcd_add_digit(
-                (self.get_acc_hi() >> 4) & 0x0F,
-                ((data >> 12) & 0x0F) as u8,
+                self.get_acc_hi() >> 4,
+                (data >> 12) as u8,
                 &mut carry,
             ) as u16;
 
@@ -1035,14 +1025,14 @@ impl Cpu65c816 {
             result = self.acc + data + bool2byte!(self.is_flag_set(Flag::FlagC));
 
             self.set_flag_to_bool(Flag::FlagC, result < self.acc);
+            self.set_flag_to_bool(
+                Flag::FlagV,
+                (!(self.acc ^ data)) & (data ^ result) & 0x8000 != 0,
+            );
         }
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
-        self.set_flag_to_bool(
-            Flag::FlagV,
-            (!(self.acc ^ data)) & (data ^ result) & 0x8000 != 0,
-        );
 
         self.acc = result;
     }
@@ -1129,16 +1119,20 @@ impl Cpu65c816 {
     }
 
     fn bit_m8(&mut self, address: u32) {
-        let result = self.get_acc_lo() & self.read(address);
+        let data = self.read(address);
+        let result = self.get_acc_lo() & data;
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, data & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagV, data & 0x40 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
     fn bit_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
-        let result = self.acc & self.read16(address_lo, address_hi);
+        let data = self.read16(address_lo, address_hi);
+        let result = self.acc & data;
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, data & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagV, data & 0x4000 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
@@ -1464,7 +1458,7 @@ impl Cpu65c816 {
         self.set_acc_lo(data);
 
         self.set_flag_to_bool(Flag::FlagN, self.acc & 0x80 != 0);
-        self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.get_acc_lo() == 0);
     }
     fn lda_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         self.acc = self.read16(address_lo, address_hi);
@@ -1474,8 +1468,7 @@ impl Cpu65c816 {
     }
 
     fn ldx_x8(&mut self, address: u32) {
-        let data = self.read(address);
-        self.set_x_lo(data);
+        self.x = self.read(address) as u16;
 
         self.set_flag_to_bool(Flag::FlagN, self.x & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
@@ -1505,7 +1498,7 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagC, self.acc & 1 != 0);
         self.clear_flag(Flag::FlagN); // 0 shifted into high bit, result always positive
 
-        self.acc >>= 1;
+        self.set_acc_lo(self.get_acc_lo() >> 1);
 
         self.set_flag_to_bool(Flag::FlagZ, self.get_acc_lo() == 0);
     }
@@ -1922,14 +1915,14 @@ impl Cpu65c816 {
             result = self.get_acc_lo() - data - bool2byte!(!self.is_flag_set(Flag::FlagC));
 
             self.set_flag_to_bool(Flag::FlagC, result > self.get_acc_lo());
+            self.set_flag_to_bool(
+                Flag::FlagV,
+                (!(self.get_acc_lo() ^ data)) & (data ^ result) & 0x80 != 0,
+            );
         }
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
-        self.set_flag_to_bool(
-            Flag::FlagV,
-            (!(self.get_acc_lo() ^ data)) & (data ^ result) & 0x80 != 0,
-        );
 
         self.set_acc_lo(result);
     }
@@ -1970,14 +1963,14 @@ impl Cpu65c816 {
             result = self.acc - data - bool2byte!(!self.is_flag_set(Flag::FlagC));
 
             self.set_flag_to_bool(Flag::FlagC, result > self.acc);
+            self.set_flag_to_bool(
+                Flag::FlagV,
+                (!(self.acc ^ data)) & (data ^ result) & 0x8000 != 0,
+            );
         }
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
-        self.set_flag_to_bool(
-            Flag::FlagV,
-            (!(self.acc ^ data)) & (data ^ result) & 0x8000 != 0,
-        );
 
         self.acc = result;
     }
@@ -5130,6 +5123,76 @@ mod tests {
             .next()
     }
 
+    fn cpu_status_str(cpu: &Cpu65c816) -> String {
+        let mut status_str = String::new();
+        status_str.push(if cpu.is_flag_set(Flag::FlagN) {
+            'N'
+        } else {
+            'n'
+        });
+        status_str.push(if cpu.is_flag_set(Flag::FlagV) {
+            'V'
+        } else {
+            'v'
+        });
+        if cpu.mode == CpuMode::Emulation {
+            status_str.push('1');
+            status_str.push(if cpu.is_flag_set(Flag::FlagX) {
+                'B'
+            } else {
+                'b'
+            });
+        } else {
+            status_str.push(if cpu.is_flag_set(Flag::FlagM) {
+                'M'
+            } else {
+                'm'
+            });
+            status_str.push(if cpu.is_flag_set(Flag::FlagX) {
+                'X'
+            } else {
+                'x'
+            });
+        }
+        status_str.push(if cpu.is_flag_set(Flag::FlagD) {
+            'D'
+        } else {
+            'd'
+        });
+        status_str.push(if cpu.is_flag_set(Flag::FlagI) {
+            'I'
+        } else {
+            'i'
+        });
+        status_str.push(if cpu.is_flag_set(Flag::FlagZ) {
+            'Z'
+        } else {
+            'z'
+        });
+        status_str.push(if cpu.is_flag_set(Flag::FlagC) {
+            'C'
+        } else {
+            'c'
+        });
+
+        status_str
+    }
+
+    fn lemon_cpu_str(cpu: &Cpu65c816) -> String {
+        format!(
+            "{:02x}{:04x} A:{:04x} X:{:04x} Y:{:04x} S:{:04x} D:{:04x} DB:{:02x} {} ",
+            cpu.prg_bank,
+            cpu.pc,
+            cpu.acc,
+            cpu.x,
+            cpu.y,
+            cpu.stk_ptr,
+            cpu.direct_page,
+            cpu.data_bank,
+            cpu_status_str(cpu)
+        )
+    }
+
     const INSTR_NAMES: [&str; 256] = [
         "BRK", "ORA", "COP", "ORA", "TSB", "ORA", "ASL", "ORA", "PHP", "ORA", "ASL", "PHD", "TSB",
         "ORA", "ASL", "ORA", "BPL", "ORA", "ORA", "ORA", "TRB", "ORA", "ASL", "ORA", "CLC", "ORA",
@@ -5201,12 +5264,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_lemon_cpu_adc() {
-        let test_path = Path::new("tests/lemons/CPUADC.sfc");
+    fn run_lemon_test(test_name: &str) {
+        let test_path_str = format!("tests/lemons/CPUTest/{test_name}.sfc");
+        let test_path = Path::new(&test_path_str);
         let cart = Cartridge::from_path_with_mode(test_path, MappingMode::LoROM).unwrap();
 
-        let log_path = Path::new("tests/lemons/CPUADC-trace_compare.log");
+        let log_path_str = format!("tests/lemons/CPUTest/{test_name}-trace_compare.log");
+        let log_path = Path::new(&log_path_str);
         let log_lines: Vec<String> = std::fs::read_to_string(log_path)
             .unwrap()
             .lines()
@@ -5219,91 +5283,41 @@ mod tests {
         cpu.stk_ptr = 0x1ff;
         cpu.status = 0x34;
 
+        cpu.rom_mirror = cpu.rom.len() - 1;
+
         cpu.pc = 0x8000;
 
-        for line in log_lines.iter() {
-            let mut status_str = String::new();
-            status_str.push(if cpu.is_flag_set(Flag::FlagN) {
-                'N'
-            } else {
-                'n'
-            });
-            status_str.push(if cpu.is_flag_set(Flag::FlagV) {
-                'V'
-            } else {
-                'v'
-            });
-            if cpu.mode == CpuMode::Emulation {
-                status_str.push('1');
-                status_str.push(if cpu.is_flag_set(Flag::FlagX) {
-                    'B'
+        for (i, line) in log_lines.iter().enumerate() {
+            let opcode = cpu.read_prg();
+            let (addr_lo, addr_hi) = cpu.immediate16();
+            let val1 = cpu.read(addr_lo);
+            let val2 = cpu.read(addr_hi);
+
+            // Quick hack for running this test
+            if opcode == 0x2C && val1 == 0x10 && val2 == 0x42 {
+                cpu.debug_nmi = if log_lines[i+1].as_bytes()[48] == b'N' {
+                    0xc2
                 } else {
-                    'b'
-                });
-            } else {
-                status_str.push(if cpu.is_flag_set(Flag::FlagM) {
-                    'M'
-                } else {
-                    'm'
-                });
-                status_str.push(if cpu.is_flag_set(Flag::FlagX) {
-                    'X'
-                } else {
-                    'x'
-                });
+                    0x42
+                }
             }
-            status_str.push(if cpu.is_flag_set(Flag::FlagD) {
-                'D'
-            } else {
-                'd'
-            });
-            status_str.push(if cpu.is_flag_set(Flag::FlagI) {
-                'I'
-            } else {
-                'i'
-            });
-            status_str.push(if cpu.is_flag_set(Flag::FlagZ) {
-                'Z'
-            } else {
-                'z'
-            });
-            status_str.push(if cpu.is_flag_set(Flag::FlagC) {
-                'C'
-            } else {
-                'c'
-            });
 
-            let our_str = format!(
-                "{:02x}{:04x} A:{:04x} X:{:04x} Y:{:04x} S:{:04x} D:{:04x} DB:{:02x} {} ",
-                cpu.prg_bank,
-                cpu.pc,
-                cpu.acc,
-                cpu.x,
-                cpu.y,
-                cpu.stk_ptr,
-                cpu.direct_page,
-                cpu.data_bank,
-                status_str
-            );
+            println!("PRG BANK: 0x{:02X}, PC: 0x{:04X}, INSTR: {} (0x{:02X}), IMM16: 0x{:02X} 0x{:02X}, IDX: {:?}, ACC: {:?}, X: 0x{:04X}, Y: 0x{:04X}, A: 0x{:04X}, STATUS: {}", cpu.prg_bank, cpu.pc, INSTR_NAMES[opcode as usize], opcode, val1, val2, cpu.idx_size(), cpu.acc_size(), cpu.x, cpu.y, cpu.acc, cpu_status_str(&cpu));
 
-            // println!("{our_str}");
-
-            let opcode = cpu.read_prg();
-            let (addr_lo, addr_hi) = cpu.immediate16();
-            let val1 = cpu.read(addr_lo);
-            let val2 = cpu.read(addr_hi);
-            println!("PRG BANK: 0x{:02X}, PC: 0x{:04X}, INSTR: {} (0x{:02X}), IMM16: 0x{:02X} 0x{:02X}, IDX SIZE: {:?}, ACC SIZE: {:?}, X: 0x{:04X}, Y: 0x{:04X}, A: 0x{:04X}", cpu.prg_bank, cpu.pc, INSTR_NAMES[opcode as usize], opcode, val1, val2, cpu.idx_size(), cpu.acc_size(), cpu.x, cpu.y, cpu.acc);
-
-            let opcode = cpu.read_prg();
-            let (addr_lo, addr_hi) = cpu.immediate16();
-            let val1 = cpu.read(addr_lo);
-            let val2 = cpu.read(addr_hi);
+            assert_eq!(*line, lemon_cpu_str(&cpu));
+            
             cpu.exec_instr();
-
-            assert_eq!(*line, our_str);
         }
+    }
 
-        // hexdump(&cpu.rom[..]);
+    #[test]
+    fn test_lemon_cpu_adc() {
+        run_lemon_test("CPUADC");
+    }
+
+    #[test]
+    fn test_lemon_cpu_and() {
+        run_lemon_test("CPUAND");
     }
 }
 
