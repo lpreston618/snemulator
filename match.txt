@@ -111,7 +111,7 @@
 (0x09, _, RegSize::TwoBytes, _) => {
     let addr = self.immediate16();
     self.ora_m16(addr);
-    self.pc += 2;
+    self.pc += 3;
 }
 
 // asl, acc
@@ -184,8 +184,8 @@
 
 // bpl, rel8
 (0x10, ..) => {
-    self.pc += 2;
     let addr = self.relative8();
+    self.pc += 2;
     self.bpl_all(addr);
 }
 
@@ -470,7 +470,7 @@
 (0x29, _, RegSize::TwoBytes, _) => {
     let addr = self.immediate16();
     self.and_m16(addr);
-    self.pc += 2;
+    self.pc += 3;
 }
 
 // rol, acc
@@ -543,8 +543,8 @@
 
 // bmi, rel8
 (0x30, ..) => {
-    self.pc += 2;
     let addr = self.relative8();
+    self.pc += 2;
     self.bmi_all(addr);
 }
 
@@ -827,7 +827,7 @@
 (0x49, _, RegSize::TwoBytes, _) => {
     let addr = self.immediate16();
     self.eor_m16(addr);
-    self.pc += 2;
+    self.pc += 3;
 }
 
 // lsr, acc
@@ -894,8 +894,8 @@
 
 // bvc, rel8
 (0x50, ..) => {
-    self.pc += 2;
     let addr = self.relative8();
+    self.pc += 2;
     self.bvc_all(addr);
 }
 
@@ -1173,7 +1173,7 @@
 (0x69, _, RegSize::TwoBytes, _) => {
     let addr = self.immediate16();
     self.adc_m16(addr);
-    self.pc += 2;
+    self.pc += 3;
 }
 
 // ror, acc
@@ -1238,8 +1238,8 @@
 
 // bvs, rel8
 (0x70, ..) => {
-    self.pc += 2;
     let addr = self.relative8();
+    self.pc += 2;
     self.bvs_all(addr);
 }
 
@@ -1409,8 +1409,8 @@
 
 // bra, rel8
 (0x80, ..) => {
-    self.pc += 2;
     let addr = self.relative8();
+    self.pc += 2;
     self.bra_all(addr);
 }
 
@@ -1428,8 +1428,8 @@
 
 // bra, rel16
 (0x82, ..) => {
-    self.pc += 3;
     let addr = self.relative16();
+    self.pc += 3;
     self.bra_all(addr);
 }
 
@@ -1512,7 +1512,7 @@
 (0x89, _, RegSize::TwoBytes, _) => {
     let addr = self.immediate16();
     self.bit_m16(addr);
-    self.pc += 2;
+    self.pc += 3;
 }
 
 // txa, imp
@@ -1585,8 +1585,8 @@
 
 // bcc, rel8
 (0x90, ..) => {
-    self.pc += 2;
     let addr = self.relative8();
+    self.pc += 2;
     self.bcc_all(addr);
 }
 
@@ -1773,7 +1773,7 @@
 (0xA0, _, _, RegSize::TwoBytes) => {
     let addr = self.immediate16();
     self.ldy_x16(addr);
-    self.pc += 2;
+    self.pc += 3;
 }
 
 // lda, (dir,X)
@@ -1797,7 +1797,7 @@
 (0xA2, _, _, RegSize::TwoBytes) => {
     let addr = self.immediate16();
     self.ldx_x16(addr);
-    self.pc += 2;
+    self.pc += 3;
 }
 
 // lda, stk,S
@@ -1879,7 +1879,7 @@
 (0xA9, _, RegSize::TwoBytes, _) => {
     let addr = self.immediate16();
     self.lda_m16(addr);
-    self.pc += 2;
+    self.pc += 3;
 }
 
 // tax, imp
@@ -1952,8 +1952,8 @@
 
 // bcs, rel8
 (0xB0, ..) => {
-    self.pc += 2;
     let addr = self.relative8();
+    self.pc += 2;
     self.bcs_all(addr);
 }
 
@@ -2140,7 +2140,7 @@
 (0xC0, _, _, RegSize::TwoBytes) => {
     let addr = self.immediate16();
     self.cpy_x16(addr);
-    self.pc += 2;
+    self.pc += 3;
 }
 
 // cmp, (dir,X)
@@ -2246,7 +2246,7 @@
 (0xC9, _, RegSize::TwoBytes, _) => {
     let addr = self.immediate16();
     self.cmp_m16(addr);
-    self.pc += 2;
+    self.pc += 3;
 }
 
 // dex, imp
@@ -2315,8 +2315,8 @@
 
 // bne, rel8
 (0xD0, ..) => {
-    self.pc += 2;
     let addr = self.relative8();
+    self.pc += 2;
     self.bne_all(addr);
 }
 
@@ -2493,7 +2493,7 @@
 (0xE0, _, _, RegSize::TwoBytes) => {
     let addr = self.immediate16();
     self.cpx_x16(addr);
-    self.pc += 2;
+    self.pc += 3;
 }
 
 // sbc, (dir,X)
@@ -2594,7 +2594,7 @@
 (0xE9, _, RegSize::TwoBytes, _) => {
     let addr = self.immediate16();
     self.sbc_m16(addr);
-    self.pc += 2;
+    self.pc += 3;
 }
 
 // nop, imp
@@ -2663,8 +2663,8 @@
 
 // beq, rel8
 (0xF0, ..) => {
-    self.pc += 2;
     let addr = self.relative8();
+    self.pc += 2;
     self.beq_all(addr);
 }
 

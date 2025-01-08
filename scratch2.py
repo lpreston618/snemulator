@@ -70,7 +70,6 @@ for opcode_line in opcodes:
     instr_len = int(opcode_data[3][0])
     instr_len_m_diff = "-m" in opcode_data[3]
     instr_len_x_diff = "-x" in opcode_data[3]
-    instr_len_str = str(instr_len)
 
     func_headers = []
     for header in headers:
@@ -104,24 +103,26 @@ for opcode_line in opcodes:
         modes.insert(0, "e")
 
     for mode in modes:
-        case_str += mode_case_map[mode] + " => {\n"
-
-        addr_mode_func = addr_mode_map[addr_mode]
-
-        if addr_mode != "imp" and addr_mode != "acc":
-            if is_branch_instr(instr_name):
-                case_str += f"    self.pc += {instr_len_str};\n"
-            case_str += f"    let addr = {addr_mode_func};\n"
-            case_str += f"    self.{instr_name}_{mode}(addr);\n"
-        else:
-            case_str += f"    self.{instr_name}_{mode}();\n"
-        
+        instr_len_str = str(instr_len)
         if instr_len_m_diff:
             if mode == "m8" or mode == "acc_m8" or mode == "mem_m8":
                 instr_len_str = str(instr_len - 1)
         elif instr_len_x_diff:
             if mode == "x8":
                 instr_len_str = str(instr_len - 1)
+
+        case_str += mode_case_map[mode] + " => {\n"
+
+        addr_mode_func = addr_mode_map[addr_mode]
+
+        if addr_mode != "imp" and addr_mode != "acc":
+            case_str += f"    let addr = {addr_mode_func};\n"
+            if is_branch_instr(instr_name):
+                case_str += f"    self.pc += {instr_len_str};\n"
+            case_str += f"    self.{instr_name}_{mode}(addr);\n"
+        else:
+            case_str += f"    self.{instr_name}_{mode}();\n"
+        
 
         if not is_jump_instr(instr_name) and not is_branch_instr(instr_name) and not is_return_instr(instr_name):
             case_str += f"    self.pc += {instr_len_str};\n"
