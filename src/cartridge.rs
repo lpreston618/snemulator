@@ -102,14 +102,18 @@ impl Cartridge {
 
         let mut cart_rom: Vec<u8> = rom_file.bytes().map(|b| b.unwrap()).collect();
 
-        println!("ROM LEN: {}", cart_rom.len());
-
         // Ignore optional 512 byte header
         if cart_rom.len() % 1024 == 512 {
             cart_rom.drain(0..512);
         }
 
+        println!("ROM LEN BEFORE PAD: 0x{:x}", cart_rom.len());
+
         let cart_rom = pad_rom(cart_rom)?;
+
+        println!("PADDED ROM LEN: 0x{:x}", cart_rom.len());
+
+        println!("CHECKSUM: 0x{:x}", Self::compute_checksum(&cart_rom));
 
         let header_start = Cartridge::find_header(&cart_rom)?;
         let header_end = header_start + 0x40 as usize;
@@ -259,7 +263,7 @@ fn pad_rom(rom: Vec<u8>) -> Result<Vec<u8>, String> {
         }
         _ => {
             let bitwidth = rom.len().ilog2() as usize;
-            let larger_size = (1usize << bitwidth);
+            let larger_size = 1usize << bitwidth;
             let smaller_size = rom.len() & (larger_size - 1);
             let smaller_pow2_size = smaller_size.next_power_of_two(); // WTH rust just has this?
             let repeat_count = larger_size / smaller_pow2_size;

@@ -1089,7 +1089,7 @@ impl Cpu65c816 {
         let data = self.read16(address_lo, address_hi);
         let result = data << 1;
 
-        self.set_flag_to_bool(Flag::FlagC, data & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagC, data & 0x8000 != 0);
 
         self.write16(address_lo, address_hi, result);
 
@@ -1126,7 +1126,6 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagV, data & 0x40 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
-
     fn bit_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let data = self.read16(address_lo, address_hi);
         let result = self.acc & data;
@@ -1135,6 +1134,19 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagV, data & 0x4000 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
+    fn bit_imm_m8(&mut self, address: u32) {
+        let data = self.read(address);
+        let result = self.get_acc_lo() & data;
+
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+    }
+    fn bit_imm_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
+        let data = self.read16(address_lo, address_hi);
+        let result = self.acc & data;
+
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+    }
+
 
     fn bmi_all(&mut self, address: u32) {
         if self.is_flag_set(Flag::FlagN) {
@@ -1192,7 +1204,7 @@ impl Cpu65c816 {
     }
 
     fn bvs_all(&mut self, address: u32) {
-        if !self.is_flag_set(Flag::FlagV) {
+        if self.is_flag_set(Flag::FlagV) {
             self.pc = address.bank_addr();
             self.branch_taken = true;
         }
@@ -2071,31 +2083,35 @@ impl Cpu65c816 {
     }
 
     fn trb_m8(&mut self, address: u32) {
-        let result = self.read(address) & (!self.get_acc_lo());
+        let data = self.read(address);
+        let result = data & self.get_acc_lo();
 
-        self.write(address, result);
+        self.write(address, data & (!self.get_acc_lo()));
 
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
     fn trb_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
-        let result = self.read16(address_lo, address_hi) & (!self.acc);
+        let data = self.read16(address_lo, address_hi);
+        let result = data & self.acc;
 
-        self.write16(address_lo, address_hi, result);
+        self.write16(address_lo, address_hi, data & (!self.acc));
 
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
     fn tsb_m8(&mut self, address: u32) {
-        let result = self.read(address) | self.get_acc_lo();
+        let data = self.read(address);
+        let result = data & self.get_acc_lo();
 
-        self.write(address, result);
+        self.write(address, data | self.get_acc_lo());
 
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
     fn tsb_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
-        let result = self.read16(address_lo, address_hi) | self.acc;
+        let data = self.read16(address_lo, address_hi);
+        let result = data & self.acc;
 
-        self.write16(address_lo, address_hi, result);
+        self.write16(address_lo, address_hi, data | self.acc);
 
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
@@ -2201,7 +2217,9 @@ impl Cpu65c816 {
         self.awaiting_interrupt = true;
     }
 
-    fn wdm_all(&mut self) {}
+    fn wdm_all(&mut self, address: u32) { 
+        let _ = self.read(address);
+    }
 
     fn xba_m8(&mut self) {
         self.acc = 0; // Has the effect of zeroing the accumulator in 8-bit mode (i think)
@@ -2980,7 +2998,8 @@ impl Cpu65c816 {
 
             // wdm, imm
             (0x42, ..) => {
-                self.wdm_all();
+                let addr = self.immediate8();
+                self.wdm_all(addr);
                 self.pc += 2;
             }
 
@@ -3741,12 +3760,12 @@ impl Cpu65c816 {
             // bit, imm
             (0x89, _, RegSize::Byte, _) => {
                 let addr = self.immediate8();
-                self.bit_m8(addr);
+                self.bit_imm_m8(addr);
                 self.pc += 2;
             }
             (0x89, _, RegSize::TwoBytes, _) => {
                 let addr = self.immediate16();
-                self.bit_m16(addr);
+                self.bit_imm_m16(addr);
                 self.pc += 3;
             }
 
@@ -5239,35 +5258,35 @@ mod tests {
         // }
     }
 
-    #[test]
-    fn test_cpubasic() {
-        let test_path = Path::new("tests/blarggs/test_adc_sbc/test_adc.smc");
-        let cart = Cartridge::from_path_with_mode(test_path, MappingMode::LoROM).unwrap();
+    // #[test]
+    // fn test_cpubasic() {
+    //     let test_path = Path::new("tests/blarggs/test_adc_sbc/test_adc.smc");
+    //     let cart = Cartridge::from_path(test_path).unwrap();
 
-        let mut cpu = Cpu65c816::new();
+    //     let mut cpu = Cpu65c816::new();
 
-        cpu.load_cart(&cart);
+    //     cpu.load_cart(&cart);
 
-        // cpu.reset();
-        cpu.pc = 0x8000;
+    //     // cpu.reset();
+    //     cpu.pc = 0x8000;
 
-        for _ in 0..100 {
-            let opcode = cpu.read_prg();
-            let (addr_lo, addr_hi) = cpu.immediate16();
-            let val1 = cpu.read(addr_lo);
-            let val2 = cpu.read(addr_hi);
-            println!("PRG BANK: 0x{:02X}, PC: 0x{:04X}, INSTR: {} (0x{:02X}), IMM16: 0x{:02X} 0x{:02X}, IDX SIZE: {:?}, ACC SIZE: {:?}, X: 0x{:04X}, Y: 0x{:04X}, A: 0x{:04X}", cpu.prg_bank, cpu.pc, INSTR_NAMES[opcode as usize], opcode, val1, val2, cpu.idx_size(), cpu.acc_size(), cpu.x, cpu.y, cpu.acc);
-            // let dir8 = cpu.direct8();
-            // let val3 = cpu.read(dir8);
-            // println!("    STK PTR: 0x{:04X}, DIR PAGE: 0x{:04X}, DATA BANK: 0x{:02X}, DIR8: 0x{:02X}", cpu.stk_ptr, cpu.direct_page, cpu.data_bank, val3);
-            cpu.exec_instr();
-        }
-    }
+    //     for _ in 0..100 {
+    //         let opcode = cpu.read_prg();
+    //         let (addr_lo, addr_hi) = cpu.immediate16();
+    //         let val1 = cpu.read(addr_lo);
+    //         let val2 = cpu.read(addr_hi);
+    //         println!("PRG BANK: 0x{:02X}, PC: 0x{:04X}, INSTR: {} (0x{:02X}), IMM16: 0x{:02X} 0x{:02X}, IDX SIZE: {:?}, ACC SIZE: {:?}, X: 0x{:04X}, Y: 0x{:04X}, A: 0x{:04X}", cpu.prg_bank, cpu.pc, INSTR_NAMES[opcode as usize], opcode, val1, val2, cpu.idx_size(), cpu.acc_size(), cpu.x, cpu.y, cpu.acc);
+    //         // let dir8 = cpu.direct8();
+    //         // let val3 = cpu.read(dir8);
+    //         // println!("    STK PTR: 0x{:04X}, DIR PAGE: 0x{:04X}, DATA BANK: 0x{:02X}, DIR8: 0x{:02X}", cpu.stk_ptr, cpu.direct_page, cpu.data_bank, val3);
+    //         cpu.exec_instr();
+    //     }
+    // }
 
     fn run_lemon_test(test_name: &str) {
         let test_path_str = format!("tests/lemons/CPUTest/{test_name}.sfc");
         let test_path = Path::new(&test_path_str);
-        let cart = Cartridge::from_path_with_mode(test_path, MappingMode::LoROM).unwrap();
+        let cart = Cartridge::from_path(test_path).unwrap();
 
         let log_path_str = format!("tests/lemons/CPUTest/{test_name}-trace_compare.log");
         let log_path = Path::new(&log_path_str);
@@ -5292,6 +5311,7 @@ mod tests {
             let (addr_lo, addr_hi) = cpu.immediate16();
             let val1 = cpu.read(addr_lo);
             let val2 = cpu.read(addr_hi);
+            println!("PRG BANK: 0x{:02X}, PC: 0x{:04X}, INSTR: {} (0x{:02X}), IMM16: 0x{:02X} 0x{:02X}, IDX SIZE: {:?}, ACC SIZE: {:?}, X: 0x{:04X}, Y: 0x{:04X}, A: 0x{:04X}", cpu.prg_bank, cpu.pc, INSTR_NAMES[opcode as usize], opcode, val1, val2, cpu.idx_size(), cpu.acc_size(), cpu.x, cpu.y, cpu.acc);
 
             // Quick hack for running this test
             if opcode == 0x2C && val1 == 0x10 && val2 == 0x42 {
@@ -5301,8 +5321,6 @@ mod tests {
                     0x42
                 }
             }
-
-            println!("PRG BANK: 0x{:02X}, PC: 0x{:04X}, INSTR: {} (0x{:02X}), IMM16: 0x{:02X} 0x{:02X}, IDX: {:?}, ACC: {:?}, X: 0x{:04X}, Y: 0x{:04X}, A: 0x{:04X}, STATUS: {}", cpu.prg_bank, cpu.pc, INSTR_NAMES[opcode as usize], opcode, val1, val2, cpu.idx_size(), cpu.acc_size(), cpu.x, cpu.y, cpu.acc, cpu_status_str(&cpu));
 
             assert_eq!(*line, lemon_cpu_str(&cpu));
             
@@ -5318,6 +5336,21 @@ mod tests {
     #[test]
     fn test_lemon_cpu_and() {
         run_lemon_test("CPUAND");
+    }
+
+    #[test]
+    fn test_lemon_cpu_asl() {
+        run_lemon_test("CPUASL");
+    }
+
+    #[test]
+    fn test_lemon_cpu_bit() {
+        run_lemon_test("CPUBIT");
+    }
+
+    #[test]
+    fn test_lemon_cpu_bra() {
+        run_lemon_test("CPUBRA");
     }
 }
 

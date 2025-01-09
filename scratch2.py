@@ -119,7 +119,11 @@ for opcode_line in opcodes:
             case_str += f"    let addr = {addr_mode_func};\n"
             if is_branch_instr(instr_name):
                 case_str += f"    self.pc += {instr_len_str};\n"
-            case_str += f"    self.{instr_name}_{mode}(addr);\n"
+
+            if opcode == "0x89":
+                case_str += f"    self.{instr_name}_imm_{mode}(addr);\n"
+            else:
+                case_str += f"    self.{instr_name}_{mode}(addr);\n"
         else:
             case_str += f"    self.{instr_name}_{mode}();\n"
         
