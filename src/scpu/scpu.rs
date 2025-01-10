@@ -1,5 +1,3 @@
-#!allow(dead_code)]
-
 use std::ptr;
 
 use serde::{ser::SerializeStruct, Serialize};
@@ -112,6 +110,7 @@ pub struct Cpu65c816 {
     mapping_mode: MappingMode,
     mem_sel: MemSel,
     branch_taken: bool,
+    page_crossed: bool,
     stopped: bool,
     awaiting_interrupt: bool,
     total_clocks: u64,
@@ -171,6 +170,7 @@ impl Cpu65c816 {
             mapping_mode: MappingMode::LoROM,
             mem_sel: MemSel::SlowROM,
             branch_taken: false,
+            page_crossed: false,
             stopped: false,
             awaiting_interrupt: false,
             total_clocks: 0,
@@ -672,25 +672,29 @@ impl Cpu65c816 {
     }
 
     fn absolute_x8(&mut self) -> u32 {
-        (self.absolute8() + self.x as u32) & 0xFFFFFF
+        let original_addr = self.absolute8();
+        let indexed_addr = (original_addr + self.x as u32) & 0xFFFFFF;
+
+        self.page_crossed = original_addr.page() != indexed_addr.page();
+
+        indexed_addr
     }
     fn absolute_x16(&mut self) -> (u32, u32) {
-        let (address_lo, address_hi) = self.absolute16();
-        (
-            (address_lo + self.x as u32) & 0xFFFFFF,
-            (address_hi + self.x as u32) & 0xFFFFFF,
-        )
+        let address_lo = self.absolute_x8();
+        (address_lo, (address_lo + 1) & 0xFFFFFF)
     }
 
     fn absolute_y8(&mut self) -> u32 {
-        (self.absolute8() + self.y as u32) & 0xFFFFFF
+        let original_addr = self.absolute8();
+        let indexed_addr = (original_addr + self.y as u32) & 0xFFFFFF;
+
+        self.page_crossed = original_addr.page() != indexed_addr.page();
+
+        indexed_addr
     }
     fn absolute_y16(&mut self) -> (u32, u32) {
-        let (address_lo, address_hi) = self.absolute16();
-        (
-            (address_lo + self.y as u32) & 0xFFFFFF,
-            (address_hi + self.y as u32) & 0xFFFFFF,
-        )
+        let address_lo = self.absolute_y8();
+        (address_lo, (address_lo + 1) & 0xFFFFFF)
     }
 
     fn absolute_indirect(&mut self) -> u32 {
@@ -735,10 +739,10 @@ impl Cpu65c816 {
         (self.direct_page + self.read(self.immediate8()) as u16) as u32
     }
     fn direct16(&mut self) -> (u32, u32) {
-        let data = self.read(self.immediate8()) as u16;
+        let direct = self.direct8();
         (
-            (self.direct_page + data) as u32,
-            (self.direct_page + data + 1) as u32,
+            (direct) as u32,
+            (direct + 1) as u32,
         )
     }
 
@@ -853,8 +857,16 @@ impl Cpu65c816 {
             CpuMode::Emulation => ptr_lo.with_page_addr(ptr_lo.page_addr() + 1),
         };
 
-        (u32::from_parts(self.data_bank, self.read(ptr_hi), self.read(ptr_lo)) + self.y as u32)
-            & 0xFFFFFF
+        let original_addr = u32::from_parts(
+            self.data_bank, 
+            self.read(ptr_hi), 
+            self.read(ptr_lo)
+        );
+        let indexed_addr = (original_addr + self.y as u32) & 0xFFFFFF;
+
+        self.page_crossed = original_addr.page() != indexed_addr.page();
+
+        indexed_addr
     }
     fn direct_indirect_y16(&mut self) -> (u32, u32) {
         let ptr_lo = self.direct8();
@@ -892,11 +904,16 @@ impl Cpu65c816 {
 
     fn relative8(&mut self) -> u32 {
         let offset = (self.read(self.immediate8()) as i8) as u16;
-        ((self.pc + offset + 2) as u32).with_bank(self.prg_bank)
+        let original_addr = ((self.pc + 2) as u32).with_bank(self.prg_bank);
+        let offset_addr = original_addr.with_bank_addr(original_addr.bank_addr() + offset);
+
+        self.page_crossed = original_addr.page() != offset_addr.page();
+
+        offset_addr
     }
     fn relative16(&mut self) -> u32 {
         let (offset_lo, offset_hi) = self.immediate16();
-        let offset = u16::from_le_bytes([self.read(offset_lo), self.read(offset_hi)]);
+        let offset = self.read16(offset_lo, offset_hi);
         ((self.pc + offset + 3) as u32).with_bank(self.prg_bank)
     }
 
@@ -1182,8 +1199,6 @@ impl Cpu65c816 {
         const N_BRK_VECTOR_HI: u32 = 0x00FFE7;
 
         self.pc = self.read16(N_BRK_VECTOR_LO, N_BRK_VECTOR_HI);
-
-        self.add_clocks(Cpu65c816::ONE_CYCLE * 2);
     }
     fn brk_e(&mut self) {
         self.push16_e(self.pc + 2); // push the address of the brk instruction + 2
@@ -1435,18 +1450,15 @@ impl Cpu65c816 {
 
     fn jmp_all(&mut self, address: u32) {
         self.pc = address.bank_addr();
-        self.branch_taken = true;
     }
 
     fn jsr_n(&mut self, address: u32) {
         self.push16_n(self.pc + 2); // push the address of the brk instruction + 2
         self.pc = address.bank_addr();
-        self.branch_taken = true;
     }
     fn jsr_e(&mut self, address: u32) {
         self.push16_e(self.pc + 2); // push the address of the brk instruction + 2
         self.pc = address.bank_addr();
-        self.branch_taken = true;
     }
 
     fn jsl_n(&mut self, address: u32) {
@@ -1455,8 +1467,6 @@ impl Cpu65c816 {
 
         self.pc = address.bank_addr();
         self.prg_bank = address.bank();
-
-        self.branch_taken = true;
     }
     fn jsl_e(&mut self, address: u32) {
         self.push8_e(self.prg_bank);
@@ -1464,8 +1474,6 @@ impl Cpu65c816 {
 
         self.pc = address.bank_addr();
         self.prg_bank = address.bank();
-
-        self.branch_taken = true;
     }
 
     fn lda_m8(&mut self, address: u32) {
@@ -1624,11 +1632,15 @@ impl Cpu65c816 {
         self.push16_e(data);
     }
 
-    fn per_n(&mut self, address: u32) {
-        self.push16_n(address.bank_addr());
+    fn per_n(&mut self, (address_lo, address_hi): (u32, u32)) {
+        let offset = self.read16(address_lo, address_hi);
+
+        self.push16_n(self.pc + offset + 3);
     }
-    fn per_e(&mut self, address: u32) {
-        self.push16_e(address.bank_addr());
+    fn per_e(&mut self, (address_lo, address_hi): (u32, u32)) {
+        let offset = self.read16(address_lo, address_hi);
+
+        self.push16_e(self.pc + offset + 3);
     }
 
     // fn pex_n(&mut self, address: u32) {
@@ -2270,11 +2282,9 @@ impl Cpu65c816 {
             // brk, imp
             (0x00, CpuMode::Emulation, ..) => {
                 self.brk_e();
-                // self.pc += 1;
             }
             (0x00, CpuMode::Native, ..) => {
                 self.brk_n();
-                // self.pc += 1;
             }
 
             // ora, (dir,X)
@@ -3347,14 +3357,14 @@ impl Cpu65c816 {
                 self.pc += 2;
             }
 
-            // pex, imm
+            // per, imm
             (0x62, CpuMode::Emulation, ..) => {
-                let addr = self.relative16();
+                let addr = self.immediate16();
                 self.per_e(addr);
                 self.pc += 3;
             }
             (0x62, CpuMode::Native, ..) => {
-                let addr = self.relative16();
+                let addr = self.immediate16();
                 self.per_n(addr);
                 self.pc += 3;
             }
@@ -5097,6 +5107,14 @@ impl Cpu65c816 {
                 self.pc += 4;
             }
         }
+    
+        if self.branch_taken {
+            self.add_clocks(Cpu65c816::ONE_CYCLE);
+
+            if self.page_crossed && self.mode == CpuMode::Emulation {
+                self.add_clocks(Cpu65c816::ONE_CYCLE);
+            }
+        }
     }
 }
 
@@ -5356,18 +5374,20 @@ mod tests {
     fn test_lemon_all() {
         let paths = std::fs::read_dir("./tests/lemons/CPUTest").unwrap();
 
-        for path in paths.into_iter().flat_map(|e| e) {
-            let file_name = String::from(path.file_name().to_str().unwrap());
-                 
-            if let Some(test_name) = file_name.strip_suffix(".sfc") {
-                if test_name == "CPUMSC" {
-                    println!("cpumsc [[SKIPPED - PPU Dependent]]");
-                    continue;
+        for path in paths {
+            if let Ok(path) = path {
+                let file_name = String::from(path.file_name().to_str().unwrap());
+                     
+                if let Some(test_name) = file_name.strip_suffix(".sfc") {
+                    if test_name == "CPUMSC" {
+                        println!("cpumsc [[SKIPPED - PPU Dependent]]");
+                        continue;
+                    }
+    
+                    run_lemon_test(test_name);
+                
+                    println!("{} [[PASSED]]", test_name.to_lowercase());
                 }
-
-                run_lemon_test(test_name);
-            
-                println!("{} [[PASSED]]", test_name.to_lowercase());
             }
         }
     }
