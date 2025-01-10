@@ -107,13 +107,13 @@ impl Cartridge {
             cart_rom.drain(0..512);
         }
 
-        println!("ROM LEN BEFORE PAD: 0x{:x}", cart_rom.len());
+        // println!("ROM LEN BEFORE PAD: 0x{:x}", cart_rom.len());
 
         let cart_rom = pad_rom(cart_rom)?;
 
-        println!("PADDED ROM LEN: 0x{:x}", cart_rom.len());
+        // println!("PADDED ROM LEN: 0x{:x}", cart_rom.len());
 
-        println!("CHECKSUM: 0x{:x}", Self::compute_checksum(&cart_rom));
+        // println!("CHECKSUM: 0x{:x}", Self::compute_checksum(&cart_rom));
 
         let header_start = Cartridge::find_header(&cart_rom)?;
         let header_end = header_start + 0x40 as usize;

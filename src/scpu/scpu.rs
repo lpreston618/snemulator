@@ -42,7 +42,8 @@ pub enum Flag {
     FlagM = 32, // Accumulator Size (Native mode only; 0: 16-bit, 1: 8-bit)
     FlagV = 64, // Overflow
     FlagN = 128, // Negative
-                // FLAG_B = 16, // Break (Emulation mode only, same place as X flag)
+    
+    // FlagB = FlagX, // Break (Emulation mode only, same place as X flag)
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -975,10 +976,7 @@ impl Cpu65c816 {
             result = self.get_acc_lo() + data + bool2byte!(self.is_flag_set(Flag::FlagC));
 
             self.set_flag_to_bool(Flag::FlagC, result < self.get_acc_lo());
-            self.set_flag_to_bool(
-                Flag::FlagV,
-                (!(self.get_acc_lo() ^ data)) & (data ^ result) & 0x80 != 0,
-            );
+            self.set_flag_to_bool(Flag::FlagV, !(self.get_acc_lo() ^ data) & (data ^ result) & 0x80 != 0);
         }
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
@@ -1022,13 +1020,12 @@ impl Cpu65c816 {
 
             self.set_flag_to_bool(Flag::FlagC, carry);
         } else {
-            result = self.acc + data + bool2byte!(self.is_flag_set(Flag::FlagC));
+            let temp = (self.acc as i32) + (data as i32) + bool2byte!(self.is_flag_set(Flag::FlagC));
+
+            result = temp as u16;
 
             self.set_flag_to_bool(Flag::FlagC, result < self.acc);
-            self.set_flag_to_bool(
-                Flag::FlagV,
-                (!(self.acc ^ data)) & (data ^ result) & 0x8000 != 0,
-            );
+            self.set_flag_to_bool(Flag::FlagV, !(self.acc ^ data) & (data ^ result) & 0x8000 != 0);
         }
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
@@ -1179,16 +1176,20 @@ impl Cpu65c816 {
         self.push16_n(self.pc + 2); // push the address of the brk instruction + 2
         self.push8_n(self.status);
         self.set_flag(Flag::FlagI);
+        self.clear_flag(Flag::FlagD);
 
         const N_BRK_VECTOR_LO: u32 = 0x00FFE6;
         const N_BRK_VECTOR_HI: u32 = 0x00FFE7;
 
         self.pc = self.read16(N_BRK_VECTOR_LO, N_BRK_VECTOR_HI);
+
+        self.add_clocks(Cpu65c816::ONE_CYCLE * 2);
     }
     fn brk_e(&mut self) {
-        self.push16_n(self.pc + 2); // push the address of the brk instruction + 2
-        self.push8_n(self.status);
+        self.push16_e(self.pc + 2); // push the address of the brk instruction + 2
+        self.push8_e(self.status | Flag::FlagX as u8); // Pushes status to the stack with B flag (same place as X flag) set
         self.set_flag(Flag::FlagI);
+        self.clear_flag(Flag::FlagD);
 
         const E_BRK_VECTOR_LO: u32 = 0x00FFFE;
         const E_BRK_VECTOR_HI: u32 = 0x00FFFF;
@@ -1247,9 +1248,10 @@ impl Cpu65c816 {
         let _ = self.read(address); // read is discarded here
 
         self.push8_n(self.prg_bank);
-        self.push16_n(self.pc); // push the address of the COP instruction + 2 (2 has already been added to pc)
+        self.push16_n(self.pc + 2); // push the address of the COP instruction + 2
         self.push8_n(self.status);
         self.set_flag(Flag::FlagI);
+        self.clear_flag(Flag::FlagD);
 
         const N_COP_VECTOR_LO: u32 = 0x00FFE4;
         const N_COP_VECTOR_HI: u32 = 0x00FFE5;
@@ -1259,9 +1261,10 @@ impl Cpu65c816 {
     fn cop_e(&mut self, address: u32) {
         let _ = self.read(address); // read is discarded here
 
-        self.push16_n(self.pc); // push the address of the COP instruction + 2 (2 has already been added to pc)
-        self.push8_n(self.status);
+        self.push16_e(self.pc + 2); // push the address of the COP instruction + 2
+        self.push8_e(self.status);
         self.set_flag(Flag::FlagI);
+        self.clear_flag(Flag::FlagD);
 
         const E_COP_VECTOR_LO: u32 = 0x00FFF4;
         const E_COP_VECTOR_HI: u32 = 0x00FFF5;
@@ -1610,12 +1613,30 @@ impl Cpu65c816 {
         self.acc = result;
     }
 
-    fn pex_n(&mut self, address: u32) {
+    fn pex_n(&mut self, (address_lo, address_hi): (u32, u32)) {
+        let data = self.read16(address_lo, address_hi);
+
+        self.push16_n(data);
+    }
+    fn pex_e(&mut self, (address_lo, address_hi): (u32, u32)) {
+        let data = self.read16(address_lo, address_hi);
+
+        self.push16_e(data);
+    }
+
+    fn per_n(&mut self, address: u32) {
         self.push16_n(address.bank_addr());
     }
-    fn pex_e(&mut self, address: u32) {
+    fn per_e(&mut self, address: u32) {
         self.push16_e(address.bank_addr());
     }
+
+    // fn pex_n(&mut self, address: u32) {
+    //     self.push16_n(address.bank_addr());
+    // }
+    // fn pex_e(&mut self, address: u32) {
+    //     self.push16_e(address.bank_addr());
+    // }
 
     fn pha_m8(&mut self) {
         self.push8_n(self.get_acc_lo());
@@ -1679,8 +1700,8 @@ impl Cpu65c816 {
         let data = self.pop8_n();
         self.set_acc_lo(data);
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x80 != 0);
-        self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
+        self.set_flag_to_bool(Flag::FlagN, self.get_acc_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.get_acc_lo() == 0);
     }
     fn pla_m16(&mut self) {
         self.acc = self.pop16_n();
@@ -1736,8 +1757,8 @@ impl Cpu65c816 {
         let data = self.pop8_n();
         self.set_x_lo(data);
 
-        self.set_flag_to_bool(Flag::FlagN, self.x & 0x80 != 0);
-        self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
+        self.set_flag_to_bool(Flag::FlagN, self.get_x_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.get_x_lo() == 0);
     }
     fn plx_x16(&mut self) {
         self.x = self.pop16_n();
@@ -1905,6 +1926,7 @@ impl Cpu65c816 {
 
     fn sbc_m8(&mut self, address: u32) {
         let data = self.read(address);
+        let ones_comp = !data;
         let result;
 
         if self.is_flag_set(Flag::FlagD) {
@@ -1922,24 +1944,22 @@ impl Cpu65c816 {
 
             result = (t_place << 4) | o_place;
 
-            self.set_flag_to_bool(Flag::FlagC, borrow);
+            self.set_flag_to_bool(Flag::FlagC, !borrow);
         } else {
-            result = self.get_acc_lo() - data - bool2byte!(!self.is_flag_set(Flag::FlagC));
+            result = self.get_acc_lo() + ones_comp + bool2byte!(self.is_flag_set(Flag::FlagC));
 
-            self.set_flag_to_bool(Flag::FlagC, result > self.get_acc_lo());
-            self.set_flag_to_bool(
-                Flag::FlagV,
-                (!(self.get_acc_lo() ^ data)) & (data ^ result) & 0x80 != 0,
-            );
+            self.set_flag_to_bool(Flag::FlagC, self.get_acc_lo() >= data);
         }
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagV, !(self.get_acc_lo() ^ ones_comp) & (ones_comp ^ result) & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
 
         self.set_acc_lo(result);
     }
     fn sbc_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let data = self.read16(address_lo, address_hi);
+        let ones_comp = !data;
         let result;
 
         if self.is_flag_set(Flag::FlagD) {
@@ -1970,18 +1990,15 @@ impl Cpu65c816 {
 
             result = (th_place << 12) | (h_place << 8) | (t_place << 4) | o_place;
 
-            self.set_flag_to_bool(Flag::FlagC, borrow);
+            self.set_flag_to_bool(Flag::FlagC, !borrow);
         } else {
-            result = self.acc - data - bool2byte!(!self.is_flag_set(Flag::FlagC));
+            result = self.acc + ones_comp + bool2byte!(self.is_flag_set(Flag::FlagC));
 
-            self.set_flag_to_bool(Flag::FlagC, result > self.acc);
-            self.set_flag_to_bool(
-                Flag::FlagV,
-                (!(self.acc ^ data)) & (data ^ result) & 0x8000 != 0,
-            );
+            self.set_flag_to_bool(Flag::FlagC, self.acc >= data);
         }
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagV, !(self.acc ^ ones_comp) & (ones_comp ^ result) & 0x8000 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
 
         self.acc = result;
@@ -2001,6 +2018,14 @@ impl Cpu65c816 {
 
     fn sep_all(&mut self, address: u32) {
         self.status |= self.read(address);
+
+        match self.idx_size() {
+            RegSize::Byte => {
+                self.set_x_hi(0);
+                self.set_y_hi(0);
+            }
+            _ => {}
+        }
     }
 
     fn sta_m8(&mut self, address: u32) {
@@ -2117,10 +2142,11 @@ impl Cpu65c816 {
     }
 
     fn tsc_m8(&mut self) {
-        self.acc = self.stk_ptr & 0xFF; // 8-bit mode forces acc hi to 0
+        self.set_acc_lo(self.stk_ptr as u8);
 
-        self.clear_flag(Flag::FlagN); // the value transfered is always positive
-        self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
+        self.set_flag_to_bool(Flag::FlagN, self.get_acc_lo() & 0x80 != 0);
+        // self.clear_flag(Flag::FlagN); // the value transfered is always positive
+        self.set_flag_to_bool(Flag::FlagZ, self.get_acc_lo() == 0);
     }
     fn tsc_m16(&mut self) {
         self.acc = self.stk_ptr;
@@ -2129,16 +2155,18 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
     fn tsc_e(&mut self) {
-        self.acc = self.stk_ptr & 0xFF; // Emulation mode forces self.get_acc_hi() to 0
+        self.set_acc_lo(self.stk_ptr as u8);
 
-        self.clear_flag(Flag::FlagN); // the value transfered is always positive
-        self.clear_flag(Flag::FlagZ); // the value transfered is always non-zero
+        self.set_flag_to_bool(Flag::FlagN, self.get_acc_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.get_acc_lo() == 0);
+        // self.clear_flag(Flag::FlagN); // the value transfered is always positive
+        // self.clear_flag(Flag::FlagZ); // the value transfered is always non-zero
     }
 
     fn tsx_x8(&mut self) {
-        self.x = self.stk_ptr & 0xFF; // 8-bit mode forces self.xHi to 0
+        self.x = self.stk_ptr & 0xFF;
 
-        self.clear_flag(Flag::FlagN); // the value transfered is always positive
+        self.set_flag_to_bool(Flag::FlagN, self.x & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
     }
     fn tsx_x16(&mut self) {
@@ -2146,12 +2174,6 @@ impl Cpu65c816 {
 
         self.set_flag_to_bool(Flag::FlagN, self.x & 0x8000 != 0);
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
-    }
-    fn tsx_e(&mut self) {
-        self.x = self.stk_ptr & 0xFF; // Emulation mode forces self.xHi to 0
-
-        self.clear_flag(Flag::FlagN); // the value transfered is always positive
-        self.clear_flag(Flag::FlagZ); // the value transfered is always non-zero
     }
 
     fn txa_m8(&mut self) {
@@ -2171,7 +2193,7 @@ impl Cpu65c816 {
         self.stk_ptr = self.x;
     }
     fn txs_e(&mut self) {
-        self.stk_ptr = 0x100 & (self.x & 0xFF);
+        self.stk_ptr = 0x100 | self.get_x_lo() as u16;
     }
 
     fn txy_x8(&mut self) {
@@ -2221,28 +2243,21 @@ impl Cpu65c816 {
         let _ = self.read(address);
     }
 
-    fn xba_m8(&mut self) {
-        self.acc = 0; // Has the effect of zeroing the accumulator in 8-bit mode (i think)
-    }
-    fn xba_m16(&mut self) {
+    fn xba_all(&mut self) {
         self.acc = self.acc.swap_bytes();
+
+        // Flags are always based on the low byte of the acc for this instr
+        self.set_flag_to_bool(Flag::FlagN, self.get_acc_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.get_acc_lo() == 0);
     }
 
     fn xce_all(&mut self) {
-        if self.is_flag_set(Flag::FlagC) {
-            self.set_flag_to_bool(Flag::FlagC, self.mode == CpuMode::Emulation);
-            self.mode = CpuMode::Emulation;
-
-            self.set_acc_hi(0);
-            self.set_x_hi(0);
-            self.set_y_hi(0);
-            self.set_flag(Flag::FlagM);
-            self.set_flag(Flag::FlagX);
-            self.stk_ptr = 0x100 | (self.stk_ptr & 0xFF);
-        } else {
-            self.set_flag_to_bool(Flag::FlagC, self.mode == CpuMode::Emulation);
-            self.mode = CpuMode::Native;
-        }
+        let new_mode = match self.is_flag_set(Flag::FlagC) {
+            true => CpuMode::Emulation,
+            false => CpuMode::Native,
+        };
+        self.set_flag_to_bool(Flag::FlagC, self.mode == CpuMode::Emulation);
+        self.set_mode(new_mode);
     }
 }
 
@@ -2255,11 +2270,11 @@ impl Cpu65c816 {
             // brk, imp
             (0x00, CpuMode::Emulation, ..) => {
                 self.brk_e();
-                self.pc += 1;
+                // self.pc += 1;
             }
             (0x00, CpuMode::Native, ..) => {
                 self.brk_n();
-                self.pc += 1;
+                // self.pc += 1;
             }
 
             // ora, (dir,X)
@@ -2278,12 +2293,12 @@ impl Cpu65c816 {
             (0x02, CpuMode::Emulation, ..) => {
                 let addr = self.immediate8();
                 self.cop_e(addr);
-                self.pc += 2;
+                // self.pc += 2;
             }
             (0x02, CpuMode::Native, ..) => {
                 let addr = self.immediate8();
                 self.cop_n(addr);
-                self.pc += 2;
+                // self.pc += 2;
             }
 
             // ora, stk,S
@@ -3334,13 +3349,13 @@ impl Cpu65c816 {
 
             // pex, imm
             (0x62, CpuMode::Emulation, ..) => {
-                let addr = self.immediate8();
-                self.pex_e(addr);
+                let addr = self.relative16();
+                self.per_e(addr);
                 self.pc += 3;
             }
             (0x62, CpuMode::Native, ..) => {
-                let addr = self.immediate8();
-                self.pex_n(addr);
+                let addr = self.relative16();
+                self.per_n(addr);
                 self.pc += 3;
             }
 
@@ -4314,10 +4329,6 @@ impl Cpu65c816 {
             }
 
             // tsx, imp
-            (0xBA, CpuMode::Emulation, ..) => {
-                self.tsx_e();
-                self.pc += 1;
-            }
             (0xBA, _, _, RegSize::Byte) => {
                 self.tsx_x8();
                 self.pc += 1;
@@ -4612,12 +4623,12 @@ impl Cpu65c816 {
 
             // pex, dir
             (0xD4, CpuMode::Emulation, ..) => {
-                let addr = self.direct8();
+                let addr = self.direct16();
                 self.pex_e(addr);
                 self.pc += 2;
             }
             (0xD4, CpuMode::Native, ..) => {
-                let addr = self.direct8();
+                let addr = self.direct16();
                 self.pex_n(addr);
                 self.pc += 2;
             }
@@ -4858,12 +4869,8 @@ impl Cpu65c816 {
             }
 
             // xba, imp
-            (0xEB, _, RegSize::Byte, _) => {
-                self.xba_m8();
-                self.pc += 1;
-            }
-            (0xEB, _, RegSize::TwoBytes, _) => {
-                self.xba_m16();
+            (0xEB, ..) => {
+                self.xba_all();
                 self.pc += 1;
             }
 
@@ -4960,12 +4967,12 @@ impl Cpu65c816 {
 
             // pex, imm
             (0xF4, CpuMode::Emulation, ..) => {
-                let addr = self.immediate8();
+                let addr = self.immediate16();
                 self.pex_e(addr);
                 self.pc += 3;
             }
             (0xF4, CpuMode::Native, ..) => {
-                let addr = self.immediate8();
+                let addr = self.immediate16();
                 self.pex_n(addr);
                 self.pc += 3;
             }
@@ -5306,12 +5313,28 @@ mod tests {
 
         cpu.pc = 0x8000;
 
+        cpu.wram[0] = 0xb5;
+
         for (i, line) in log_lines.iter().enumerate() {
             let opcode = cpu.read_prg();
             let (addr_lo, addr_hi) = cpu.immediate16();
             let val1 = cpu.read(addr_lo);
             let val2 = cpu.read(addr_hi);
-            println!("PRG BANK: 0x{:02X}, PC: 0x{:04X}, INSTR: {} (0x{:02X}), IMM16: 0x{:02X} 0x{:02X}, IDX SIZE: {:?}, ACC SIZE: {:?}, X: 0x{:04X}, Y: 0x{:04X}, A: 0x{:04X}", cpu.prg_bank, cpu.pc, INSTR_NAMES[opcode as usize], opcode, val1, val2, cpu.idx_size(), cpu.acc_size(), cpu.x, cpu.y, cpu.acc);
+            // let cpu_str = format!("ADDR: 0x{:02X}{:04X}, INSTR: {} (0x{:02X}), IMM16: 0x{:02X} 0x{:02X}, X: 0x{:04X}, Y: 0x{:04X}, A: 0x{:04X}, SP: {:04X}, P: {}, D: 0x{:04X}", 
+            //     cpu.prg_bank,
+            //     cpu.pc,
+            //     INSTR_NAMES[opcode as usize],
+            //     opcode,
+            //     val1,
+            //     val2,
+            //     cpu.x,
+            //     cpu.y,
+            //     cpu.acc,
+            //     cpu.stk_ptr,
+            //     cpu_status_str(&cpu),
+            //     cpu.direct_page,
+            // );
+            // println!("{}", cpu_str);
 
             // Quick hack for running this test
             if opcode == 0x2C && val1 == 0x10 && val2 == 0x42 {
@@ -5328,30 +5351,24 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_lemon_cpu_adc() {
-        run_lemon_test("CPUADC");
-    }
 
     #[test]
-    fn test_lemon_cpu_and() {
-        run_lemon_test("CPUAND");
-    }
+    fn test_lemon_all() {
+        let paths = std::fs::read_dir("./tests/lemons/CPUTest").unwrap();
 
-    #[test]
-    fn test_lemon_cpu_asl() {
-        run_lemon_test("CPUASL");
-    }
+        for path in paths.into_iter().flat_map(|e| e) {
+            let file_name = String::from(path.file_name().to_str().unwrap());
+                 
+            if let Some(test_name) = file_name.strip_suffix(".sfc") {
+                if test_name == "CPUMSC" {
+                    println!("cpumsc [[SKIPPED - PPU Dependent]]");
+                    continue;
+                }
 
-    #[test]
-    fn test_lemon_cpu_bit() {
-        run_lemon_test("CPUBIT");
-    }
-
-    #[test]
-    fn test_lemon_cpu_bra() {
-        run_lemon_test("CPUBRA");
+                run_lemon_test(test_name);
+            
+                println!("{} [[PASSED]]", test_name.to_lowercase());
+            }
+        }
     }
 }
-
-// NEXT: Implement fake HV-IRQ for testing stuff
