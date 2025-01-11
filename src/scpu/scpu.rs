@@ -121,6 +121,7 @@ pub struct Cpu65c816 {
     has_sram: bool,
 
     debug_nmi: u8,
+    debug_io_ops: usize,
 }
 
 impl Serialize for Cpu65c816 {
@@ -181,6 +182,7 @@ impl Cpu65c816 {
             has_sram: false,
 
             debug_nmi: 0xc2, // for testing porpuses
+            debug_io_ops: 0,
         }
     }
 
@@ -206,6 +208,11 @@ impl Cpu65c816 {
     }
 
     fn read(&mut self, address: u32) -> u8 {
+
+        // println!("Read from: 0x{address:06x}");
+        
+        self.debug_io_ops += 1;
+        
         let data: u8;
         let clocks: u64;
 
@@ -317,6 +324,11 @@ impl Cpu65c816 {
     }
 
     fn write(&mut self, address: u32, data: u8) {
+
+        // println!("Write to: 0x{address:06x} with data 0x{data:02x}");
+
+        self.debug_io_ops += 1;
+
         let clocks: u64;
 
         match self.mapping_mode {
@@ -2276,6 +2288,9 @@ impl Cpu65c816 {
 // Cycle Functionality
 impl Cpu65c816 {
     fn exec_instr(&mut self) {
+
+        self.debug_io_ops = 0;
+
         let opcode = self.read_prg();
 
         match (opcode, self.mode, self.acc_size(), self.idx_size()) {
@@ -5389,6 +5404,24 @@ mod tests {
                     println!("{} [[PASSED]]", test_name.to_lowercase());
                 }
             }
+        }
+    }
+
+
+    #[test]
+    fn get_io_ops() {
+        let mut cpu = Cpu65c816::new();
+
+        cpu.rom = vec![0; 0x1000];
+        cpu.mapping_mode = MappingMode::LoROM;
+
+        for i in u8::MIN..=u8::MAX {
+            cpu.pc = 0x8000;
+            cpu.rom[0] = i;
+
+            cpu.exec_instr();
+
+            println!("INSTR: {} (0x{:02X}), I/O OPS: {}", INSTR_NAMES[i as usize], i, cpu.debug_io_ops);
         }
     }
 }
