@@ -1,45 +1,32 @@
-f = open("scratch.txt", "r")
-
-instr_lines = []
-
-for line in f.readlines():
-    if len(line.strip()) == 0:
-        continue
-
-    instr_lines.append(line.strip())
-
-instr_lines.sort()
-
+f = open("opcodes3.txt", "r")
+op_lines = f.readlines()
 f.close()
 
 
-f = open("opcodes.txt", "w")
+for line in op_lines:
+    line = line.removesuffix("\n")
+    base_cycles = int(line[23])
+    modifier = line[24:]
+    end = ""
 
-ops = []
+    if "-x+x*p" in modifier:
+        modifier = modifier.replace("-x+x*p", "")
+        end = "    -x+x*p"
+    if "-2*x+x*p" in modifier:
+        modifier = modifier.replace("-2*x+x*p", "")
+        end = "    -2*x+x*p"
 
-for line in instr_lines:
-    split = line.split()
-
-    opcode = split[0]
-    instr_len: str = split[1]
-    cycles = split[2]
-    addr_mode: str = split[3]
-    name = split[6]
-
-    if name == "PEA" or name == "PEI" or name == "PER":
-        name = "PEX"
-    
-    if name == "BRL":
-        name = "BRA"
-    
-    ops.append(name)
-
-    f.write(f"0x{opcode} {name} {addr_mode.ljust(9)} {instr_len.ljust(3)} {cycles}\n")
-    # print(f"0x{opcode} {name} {addr_mode}")
-
-f.close()
-
-for i in range(16):
-    for j in range(16):
-        print(f'"{ops[i * 16 + j]}", ', end="")
-    print()
+    if "-e" in modifier:
+        print(line[:23] + f"{base_cycles - 1}     EMULATION" + end)
+        print(line[:23] + f"{base_cycles}     NATIVE" + end)
+    elif "-m" in modifier:
+        print(line[:23] + f"{base_cycles - 1}     M BYTE" + end)
+        print(line[:23] + f"{base_cycles}     M TWOBYTE" + end)
+    elif "-2*m" in modifier:
+        print(line[:23] + f"{base_cycles - 2}     M BYTE" + end)
+        print(line[:23] + f"{base_cycles}     M TWOBYTE" + end)
+    elif "-x" in modifier:
+        print(line[:23] + f"{base_cycles - 1}     X BYTE" + end)
+        print(line[:23] + f"{base_cycles}     X TWOBYTE" + end)
+    else:
+        print(line + "     ALL" + end)

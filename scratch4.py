@@ -1,34 +1,46 @@
-f = open("opcodes.txt", "r")
+f = open("opcodes3.txt", "r")
 opcode_lines = f.readlines()
 f.close()
 
 f = open("io_timings.txt", "r")
-timing_lines = f.readlines()
+io_lines = f.readlines()[1:]
 f.close()
 
-f = open("opcodes2.txt", "r")
-opcodes_new_lines = f.readlines()
-f.close()
+timing_map = {}
 
-base_cycles = [int(line[23]) for line in opcode_lines]
-io_ops = [int(line[28]) for line in timing_lines]
+for line in io_lines:
+    split = line.split()
+    timing_map[split[0]] = split[1:]
 
-new_cycles = []
+mode_to_idx_map = {
+    "EMULATION": 0,
+    "NATIVE": 1,
+    "M_BYTE": 1,
+    "X_BYTE": 1,
+    "M_TWOBYTE": 4,
+    "X_TWOBYTE": 4,
+    "ALL": 4,
+}
 
-for i in range(256):
-    new_cycles.append(base_cycles[i] - io_ops[i])
-
-
-i = 0
-for j, line in enumerate(opcodes_new_lines):
-    if line[:2] == "0x":
-        opcodes_new_lines[j] = line[:23] + str(new_cycles[i]) + line[24:]
-        i += 1
-
-    # opcodes_new_lines[j] = opcodes_new_lines[j].removesuffix("\n")
+for line in opcode_lines:
+    line = line.removesuffix("\n")
     
-    print(opcodes_new_lines[j].removesuffix("\n"))
+    split = line.split()
+    
+    opcode = split[0]
+    base_cycles = int(line[23])
+    mode = split[5]
+    addr_mode = split[2]
 
+    # The numbers in timings were calculated with DL == 0, so dir modes took an extra cycle.
+    # This is to offset the base cycles to account for that.
+    if "dir" in addr_mode:
+        base_cycles += 1
 
-with open("opcodes3.txt", "w") as f:
-    f.writelines(opcodes_new_lines)
+    idx = mode_to_idx_map[mode]
+
+    used_cycles = int(timing_map[opcode][idx])
+
+    new_cycles = base_cycles - used_cycles
+
+    print(line[:23] + str(new_cycles) + line[24:])
