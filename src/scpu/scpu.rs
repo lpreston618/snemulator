@@ -6126,4 +6126,39 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_cpu_speed() {
+        let test_path_str = format!("tests/lemons/CPUTest/CPUADC.sfc");
+        let test_path = Path::new(&test_path_str);
+        let cart = Cartridge::from_path(test_path).unwrap();
+
+        let mut cpu = Cpu65c816::new();
+        cpu.load_cart(&cart);
+
+        cpu.stk_ptr = 0x1ff;
+        cpu.status = 0x34;
+
+        cpu.rom_mirror = cpu.rom.len() - 1;
+
+        cpu.pc = 0x8000;
+
+        let start = std::time::Instant::now();
+        const TOTAL_SECONDS: f32 = 10.0;
+
+        while std::time::Instant::now().duration_since(start).as_secs_f32() < TOTAL_SECONDS {            
+            cpu.exec_instr();
+
+            if cpu.pc == 0xef1b {
+                cpu.pc = 0x8000;
+            }
+        }
+
+        let snes_mhz = ((cpu.total_clocks as f32) / 1000000.0) / TOTAL_SECONDS;
+        let cpu_mhz = snes_mhz / 6.0;
+
+        println!("In {TOTAL_SECONDS} seconds, {} master clocks elapsed", cpu.total_clocks);
+        println!("Master Clock Speed: {snes_mhz} MHz");
+        println!("CPU Speed: {cpu_mhz} MHz");
+    }
 }
