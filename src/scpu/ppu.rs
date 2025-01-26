@@ -11,29 +11,35 @@ impl GetBits for u8 {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum LatchState {
+enum ToggleState {
     LoByte,
     HiByte,
 }
 
-trait WriteLatch {
-    // Returns a bool reporting whether the latch state is high.
+trait Togglable {
+    /// Returns a bool reporting whether the latch state is high.
     fn is_high(&self) -> bool;
-    // Toggles the latch and returns a bool reporting whether the latch WAS high
-    // before the toggle.
+    /// Toggles the latch and returns a bool reporting whether the latch was high
+    /// BEFORE the toggle.
     fn toggle(&self) -> bool;
+    /// Sets the toggle state to low/0.
+    fn set_lo(&self);
+    /// Sets the toggle state to high/1.
+    fn set_hi(&self);
 }
 
-impl WriteLatch for Cell<LatchState> {
-    fn is_high(&self) -> bool { self.get() == LatchState::HiByte }
+impl Togglable for Cell<ToggleState> {
+    fn is_high(&self) -> bool { self.get() == ToggleState::HiByte }
     fn toggle(&self) -> bool {
         self.replace(
             match self.get() {
-                LatchState::LoByte => LatchState::HiByte,
-                LatchState::HiByte => LatchState::LoByte,
+                ToggleState::LoByte => ToggleState::HiByte,
+                ToggleState::HiByte => ToggleState::LoByte,
             }
-        ) == LatchState::HiByte
+        ) == ToggleState::HiByte
     }
+    fn set_lo(&self) { self.replace(ToggleState::LoByte); }
+    fn set_hi(&self) { self.replace(ToggleState::HiByte); }
 }
 
 #[derive(Clone, Copy)]
@@ -94,9 +100,9 @@ enum AddressRemapping {
 
 #[derive(Clone, Copy)]
 enum IncrSize {
-    Size1,
-    Size32,
-    Size128,
+    Bytes2,
+    Bytes64,
+    Bytes256,
 }
 
 #[derive(Clone, Copy)]
@@ -172,7 +178,7 @@ pub struct PpuData {
     //       - OAM word address (A)
     //       - Priority rotation (P)
     //       - Address high bit / table select (B)
-    oam_word_addr: Cell<u16>,
+    oam_addr: Cell<u16>,
     priority_rotation: Cell<bool>,
 
     // $2104    DDDD DDDD    Write x2 Only
@@ -346,7 +352,7 @@ pub struct PpuData {
     m7_center_y: Cell<u16>,
 
     // Toggle used for $2121 and $2122 (CGRAM registers)
-    cgram_toggle: Cell<bool>,
+    cgram_toggle: Cell<ToggleState>,
 
     // $2121    AAAA AAAA    Write Only
     //       - CGRAM word address (A)
@@ -507,18 +513,20 @@ pub struct PpuData {
     // $2139    LLLL LLLL
     // $213A    HHHH HHHH    Read x2 Only
     //       - VRAM data read. Increments VMADD after read according to VMAIN setting
-    vram_data_latch: Cell<u8>,
+    vram_latch: Cell<u16>,
 
     // $213B    .BBB BBGG GGGR RRRR    Read Only
     //       - CGRAM data read, increments CGADD byte address after each write
 
     // $213C    ...H HHHH HHHH HHHH    Read Only
     //       - Output horizontal counter (latched)
-    h_counter_latch: Cell<LatchState>,
+    h_counter_toggle: Cell<ToggleState>,
+    h_counter_latch: Cell<u16>,
 
     // $213D    ...V VVVV VVVV VVVV    Read Only
     //       - Output vertical counter
-    v_counter_latch: Cell<LatchState>,
+    v_counter_toggle: Cell<ToggleState>,
+    v_counter_latch: Cell<u16>,
 
     // STAT77    $213E    TRM. VVVV    Read Only
     //       - Sprite overflow (T)
@@ -536,7 +544,7 @@ pub struct PpuData {
     //       - NTSC/PAL (M)
     //       - PPU2 version (V)
     interlace_field: Cell<bool>,
-    counter_latch: Cell<LatchState>,
+    counter_toggle: Cell<ToggleState>,
     video_type: Cell<VideoType>,
     ppu2_version: Cell<u8>,
 
@@ -549,6 +557,8 @@ pub struct PpuData {
     in_vblank: Cell<bool>,
     in_hblank: Cell<bool>,
     in_fblank: Cell<bool>,
+    h_counter: Cell<u16>,
+    v_counter: Cell<u16>,
 }
 
 // CPU Access
@@ -556,7 +566,7 @@ impl PpuData {
     pub fn write(&self, address: u8, data: u8) {
         match address {
             0x00 => {
-                self.forced_blanking.replace(data & 0x80 != 0);
+                self.forced_blanking.replace(data.bit_en(7));
                 self.screen_brightness.replace(data & 0x0F);
             }
 
@@ -579,20 +589,20 @@ impl PpuData {
             }
 
             0x02 => {
-                let new_addr = self.oam_word_addr.get() & 0x0200 | ((data as u16) << 1);
+                let new_addr = self.oam_addr.get() & 0x0200 | ((data as u16) << 1);
 
-                self.oam_word_addr.replace(new_addr);
+                self.oam_addr.replace(new_addr);
             }
 
             0x03 => {
-                let new_addr = self.oam_word_addr.get() & 0x01FE | (((data & 0x01) as u16) << 9);
+                let new_addr = self.oam_addr.get() & 0x01FE | (((data & 0x01) as u16) << 9);
 
-                self.oam_word_addr.replace(new_addr);
-                self.priority_rotation.replace(data & 0x80 != 0);
+                self.oam_addr.replace(new_addr);
+                self.priority_rotation.replace(data.bit_en(7));
             }
 
             0x04 => {
-                let oam_addr = self.oam_word_addr.get() as usize;
+                let oam_addr = self.oam_addr.get() as usize;
 
                 if oam_addr & 1 == 0 {
                     self.oam_data_latch.replace(data);
@@ -605,24 +615,24 @@ impl PpuData {
                     self.oam[oam_addr].replace(data);
                 }
 
-                self.oam_word_addr.replace(oam_addr as u16 + 1);
+                self.oam_addr.replace(oam_addr as u16 + 1);
             }
 
             0x05 => {
                 self.bg4_char_size.replace(
-                    if data & 0x80 != 0 { CharSize::Large } else { CharSize::Small }
+                    if data.bit_en(7) { CharSize::Large } else { CharSize::Small }
                 );
                 self.bg3_char_size.replace(
-                    if data & 0x40 != 0 { CharSize::Large } else { CharSize::Small }
+                    if data.bit_en(6) { CharSize::Large } else { CharSize::Small }
                 );
                 self.bg2_char_size.replace(
-                    if data & 0x20 != 0 { CharSize::Large } else { CharSize::Small }
+                    if data.bit_en(5) { CharSize::Large } else { CharSize::Small }
                 );
                 self.bg1_char_size.replace(
-                    if data & 0x10 != 0 { CharSize::Large } else { CharSize::Small }
+                    if data.bit_en(4) { CharSize::Large } else { CharSize::Small }
                 );
                 self.bg3_priority.replace(
-                    if data & 0x08 != 0 { BgPriority::High } else { BgPriority::Low }
+                    if data.bit_en(3) { BgPriority::High } else { BgPriority::Low }
                 );
                 self.bg_mode.replace(
                     match data & 0x07 {
@@ -641,37 +651,49 @@ impl PpuData {
 
             0x06 => {
                 self.mosaic_size.replace(data >> 4);
-                self.bg4_mosaic.replace(data & 0x08 != 0);
-                self.bg3_mosaic.replace(data & 0x04 != 0);
-                self.bg2_mosaic.replace(data & 0x02 != 0);
-                self.bg1_mosaic.replace(data & 0x01 != 0);
+                self.bg4_mosaic.replace(data.bit_en(3));
+                self.bg3_mosaic.replace(data.bit_en(2));
+                self.bg2_mosaic.replace(data.bit_en(1));
+                self.bg1_mosaic.replace(data.bit_en(0));
             }
 
             0x07 => {
                 self.bg1_vram_addr.replace(data >> 2);
                 self.bg1_tilemap_count_y.replace(
-                    if data & 0x02 != 0 { TilemapCount::Two } else { TilemapCount::One }
+                    if data.bit_en(1) { TilemapCount::Two } else { TilemapCount::One }
+                );
+                self.bg1_tilemap_count_x.replace(
+                    if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
             }
 
             0x08 => {
                 self.bg2_vram_addr.replace(data >> 2);
                 self.bg2_tilemap_count_y.replace(
-                    if data & 0x02 != 0 { TilemapCount::Two } else { TilemapCount::One }
+                    if data.bit_en(1) { TilemapCount::Two } else { TilemapCount::One }
+                );
+                self.bg2_tilemap_count_x.replace(
+                    if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
             }
 
             0x09 => {
                 self.bg3_vram_addr.replace(data >> 2);
                 self.bg3_tilemap_count_y.replace(
-                    if data & 0x02 != 0 { TilemapCount::Two } else { TilemapCount::One }
+                    if data.bit_en(1) { TilemapCount::Two } else { TilemapCount::One }
+                );
+                self.bg3_tilemap_count_x.replace(
+                    if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
             }
 
             0x0A => {
                 self.bg4_vram_addr.replace(data >> 2);
                 self.bg4_tilemap_count_y.replace(
-                    if data & 0x02 != 0 { TilemapCount::Two } else { TilemapCount::One }
+                    if data.bit_en(1) { TilemapCount::Two } else { TilemapCount::One }
+                );
+                self.bg4_tilemap_count_x.replace(
+                    if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
             }
 
@@ -747,7 +769,7 @@ impl PpuData {
 
             0x15 => {
                 self.vram_addr_inc_mode.replace(
-                    if data & 0x80 != 0 { VramIncMode::HighByte } else { VramIncMode::LowByte }
+                    if data.bit_en(7) { VramIncMode::HighByte } else { VramIncMode::LowByte }
                 );
                 self.addr_remap_mode.replace(
                     match (data >> 2) & 3 {
@@ -760,10 +782,10 @@ impl PpuData {
                 );
                 self.addr_inc_size.replace(
                     match data & 3 {
-                        0 => IncrSize::Size1,
-                        1 => IncrSize::Size32,
-                        2 => IncrSize::Size128,
-                        3 => IncrSize::Size128,
+                        0 => IncrSize::Bytes2,
+                        1 => IncrSize::Bytes64,
+                        2 => IncrSize::Bytes256,
+                        3 => IncrSize::Bytes256,
                         _ => unreachable!(),
                     }
                 );
@@ -773,8 +795,11 @@ impl PpuData {
                 self.vram_addr.replace(
                     (self.vram_addr.get() & 0xFF00) | (data as u16)
                 );
-                self.vram_data_latch.replace(
-                    self.vram[self.vram_addr.get() as usize].get()
+                self.vram_latch.replace(
+                    u16::from_le_bytes([
+                        self.vram[self.vram_addr.get() as usize].get(),
+                        self.vram[(self.vram_addr.get() + 1) as usize].get()
+                    ])
                 );
             }
 
@@ -782,15 +807,18 @@ impl PpuData {
                 self.vram_addr.replace(
                     (self.vram_addr.get() & 0x00FF) | ((data as u16) << 8)
                 );
-                self.vram_data_latch.replace(
-                    self.vram[self.vram_addr.get() as usize].get()
+                self.vram_latch.replace(
+                    u16::from_le_bytes([
+                        self.vram[self.vram_addr.get() as usize].get(),
+                        self.vram[(self.vram_addr.get() + 1) as usize].get()
+                    ])
                 );
             }
 
             0x18 => {
                 if self.in_fblank.get() || self.in_vblank.get() {
                     let addr = self.get_vram_addr();
-                    self.vram[addr].replace(data);
+                    self.vram[addr + 1].replace(data);
                 }
                     
                 if self.vram_addr_inc_mode.get() == VramIncMode::LowByte {
@@ -810,12 +838,12 @@ impl PpuData {
             }
 
             0x1A => {
-                self.m7_tilemap_repeat.replace(data & 0x80 != 0);
+                self.m7_tilemap_repeat.replace(data.bit_en(7));
                 self.m7_fill_mode.replace(
-                    if data & 0x40 != 0 { M7FillMode::Character } else { M7FillMode::Transparent }
+                    if data.bit_en(6) { M7FillMode::Character } else { M7FillMode::Transparent }
                 );
-                self.m7_flip_bg_y.replace(data & 0x02 != 0);
-                self.m7_flip_bg_x.replace(data & 0x01 != 0);
+                self.m7_flip_bg_y.replace(data.bit_en(1));
+                self.m7_flip_bg_x.replace(data.bit_en(0));
             }
 
             0x1B => {
@@ -864,11 +892,11 @@ impl PpuData {
 
             0x21 => {
                 self.cgram_addr.replace(data);
-                self.cgram_toggle.replace(false);
+                self.cgram_toggle.toggle();
             }
 
             0x22 => {
-                if self.cgram_toggle.get() {
+                if self.cgram_toggle.toggle() {
                     let addr = self.cgram_addr.get() as usize;
                     let new_col = ((data as u16) << 8) | self.cgram_latch.get() as u16;
 
@@ -878,41 +906,39 @@ impl PpuData {
                 } else {
                     self.cgram_latch.replace(data);
                 }
-
-                self.cgram_toggle.replace(!self.cgram_toggle.get());
             }
 
             0x23 => {
-                self.bg2_w2_enabled.replace(data & 0x80 != 0);
-                self.bg2_w2_inverted.replace(data & 0x40 != 0);
-                self.bg2_w1_enabled.replace(data & 0x20 != 0);
-                self.bg2_w1_inverted.replace(data & 0x10 != 0);
-                self.bg1_w2_enabled.replace(data & 0x08 != 0);
-                self.bg1_w2_inverted.replace(data & 0x04 != 0);
-                self.bg1_w1_enabled.replace(data & 0x02 != 0);
-                self.bg1_w1_inverted.replace(data & 0x01 != 0);
+                self.bg2_w2_enabled.replace(data.bit_en(7));
+                self.bg2_w2_inverted.replace(data.bit_en(6));
+                self.bg2_w1_enabled.replace(data.bit_en(5));
+                self.bg2_w1_inverted.replace(data.bit_en(4));
+                self.bg1_w2_enabled.replace(data.bit_en(3));
+                self.bg1_w2_inverted.replace(data.bit_en(2));
+                self.bg1_w1_enabled.replace(data.bit_en(1));
+                self.bg1_w1_inverted.replace(data.bit_en(0));
             }
 
             0x24 => {
-                self.bg4_w2_enabled.replace(data & 0x80 != 0);
-                self.bg4_w2_inverted.replace(data & 0x40 != 0);
-                self.bg4_w1_enabled.replace(data & 0x20 != 0);
-                self.bg4_w1_inverted.replace(data & 0x10 != 0);
-                self.bg3_w2_enabled.replace(data & 0x08 != 0);
-                self.bg3_w2_inverted.replace(data & 0x04 != 0);
-                self.bg3_w1_enabled.replace(data & 0x02 != 0);
-                self.bg3_w1_inverted.replace(data & 0x01 != 0);
+                self.bg4_w2_enabled.replace(data.bit_en(7));
+                self.bg4_w2_inverted.replace(data.bit_en(6));
+                self.bg4_w1_enabled.replace(data.bit_en(5));
+                self.bg4_w1_inverted.replace(data.bit_en(4));
+                self.bg3_w2_enabled.replace(data.bit_en(3));
+                self.bg3_w2_inverted.replace(data.bit_en(2));
+                self.bg3_w1_enabled.replace(data.bit_en(1));
+                self.bg3_w1_inverted.replace(data.bit_en(0));
             }
 
             0x25 => {
-                self.col_w2_enabled.replace(data & 0x80 != 0);
-                self.col_w2_inverted.replace(data & 0x40 != 0);
-                self.col_w1_enabled.replace(data & 0x20 != 0);
-                self.col_w1_inverted.replace(data & 0x10 != 0);
-                self.obj_w2_enabled.replace(data & 0x08 != 0);
-                self.obj_w2_inverted.replace(data & 0x04 != 0);
-                self.obj_w1_enabled.replace(data & 0x02 != 0);
-                self.obj_w1_inverted.replace(data & 0x01 != 0);
+                self.col_w2_enabled.replace(data.bit_en(7));
+                self.col_w2_inverted.replace(data.bit_en(6));
+                self.col_w1_enabled.replace(data.bit_en(5));
+                self.col_w1_inverted.replace(data.bit_en(4));
+                self.obj_w2_enabled.replace(data.bit_en(3));
+                self.obj_w2_inverted.replace(data.bit_en(2));
+                self.obj_w1_enabled.replace(data.bit_en(1));
+                self.obj_w1_inverted.replace(data.bit_en(0));
             }
 
             0x26 => {
@@ -992,35 +1018,35 @@ impl PpuData {
             }
 
             0x2C => {
-                self.main_obj_enabled.replace(data & 0x10 != 0);
-                self.main_l4_enabled.replace(data & 0x08 != 0);
-                self.main_l3_enabled.replace(data & 0x04 != 0);
-                self.main_l2_enabled.replace(data & 0x02 != 0);
-                self.main_l1_enabled.replace(data & 0x01 != 0);
+                self.main_obj_enabled.replace(data.bit_en(4));
+                self.main_l4_enabled.replace(data.bit_en(3));
+                self.main_l3_enabled.replace(data.bit_en(2));
+                self.main_l2_enabled.replace(data.bit_en(1));
+                self.main_l1_enabled.replace(data.bit_en(0));
             }
 
             0x2D => {
-                self.sub_obj_enabled.replace(data & 0x10 != 0);
-                self.sub_l4_enabled.replace(data & 0x08 != 0);
-                self.sub_l3_enabled.replace(data & 0x04 != 0);
-                self.sub_l2_enabled.replace(data & 0x02 != 0);
-                self.sub_l1_enabled.replace(data & 0x01 != 0);
+                self.sub_obj_enabled.replace(data.bit_en(4));
+                self.sub_l4_enabled.replace(data.bit_en(3));
+                self.sub_l3_enabled.replace(data.bit_en(2));
+                self.sub_l2_enabled.replace(data.bit_en(1));
+                self.sub_l1_enabled.replace(data.bit_en(0));
             }
 
             0x2E => {
-                self.main_obj_win_enabled.replace(data & 0x10 != 0);
-                self.main_l4_win_enabled.replace(data & 0x08 != 0);
-                self.main_l3_win_enabled.replace(data & 0x04 != 0);
-                self.main_l2_win_enabled.replace(data & 0x02 != 0);
-                self.main_l1_win_enabled.replace(data & 0x01 != 0);
+                self.main_obj_win_enabled.replace(data.bit_en(4));
+                self.main_l4_win_enabled.replace(data.bit_en(3));
+                self.main_l3_win_enabled.replace(data.bit_en(2));
+                self.main_l2_win_enabled.replace(data.bit_en(1));
+                self.main_l1_win_enabled.replace(data.bit_en(0));
             }
 
             0x2F => {
-                self.sub_obj_win_enabled.replace(data & 0x10 != 0);
-                self.sub_l4_win_enabled.replace(data & 0x08 != 0);
-                self.sub_l3_win_enabled.replace(data & 0x04 != 0);
-                self.sub_l2_win_enabled.replace(data & 0x02 != 0);
-                self.sub_l1_win_enabled.replace(data & 0x01 != 0);
+                self.sub_obj_win_enabled.replace(data.bit_en(4));
+                self.sub_l4_win_enabled.replace(data.bit_en(3));
+                self.sub_l3_win_enabled.replace(data.bit_en(2));
+                self.sub_l2_win_enabled.replace(data.bit_en(1));
+                self.sub_l1_win_enabled.replace(data.bit_en(0));
             }
 
             0x30 => {
@@ -1043,10 +1069,10 @@ impl PpuData {
                     }
                 );
                 self.cmath_addend.replace(
-                    if data & 0x02 != 0 { CMathAddend::Subscreen } else { CMathAddend::Fixed }
+                    if data.bit_en(1) { CMathAddend::Subscreen } else { CMathAddend::Fixed }
                 );
                 self.direct_col_mode.replace(
-                    if data & 0x01 != 0 { DirectColorMode::Palette } else { DirectColorMode::Direct }
+                    if data.bit_en(0) { DirectColorMode::Palette } else { DirectColorMode::Direct }
                 );
             }
 
@@ -1058,43 +1084,159 @@ impl PpuData {
                         _ => unreachable!(),
                     }
                 );
-                self.cmath_half.replace(data & 0x40 != 0);
-                self.cmath_backdrop.replace(data & 0x20 != 0);
-                self.cmath_obj_enabled.replace(data & 0x10 != 0);
-                self.cmath_bg4_enabled.replace(data & 0x08 != 0);
-                self.cmath_bg3_enabled.replace(data & 0x04 != 0);
-                self.cmath_bg2_enabled.replace(data & 0x02 != 0);
-                self.cmath_bg1_enabled.replace(data & 0x01 != 0);
+                self.cmath_half.replace(data.bit_en(6));
+                self.cmath_backdrop.replace(data.bit_en(5));
+                self.cmath_obj_enabled.replace(data.bit_en(4));
+                self.cmath_bg4_enabled.replace(data.bit_en(3));
+                self.cmath_bg3_enabled.replace(data.bit_en(2));
+                self.cmath_bg2_enabled.replace(data.bit_en(1));
+                self.cmath_bg1_enabled.replace(data.bit_en(0));
             }
 
             0x32 => {
                 let prev_col = self.fixed_color.get();
                 let new_val = (data & 0x1F) as u16;
 
-                let new_r = if data & 0x20 != 0 { new_val << 10 } else { 0 };
-                let new_g = if data & 0x40 != 0 { new_val << 5 } else { 0 };
-                let new_b = if data & 0x80 != 0 { new_val } else { 0 };
+                let new_r =  (new_val << 10) * data.get_bit(5) as u16;
+                let new_g =  (new_val << 5) * data.get_bit(6) as u16;
+                let new_b =  (new_val) * data.get_bit(7) as u16;
                 let new_col = new_r | new_g | new_b;
 
-                let mask_r = if data & 0x20 != 0 { 0 } else { 0x7C00 };
-                let mask_g = if data & 0x40 != 0 { 0 } else { 0x03E0 };
-                let mask_b = if data & 0x80 != 0 { 0 } else { 0x001F };
+                let mask_r = (data.get_bit(5) as u16) * 0x7C00;
+                let mask_g = (data.get_bit(6) as u16) * 0x03E0;
+                let mask_b = (data.get_bit(7) as u16) * 0x001F;
                 let mask = mask_r | mask_g | mask_b;
                 
                 self.fixed_color.replace((prev_col & mask) | new_col);
             }
 
             0x33 => {
-                self._external_sync.replace(data & 0x80 != 0);
-                self.ext_bg_enabled.replace(data & 0x40 != 0);
-                self.hi_res_enabled.replace(data & 0x08 != 0);
-                self.overscan_enabled.replace(data & 0x04 != 0);
-                self.obj_interlace_enabled.replace(data & 0x02 != 0);
-                self.screen_interlace_enabled.replace(data & 0x01 != 0);
+                self._external_sync.replace(data.bit_en(7));
+                self.ext_bg_enabled.replace(data.bit_en(6));
+                self.hi_res_enabled.replace(data.bit_en(3));
+                self.overscan_enabled.replace(data.bit_en(2));
+                self.obj_interlace_enabled.replace(data.bit_en(1));
+                self.screen_interlace_enabled.replace(data.bit_en(0));
             }
 
             _ => {}
         }
+    }
+
+    fn read(&self, address: u8) -> u8 {
+        let data = match address {
+            0x34 => { self.multiply_result.get() as u8 }
+            0x35 => { (self.multiply_result.get() >> 8) as u8 }
+            0x36 => { (self.multiply_result.get() >> 16) as u8 }
+
+            0x37 => {
+                // When counter_latch transitions from 0 to 1
+                if !self.counter_toggle.is_high() {
+                    self.h_counter_latch.replace(self.h_counter.get());
+                    self.v_counter_latch.replace(self.v_counter.get());
+                }
+
+                self.counter_toggle.set_hi();
+
+                0 // CPU OPEN BUS
+            }
+
+            0x38 => {
+                let addr = self.oam_addr.replace(self.oam_addr.get() + 1);
+
+                self.oam[addr as usize].get()
+            }
+
+            0x39 => {
+                let val = self.vram_latch.get() as u8;
+
+                if self.vram_addr_inc_mode.get() == VramIncMode::LowByte {
+                    self.vram_latch.replace(
+                        u16::from_le_bytes([
+                            self.vram[self.vram_addr.get() as usize].get(),
+                            self.vram[(self.vram_addr.get() + 1) as usize].get()
+                        ])
+                    );
+                    self.inc_vram_addr();
+                }
+
+                val
+            }
+
+            0x3A => {
+                let val = (self.vram_latch.get() >> 8) as u8;
+
+                if self.vram_addr_inc_mode.get() == VramIncMode::HighByte {
+                    self.vram_latch.replace(
+                        u16::from_le_bytes([
+                            self.vram[self.vram_addr.get() as usize].get(),
+                            self.vram[(self.vram_addr.get() + 1) as usize].get()
+                        ])
+                    );
+                    self.inc_vram_addr();
+                }
+
+                val
+            }
+
+            0x3B => {
+                if self.cgram_toggle.toggle() {
+                    (self.cgram[self.cgram_addr.get() as usize].get() >> 8) as u8 // HIGH BIT IS PPU2 OPEN BUS
+                } else {
+                    self.cgram[self.cgram_addr.get() as usize].get() as u8
+                }
+            }
+
+            0x3C => {
+                if self.h_counter_toggle.toggle() {
+                    (self.h_counter_latch.get() >> 8) as u8 // HIGH 7 BITS ARE PPU2 OPEN BUS
+                } else {
+                    self.h_counter_latch.get() as u8
+                }
+            }
+
+            0x3D => {
+                if self.v_counter_toggle.toggle() {
+                    (self.v_counter_latch.get() >> 8) as u8 // HIGH 7 BITS ARE PPU2 OPEN BUS
+                } else {
+                    self.v_counter_latch.get() as u8
+                }
+            }
+
+            0x3E => {
+                let spr_overflow_bit = if self.sprite_overflow.get() { 0x80 } else { 0 };
+                let spr_tile_overflow_bit = if self.sprite_tile_overflow.get() { 0x40 } else { 0 };
+                let master_slave_bit = match self.master_slave_state.get() {
+                    MasterSlave::Master => 0x20,
+                    MasterSlave::Slave => 0,
+                };
+                let ppu1_open_bus = 0;
+                let ppu1_version_bits = self.ppu1_version.get() & 0x0F;
+                
+                spr_overflow_bit | spr_tile_overflow_bit | master_slave_bit | ppu1_open_bus | ppu1_version_bits
+            }
+
+            0x3F => {
+                let interlace_bit = if self.interlace_field.get() { 0x80 } else { 0 };
+                let counter_toggle_bit = if self.counter_toggle.is_high() { 0x40 } else { 0 };
+                let ppu2_open_bus = 0;
+                let ntsc_pal_bit = match self.video_type.get() {
+                    VideoType::Ntsc => 0,
+                    VideoType::Pal => 0x10,
+                };
+                let version_bits = self.ppu2_version.get() & 0x0F;
+
+                self.counter_toggle.set_lo();
+                self.h_counter_toggle.set_lo();
+                self.v_counter_toggle.set_lo();
+
+                interlace_bit | counter_toggle_bit | ppu2_open_bus | ntsc_pal_bit | version_bits
+            }
+            
+            _ => { 0 }
+        };
+
+        data
     }
 
     fn update_multiply_result(&self) {
@@ -1104,8 +1246,52 @@ impl PpuData {
 
         self.multiply_result.replace(result & 0x00FFFFFF);
     }
-    fn get_vram_addr(&self) -> usize { 0 }
-    fn inc_vram_addr(&self) {}
+
+    fn get_vram_addr(&self) -> usize {
+        match self.addr_remap_mode.get() {
+            AddressRemapping::None => { self.vram_addr.get() as usize },
+            AddressRemapping::ColDepth2 => {
+                // rrrrrrrr YYYccccc -> rrrrrrrr cccccYYY
+                let addr = self.vram_addr.get();
+
+                let r = (addr & 0xFF00) as usize;
+                let y = ((addr & 0x00E0) >> 5) as usize;
+                let c = ((addr & 0x1F) << 3) as usize;
+
+                r | c | y
+            }
+            AddressRemapping::ColDepth4 => {
+                // rrrrrrrY YYcccccP -> rrrrrrrc ccccPYYY
+                let addr = self.vram_addr.get();
+
+                let r = (addr & 0xFE00) as usize;
+                let y = ((addr & 0x01C0) >> 6) as usize;
+                let cp = ((addr & 0x003F) << 3) as usize;
+
+                r | cp | y
+            }
+            AddressRemapping::ColDepth8 => {
+                // rrrrrrYY YcccccPP -> rrrrrrcc cccPPYYY
+                let addr = self.vram_addr.get();
+
+                let r = (addr & 0xFC00) as usize;
+                let y = ((addr & 0x0380) >> 7) as usize;
+                let cp = ((addr & 0x007F) << 3) as usize;
+
+                r | cp | y
+            }
+        }
+    }
+
+    fn inc_vram_addr(&self) {
+        let inc = match self.addr_inc_size.get() {
+            IncrSize::Bytes2 => 2,
+            IncrSize::Bytes64 => 64,
+            IncrSize::Bytes256 => 256,
+        };
+
+        self.vram_addr.replace(self.vram_addr.get() + inc);
+    }
 }
 
 // PPU Internal Access
