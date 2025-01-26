@@ -2,7 +2,7 @@ use std::ptr;
 
 use serde::{ser::SerializeStruct, Serialize};
 
-use crate::cartridge::Cartridge;
+use crate::system::cartridge::Cartridge;
 
 const WRAM_SIZE: usize = 128 * 1024; // 128 KiB
 
@@ -5859,7 +5859,7 @@ mod tests {
 
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
-    use crate::cartridge::Cartridge;
+    use crate::system::cartridge::Cartridge;
 
     /// Prints out a slice of bytes in hex and ASCII format, side by side. When
     /// startval is specified, indices beginning at the startval will be printed

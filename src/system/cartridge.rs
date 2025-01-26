@@ -1,12 +1,12 @@
 use std::{io::Read, path::Path, str::FromStr};
 
-use crate::scpu::{self, MappingMode};
+use crate::system::cpu::{self, MappingMode};
 
 struct Header {
     title: [u8; 0x15],
 
     fast_rom: bool,
-    map_mode: scpu::MappingMode,
+    map_mode: cpu::MappingMode,
 
     extra_ram: bool,
     battery: bool,
@@ -29,9 +29,9 @@ impl Header {
 
         let fast_rom = (bytes[0x15] & 0x10) > 0;
         let map_mode = match bytes[0x15] & 0x0F {
-            0 => scpu::MappingMode::LoROM,
-            1 => scpu::MappingMode::HiROM,
-            5 => scpu::MappingMode::ExHiROM,
+            0 => cpu::MappingMode::LoROM,
+            1 => cpu::MappingMode::HiROM,
+            5 => cpu::MappingMode::ExHiROM,
             _ => {
                 panic!("unimplemented mapping mode");
             }
@@ -222,7 +222,7 @@ impl Cartridge {
 // Public Access
 impl Cartridge {
     // The mapping mode of the cartridge as determined by the location of the header in the ROM
-    pub fn mapping_mode(&self) -> scpu::MappingMode {
+    pub fn mapping_mode(&self) -> cpu::MappingMode {
         self.header.map_mode
     }
 
