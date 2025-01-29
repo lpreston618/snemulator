@@ -1,4 +1,3 @@
-use std::ptr;
 
 use serde::{ser::SerializeStruct, Serialize};
 

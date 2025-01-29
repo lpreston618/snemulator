@@ -1,4 +1,4 @@
-use std::{io::Read, path::Path, str::FromStr};
+use std::{io::Read, path::Path};
 
 use crate::system::cpu::{self, MappingMode};
 
@@ -247,7 +247,7 @@ fn pad_rom(rom: Vec<u8>) -> Result<Vec<u8>, String> {
             // Get the width of the binary representation of ROM size.
             // Ex: if rom size is 1024 bytes, bitwidth = 10 (2^10 = 1024).
             let bitwidth = rom.len().ilog2() as usize;
-            let larger_size = (1usize << bitwidth);
+            let larger_size = 1usize << bitwidth;
             let smaller_size = rom.len() & (larger_size - 1);
             let repeat_count = larger_size / smaller_size;
 
