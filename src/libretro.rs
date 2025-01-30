@@ -12,7 +12,6 @@ use libretro_rs::{ext, libretro_core};
 use libretro_rs::retro::av::{GameGeometry, Message, PixelFormat, SoftwareRenderEnabled, SystemAVInfo};
 use libretro_rs::retro::env::GetAvInfo;
 use libretro_rs::retro::{LoadGameExtraArgs, SystemInfo};
-use libretro_rs::retro::log::{LogInterface, Logger, PlatformLogger};
 
 use libretro_rs::retro::{
     self,
