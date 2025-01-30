@@ -104,7 +104,8 @@ mod array {
   ///
   /// # Examples
   /// ```
-  /// use libretro_rs::prelude::*;
+  /// use libretro_rs::retro::pixel::format::XRGB8888;
+  /// use libretro_rs::retro::video::ArrayFrameBuffer;
   /// let mut buf = ArrayFrameBuffer::<XRGB8888, {320*240}, 240>::default();
   /// // Set the top left pixel to blue.
   /// buf[0] = XRGB8888::new_with_raw_value(0x000000FF);
@@ -125,8 +126,9 @@ mod array {
     ///
     /// # Examples
     /// ```
-    /// use libretro_rs::prelude::*;
-    /// _ = ArrayFrameBuffer::<_, {320*240}, 240>::new([XRGB8888::default(); 320*240]);
+    /// use libretro_rs::retro::pixel::format::XRGB8888;
+    /// use libretro_rs::retro::video::ArrayFrameBuffer;
+    /// _ = ArrayFrameBuffer::<_, {512*512}, 512>::new(Box::new([XRGB8888::default(); 512*512]));
     /// ```
     pub const fn new(pixels: [P; LEN]) -> Self {
       // This is a workaround to perform validation on const generic parameters.

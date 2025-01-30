@@ -1,10 +1,15 @@
+use std::ffi::{c_char, CStr};
+use std::time;
 
-use libretro_rs::c_utf8::c_utf8;
+use crate::*;
+
+use libretro_rs::c_utf8::{c_utf8, CUtf8};
+use libretro_rs::ffi::retro_log_level;
+use libretro_rs::retro::error::CoreError;
 use libretro_rs::retro::game::GameInfo;
-use libretro_rs::retro::pixel::format::{ActiveFormat, XRGB8888};
-use libretro_rs::retro::video::{ArrayFrameBuffer, FrameBuffer};
+use libretro_rs::retro::log::{LogInterface, Logger, PlatformLogger};
 use libretro_rs::{ext, libretro_core};
-use libretro_rs::retro::av::{GameGeometry, PixelFormat, SoftwareRenderEnabled, SystemAVInfo};
+use libretro_rs::retro::av::{GameGeometry, Message, PixelFormat, SoftwareRenderEnabled, SystemAVInfo};
 use libretro_rs::retro::env::GetAvInfo;
 use libretro_rs::retro::{LoadGameExtraArgs, SystemInfo};
 use libretro_rs::retro::log::{LogInterface, Logger, PlatformLogger};
@@ -13,24 +18,76 @@ use libretro_rs::retro::{
     self,
     Callbacks,
     InputsPolled,
+    pixel::format::{ActiveFormat, XRGB8888},
+    video::ArrayFrameBuffer,
 };
 
-// use libretro_rs::ffi::retro_log_level;
+use framebuf::VecFrameBuffer;
 
-const SNES_VIDEO_WIDTH: u16 = 512;
-const SNES_VIDEO_HEIGHT: u16 = 448;
-const FRAME_BUFFER_LEN: usize = (SNES_VIDEO_WIDTH  as usize) * (SNES_VIDEO_HEIGHT as usize);
 
-pub struct NemulatorCore {
-    logger: PlatformLogger,
+const SNES_FRAME_WIDTH: usize = 512;
+const SNES_FRAME_HEIGHT: usize = 448;
+const FRAME_BUF_SIZE: usize = SNES_FRAME_WIDTH*SNES_FRAME_HEIGHT;
 
-    frame_buffer: ArrayFrameBuffer<XRGB8888, FRAME_BUFFER_LEN, SNES_VIDEO_WIDTH>,
-    rendering_mode: SoftwareRenderEnabled,
-    pixel_format: ActiveFormat<XRGB8888>,
+
+#[derive(Clone, Copy)]
+enum LogLevel {
+    Info,
+    Debug,
+    Warn,
+    Error,
+}
+
+impl Into<retro_log_level> for LogLevel {
+    fn into(self) -> retro_log_level {
+        match self {
+            LogLevel::Info => retro_log_level::RETRO_LOG_INFO,
+            LogLevel::Debug => retro_log_level::RETRO_LOG_DEBUG,
+            LogLevel::Warn => retro_log_level::RETRO_LOG_WARN,
+            LogLevel::Error => retro_log_level::RETRO_LOG_ERROR,
+        }
+    }
+}
+
+struct SnemLogger {
+    logger: PlatformLogger
+}
+
+impl SnemLogger {
+    fn log(&mut self, level: LogLevel, message: &str) {
+        // let message = format!("SNEM {}", message);
+
+        self.logger.log(
+            level.into(), 
+            // Safety: \0 char included manually in formatted str so from_str_unchecked is fine.
+            unsafe { CUtf8::from_str_unchecked(format!("[Snem Log] {}\0", message).as_str()) }
+        );
+    }
 }
 
 
-impl NemulatorCore {
+
+struct SnemulatorCore {
+    logger: SnemLogger,
+    frame_buffer: VecFrameBuffer<
+        XRGB8888, 
+        FRAME_BUF_SIZE, 
+        {SNES_FRAME_WIDTH as u16}
+    >,
+    pixel_format: ActiveFormat<XRGB8888>,
+    rendering_mode: SoftwareRenderEnabled,
+
+    last_frame: time::Instant,
+}
+
+fn screen_message(env: &mut impl retro::env::Run, message: &str, frames: u32) {
+    let msg_str = format!("{}\0", message);
+    let fps_count = unsafe { CStr::from_bytes_with_nul_unchecked(msg_str.as_bytes()) };
+    let msg = Message::new(fps_count, frames);
+    let _ = env.set_message(&msg);
+}
+
+impl SnemulatorCore {
     pub fn render_audio(&mut self, callbacks: &mut impl Callbacks) {
         // callbacks.upload_audio_frame(&audio_batch);
     }
@@ -78,7 +135,7 @@ impl NemulatorCore {
 }
 
 
-impl<'a> retro::Core<'a> for NemulatorCore {
+impl<'a> retro::Core<'a> for SnemulatorCore {
     type Init = ();
 
     fn get_system_info() -> SystemInfo {
@@ -93,62 +150,98 @@ impl<'a> retro::Core<'a> for NemulatorCore {
         
     }
 
+    fn load_without_content<E: retro::env::LoadGame>(
+        args: LoadGameExtraArgs<'a, '_, E, Self::Init>,
+      ) -> Result<Self, retro::error::CoreError> {
+        
+        let mut logger = SnemLogger { logger: args.env.get_log_interface()? };
+
+        logger.log(LogLevel::Info, "Loading Snemulator core with no content.");
+
+        args.env.set_hw_render_none()?;
+
+        let mut frame_buffer = VecFrameBuffer::new(
+            vec![XRGB8888::default(); FRAME_BUF_SIZE]
+        );
+        let pixel_format = args.env.set_pixel_format_xrgb8888(args.pixel_format)?;
+        let rendering_mode = args.rendering_mode;
+
+        for y in 0..SNES_FRAME_HEIGHT {
+            for x in 0..SNES_FRAME_WIDTH {
+                let idx = y*SNES_FRAME_WIDTH + x;
+
+                let r = ((y as f64) / (SNES_FRAME_HEIGHT as f64) * 255.0) as u32;
+                let g = ((x as f64) / (SNES_FRAME_WIDTH as f64) * 255.0) as u32;
+
+                let col = XRGB8888::new_with_raw_value(
+                    (r << 16) | (g << 8) | 0
+                );
+
+                frame_buffer[idx] = col;
+            }
+        }
+
+        Ok(SnemulatorCore{
+            logger,
+            frame_buffer,
+            pixel_format,         
+            rendering_mode,
+            last_frame: time::Instant::now(),
+        })
+    }
+
     fn load_game<E: retro::env::LoadGame>(
         game: &GameInfo,
         args: LoadGameExtraArgs<'a, '_, E, Self::Init>,
       ) -> Result<Self, retro::error::CoreError> {
+        
+        let mut core = SnemulatorCore::load_without_content(args)?;
 
-
-        let LoadGameExtraArgs { 
-            env, 
-            pixel_format, 
-            rendering_mode, 
-            ..
-        } = args;
-        let pixel_format = env.set_pixel_format_xrgb8888(pixel_format)?;
-        let mut logger = env.get_log_interface()?;
-        let mut frame_buffer = ArrayFrameBuffer::new([XRGB8888::DEFAULT; FRAME_BUFFER_LEN]);
-
-        for x in 0..SNES_VIDEO_WIDTH {
-            let r = (((x as f32) / (SNES_VIDEO_WIDTH as f32)) * 255.0) as u8;
-
-            for y in 0..SNES_VIDEO_HEIGHT {
-                let g = (((y as f32) / (SNES_VIDEO_HEIGHT as f32)) * 255.0) as u8;
-                let idx = (y as usize) * (SNES_VIDEO_WIDTH as usize) + x as usize;
-
-                frame_buffer[idx].set_r(r);
-                frame_buffer[idx].set_g(g);
-            }
-        }
-
-        let mut core = Self {
-            logger,
-            frame_buffer,
-            rendering_mode,
-            pixel_format,
+        let path_str = if game.is_path() {
+            game.as_path().unwrap().path().as_str()
+        } else if game.is_data() {
+            game.as_data().unwrap().path().unwrap().as_str()
+        } else {
+            core.logger.log(LogLevel::Error, "Game provided is neither path nor data.");
+            return Err(CoreError::new())
         };
 
-        core.logger.info(c_utf8!("loaded game"));
+        core.logger.log(LogLevel::Info, format!("Loading game from '{}'", path_str).as_str());
+
+        // Load game here
 
         Ok(core)
-        
-        // todo!("Load Game");
     }
 
     fn get_system_av_info(&self, env: &mut impl GetAvInfo) -> SystemAVInfo {
-        const WINDOW_SCALE: u16 = 4;
-        const WINDOW_WIDTH: u16 = WINDOW_SCALE * SNES_VIDEO_WIDTH;
-        const WINDOW_HEIGHT: u16 = WINDOW_SCALE * SNES_VIDEO_HEIGHT;
-        SystemAVInfo::default_timings(GameGeometry::fixed(WINDOW_WIDTH, WINDOW_HEIGHT))
+        const WINDOW_WIDTH: u16 = 4 * SNES_FRAME_WIDTH as u16;
+        const WINDOW_HEIGHT: u16 = 4 * SNES_FRAME_HEIGHT as u16;
+        
+        SystemAVInfo::default_timings(GameGeometry::fixed(SNES_FRAME_WIDTH as u16, (FRAME_BUF_SIZE/SNES_FRAME_WIDTH) as u16))
+        // todo!("Get Sys AV Info");
     }
 
     fn run(&mut self, env: &mut impl retro::env::Run, callbacks: &mut impl Callbacks) -> InputsPolled {
         let inputs_polled = self.update_input(callbacks);
 
+        for y in 0..SNES_FRAME_HEIGHT {
+            for x in 0..SNES_FRAME_WIDTH {
+                let idx = y*SNES_FRAME_WIDTH + x;
+
+                let pixel = &mut self.frame_buffer[idx];
+
+                pixel.set_r(pixel.r() + 1);
+                pixel.set_g(pixel.g() + 1);
+                pixel.set_b(pixel.b() + 1);
+            }
+        }
+
         self.cycle_frame();
 
         // self.render_audio(callbacks);
         self.render_video(callbacks);
+
+        self.last_frame = time::Instant::now();
         
         inputs_polled
     }
@@ -157,23 +250,23 @@ impl<'a> retro::Core<'a> for NemulatorCore {
         todo!("Reset Core");
     }
 
-    fn unload_game(self, env: &mut impl retro::env::UnloadGame) -> Self::Init {
-        todo!("Unload Game");
-    }
-
-    fn load_without_content<E: retro::env::LoadGame>(
-        args: LoadGameExtraArgs<'a, '_, E, Self::Init>,
-      ) -> Result<Self, retro::error::CoreError> {
-        todo!("Load Without Content");
-    }
-
-    fn deinit(env: &mut impl retro::env::Deinit, init_state: Self::Init) {
-        todo!("Deinit")
+    fn unload_game(mut self, env: &mut impl retro::env::UnloadGame) -> Self::Init {
+        self.logger.log(LogLevel::Info, "Unloading game..");
     }
 
     fn set_environment(env: &mut impl retro::env::SetEnvironment) {
-        // todo!("Set Environment")
+        let _ = env.set_support_no_game(true);
     }
+
+    // fn deinit(env: &mut impl retro::env::Deinit, init_state: Self::Init) {}
 }
 
-libretro_core!(crate::libretro::NemulatorCore);
+// Look into implementing these for more functionality:
+//      (found in retro/cores.rs)
+// SaveStateCore
+// DeviceTypeAwareCore
+// CheatsCore
+// GetMemoryRegionCore
+// SpecialGameCore
+
+libretro_core!(crate::libretro::SnemulatorCore);
