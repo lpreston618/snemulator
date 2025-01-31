@@ -27,6 +27,8 @@ use framebuf::VecFrameBuffer;
 const SNES_FRAME_WIDTH: usize = 512;
 const SNES_FRAME_HEIGHT: usize = 448;
 const FRAME_BUF_SIZE: usize = SNES_FRAME_WIDTH*SNES_FRAME_HEIGHT;
+const AUDIO_FREQ: usize = 44100;
+const AUDIO_BUFFER_SAMPLES: usize = AUDIO_FREQ / 60;
 
 
 #[derive(Clone, Copy)]
@@ -75,8 +77,11 @@ struct SnemulatorCore {
     >,
     pixel_format: ActiveFormat<XRGB8888>,
     rendering_mode: SoftwareRenderEnabled,
+    audio_buffer: [i16; AUDIO_BUFFER_SAMPLES*2],
 
     last_frame: time::Instant,
+    start: time::Instant,
+    frame_count: u64,
 }
 
 fn screen_message(env: &mut impl retro::env::Run, message: &str, frames: u32) {
@@ -88,7 +93,7 @@ fn screen_message(env: &mut impl retro::env::Run, message: &str, frames: u32) {
 
 impl SnemulatorCore {
     pub fn render_audio(&mut self, callbacks: &mut impl Callbacks) {
-        // callbacks.upload_audio_frame(&audio_batch);
+        callbacks.upload_audio_frame(&self.audio_buffer);
     }
 
     pub fn render_video(&mut self, callbacks: &mut impl Callbacks) {
@@ -185,7 +190,10 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
             frame_buffer,
             pixel_format,         
             rendering_mode,
+            audio_buffer: [0; AUDIO_BUFFER_SAMPLES*2],
             last_frame: time::Instant::now(),
+            start: time::Instant::now(),
+            frame_count: 0,
         })
     }
 
@@ -223,24 +231,43 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
     fn run(&mut self, env: &mut impl retro::env::Run, callbacks: &mut impl Callbacks) -> InputsPolled {
         let inputs_polled = self.update_input(callbacks);
 
-        for y in 0..SNES_FRAME_HEIGHT {
-            for x in 0..SNES_FRAME_WIDTH {
-                let idx = y*SNES_FRAME_WIDTH + x;
+        // for y in 0..SNES_FRAME_HEIGHT {
+        //     for x in 0..SNES_FRAME_WIDTH {
+        //         let idx = y*SNES_FRAME_WIDTH + x;
 
-                let pixel = &mut self.frame_buffer[idx];
+        //         let pixel = &mut self.frame_buffer[idx];
 
-                pixel.set_r(pixel.r() + 1);
-                pixel.set_g(pixel.g() + 1);
-                pixel.set_b(pixel.b() + 1);
-            }
+        //         pixel.set_r(pixel.r() + 1);
+        //         pixel.set_g(pixel.g() + 1);
+        //         pixel.set_b(pixel.b() + 1);
+        //     }
+        // }
+
+        let emulated_time = self.frame_count as f32 / 60.0;
+        for i in 0..AUDIO_BUFFER_SAMPLES {
+            let delta = i as f32 / (AUDIO_BUFFER_SAMPLES as f32 * 60.0);
+            let t = emulated_time + delta;
+            let w = (t * 440.0 * std::f32::consts::TAU).sin();
+            let w = (w * i16::MAX as f32) as i16;
+
+            self.audio_buffer[2*i + 0] = w;
+            self.audio_buffer[2*i + 1] = w;
+            // println!("{}: {i}: {w}", self.frame_count);
         }
+
+        // if self.frame_count == 1 {
+        //     todo!("fix sound");
+        // }
+
+        // screen_message(env, format!("{}", time_since_start).as_str(), 1);
 
         self.cycle_frame();
 
-        // self.render_audio(callbacks);
+        self.render_audio(callbacks);
         self.render_video(callbacks);
 
         self.last_frame = time::Instant::now();
+        self.frame_count += 1;
         
         inputs_polled
     }
