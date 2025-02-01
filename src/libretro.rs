@@ -8,6 +8,7 @@ use libretro_rs::ffi::retro_log_level;
 use libretro_rs::retro::error::CoreError;
 use libretro_rs::retro::game::GameInfo;
 use libretro_rs::retro::log::{LogInterface, Logger, PlatformLogger};
+use libretro_rs::retro::video::FrameBuffer;
 use libretro_rs::{ext, libretro_core};
 use libretro_rs::retro::av::{GameGeometry, Message, PixelFormat, SoftwareRenderEnabled, SystemAVInfo};
 use libretro_rs::retro::env::GetAvInfo;
@@ -21,7 +22,7 @@ use libretro_rs::retro::{
     video::ArrayFrameBuffer,
 };
 
-use framebuf::VecFrameBuffer;
+use framebuf::ResizableFrameBuffer;
 
 
 const SNES_FRAME_WIDTH: usize = 512;
@@ -29,7 +30,6 @@ const SNES_FRAME_HEIGHT: usize = 448;
 const FRAME_BUF_SIZE: usize = SNES_FRAME_WIDTH*SNES_FRAME_HEIGHT;
 const AUDIO_FREQ: usize = 44100;
 const AUDIO_BUFFER_SAMPLES: usize = AUDIO_FREQ / 60;
-
 
 #[derive(Clone, Copy)]
 enum LogLevel {
@@ -66,14 +66,11 @@ impl SnemLogger {
     }
 }
 
-
-
 struct SnemulatorCore {
     logger: SnemLogger,
-    frame_buffer: VecFrameBuffer<
+    frame_buffer: ResizableFrameBuffer<
         XRGB8888, 
         FRAME_BUF_SIZE, 
-        {SNES_FRAME_WIDTH as u16}
     >,
     pixel_format: ActiveFormat<XRGB8888>,
     rendering_mode: SoftwareRenderEnabled,
@@ -164,9 +161,8 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
 
         args.env.set_hw_render_none()?;
 
-        let mut frame_buffer = VecFrameBuffer::new(
-            vec![XRGB8888::default(); FRAME_BUF_SIZE]
-        );
+        let mut frame_buffer = ResizableFrameBuffer::new();
+        frame_buffer.resize(SNES_FRAME_WIDTH as u16, SNES_FRAME_HEIGHT as u16).unwrap();
         let pixel_format = args.env.set_pixel_format_xrgb8888(args.pixel_format)?;
         let rendering_mode = args.rendering_mode;
 
@@ -174,12 +170,13 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
             for x in 0..SNES_FRAME_WIDTH {
                 let idx = y*SNES_FRAME_WIDTH + x;
 
-                let r = ((y as f64) / (SNES_FRAME_HEIGHT as f64) * 255.0) as u32;
-                let g = ((x as f64) / (SNES_FRAME_WIDTH as f64) * 255.0) as u32;
+                let r = ((y as f64) / (SNES_FRAME_HEIGHT as f64) * 255.0) as u8;
+                let g = ((x as f64) / (SNES_FRAME_WIDTH as f64) * 255.0) as u8;
 
-                let col = XRGB8888::new_with_raw_value(
-                    (r << 16) | (g << 8) | 0
-                );
+                let col = XRGB8888::default()
+                    .with_r(r)
+                    .with_g(g)
+                    .with_b(0);
 
                 frame_buffer[idx] = col;
             }
@@ -221,27 +218,34 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
     }
 
     fn get_system_av_info(&self, env: &mut impl GetAvInfo) -> SystemAVInfo {
-        const WINDOW_WIDTH: u16 = 4 * SNES_FRAME_WIDTH as u16;
-        const WINDOW_HEIGHT: u16 = 4 * SNES_FRAME_HEIGHT as u16;
-        
-        SystemAVInfo::default_timings(GameGeometry::fixed(SNES_FRAME_WIDTH as u16, (FRAME_BUF_SIZE/SNES_FRAME_WIDTH) as u16))
-        // todo!("Get Sys AV Info");
+        SystemAVInfo::default_timings(GameGeometry::fixed(SNES_FRAME_WIDTH as u16, SNES_FRAME_HEIGHT as u16))
     }
 
     fn run(&mut self, env: &mut impl retro::env::Run, callbacks: &mut impl Callbacks) -> InputsPolled {
         let inputs_polled = self.update_input(callbacks);
 
-        // for y in 0..SNES_FRAME_HEIGHT {
-        //     for x in 0..SNES_FRAME_WIDTH {
-        //         let idx = y*SNES_FRAME_WIDTH + x;
+        if self.frame_count == 300 {
+            self.frame_buffer.resize(
+                (SNES_FRAME_WIDTH/32) as u16,
+                (SNES_FRAME_HEIGHT/32) as u16,
+            ).unwrap();
 
-        //         let pixel = &mut self.frame_buffer[idx];
+            for y in 0..self.frame_buffer.height() {
+                for x in 0..self.frame_buffer.width() {
+                    let idx = (y*self.frame_buffer.width() + x) as usize;
 
-        //         pixel.set_r(pixel.r() + 1);
-        //         pixel.set_g(pixel.g() + 1);
-        //         pixel.set_b(pixel.b() + 1);
-        //     }
-        // }
+                let r = ((y as f32) / (self.frame_buffer.height() as f32) * 255.0) as u8;
+                let g = ((x as f32) / (self.frame_buffer.width() as f32) * 255.0) as u8;
+
+                let col = XRGB8888::default()
+                    .with_r(r)
+                    .with_g(g)
+                    .with_b(0);
+
+                self.frame_buffer[idx] = col;
+                }
+            }
+        }
 
         let emulated_time = self.frame_count as f32 / 60.0;
         for i in 0..AUDIO_BUFFER_SAMPLES {
@@ -252,14 +256,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
 
             self.audio_buffer[2*i + 0] = w;
             self.audio_buffer[2*i + 1] = w;
-            // println!("{}: {i}: {w}", self.frame_count);
         }
-
-        // if self.frame_count == 1 {
-        //     todo!("fix sound");
-        // }
-
-        // screen_message(env, format!("{}", time_since_start).as_str(), 1);
 
         self.cycle_frame();
 

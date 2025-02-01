@@ -8,7 +8,7 @@ pub mod format {
     pub trait Sealed {}
   }
 
-  pub trait Format: private::Sealed {}
+  pub trait Format: private::Sealed + Default + Clone {}
 
   pub use orgb1555::*;
   mod orgb1555 {
@@ -75,5 +75,5 @@ pub mod format {
 
     impl Sealed for RGB565 {}
     impl Format for RGB565 {}
-  }
+  } 
 }
