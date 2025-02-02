@@ -224,40 +224,6 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
     fn run(&mut self, env: &mut impl retro::env::Run, callbacks: &mut impl Callbacks) -> InputsPolled {
         let inputs_polled = self.update_input(callbacks);
 
-        if self.frame_count == 300 {
-            self.frame_buffer.resize(
-                (SNES_FRAME_WIDTH/32) as u16,
-                (SNES_FRAME_HEIGHT/32) as u16,
-            ).unwrap();
-
-            for y in 0..self.frame_buffer.height() {
-                for x in 0..self.frame_buffer.width() {
-                    let idx = (y*self.frame_buffer.width() + x) as usize;
-
-                let r = ((y as f32) / (self.frame_buffer.height() as f32) * 255.0) as u8;
-                let g = ((x as f32) / (self.frame_buffer.width() as f32) * 255.0) as u8;
-
-                let col = XRGB8888::default()
-                    .with_r(r)
-                    .with_g(g)
-                    .with_b(0);
-
-                self.frame_buffer[idx] = col;
-                }
-            }
-        }
-
-        let emulated_time = self.frame_count as f32 / 60.0;
-        for i in 0..AUDIO_BUFFER_SAMPLES {
-            let delta = i as f32 / (AUDIO_BUFFER_SAMPLES as f32 * 60.0);
-            let t = emulated_time + delta;
-            let w = (t * 440.0 * std::f32::consts::TAU).sin();
-            let w = (w * i16::MAX as f32) as i16;
-
-            self.audio_buffer[2*i + 0] = w;
-            self.audio_buffer[2*i + 1] = w;
-        }
-
         self.cycle_frame();
 
         self.render_audio(callbacks);

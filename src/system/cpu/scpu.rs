@@ -1,6 +1,4 @@
 
-use serde::{ser::SerializeStruct, Serialize};
-
 use crate::system::cartridge::Cartridge;
 
 const WRAM_SIZE: usize = 128 * 1024; // 128 KiB
@@ -121,34 +119,6 @@ pub struct Cpu65c816 {
 
     debug_nmi: u8,
     debug_io_ops: usize,
-}
-
-impl Serialize for Cpu65c816 {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut s = serializer.serialize_struct("Cpu65c816", 11)?;
-        s.serialize_field("acc", &self.acc)?;
-        s.serialize_field("x", &self.x)?;
-        s.serialize_field("y", &self.y)?;
-        s.serialize_field("pc", &self.pc)?;
-        s.serialize_field("stk_ptr", &self.stk_ptr)?;
-        s.serialize_field("direct", &self.direct_page)?;
-        s.serialize_field("data_bank", &self.data_bank)?;
-        s.serialize_field("prg_bank", &self.prg_bank)?;
-        s.serialize_field("status", &self.status)?;
-
-        s.serialize_field("mode", &format!("{:?}", self.mode))?;
-        s.serialize_field("mapping_mode", &format!("{:?}", self.mapping_mode))?;
-        s.serialize_field("mem_sel", &format!("{:?}", self.mem_sel))?;
-        s.serialize_field("branch_taken", &self.branch_taken)?;
-        s.serialize_field("stopped", &self.stopped)?;
-        s.serialize_field("awaiting_interrupt", &self.awaiting_interrupt)?;
-        s.serialize_field("total_clocks", &self.total_clocks)?;
-
-        s.end()
-    }
 }
 
 // SNES System Functionality
