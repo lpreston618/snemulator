@@ -22,7 +22,7 @@ use libretro_rs::retro::{
     video::ArrayFrameBuffer,
 };
 
-use framebuf::ResizableFrameBuffer;
+use retro::framebuf::ResizableFrameBuffer;
 
 
 const SNES_FRAME_WIDTH: usize = 512;

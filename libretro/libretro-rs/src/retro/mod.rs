@@ -11,5 +11,6 @@ pub mod mem;
 pub mod pixel;
 pub mod str;
 pub mod video;
+pub mod framebuf;
 
 mod cores;

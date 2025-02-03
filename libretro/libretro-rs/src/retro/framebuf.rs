@@ -1,6 +1,10 @@
+/// ResizableFrameBuffer is not in the original libretro-rs library, it was
+/// written for the Snemulator project specifically to meet our needs of a
+/// dynamically resizable frame buffer.
+
 use std::ops::{Deref, DerefMut};
 
-use libretro_rs::retro::{pixel, video::{FrameBuffer, PackedFrameBuffer, PackedFrameBufferMut}};
+use crate::retro::{pixel, video::{FrameBuffer, PackedFrameBuffer, PackedFrameBufferMut}};
 
 #[derive(Clone, Debug)]
 pub struct ResizableFrameBuffer<P, const MAX_LEN: usize> {
@@ -157,7 +161,7 @@ where
 mod tests {
     use std::panic::catch_unwind;
 
-    use libretro_rs::retro::{pixel::format::XRGB8888, video::ArrayFrameBuffer};
+    use crate::retro::{pixel::format::XRGB8888, video::ArrayFrameBuffer};
 
     use super::ResizableFrameBuffer;
 
