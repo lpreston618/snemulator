@@ -525,12 +525,125 @@ impl Cpu65c816 {
 
             // Notes: wram always 0x7E000..=0x7FFFFF regardless of mapping mode
             MappingMode::HiROM => {
-                clocks = Cpu65c816::ONE_CYCLE_SLOW;
-                todo!("HiROM Mapping");
+                match (address.bank(), address.bank_addr()) {
+                    // Normal ROM read (banks C0-FF are in linear order in HiROM).
+                    // Could be either slow or fast ROM, depending on memsel.
+                    (bank @ 0xC0..=0xFF, bank_addr) => {
+                        clocks = match self.mem_sel {
+                            MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
+                            MemSel::FastROM => Cpu65c816::ONE_CYCLE
+                        };
+                    }
+                    // First ROM mirror - mirroring the top half of banks 0xC0-0xFF
+                    // Fast ROM region
+                    (bank @ 0x80..=0xBF, bank_addr @ 0x8000..=0xFFFF) => {
+                        clocks = match self.mem_sel {
+                            MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
+                            MemSel::FastROM => Cpu65c816::ONE_CYCLE
+                        };
+                    }
+                    // Second ROM mirror - mirroring the top half of banks 0xC0-0xFF
+                    // Slow ROM region
+                    (bank @ 0x00..=0x3F, bank_addr @ 0x8000..=0xFFFF) => {
+                        clocks = Cpu65c816::ONE_CYCLE_SLOW;
+                    }
+                    // Work RAM
+                    (bank @ 0x7E..=0x7F, bank_addr) => {
+                        let addr = (bank as usize & 0x01) << 16 | (bank_addr as usize);
+
+                        self.wram[addr] = data;
+                        clocks = Cpu65c816::ONE_CYCLE_SLOW;
+                    }
+                    // LoRAM mirrors
+                    (bank @ 0x00..=0x3F, bank_addr @ 0x0000..=0x1FFF)
+                    | (bank @ 0x80..=0xBF, bank_addr @ 0x0000..=0x1FFF) => {
+                        self.wram[bank_addr as usize] = data;
+                        clocks = Cpu65c816::ONE_CYCLE_SLOW;
+                    }
+                    // Memory-mapped registers
+                    (bank @ 0x00..=0x3F, bank_addr @ 0x2000..=0x5FFF)
+                    | (bank @ 0x80..=0xBF, bank_addr @ 0x2000..=0x5FFF) => {
+                        clocks = 0;
+                        // TODO: I/O regs
+                    }
+                    // Save RAM
+                    (bank @ 0x30..=0x3F, bank_addr @ 0x6000..=0x7FFF) => {
+                        if self.has_sram {
+                            todo!("implement SRAM");
+                        }
+                        clocks = 0;
+                        // TODO: Implement SRAM
+                    }
+                    _ => {
+                        clocks = 0;
+                    }
+                }
             }
             MappingMode::ExHiROM => {
-                clocks = Cpu65c816::ONE_CYCLE_SLOW;
-                todo!("ExHiROM Mapping");
+                match (address.bank(), address.bank_addr()) {
+                    // Lower half of ROM (stored in the upper part of memory, hence ExHiROM).
+                    // Fast ROM region.
+                    (bank @ 0xC0..=0xFF, bank_addr) => {
+                        clocks = match self.mem_sel {
+                            MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
+                            MemSel::FastROM => Cpu65c816::ONE_CYCLE
+                        };
+                    }
+                    // Upper half of ROM (stored lower in memory: bank 0x40 directly follows bank 0xFF).
+                    // Slow ROM region.
+                    (bank @ 0x40..=0x7D, bank_addr) => {
+                        clocks = Cpu65c816::ONE_CYCLE_SLOW;
+                    }
+                    // Very last bit of ROM - and of course, it's the lowest in memory.
+                    // Only fills the upper half of banks 3E and 3F.
+                    (bank @ 0x3E..=0x3F, bank_addr @ 0x8000..=0xFFFF) => {
+                        clocks = Cpu65c816::ONE_CYCLE_SLOW;
+                    }
+                    // Mirror of ROM banks 0xC0-0xFF.
+                    // Fast ROM region.
+                    (bank @ 0x80..=0xBF, bank_addr @ 0x8000..=0xFFFF) => {
+                        clocks = match self.mem_sel {
+                            MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
+                            MemSel::FastROM => Cpu65c816::ONE_CYCLE
+                        };
+                    }
+                    // Mirror of ROM banks 0x40-0x7D
+                    (bank @ 0x00..=0x3D, bank_addr @ 0x8000..=0xFFFF) => {
+                        clocks = match self.mem_sel {
+                            MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
+                            MemSel::FastROM => Cpu65c816::ONE_CYCLE
+                        };
+                    }
+                    // Work RAM
+                    (bank @ 0x7E..=0x7F, bank_addr) => {
+                        let addr = (bank as usize & 0x01) << 16 | (bank_addr as usize);
+
+                        self.wram[addr] = data;
+                        clocks = Cpu65c816::ONE_CYCLE_SLOW;
+                    }
+                    // LoRAM mirrors
+                    (bank @ 0x00..=0x3F, bank_addr @ 0x0000..=0x1FFF)
+                    | (bank @ 0x80..=0xBF, bank_addr @ 0x0000..=0x1FFF) => {
+                        self.wram[bank_addr as usize] = data;
+                        clocks = Cpu65c816::ONE_CYCLE_SLOW;
+                    }
+                    // Memory-mapped registers
+                    (bank @ 0x00..=0x3F, bank_addr @ 0x2000..=0x5FFF)
+                    | (bank @ 0x80..=0xBF, bank_addr @ 0x2000..=0x5FFF) => {
+                        clocks = 0;
+                        // TODO: I/O regs
+                    }
+                    // Save RAM
+                    (bank @ 0x80..=0xBF, bank_addr @ 0x6000..=0x7FFF) => {
+                        if self.has_sram {
+                            todo!("implement SRAM");
+                        }
+                        clocks = 0;
+                    }
+                    _ => {
+                        clocks = 0;
+                    }
+                }
             }
         }
 
