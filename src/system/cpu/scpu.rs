@@ -1,5 +1,8 @@
 
+use std::rc::Rc;
+
 use crate::system::cartridge::Cartridge;
+use crate::system::ppu::PpuData;
 
 const WRAM_SIZE: usize = 128 * 1024; // 128 KiB
 
@@ -119,12 +122,14 @@ pub struct Cpu65c816 {
 
     debug_nmi: u8,
     debug_io_ops: usize,
+
+    ppu_data: Rc<PpuData>
 }
 
 // SNES System Functionality
 impl Cpu65c816 {
     // Creates a new, uninitialized 65c816 CPU
-    pub fn new() -> Self {
+    pub fn new(ppu_data: Rc<PpuData>) -> Self {
         Self {
             acc: 0,
             x: 0,
@@ -152,6 +157,8 @@ impl Cpu65c816 {
 
             debug_nmi: 0xc2, // for testing porpuses
             debug_io_ops: 0,
+
+            ppu_data: ppu_data,
         }
     }
 
@@ -340,6 +347,7 @@ impl Cpu65c816 {
                     }
                 }
             }
+
             MappingMode::ExHiROM => {
                 match (address.bank(), address.bank_addr()) {
                     // Lower half of ROM (stored in the upper part of memory, hence ExHiROM).
@@ -6100,7 +6108,8 @@ mod tests {
         let test_path = Path::new("tests/blarggs/test_adc_sbc/test_adc.smc");
         let cart = Cartridge::from_path_with_mode(test_path, MappingMode::LoROM).unwrap();
 
-        let mut cpu = Cpu65c816::new();
+        let ppu_data = Rc::new(PpuData::new());
+        let mut cpu = Cpu65c816::new(ppu_data);
 
         cpu.load_cart(&cart);
 
@@ -6156,7 +6165,8 @@ mod tests {
             .map(String::from)
             .collect();
 
-        let mut cpu = Cpu65c816::new();
+        let ppu_data = Rc::new(PpuData::new());
+        let mut cpu = Cpu65c816::new(ppu_data);
         cpu.load_cart(&cart);
 
         cpu.stk_ptr = 0x1ff;
@@ -6233,7 +6243,8 @@ mod tests {
         let test_path = Path::new(&test_path_str);
         let cart = Cartridge::from_path(test_path).unwrap();
 
-        let mut cpu = Cpu65c816::new();
+        let ppu_data = Rc::new(PpuData::new());
+        let mut cpu = Cpu65c816::new(ppu_data);
         cpu.load_cart(&cart);
 
         cpu.stk_ptr = 0x1ff;

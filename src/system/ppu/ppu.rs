@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::{cell::Cell, rc::Rc};
 
 trait GetBits {
     fn get_bit(self, bit: Self) -> Self;
@@ -10,8 +10,9 @@ impl GetBits for u8 {
     fn bit_en(self, bit: Self) -> bool { (self >> bit) & 1 != 0 }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 enum ToggleState {
+    #[default]
     LoByte,
     HiByte,
 }
@@ -42,8 +43,9 @@ impl Togglable for Cell<ToggleState> {
     fn set_hi(&self) { self.replace(ToggleState::HiByte); }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 enum ObjectSize {
+    #[default]
     Size8x8_16x16,
     Size8x8_32x32,
     Size8x8_64x64,
@@ -54,20 +56,23 @@ enum ObjectSize {
     Size16x32_32x32,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 enum CharSize {
+    #[default]
     Small,
     Large,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 enum BgPriority {
+    #[default]
     High,
     Low,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 enum BgMode {
+    #[default]
     Mode0,
     Mode1,
     Mode2,
@@ -78,86 +83,124 @@ enum BgMode {
     Mode7
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 enum TilemapCount {
+    #[default]
     One,
     Two,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Default, PartialEq)]
 enum VramIncMode {
+    #[default]
     LowByte,
     HighByte
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 enum AddressRemapping {
+    #[default]
     None,
     ColDepth2,
     ColDepth4,
     ColDepth8,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 enum IncrSize {
+    #[default]
     Bytes2,
     Bytes64,
     Bytes256,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 enum M7FillMode {
+    #[default]
     Transparent,
     Character,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 enum WindowLogic {
+    #[default]
     Or,
     And,
     Xor,
     Xnor,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 enum WindowColorRegion {
+    #[default]
     Nowhere,
     Outside,
     Inside,
     Everywhere,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 enum CMathAddend {
+    #[default]
     Fixed,
     Subscreen,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 enum DirectColorMode {
+    #[default]
     Palette,
     Direct,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 enum CMathOperator {
+    #[default]
     Add,
     Subtract,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 enum MasterSlave {
+    #[default]
     Master,
     Slave,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 enum VideoType {
+    #[default]
     Ntsc,
     Pal,
 }
 
+struct OamData([Cell<u8>; 0x220]);
+struct VramData([Cell<u8>; 64 * 1024]);
+struct CgRamData([Cell<u16>; 256]);
 
+impl Default for OamData {
+    fn default() -> Self {
+        let arr: [Cell<u8>; 0x220] = vec![Cell::new(0); 0x220].try_into().expect("Failed to make OAM arr");
+        OamData(arr)
+    }
+}
+
+impl Default for VramData {
+    fn default() -> Self {
+        let arr: [Cell<u8>; 64 * 1024] = vec![Cell::new(0); 64 * 1024].try_into().expect("Failed to make VRAM arr");
+        VramData(arr)
+    }
+}
+
+impl Default for CgRamData {
+    fn default() -> Self {
+        let arr: [Cell<u16>; 256] = vec![Cell::new(0); 256].try_into().expect("Failed to make CGRAM arr");
+        CgRamData(arr)
+    }
+}
+
+
+#[derive(Default)]
 pub struct PpuData {
     // $2100    F... BBBB    Write only
     //       - Forced blanking (F)
@@ -549,9 +592,9 @@ pub struct PpuData {
     ppu2_version: Cell<u8>,
 
     // PPU Memory
-    oam: [Cell<u8>; 0x220], // 544 Bytes of OAM
-    vram: [Cell<u8>; 64 * 1024], // 64 KiB of VRAM
-    cgram: [Cell<u16>; 256],
+    oam: OamData, // 544 Bytes of OAM
+    vram: VramData, // 64 KiB of VRAM
+    cgram: CgRamData,
 
     // PPU State
     in_vblank: Cell<bool>,
@@ -559,6 +602,12 @@ pub struct PpuData {
     in_fblank: Cell<bool>,
     h_counter: Cell<u16>,
     v_counter: Cell<u16>,
+}
+
+impl PpuData {
+    pub fn new() -> PpuData {
+        PpuData::default()
+    }
 }
 
 // CPU Access
@@ -596,7 +645,7 @@ impl PpuData {
 
             0x03 => {
                 let new_addr = self.oam_addr.get() & 0x01FE | (((data & 0x01) as u16) << 9);
-
+            
                 self.oam_addr.replace(new_addr);
                 self.priority_rotation.replace(data.bit_en(7));
             }
@@ -607,12 +656,12 @@ impl PpuData {
                 if oam_addr & 1 == 0 {
                     self.oam_data_latch.replace(data);
                 } else if oam_addr < 0x200 {
-                    self.oam[oam_addr - 1].replace(self.oam_data_latch.get());
-                    self.oam[oam_addr].replace(data);
+                    self.oam.0[oam_addr - 1].replace(self.oam_data_latch.get());
+                    self.oam.0[oam_addr].replace(data);
                 }
 
                 if oam_addr >= 0x200 {
-                    self.oam[oam_addr].replace(data);
+                    self.oam.0[oam_addr].replace(data);
                 }
 
                 self.oam_addr.replace(oam_addr as u16 + 1);
@@ -797,8 +846,8 @@ impl PpuData {
                 );
                 self.vram_latch.replace(
                     u16::from_le_bytes([
-                        self.vram[self.vram_addr.get() as usize].get(),
-                        self.vram[(self.vram_addr.get() + 1) as usize].get()
+                        self.vram.0[self.vram_addr.get() as usize].get(),
+                        self.vram.0[(self.vram_addr.get() + 1) as usize].get()
                     ])
                 );
             }
@@ -809,8 +858,8 @@ impl PpuData {
                 );
                 self.vram_latch.replace(
                     u16::from_le_bytes([
-                        self.vram[self.vram_addr.get() as usize].get(),
-                        self.vram[(self.vram_addr.get() + 1) as usize].get()
+                        self.vram.0[self.vram_addr.get() as usize].get(),
+                        self.vram.0[(self.vram_addr.get() + 1) as usize].get()
                     ])
                 );
             }
@@ -818,7 +867,7 @@ impl PpuData {
             0x18 => {
                 if self.in_fblank.get() || self.in_vblank.get() {
                     let addr = self.get_vram_addr();
-                    self.vram[addr + 1].replace(data);
+                    self.vram.0[addr + 1].replace(data);
                 }
                     
                 if self.vram_addr_inc_mode.get() == VramIncMode::LowByte {
@@ -829,7 +878,7 @@ impl PpuData {
             0x19 => {
                 if self.in_fblank.get() || self.in_vblank.get() {
                     let addr = self.get_vram_addr();
-                    self.vram[addr].replace(data);
+                    self.vram.0[addr].replace(data);
                 }
                     
                 if self.vram_addr_inc_mode.get() == VramIncMode::HighByte {
@@ -900,7 +949,7 @@ impl PpuData {
                     let addr = self.cgram_addr.get() as usize;
                     let new_col = ((data as u16) << 8) | self.cgram_latch.get() as u16;
 
-                    self.cgram[addr].replace(new_col);
+                    self.cgram.0[addr].replace(new_col);
 
                     self.cgram_addr.replace((addr as u8) + 1);
                 } else {
@@ -1144,7 +1193,7 @@ impl PpuData {
             0x38 => {
                 let addr = self.oam_addr.replace(self.oam_addr.get() + 1);
 
-                self.oam[addr as usize].get()
+                self.oam.0[addr as usize].get()
             }
 
             0x39 => {
@@ -1153,8 +1202,8 @@ impl PpuData {
                 if self.vram_addr_inc_mode.get() == VramIncMode::LowByte {
                     self.vram_latch.replace(
                         u16::from_le_bytes([
-                            self.vram[self.vram_addr.get() as usize].get(),
-                            self.vram[(self.vram_addr.get() + 1) as usize].get()
+                            self.vram.0[self.vram_addr.get() as usize].get(),
+                            self.vram.0[(self.vram_addr.get() + 1) as usize].get()
                         ])
                     );
                     self.inc_vram_addr();
@@ -1169,8 +1218,8 @@ impl PpuData {
                 if self.vram_addr_inc_mode.get() == VramIncMode::HighByte {
                     self.vram_latch.replace(
                         u16::from_le_bytes([
-                            self.vram[self.vram_addr.get() as usize].get(),
-                            self.vram[(self.vram_addr.get() + 1) as usize].get()
+                            self.vram.0[self.vram_addr.get() as usize].get(),
+                            self.vram.0[(self.vram_addr.get() + 1) as usize].get()
                         ])
                     );
                     self.inc_vram_addr();
@@ -1181,9 +1230,9 @@ impl PpuData {
 
             0x3B => {
                 if self.cgram_toggle.toggle() {
-                    (self.cgram[self.cgram_addr.get() as usize].get() >> 8) as u8 // HIGH BIT IS PPU2 OPEN BUS
+                    (self.cgram.0[self.cgram_addr.get() as usize].get() >> 8) as u8 // HIGH BIT IS PPU2 OPEN BUS
                 } else {
-                    self.cgram[self.cgram_addr.get() as usize].get() as u8
+                    self.cgram.0[self.cgram_addr.get() as usize].get() as u8
                 }
             }
 
@@ -1299,10 +1348,12 @@ impl PpuData {
 
 }
 
-struct Ppu<'a> {
-    registers: &'a PpuData,
+pub struct Ppu5C7x {
+    registers: Rc<PpuData>,
 }
 
-impl Ppu<'_> {
-    
+impl Ppu5C7x {
+    pub fn new(ppu_data: Rc<PpuData>) -> Self {
+        Ppu5C7x { registers: ppu_data }
+    }
 }

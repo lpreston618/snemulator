@@ -1,6 +1,8 @@
 use std::ffi::{c_char, CStr};
+use std::rc::Rc;
 use std::time;
 
+use crate::system::ppu::{self, Ppu5C7x, PpuData};
 use crate::*;
 
 use libretro_rs::c_utf8::{c_utf8, CUtf8};
@@ -24,6 +26,7 @@ use libretro_rs::retro::{
 
 use retro::framebuf::ResizableFrameBuffer;
 
+use crate::system::cpu::Cpu65c816;
 
 const SNES_FRAME_WIDTH: usize = 512;
 const SNES_FRAME_HEIGHT: usize = 448;
@@ -75,6 +78,9 @@ struct SnemulatorCore {
     pixel_format: ActiveFormat<XRGB8888>,
     rendering_mode: SoftwareRenderEnabled,
     audio_buffer: [i16; AUDIO_BUFFER_SAMPLES*2],
+
+    snem_cpu: Cpu65c816,
+    snem_ppu: Ppu5C7x,
 
     last_frame: time::Instant,
     start: time::Instant,
@@ -142,7 +148,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
     fn get_system_info() -> SystemInfo {
         SystemInfo::new(
             c_utf8!("Snemulator"), 
-            c_utf8!(env!("CARGO_PKG_VERSION")), 
+            c_utf8!(env!("CARGO_PKG_VERSION")),
             ext!["sfc", "smc"],
         )
     }
@@ -166,32 +172,39 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         let pixel_format = args.env.set_pixel_format_xrgb8888(args.pixel_format)?;
         let rendering_mode = args.rendering_mode;
 
-        for y in 0..SNES_FRAME_HEIGHT {
-            for x in 0..SNES_FRAME_WIDTH {
-                let idx = y*SNES_FRAME_WIDTH + x;
+        let ppu_data = Rc::new(PpuData::new());
+        let snem_cpu = Cpu65c816::new(ppu_data.clone());
+        let snem_ppu = Ppu5C7x::new(ppu_data.clone());
 
-                let r = ((y as f64) / (SNES_FRAME_HEIGHT as f64) * 255.0) as u8;
-                let g = ((x as f64) / (SNES_FRAME_WIDTH as f64) * 255.0) as u8;
+        // for y in 0..SNES_FRAME_HEIGHT {
+        //     for x in 0..SNES_FRAME_WIDTH {
+        //         let idx = y*SNES_FRAME_WIDTH + x;
+        //         let r = ((y as f64) / (SNES_FRAME_HEIGHT as f64) * 255.0) as u8;
+        //         let g = ((x as f64) / (SNES_FRAME_WIDTH as f64) * 255.0) as u8;
+        //         let col = XRGB8888::default()
+        //             .with_r(r)
+        //             .with_g(g)
+        //             .with_b(0);
+        //         frame_buffer[idx] = col;
+        //     }
+        // }
 
-                let col = XRGB8888::default()
-                    .with_r(r)
-                    .with_g(g)
-                    .with_b(0);
-
-                frame_buffer[idx] = col;
-            }
-        }
-
-        Ok(SnemulatorCore{
+        let core = SnemulatorCore{
             logger,
             frame_buffer,
-            pixel_format,         
+            pixel_format,
             rendering_mode,
             audio_buffer: [0; AUDIO_BUFFER_SAMPLES*2],
+
+            snem_cpu,
+            snem_ppu,
+
             last_frame: time::Instant::now(),
             start: time::Instant::now(),
             frame_count: 0,
-        })
+        };
+
+        Ok(core)
     }
 
     fn load_game<E: retro::env::LoadGame>(
@@ -212,7 +225,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
 
         core.logger.log(LogLevel::Info, format!("Loading game from '{}'", path_str).as_str());
 
-        // Load game here
+        // TODO: Load game here
 
         Ok(core)
     }
@@ -223,6 +236,26 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
 
     fn run(&mut self, env: &mut impl retro::env::Run, callbacks: &mut impl Callbacks) -> InputsPolled {
         let inputs_polled = self.update_input(callbacks);
+
+        if self.frame_count == 300 {
+            self.frame_buffer.resize((SNES_FRAME_WIDTH/32) as u16, (SNES_FRAME_HEIGHT/32) as u16);
+        
+            for y in 0..self.frame_buffer.width() {
+                for x in 0..self.frame_buffer.height() {
+                    let idx = (y*self.frame_buffer.width() + x) as usize;
+    
+                    let r = ((y as f64) / (self.frame_buffer.height() as f64) * 255.0) as u8;
+                    let g = ((x as f64) / (self.frame_buffer.width() as f64) * 255.0) as u8;
+    
+                    let col = XRGB8888::default()
+                        .with_r(r)
+                        .with_g(g)
+                        .with_b(0);
+    
+                    self.frame_buffer[idx] = col;
+                }
+            }
+        }
 
         self.cycle_frame();
 
