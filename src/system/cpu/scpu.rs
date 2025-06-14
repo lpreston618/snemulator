@@ -1,7 +1,10 @@
 use std::rc::Rc;
 
 use crate::system::cartridge::Cartridge;
+use crate::system::cpu::dma::DmaChannel;
 use crate::system::ppu::PpuData;
+
+use super::dma::{self, Direction};
 
 const WRAM_SIZE: usize = 128 * 1024; // 128 KiB
 
@@ -56,6 +59,7 @@ pub enum DmaStatus {
     Off,
     DMA,
     HDMA,
+    LayeredHDMA,
 }
 
 trait CpuAddress {
@@ -130,6 +134,7 @@ pub struct Cpu65c816 {
     debug_io_ops: usize,
 
     dma_status: DmaStatus,
+    dma_channels: Vec<DmaChannel>,
 
     ppu_data: Rc<PpuData>,
 }
@@ -167,6 +172,7 @@ impl Cpu65c816 {
             debug_io_ops: 0,
 
             dma_status: DmaStatus::Off,
+            dma_channels: vec![DmaChannel::default(); 8],
 
             ppu_data: ppu_data,
         }
@@ -195,7 +201,11 @@ impl Cpu65c816 {
         self.total_clocks += clocks;
     }
 
-    fn read(&mut self, address: u32) -> u8 {
+    fn read(&mut self, address: u32) {
+        self.read_with_set_state(address, true);
+    }
+
+    fn read_with_set_state(&mut self, address: u32, alter_state: bool) -> u8 {
         // println!("Read from: 0x{address:06x}");
 
         self.debug_io_ops += 1;
@@ -437,7 +447,9 @@ impl Cpu65c816 {
             }
         }
 
-        self.add_clocks(clocks);
+        if alter_state {
+            self.add_clocks(clocks);
+        }
 
         data
     }
@@ -531,7 +543,7 @@ impl Cpu65c816 {
                     (bank @ 0xC0..=0xFF, bank_addr) => {
                         clocks = match self.mem_sel {
                             MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
-                            MemSel::FastROM => Cpu65c816::ONE_CYCLE
+                            MemSel::FastROM => Cpu65c816::ONE_CYCLE,
                         };
                     }
                     // First ROM mirror - mirroring the top half of banks 0xC0-0xFF
@@ -539,7 +551,7 @@ impl Cpu65c816 {
                     (bank @ 0x80..=0xBF, bank_addr @ 0x8000..=0xFFFF) => {
                         clocks = match self.mem_sel {
                             MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
-                            MemSel::FastROM => Cpu65c816::ONE_CYCLE
+                            MemSel::FastROM => Cpu65c816::ONE_CYCLE,
                         };
                     }
                     // Second ROM mirror - mirroring the top half of banks 0xC0-0xFF
@@ -586,7 +598,7 @@ impl Cpu65c816 {
                     (bank @ 0xC0..=0xFF, bank_addr) => {
                         clocks = match self.mem_sel {
                             MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
-                            MemSel::FastROM => Cpu65c816::ONE_CYCLE
+                            MemSel::FastROM => Cpu65c816::ONE_CYCLE,
                         };
                     }
                     // Upper half of ROM (stored lower in memory: bank 0x40 directly follows bank 0xFF).
@@ -604,14 +616,14 @@ impl Cpu65c816 {
                     (bank @ 0x80..=0xBF, bank_addr @ 0x8000..=0xFFFF) => {
                         clocks = match self.mem_sel {
                             MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
-                            MemSel::FastROM => Cpu65c816::ONE_CYCLE
+                            MemSel::FastROM => Cpu65c816::ONE_CYCLE,
                         };
                     }
                     // Mirror of ROM banks 0x40-0x7D
                     (bank @ 0x00..=0x3D, bank_addr @ 0x8000..=0xFFFF) => {
                         clocks = match self.mem_sel {
                             MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
-                            MemSel::FastROM => Cpu65c816::ONE_CYCLE
+                            MemSel::FastROM => Cpu65c816::ONE_CYCLE,
                         };
                     }
                     // Work RAM
@@ -2510,8 +2522,35 @@ impl Cpu65c816 {
     }
 }
 
-// Cycle Functionality
+// Cycle Functionality - handle DMA vs normal execution.
 impl Cpu65c816 {
+    fn clock(&mut self) {
+        match self.dma_status {
+            DmaStatus::Off => self.exec_instr(),
+            DmaStatus::DMA => {
+                for dma_channel in self.dma_channels.iter_mut() {
+                    if dma_channel.active {
+                        // Only perform a single byte transfer per call, to keep
+                        // synchronized with the PPU.
+                        match dma_channel.direction {
+                            Direction::AtoB => {
+                                let a_byte = dma_channel.src_addr;
+                                dma_channel.update_src_addr();
+                                let b_addr = dma_channel.get_b_with_offset();
+                                self.ppu_data.write(b_addr, a_byte);
+                                dma_channel. += 1;
+                            }
+                            Direction::BtoA => {}
+                        }
+                        //TODO: set inactive
+                    }
+                }
+            }
+            DmaStatus::HDMA => {}
+            DmaStatus::LayeredHDMA => {}
+        }
+    }
+
     fn exec_instr(&mut self) {
         self.debug_io_ops = 0;
 
@@ -6392,4 +6431,3 @@ mod tests {
         println!("CPU Speed: {cpu_mhz} MHz");
     }
 }
-
