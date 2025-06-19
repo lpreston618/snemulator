@@ -1172,7 +1172,7 @@ impl PpuData {
         }
     }
 
-    fn read(&self, address: u8) -> u8 {
+    pub fn read(&self, address: u8) -> u8 {
         let data = match address {
             0x34 => { self.multiply_result.get() as u8 }
             0x35 => { (self.multiply_result.get() >> 8) as u8 }
