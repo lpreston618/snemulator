@@ -4,7 +4,7 @@ use crate::system::cartridge::Cartridge;
 use crate::system::cpu::dma::DmaChannel;
 use crate::system::ppu::PpuData;
 
-use super::dma::{self, Direction};
+use super::dma::{Direction};
 
 const WRAM_SIZE: usize = 128 * 1024; // 128 KiB
 
@@ -201,11 +201,7 @@ impl Cpu65c816 {
         self.total_clocks += clocks;
     }
 
-    fn read(&mut self, address: u32) {
-        self.read_with_set_state(address, true);
-    }
-
-    fn read_with_set_state(&mut self, address: u32, alter_state: bool) -> u8 {
+    fn read(&mut self, address: u32) -> u8 {
         // println!("Read from: 0x{address:06x}");
 
         self.debug_io_ops += 1;
@@ -447,8 +443,11 @@ impl Cpu65c816 {
             }
         }
 
-        if alter_state {
-            self.add_clocks(clocks);
+        match self.dma_status {
+            DmaStatus::Off => self.add_clocks(clocks),
+            DmaStatus::DMA => self.add_clocks(Cpu65c816::ONE_CYCLE),
+            DmaStatus::HDMA => {},
+            DmaStatus::LayeredHDMA => {},
         }
 
         data
@@ -2527,28 +2526,49 @@ impl Cpu65c816 {
     fn clock(&mut self) {
         match self.dma_status {
             DmaStatus::Off => self.exec_instr(),
-            DmaStatus::DMA => {
-                for dma_channel in self.dma_channels.iter_mut() {
-                    if dma_channel.active {
-                        // Only perform a single byte transfer per call, to keep
-                        // synchronized with the PPU.
-                        match dma_channel.direction {
-                            Direction::AtoB => {
-                                let a_byte = dma_channel.src_addr;
-                                dma_channel.update_src_addr();
-                                let b_addr = dma_channel.get_b_with_offset();
-                                self.ppu_data.write(b_addr, a_byte);
-                                dma_channel. += 1;
-                            }
-                            Direction::BtoA => {}
-                        }
-                        //TODO: set inactive
-                    }
-                }
-            }
+            DmaStatus::DMA => self.do_dma(),
             DmaStatus::HDMA => {}
             DmaStatus::LayeredHDMA => {}
         }
+    }
+
+    fn do_dma(&mut self) {
+        let mut active_channel_idx = 0;
+        for (i, dma_channel) in self.dma_channels.iter().enumerate() {
+            if dma_channel.active {
+                active_channel_idx = i;
+                break;
+            }
+        }
+
+        let active_channel = &mut self.dma_channels[active_channel_idx];
+        
+        let (src_addr, dst_addr) = match active_channel.direction {
+            Direction::AtoB => (
+                active_channel.a_bus_addr,
+                active_channel.get_b_with_offset() as u32),
+            Direction::BtoA => (
+                active_channel.get_b_with_offset() as u32,
+                active_channel.a_bus_addr ),
+        };
+
+        active_channel.update_a_bus_addr();
+        active_channel.bytes_written += 1;
+        active_channel.dma_byte_count -= 1;
+
+        if active_channel.dma_byte_count == 0 {
+            active_channel.active = false;
+
+            // If there are no more active DMA channels, deactivate DMA
+            if self.dma_channels[active_channel_idx+1..].iter().all(|channel| !channel.active) {
+                self.dma_status = DmaStatus::Off;
+            }
+        }
+
+        // Only perform a single byte transfer per call, to keep
+        // synchronized with the PPU.
+        let data = self.read(src_addr);
+        self.write(dst_addr, data);
     }
 
     fn exec_instr(&mut self) {

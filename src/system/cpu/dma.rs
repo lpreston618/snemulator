@@ -34,7 +34,7 @@ pub struct DmaChannel {
     pub inc_mode: AddressIncMode,
     pub transfer_pattern: TransferPattern,
     pub b_bus_addr: u8,
-    pub src_addr: u32,
+    pub a_bus_addr: u32,
     pub dma_byte_count: u32,
     pub hdma_table_addr: u16,
     pub hdma_reload: bool,
@@ -49,7 +49,7 @@ impl DmaChannel {
     // each of which are written to/read from differently, these modes are designed
     // to interface with those registers. Ex: writing to VRAM involves writing two
     // bytes to two adjacent addresses over and over, so Pattern1 would be used.
-    fn get_b_with_offset(&self) -> u8 {
+    pub fn get_b_with_offset(&self) -> u8 {
         let truncated_bw = (self.bytes_written % 256) as u8; // type systems suck
         match self.transfer_pattern {
             TransferPattern::Pattern0 => self.b_bus_addr,
@@ -80,10 +80,11 @@ impl DmaChannel {
         }
     }
 
-    fn update_src_addr(&mut self) {
+    pub fn update_a_bus_addr(&mut self) {
         match self.inc_mode {
-            AddressIncMode::Fixed => _,
+            AddressIncMode::Fixed => {},
             AddressIncMode::Dec => {}
+            _ => {}
         }
     }
 }
