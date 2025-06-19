@@ -661,6 +661,25 @@ impl Cpu65c816 {
         self.add_clocks(clocks);
     }
 
+    fn write_dma_regs(&mut self, reg_address: u16, data: u8) {
+        match reg_address {
+            0x420B => {
+                if data == 0 {
+                    self.dma_status = DmaStatus::Off;
+                } else {
+                    self.dma_status = DmaStatus::DMA;
+                }
+
+                for i in 0..8 {
+                    self.dma_channels[i].active = (data >> i) & 1 != 0;
+                }
+            },
+            0x420C => todo!("write to hdma enable"),
+
+            _ => {},
+        }
+    }
+
     fn read_prg(&mut self) -> u8 {
         self.read(((self.prg_bank as u32) << 16) | (self.pc as u32))
     }
