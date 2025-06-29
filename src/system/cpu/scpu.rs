@@ -138,15 +138,14 @@ pub struct Cpu65c816 {
     a_bus_addr_lo: [u8; 8],
     a_bus_addr_hi: [u8; 8],
     a_bus_addr_bank: [u8; 8],
-    dma_byte_count_lo: [u8; 8], // Also HDMA indirect addr lo
-    dma_byte_count_hi: [u8; 8], // Also HDMA indirect addr hi
-    hdma_indirect_addr_bank: [u8; 8],
-    hdma_table_addr_lo: [u8; 8],
-    hdma_table_addr_hi: [u8; 8],
+    dma_byte_count: [u32; 8], // Also HDMA indirect address
+    hdma_table_addr: [u32; 8],
     hdma_line_counter: [u8; 8],
     dma_unused1: [u8; 8],
     dma_unused2: [u8; 8],
-    dma_bytes_written: [usize; 8],
+    dma_bytes_written: usize,
+    hdma_bytes_written: usize,
+    hdma_current_channel: u8,
 
     ppu_data: Rc<PpuData>,
 }
@@ -199,7 +198,9 @@ impl Cpu65c816 {
             hdma_line_counter: [0; 8],
             dma_unused1: [0; 8],
             dma_unused2: [0; 8],
-            dma_bytes_written: [0; 8],
+            dma_bytes_written: 0,
+            hdma_bytes_written: 0,
+            hdma_current_channel: 255,
 
             ppu_data: ppu_data,
         }
@@ -216,7 +217,7 @@ impl Cpu65c816 {
     }
 }
 
-// Internal Helper Functions
+// Internal Helper Functions / Bus Behavior
 impl Cpu65c816 {
     const ONE_CYCLE: u64 = 6;
     const ONE_CYCLE_SLOW: u64 = 8;
@@ -253,9 +254,7 @@ impl Cpu65c816 {
 
         match self.dma_status {
             DmaStatus::Off => self.add_clocks(clocks),
-            DmaStatus::DMA => self.add_clocks(Cpu65c816::ONE_CYCLE),
-            DmaStatus::HDMA => {},
-            DmaStatus::LayeredHDMA => {},
+            _ => {},
         }
 
         data
@@ -284,15 +283,17 @@ impl Cpu65c816 {
         
         match self.dma_status {
             DmaStatus::Off => self.add_clocks(clocks),
-            DmaStatus::DMA => self.add_clocks(Cpu65c816::ONE_CYCLE),
-            DmaStatus::HDMA => {},
-            DmaStatus::LayeredHDMA => {},
+            _ => {},
         }
     }
 
     fn read_mmio_regs(&mut self, mmio_address: u16) -> u8 {
         match mmio_address {
             0x2100..=0x213F => self.ppu_data.read(mmio_address as u8),
+
+            // NOTE: This read is only for cpu debugging purposes, and
+            // will be removed later.
+            0x4210 => self.debug_nmi,
 
             0x4300..=0x43FF if ((mmio_address >> 4) & 0xF) < 8 => self.read_dma_regs(mmio_address),
 
@@ -317,6 +318,8 @@ impl Cpu65c816 {
             },
             0x420C => {
                 self.hdma_enable = data;
+
+                self.hdma_bytes_written = 0;
             }
 
             0x4300..=0x43FF if ((mmio_address >> 4) & 0xF) < 8 => {
@@ -421,35 +424,7 @@ impl Cpu65c816 {
                 data = self.wram[bank_addr as usize];
                 clocks = Cpu65c816::ONE_CYCLE_SLOW;
             }
-            // PPU Registers
-            (0x00..=0x3F, 0x2100..=0x21FF) | (0x80..=0xBF, 0x2100..=0x21FF) => {
-                data = 0;
-                clocks = 0;
-                // todo!("PPU Registers");
-            }
 
-            // NOTE: This read is only for cpu debugging purposes, and
-            // will be removed later.
-            (0x00, 0x4210) | (0x80, 0x4210) => {
-                data = self.debug_nmi;
-                clocks = Cpu65c816::ONE_CYCLE;
-            }
-
-            // CPU Registers
-            (0x00..=0x3F, 0x4200..=0x43FF) | (0x80..=0xBF, 0x4200..=0x43FF) => {
-                data = 0;
-                clocks = 0;
-                // todo!("CPU Registers");
-            }
-            // Controller Registers
-            (bank @ 0x00..=0x3F, bank_addr @ 0x4016)
-            | (bank @ 0x00..=0x3F, bank_addr @ 0x4017)
-            | (bank @ 0x80..=0xBF, bank_addr @ 0x4016)
-            | (bank @ 0x80..=0xBF, bank_addr @ 0x4017) => {
-                data = 0;
-                clocks = 0;
-                // todo!("Controller Registers");
-            }
             _ => {
                 data = 0;
                 clocks = 0;
@@ -505,24 +480,6 @@ impl Cpu65c816 {
                 self.wram[bank_addr as usize] = data;
                 clocks = Cpu65c816::ONE_CYCLE_SLOW;
             }
-            // PPU Registers
-            (0x00..=0x3F, 0x2100..=0x21FF) | (0x80..=0xBF, 0x2100..=0x21FF) => {
-                clocks = 0;
-                // todo!("PPU Registers");
-            }
-            // CPU Registers
-            (0x00..=0x3F, 0x4200..=0x43FF) | (0x80..=0xBF, 0x4200..=0x43FF) => {
-                clocks = 0;
-                // todo!("CPU Registers");
-            }
-            // Controller Registers
-            (bank @ 0x00..=0x3F, bank_addr @ 0x4016)
-            | (bank @ 0x00..=0x3F, bank_addr @ 0x4017)
-            | (bank @ 0x80..=0xBF, bank_addr @ 0x4016)
-            | (bank @ 0x80..=0xBF, bank_addr @ 0x4017) => {
-                clocks = 0;
-                // todo!("Controller Registers");
-            }
             _ => {
                 clocks = 0;
             }
@@ -571,13 +528,6 @@ impl Cpu65c816 {
                 data = self.wram[bank_addr as usize];
                 clocks = Cpu65c816::ONE_CYCLE_SLOW;
             }
-            // Memory-mapped registers
-            (bank @ 0x00..=0x3F, bank_addr @ 0x2000..=0x5FFF)
-            | (bank @ 0x80..=0xBF, bank_addr @ 0x2000..=0x5FFF) => {
-                data = 0;
-                clocks = 0;
-                // TODO: I/O regs
-            }
             // Save RAM
             (bank @ 0x30..=0x3F, bank_addr @ 0x6000..=0x7FFF) => {
                 data = 0;
@@ -623,12 +573,6 @@ impl Cpu65c816 {
             | (bank @ 0x80..=0xBF, bank_addr @ 0x0000..=0x1FFF) => {
                 self.wram[bank_addr as usize] = data;
                 clocks = Cpu65c816::ONE_CYCLE_SLOW;
-            }
-            // Memory-mapped registers
-            (bank @ 0x00..=0x3F, bank_addr @ 0x2000..=0x5FFF)
-            | (bank @ 0x80..=0xBF, bank_addr @ 0x2000..=0x5FFF) => {
-                clocks = 0;
-                // TODO: I/O regs
             }
             // Save RAM
             (bank @ 0x30..=0x3F, bank_addr @ 0x6000..=0x7FFF) => {
@@ -701,13 +645,6 @@ impl Cpu65c816 {
                 data = self.wram[bank_addr as usize];
                 clocks = Cpu65c816::ONE_CYCLE_SLOW;
             }
-            // Memory-mapped registers
-            (bank @ 0x00..=0x3F, bank_addr @ 0x2000..=0x5FFF)
-            | (bank @ 0x80..=0xBF, bank_addr @ 0x2000..=0x5FFF) => {
-                data = 0;
-                clocks = 0;
-                // TODO: I/O regs
-            }
             // Save RAM
             (bank @ 0x80..=0xBF, bank_addr @ 0x6000..=0x7FFF) => {
                 data = 0;
@@ -765,12 +702,6 @@ impl Cpu65c816 {
             | (bank @ 0x80..=0xBF, bank_addr @ 0x0000..=0x1FFF) => {
                 self.wram[bank_addr as usize] = data;
                 clocks = Cpu65c816::ONE_CYCLE_SLOW;
-            }
-            // Memory-mapped registers
-            (bank @ 0x00..=0x3F, bank_addr @ 0x2000..=0x5FFF)
-            | (bank @ 0x80..=0xBF, bank_addr @ 0x2000..=0x5FFF) => {
-                clocks = 0;
-                // TODO: I/O regs
             }
             // Save RAM
             (bank @ 0x80..=0xBF, bank_addr @ 0x6000..=0x7FFF) => {
@@ -961,7 +892,7 @@ impl Cpu65c816 {
 
     fn get_b_with_offset(&self, dma_channel_idx: usize) -> u8 {
         let transfer_pattern = self.dma_params[dma_channel_idx] & 7;
-        let truncated_bw = self.dma_bytes_written[dma_channel_idx] as u8;
+        let truncated_bw = self.dma_bytes_written as u8;
         let b_bus_addr = self.b_bus_addrs[dma_channel_idx];
 
         let offset_b_bus_addr = match transfer_pattern {
@@ -2679,62 +2610,52 @@ impl Cpu65c816 {
         match self.dma_status {
             DmaStatus::Off => self.exec_instr(),
             DmaStatus::DMA => self.do_dma(),
-            DmaStatus::HDMA => {}
-            DmaStatus::LayeredHDMA => {}
+            DmaStatus::HDMA => self.do_hdma(),
+            DmaStatus::LayeredHDMA => self.do_hdma(),
         }
     }
 
     fn do_dma(&mut self) {
-        let mut active_channel_idx: usize = 0;
-        for i in 0..8 {
-            if self.dma_enable & (1 << i) != 0 {
-                active_channel_idx = i;
-                break;
-            }
-        }
+        let dma_channel_idx = self.dma_enable.ilog2() as usize;
 
-        let direction_b_to_a = self.dma_params[active_channel_idx] & 0x80 != 0;
-        let a_bus_addr = CpuAddress::from_parts(
-            self.a_bus_addr_bank[active_channel_idx],
-            self.a_bus_addr_hi[active_channel_idx],
-            self.a_bus_addr_lo[active_channel_idx],
+        let direction_b_to_a = self.dma_params[dma_channel_idx] & 0x80 != 0;
+        let a_bus_addr = u32::from_parts(
+            self.a_bus_addr_bank[dma_channel_idx],
+            self.a_bus_addr_hi[dma_channel_idx],
+            self.a_bus_addr_lo[dma_channel_idx],
         );
-        let b_bus_addr = self.get_b_with_offset(active_channel_idx);
-        let inc_mode = (self.dma_params[active_channel_idx] >> 3) & 3;
+        let b_bus_addr = 0x002100 | self.get_b_with_offset(dma_channel_idx) as u32;
+        let inc_mode = (self.dma_params[dma_channel_idx] >> 3) & 3;
 
         let (src_addr, dst_addr) = match direction_b_to_a {
-            true => (b_bus_addr as u32, a_bus_addr),
-            false => (a_bus_addr, b_bus_addr as u32),
+            true => (b_bus_addr, a_bus_addr),
+            false => (a_bus_addr, b_bus_addr),
         };
 
         match inc_mode {
             0 => { // Inc
                 let a_bus_addr_inc = a_bus_addr + 1;
-                self.a_bus_addr_hi[active_channel_idx] = (a_bus_addr_inc >> 8) as u8;
-                self.a_bus_addr_lo[active_channel_idx] = a_bus_addr_inc as u8;
+                self.a_bus_addr_hi[dma_channel_idx] = (a_bus_addr_inc >> 8) as u8;
+                self.a_bus_addr_lo[dma_channel_idx] = a_bus_addr_inc as u8;
             },
             2 => { // Dec
                 let a_bus_addr_dec = a_bus_addr - 1;
-                self.a_bus_addr_hi[active_channel_idx] = (a_bus_addr_dec >> 8) as u8;
-                self.a_bus_addr_lo[active_channel_idx] = a_bus_addr_dec as u8;
+                self.a_bus_addr_hi[dma_channel_idx] = (a_bus_addr_dec >> 8) as u8;
+                self.a_bus_addr_lo[dma_channel_idx] = a_bus_addr_dec as u8;
             },
             _ => {}, // Fixed
         };
 
-        self.dma_bytes_written[active_channel_idx] += 1;
+        self.dma_bytes_written += 1;
         
-        let dma_byte_count = u16::from_le_bytes([
-            self.dma_byte_count_lo[active_channel_idx],
-            self.dma_byte_count_hi[active_channel_idx]
-        ]);
-        let dma_byte_count = dma_byte_count - 1;
-
-        self.dma_byte_count_lo[active_channel_idx] = dma_byte_count as u8;
-        self.dma_byte_count_hi[active_channel_idx] = (dma_byte_count >> 8) as u8;
+        let dma_byte_count = (self.dma_byte_count[dma_channel_idx] as u16 - 1) as u32;
+        self.dma_byte_count[dma_channel_idx] &= 0xFF0000;
+        self.dma_byte_count[dma_channel_idx] |= dma_byte_count;
 
         if dma_byte_count == 0 {
             // Disable this DMA channel
-            self.dma_enable ^= 1 << active_channel_idx;
+            self.dma_enable ^= 1 << dma_channel_idx;
+            self.dma_bytes_written = 0;
 
             // If there are no more active DMA channels, deactivate DMA
             if self.dma_enable == 0 {
@@ -2742,13 +2663,40 @@ impl Cpu65c816 {
             }
         }
 
-        // Cannot perform DMA to/from MMIO addresses
+        // Cannot perform DMA to/from MMIO addresses for A Bus
         if !is_mmio_addr(a_bus_addr) {
             // Only perform a single byte transfer per call, to keep
             // synchronized with the PPU.
             let data = self.read(src_addr);
-            self.write(dst_addr, data);   
+            self.write(dst_addr, data);
         }
+
+        self.add_clocks(Cpu65c816::ONE_CYCLE);
+    }
+
+    fn do_hdma(&mut self) {
+        let hdma_channel_idx = self.hdma_enable.ilog2() as usize;
+
+        let hdma_indirect = self.dma_params[hdma_channel_idx] & 0x40 != 0;
+        let dst_addr = 0x002100 | self.get_b_with_offset(hdma_channel_idx) as u32;
+        let mut hdma_table_addr = self.hdma_table_addr[hdma_channel_idx];
+
+        // Starting a new HDMA channel transfer
+        if hdma_channel_idx as u8 != self.hdma_current_channel {
+            self.hdma_current_channel = hdma_channel_idx as u8;
+            self.hdma_bytes_written = 0;
+
+            let control_byte = self.read(hdma_table_addr);
+
+            self.hdma_line_counter[hdma_channel_idx] = self.read(hdma_table_addr);
+        }
+
+        hdma_table_addr += 1;
+
+        self.hdma_table_addr_lo[hdma_channel_idx] = hdma_table_addr as u8;
+        self.hdma_table_addr_hi[hdma_channel_idx] = (hdma_table_addr >> 8) as u8;
+
+        
     }
 
     fn exec_instr(&mut self) {
