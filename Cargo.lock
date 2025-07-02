@@ -584,6 +584,7 @@ dependencies = [
  "args",
  "getopts",
  "libretro-rs",
+ "rand",
  "serde_json",
 ]
 

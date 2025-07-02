@@ -3,7 +3,7 @@ use std::rc::Rc;
 use std::time;
 
 use crate::system::ppu::{self, Ppu5C7x, PpuData};
-use crate::*;
+use crate::log::{LogLevel, SnemLogger};
 
 use libretro_rs::c_utf8::{c_utf8, CUtf8};
 use libretro_rs::ffi::retro_log_level;
@@ -33,41 +33,6 @@ const SNES_FRAME_HEIGHT: usize = 448;
 const FRAME_BUF_SIZE: usize = SNES_FRAME_WIDTH*SNES_FRAME_HEIGHT;
 const AUDIO_FREQ: usize = 44100;
 const AUDIO_BUFFER_SAMPLES: usize = AUDIO_FREQ / 60;
-
-#[derive(Clone, Copy)]
-enum LogLevel {
-    Info,
-    Debug,
-    Warn,
-    Error,
-}
-
-impl Into<retro_log_level> for LogLevel {
-    fn into(self) -> retro_log_level {
-        match self {
-            LogLevel::Info => retro_log_level::RETRO_LOG_INFO,
-            LogLevel::Debug => retro_log_level::RETRO_LOG_DEBUG,
-            LogLevel::Warn => retro_log_level::RETRO_LOG_WARN,
-            LogLevel::Error => retro_log_level::RETRO_LOG_ERROR,
-        }
-    }
-}
-
-struct SnemLogger {
-    logger: PlatformLogger
-}
-
-impl SnemLogger {
-    fn log(&mut self, level: LogLevel, message: &str) {
-        // let message = format!("SNEM {}", message);
-
-        self.logger.log(
-            level.into(), 
-            // Safety: \0 char included manually in formatted str so from_str_unchecked is fine.
-            unsafe { CUtf8::from_str_unchecked(format!("[Snem Log] {}\0", message).as_str()) }
-        );
-    }
-}
 
 struct SnemulatorCore {
     logger: SnemLogger,
@@ -134,11 +99,19 @@ impl SnemulatorCore {
         inputs_polled
     }
 
-    // fn cycle(&mut self) {}
-
-    fn cycle_frame(&mut self) {
+    fn cycle(&mut self) {
         
     }
+
+    fn cycle_frame(&mut self) {
+        while !self.snem_ppu.frame_finished {
+            self.cycle();
+        }
+
+        self.snem_ppu.frame_finished = false;
+    }
+
+
 }
 
 
@@ -161,7 +134,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         args: LoadGameExtraArgs<'a, '_, E, Self::Init>,
       ) -> Result<Self, retro::error::CoreError> {
         
-        let mut logger = SnemLogger { logger: args.env.get_log_interface()? };
+        let mut logger = SnemLogger::new(args.env.get_log_interface()?);
 
         logger.log(LogLevel::Info, "Loading Snemulator core with no content.");
 

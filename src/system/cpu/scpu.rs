@@ -1,5 +1,6 @@
 use std::rc::Rc;
 
+use crate::log::{LogLevel, SnemLogger};
 use crate::system::cartridge::Cartridge;
 use crate::system::ppu::PpuData;
 
@@ -190,11 +191,13 @@ impl Cpu65c816 {
             a_bus_addr_lo: [0; 8],
             a_bus_addr_hi: [0; 8],
             a_bus_addr_bank: [0; 8],
-            dma_byte_count_lo: [0; 8], // Also HDMA indirect addr lo
-            dma_byte_count_hi: [0; 8], // Also HDMA indirect addr hi
-            hdma_indirect_addr_bank: [0; 8],
-            hdma_table_addr_lo: [0; 8],
-            hdma_table_addr_hi: [0; 8],
+            dma_byte_count: [0; 8],
+            hdma_table_addr: [0; 8],
+            // dma_byte_count_lo: [0; 8], // Also HDMA indirect addr lo
+            // dma_byte_count_hi: [0; 8], // Also HDMA indirect addr hi
+            // hdma_indirect_addr_bank: [0; 8],
+            // hdma_table_addr_lo: [0; 8],
+            // hdma_table_addr_hi: [0; 8],
             hdma_line_counter: [0; 8],
             dma_unused1: [0; 8],
             dma_unused2: [0; 8],
@@ -340,11 +343,11 @@ impl Cpu65c816 {
             0x4302 => self.a_bus_addr_lo[channel_idx],
             0x4303 => self.a_bus_addr_hi[channel_idx],
             0x4304 => self.a_bus_addr_bank[channel_idx],
-            0x4305 => self.dma_byte_count_lo[channel_idx],
-            0x4306 => self.dma_byte_count_hi[channel_idx],
-            0x4307 => self.hdma_indirect_addr_bank[channel_idx],
-            0x4308 => self.hdma_table_addr_lo[channel_idx],
-            0x4309 => self.hdma_table_addr_hi[channel_idx],
+            // 0x4305 => self.dma_byte_count_lo[channel_idx],
+            // 0x4306 => self.dma_byte_count_hi[channel_idx],
+            // 0x4307 => self.hdma_indirect_addr_bank[channel_idx],
+            // 0x4308 => self.hdma_table_addr_lo[channel_idx],
+            // 0x4309 => self.hdma_table_addr_hi[channel_idx],
             0x430A => self.hdma_line_counter[channel_idx],
             0x430B => self.dma_unused1[channel_idx],
             0x430F => self.dma_unused2[channel_idx],
@@ -362,11 +365,11 @@ impl Cpu65c816 {
             0x4302 => { self.a_bus_addr_lo[channel_idx] = data; }
             0x4303 => { self.a_bus_addr_hi[channel_idx] = data; }
             0x4304 => { self.a_bus_addr_bank[channel_idx] = data; }
-            0x4305 => { self.dma_byte_count_lo[channel_idx] = data; }
-            0x4306 => { self.dma_byte_count_hi[channel_idx] = data; }
-            0x4307 => { self.hdma_indirect_addr_bank[channel_idx] = data; }
-            0x4308 => { self.hdma_table_addr_lo[channel_idx] = data; }
-            0x4309 => { self.hdma_table_addr_hi[channel_idx] = data; }
+            // 0x4305 => { self.dma_byte_count_lo[channel_idx] = data; }
+            // 0x4306 => { self.dma_byte_count_hi[channel_idx] = data; }
+            // 0x4307 => { self.hdma_indirect_addr_bank[channel_idx] = data; }
+            // 0x4308 => { self.hdma_table_addr_lo[channel_idx] = data; }
+            // 0x4309 => { self.hdma_table_addr_hi[channel_idx] = data; }
             0x430A => { self.hdma_line_counter[channel_idx] = data; }
             0x430B => { self.dma_unused1[channel_idx] = data; }
             0x430F => { self.dma_unused2[channel_idx] = data; }
@@ -2606,12 +2609,20 @@ impl Cpu65c816 {
 
 // Cycle Functionality
 impl Cpu65c816 {
-    fn clock(&mut self) {
+    fn clock(&mut self, logger: &mut SnemLogger) {
         match self.dma_status {
-            DmaStatus::Off => self.exec_instr(),
-            DmaStatus::DMA => self.do_dma(),
-            DmaStatus::HDMA => self.do_hdma(),
-            DmaStatus::LayeredHDMA => self.do_hdma(),
+            DmaStatus::Off => {
+                self.exec_instr()
+            },
+            DmaStatus::DMA => {
+                self.do_dma()
+            },
+            DmaStatus::HDMA => {
+                self.do_hdma()
+            },
+            DmaStatus::LayeredHDMA => {
+                self.do_hdma()
+            },
         }
     }
 
@@ -2693,8 +2704,8 @@ impl Cpu65c816 {
 
         hdma_table_addr += 1;
 
-        self.hdma_table_addr_lo[hdma_channel_idx] = hdma_table_addr as u8;
-        self.hdma_table_addr_hi[hdma_channel_idx] = (hdma_table_addr >> 8) as u8;
+        // self.hdma_table_addr_lo[hdma_channel_idx] = hdma_table_addr as u8;
+        // self.hdma_table_addr_hi[hdma_channel_idx] = (hdma_table_addr >> 8) as u8;
 
         
     }

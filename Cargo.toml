@@ -10,6 +10,7 @@ args = "2.2.0"
 getopts = "0.2.21"
 libretro-rs = { path = "./libretro/libretro-rs" }
 serde_json = "1.0.134"
+rand="*"
 
 [profile.dev]
 overflow-checks = false

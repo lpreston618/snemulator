@@ -1,5 +1,11 @@
 use std::{cell::Cell, rc::Rc};
 
+use libretro_rs::retro::pixel::format::XRGB8888;
+
+use crate::log::SnemLogger;
+
+use rand::prelude::*;
+
 trait GetBits {
     fn get_bit(self, bit: Self) -> Self;
     fn bit_en(self, bit: Self) -> bool;
@@ -208,7 +214,7 @@ pub struct PpuData {
     forced_blanking: Cell<bool>,
     screen_brightness: Cell<u8>,
 
-    // $2101    SSSN NbBB    Write only    
+    // $2101    SSSN NbBB    Write only
     //       - OBJ sprite size (S)
     //       - Name secondary select (N)
     //       - Name base address (B)
@@ -416,7 +422,7 @@ pub struct PpuData {
     bg1_w2_inverted: Cell<bool>,
     bg1_w1_enabled: Cell<bool>,
     bg1_w1_inverted: Cell<bool>,
-    
+
     // $2124    DdCc BbAa    Write Only
     //       - Enable (EFGH) and Invert (efgh) windows for BG3 (EF) and BG2 (GH)
     bg4_w2_enabled: Cell<bool>,
@@ -438,7 +444,7 @@ pub struct PpuData {
     obj_w2_inverted: Cell<bool>,
     obj_w1_enabled: Cell<bool>,
     obj_w1_inverted: Cell<bool>,
-    
+
     // $2126    LLLL LLLL    Write Only
     //       - Window 1 left position (L)
     w1_left_pos: Cell<u8>,
@@ -457,11 +463,11 @@ pub struct PpuData {
 
     // $212A    4433 2211    Write Only
     //       - Window mask logic for BG layers (00=OR, 01=AND, 10=XOR, 11=XNOR)
-    w4_logic: Cell<WindowLogic>,
-    w3_logic: Cell<WindowLogic>,
-    w2_logic: Cell<WindowLogic>,
-    w1_logic: Cell<WindowLogic>,
-    
+    bg4_win_logic: Cell<WindowLogic>,
+    bg3_win_logic: Cell<WindowLogic>,
+    bg2_win_logic: Cell<WindowLogic>,
+    bg1_win_logic: Cell<WindowLogic>,
+
     // $212B    .... CCOO    Write Only
     //       - Window mask logic for OBJ (O) and color (C)
     obj_win_logic: Cell<WindowLogic>,
@@ -645,7 +651,7 @@ impl PpuData {
 
             0x03 => {
                 let new_addr = self.oam_addr.get() & 0x01FE | (((data & 0x01) as u16) << 9);
-            
+
                 self.oam_addr.replace(new_addr);
                 self.priority_rotation.replace(data.bit_en(7));
             }
@@ -869,7 +875,7 @@ impl PpuData {
                     let addr = self.get_vram_addr();
                     self.vram.0[addr + 1].replace(data);
                 }
-                    
+
                 if self.vram_addr_inc_mode.get() == VramIncMode::LowByte {
                     self.inc_vram_addr();
                 }
@@ -880,7 +886,7 @@ impl PpuData {
                     let addr = self.get_vram_addr();
                     self.vram.0[addr].replace(data);
                 }
-                    
+
                 if self.vram_addr_inc_mode.get() == VramIncMode::HighByte {
                     self.inc_vram_addr();
                 }
@@ -929,13 +935,13 @@ impl PpuData {
 
             0x1F => {
                 let latched_val = self.m7_latch.replace(data) as u16;
-                
+
                 self.m7_center_x.replace(((data as u16) << 8) | latched_val);
             }
 
             0x20 => {
                 let latched_val = self.m7_latch.replace(data) as u16;
-                
+
                 self.m7_center_y.replace(((data as u16) << 8) | latched_val);
             }
 
@@ -1007,7 +1013,7 @@ impl PpuData {
             }
 
             0x2A => {
-                self.w4_logic.replace(
+                self.bg4_win_logic.replace(
                     match data >> 6 {
                         0 => WindowLogic::Or,
                         1 => WindowLogic::And,
@@ -1016,7 +1022,7 @@ impl PpuData {
                         _ => unreachable!(),
                     }
                 );
-                self.w3_logic.replace(
+                self.bg3_win_logic.replace(
                     match (data >> 4) & 3 {
                         0 => WindowLogic::Or,
                         1 => WindowLogic::And,
@@ -1025,7 +1031,7 @@ impl PpuData {
                         _ => unreachable!(),
                     }
                 );
-                self.w2_logic.replace(
+                self.bg2_win_logic.replace(
                     match (data >> 2) & 3 {
                         0 => WindowLogic::Or,
                         1 => WindowLogic::And,
@@ -1034,7 +1040,7 @@ impl PpuData {
                         _ => unreachable!(),
                     }
                 );
-                self.w1_logic.replace(
+                self.bg1_win_logic.replace(
                     match data & 3 {
                         0 => WindowLogic::Or,
                         1 => WindowLogic::And,
@@ -1155,7 +1161,7 @@ impl PpuData {
                 let mask_g = (data.get_bit(6) as u16) * 0x03E0;
                 let mask_b = (data.get_bit(7) as u16) * 0x001F;
                 let mask = mask_r | mask_g | mask_b;
-                
+
                 self.fixed_color.replace((prev_col & mask) | new_col);
             }
 
@@ -1261,7 +1267,7 @@ impl PpuData {
                 };
                 let ppu1_open_bus = 0;
                 let ppu1_version_bits = self.ppu1_version.get() & 0x0F;
-                
+
                 spr_overflow_bit | spr_tile_overflow_bit | master_slave_bit | ppu1_open_bus | ppu1_version_bits
             }
 
@@ -1281,7 +1287,7 @@ impl PpuData {
 
                 interlace_bit | counter_toggle_bit | ppu2_open_bus | ntsc_pal_bit | version_bits
             }
-            
+
             _ => { 0 }
         };
 
@@ -1350,10 +1356,85 @@ impl PpuData {
 
 pub struct Ppu5C7x {
     registers: Rc<PpuData>,
+
+    dot: usize,
+    scanline: usize,
+
+    pub frame_finished: bool,
 }
 
 impl Ppu5C7x {
     pub fn new(ppu_data: Rc<PpuData>) -> Self {
-        Ppu5C7x { registers: ppu_data }
+        Ppu5C7x {
+            registers: ppu_data,
+            dot: 0,
+            scanline: 0,
+            frame_finished: false,
+        }
+    }
+
+    pub fn clock(&mut self, frame_buffer: &mut [XRGB8888], logger: &mut SnemLogger) {
+        self.dot(frame_buffer);
+    }
+}
+
+/// Performs the window logic to determine whether a window is enabled/disabled 
+/// for a particular layer given the window settings for that layer.
+fn window_enable(w1_en: bool, w1_inv: bool, w2_en: bool, w2_inv: bool, win_logic: WindowLogic) -> bool {
+    match win_logic {
+        WindowLogic::Or => (w1_en ^ w1_inv) | (w2_en ^ w2_inv),
+        WindowLogic::And => (w1_en ^ w1_inv) & (w2_en ^ w2_inv),
+        WindowLogic::Xor => (w1_en ^ w1_inv) ^ (w2_en ^ w2_inv),
+        WindowLogic::Xnor => !( (w1_en ^ w1_inv) ^ (w2_en ^ w2_inv) ),
+    }
+}
+
+impl Ppu5C7x {
+    fn dot(&mut self, frame_buffer: &mut [XRGB8888]) {
+        let bg1_win_en = window_enable(
+            self.registers.bg1_w1_enabled.get(),
+            self.registers.bg1_w1_inverted.get(),
+            self.registers.bg1_w2_enabled.get(),
+            self.registers.bg1_w2_inverted.get(),
+            self.registers.bg1_win_logic.get(),
+        );
+        let bg2_win_en = window_enable(            
+            self.registers.bg2_w1_enabled.get(),    
+            self.registers.bg2_w1_inverted.get(),    
+            self.registers.bg2_w2_enabled.get(),     
+            self.registers.bg2_w2_inverted.get(),    
+            self.registers.bg2_win_logic.get(),    
+        );                                                  
+        let bg3_win_en = window_enable(            
+            self.registers.bg3_w1_enabled.get(),    
+            self.registers.bg3_w1_inverted.get(),    
+            self.registers.bg3_w2_enabled.get(),     
+            self.registers.bg3_w2_inverted.get(),    
+            self.registers.bg3_win_logic.get(),    
+        );                                                  
+        let bg4_win_en = window_enable(            
+            self.registers.bg4_w1_enabled.get(),    
+            self.registers.bg4_w1_inverted.get(),    
+            self.registers.bg4_w2_enabled.get(),     
+            self.registers.bg4_w2_inverted.get(),    
+            self.registers.bg4_win_logic.get(),    
+        );                                                  
+        let col_win_en = window_enable(            
+            self.registers.col_w1_enabled.get(),    
+            self.registers.col_w1_inverted.get(),    
+            self.registers.col_w2_enabled.get(),     
+            self.registers.col_w2_inverted.get(),    
+            self.registers.col_win_logic.get(),    
+        );                                                  
+        let obj_win_en = window_enable(            
+            self.registers.obj_w1_enabled.get(),    
+            self.registers.obj_w1_inverted.get(),    
+            self.registers.obj_w2_enabled.get(),     
+            self.registers.obj_w2_inverted.get(),    
+            self.registers.obj_win_logic.get(),    
+        );                                                  
+        
+
+
     }
 }
