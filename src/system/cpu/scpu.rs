@@ -122,6 +122,7 @@ pub struct Cpu65c816 {
     stopped: bool,
     awaiting_interrupt: bool,
     total_clocks: u64,
+    until_cpu_clocks: usize,
 
     wram: [u8; WRAM_SIZE],
     rom: Vec<u8>,
@@ -149,6 +150,10 @@ pub struct Cpu65c816 {
     hdma_current_channel: u8,
 
     ppu_data: Rc<PpuData>,
+
+    pub vblank_irq: bool,
+
+    debug_instr_capture: Vec<u8>,
 }
 
 // SNES System Functionality
@@ -174,6 +179,7 @@ impl Cpu65c816 {
             stopped: false,
             awaiting_interrupt: false,
             total_clocks: 0,
+            until_cpu_clocks: 0,
 
             wram: [0; WRAM_SIZE],
             rom: Vec::new(),
@@ -206,6 +212,10 @@ impl Cpu65c816 {
             hdma_current_channel: 255,
 
             ppu_data: ppu_data,
+
+            vblank_irq: false,
+
+            debug_instr_capture: Vec::new(),
         }
     }
 
@@ -230,6 +240,7 @@ impl Cpu65c816 {
 
     fn add_clocks(&mut self, clocks: u64) {
         self.total_clocks += clocks;
+        self.until_cpu_clocks += clocks as usize;
     }
 
     fn read(&mut self, address: u32) -> u8 {
@@ -243,7 +254,7 @@ impl Cpu65c816 {
         if is_mmio_addr(address) {
             data = self.read_mmio_regs(address.bank_addr());
             clocks = Cpu65c816::ONE_CYCLE;
-        } else if 0x7E000 <= address && address <= 0x7FFFFF {
+        } else if 0x7E0000 <= address && address <= 0x7FFFFF {
             data = self.wram[(address - 0x7E0000) as usize];
             clocks = Cpu65c816::ONE_CYCLE_SLOW;
         } else {
@@ -273,7 +284,7 @@ impl Cpu65c816 {
         if is_mmio_addr(address) {
             self.write_mmio_regs(address.bank_addr(), data);
             clocks = Cpu65c816::ONE_CYCLE;
-        } else if 0x7E000 <= address && address <= 0x7FFFFF {
+        } else if 0x7E0000 <= address && address <= 0x7FFFFF {
             self.wram[(address - 0x7E0000) as usize] = data;
             clocks = Cpu65c816::ONE_CYCLE_SLOW;
         } else {
@@ -291,6 +302,8 @@ impl Cpu65c816 {
     }
 
     fn read_mmio_regs(&mut self, mmio_address: u16) -> u8 {
+        // println!("MMIO read ${mmio_address:04X}");
+
         match mmio_address {
             0x2100..=0x213F => self.ppu_data.read(mmio_address as u8),
 
@@ -305,6 +318,8 @@ impl Cpu65c816 {
     }
 
     fn write_mmio_regs(&mut self, mmio_address: u16, data: u8) {
+        // println!("MMIO write ${mmio_address:04X} with 0x{data:02X}");
+
         match mmio_address {
             0x2100..=0x213F => {
                 self.ppu_data.write(mmio_address as u8, data);
@@ -890,7 +905,12 @@ impl Cpu65c816 {
             }
         }
 
-        self.pc = self.read16(vector_lo, vector_hi)
+        self.pc = self.read16(vector_lo, vector_hi);
+
+        // temporary debug tool!
+        // println!("Interrupt");
+        self.vblank_irq = false;
+        self.add_clocks(Cpu65c816::ONE_CYCLE);
     }
 
     fn get_b_with_offset(&self, dma_channel_idx: usize) -> u8 {
@@ -2609,21 +2629,37 @@ impl Cpu65c816 {
 
 // Cycle Functionality
 impl Cpu65c816 {
-    fn clock(&mut self, logger: &mut SnemLogger) {
-        match self.dma_status {
-            DmaStatus::Off => {
-                self.exec_instr()
-            },
-            DmaStatus::DMA => {
-                self.do_dma()
-            },
-            DmaStatus::HDMA => {
-                self.do_hdma()
-            },
-            DmaStatus::LayeredHDMA => {
-                self.do_hdma()
-            },
+    pub fn clock(&mut self, logger: &mut SnemLogger) {
+        // if self.vblank_irq {
+        //     self.hardware_interrupt(CpuInterrupt::IRQ);
+        // }
+        
+        if self.stopped {
+            return;
         }
+
+        if self.until_cpu_clocks == 0 {
+            match self.dma_status {
+                DmaStatus::Off => {
+                    self.exec_instr()
+                },
+                DmaStatus::DMA => {
+                    self.do_dma()
+                },
+                DmaStatus::HDMA => {
+                    self.do_hdma()
+                },
+                DmaStatus::LayeredHDMA => {
+                    self.do_hdma()
+                },
+            }
+
+            if self.until_cpu_clocks == 0 {
+                self.until_cpu_clocks += 1;
+            }
+        }
+
+        self.until_cpu_clocks -= 1;
     }
 
     fn do_dma(&mut self) {
@@ -2715,6 +2751,27 @@ impl Cpu65c816 {
 
         let opcode = self.read_prg();
         let extra_clocks: u64;
+
+        if self.debug_instr_capture.len() < 3700 {
+            self.debug_instr_capture.push(opcode);
+        } else if self.debug_instr_capture.len() == 3700 {
+            for chunk in self.debug_instr_capture.chunks(16) {
+                for opcode in chunk {
+                    print!("{opcode:02X} ");
+                } 
+                println!();
+            }
+
+            self.debug_instr_capture.push(0);
+
+            panic!();
+        }
+
+        // if opcode != 0 && self.total_clocks < 2500 {
+        //     println!("Exec opcode 0x{:02X} from PC ${:06X}", opcode, self.pc);
+
+        //     println!("{}", self.lemon_cpu_str());
+        // }
 
         match (opcode, self.mode, self.acc_size(), self.idx_size()) {
             // brk, imp
@@ -6269,6 +6326,189 @@ impl Cpu65c816 {
         }
 
         self.add_clocks(extra_clocks);
+    }
+}
+
+impl Cpu65c816 {
+    pub fn temp_load_test(&mut self) {
+        use std::path::Path;
+
+        // C:\Users\lance\Desktop\Pet Projects\RustProjects\snemulator\games\Super Mario World (USA).sfc
+        let test_path_str = format!("tests/lemons/CPUTest/CPUADC.sfc");
+        // let test_path_str = format!("games/Super Mario World (USA).sfc");
+        let test_path = Path::new(&test_path_str);
+        let cart = Cartridge::from_path(test_path).unwrap();
+
+        self.load_cart(&cart);
+
+        self.rom.fill(0);
+
+        /*
+        clc
+        xce
+        lda #$01
+        sta $210B
+        rep #$30
+        
+        lda #$1000
+        sta $2116
+        lda #$00FF
+        sta $2118
+        
+        lda #$1001
+        sta $2116
+        lda #$FF00
+        sta $2118
+
+        lda #$1002
+        sta $2116
+        lda #$FFFF
+        sta $2118
+
+        stz $2116
+        lda #$0000
+
+        sta #$2118
+        inc accumulator
+        cmp #$0381
+        jne #$801D
+        stp
+
+        */
+
+        let prg = [
+            0x18, // CLC
+            0xFB, // XCE
+            0xA9, 0x01, // LDA imm
+            0x8D, 0x0B, 0x21, // STA abs 
+            0xC2, 0x30, // REP
+            0xA9, 0x00, 0x10, // LDA imm
+            0x8D, 0x16, 0x21, // STA abs
+            
+            0xA9, 0xFF, 0x00, // LDA imm
+            0x8D, 0x18, 0x21, // STA abs
+            0x8D, 0x18, 0x21, // STA abs
+            0x8D, 0x18, 0x21, // STA abs
+            0x8D, 0x18, 0x21, // STA abs
+            0x8D, 0x18, 0x21, // STA abs
+            0x8D, 0x18, 0x21, // STA abs
+            0x8D, 0x18, 0x21, // STA abs
+            0x8D, 0x18, 0x21, // STA abs
+
+            0xA9, 0x00, 0xFF, // LDA imm
+            0x8D, 0x18, 0x21, // STA abs
+            0x8D, 0x18, 0x21, // STA abs
+            0x8D, 0x18, 0x21, // STA abs
+            0x8D, 0x18, 0x21, // STA abs
+            0x8D, 0x18, 0x21, // STA abs
+            0x8D, 0x18, 0x21, // STA abs
+            0x8D, 0x18, 0x21, // STA abs
+            0x8D, 0x18, 0x21, // STA abs
+
+            0xA9, 0xFF, 0xFF, // LDA imm
+            0x8D, 0x18, 0x21, // STA abs
+            0x8D, 0x18, 0x21, // STA abs
+            0x8D, 0x18, 0x21, // STA abs
+            0x8D, 0x18, 0x21, // STA abs
+            0x8D, 0x18, 0x21, // STA abs
+            0x8D, 0x18, 0x21, // STA abs
+            0x8D, 0x18, 0x21, // STA abs
+            0x8D, 0x18, 0x21, // STA abs
+
+            0x9C, 0x16, 0x21, // STZ abs
+            0xA9, 0x00, 0x00, // LDA imm
+
+            0x8D, 0x18, 0x21, // STA abs
+            0x1A, // INC accumulator
+            0xC9, 0x81, 0x03, // CMP imm
+            0xD0, 0xF7, // BNE rel8
+
+            0xDB // STP
+
+            // 0xA9 as u8, 0b00011011, 0b00011011, // LDA imm
+            // 0x8D, 0x18, 0x21, // STA abs
+        ];
+
+        for i in 0..prg.len() {
+            self.rom[i] = prg[i];
+        }
+
+        self.stk_ptr = 0x1ff;
+        self.status = 0x34;
+
+        self.rom_mirror = self.rom.len() - 1;
+
+        self.pc = 0x8000;
+    }
+
+    fn cpu_status_str(&self) -> String {
+        let mut status_str = String::new();
+        status_str.push(if self.is_flag_set(Flag::FlagN) {
+            'N'
+        } else {
+            'n'
+        });
+        status_str.push(if self.is_flag_set(Flag::FlagV) {
+            'V'
+        } else {
+            'v'
+        });
+        if self.mode == CpuMode::Emulation {
+            status_str.push('1');
+            status_str.push(if self.is_flag_set(Flag::FlagX) {
+                'B'
+            } else {
+                'b'
+            });
+        } else {
+            status_str.push(if self.is_flag_set(Flag::FlagM) {
+                'M'
+            } else {
+                'm'
+            });
+            status_str.push(if self.is_flag_set(Flag::FlagX) {
+                'X'
+            } else {
+                'x'
+            });
+        }
+        status_str.push(if self.is_flag_set(Flag::FlagD) {
+            'D'
+        } else {
+            'd'
+        });
+        status_str.push(if self.is_flag_set(Flag::FlagI) {
+            'I'
+        } else {
+            'i'
+        });
+        status_str.push(if self.is_flag_set(Flag::FlagZ) {
+            'Z'
+        } else {
+            'z'
+        });
+        status_str.push(if self.is_flag_set(Flag::FlagC) {
+            'C'
+        } else {
+            'c'
+        });
+
+        status_str
+    }
+
+    fn lemon_cpu_str(&self) -> String {
+        format!(
+            "{:02x}{:04x} A:{:04x} X:{:04x} Y:{:04x} S:{:04x} D:{:04x} DB:{:02x} {} ",
+            self.prg_bank,
+            self.pc,
+            self.acc,
+            self.x,
+            self.y,
+            self.stk_ptr,
+            self.direct_page,
+            self.data_bank,
+            self.cpu_status_str()
+        )
     }
 }
 

@@ -100,15 +100,25 @@ impl SnemulatorCore {
     }
 
     fn cycle(&mut self) {
-        
+        self.snem_ppu.clock(&mut self.frame_buffer, &mut self.logger);
+        self.snem_cpu.clock(&mut self.logger);
     }
 
     fn cycle_frame(&mut self) {
+        // println!("Frame start");
+
         while !self.snem_ppu.frame_finished {
             self.cycle();
         }
 
+        // println!("Frame end");
+    
+        self.snem_cpu.vblank_irq = true;
         self.snem_ppu.frame_finished = false;
+
+        // if self.frame_count == 100 {
+        //     self.snem_ppu.dump_vram();
+        // }
     }
 
 
@@ -141,7 +151,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         args.env.set_hw_render_none()?;
 
         let mut frame_buffer = ResizableFrameBuffer::new();
-        frame_buffer.resize(SNES_FRAME_WIDTH as u16, SNES_FRAME_HEIGHT as u16).unwrap();
+        frame_buffer.resize(SNES_FRAME_WIDTH as u16 / 2, SNES_FRAME_HEIGHT as u16 / 2).unwrap();
         let pixel_format = args.env.set_pixel_format_xrgb8888(args.pixel_format)?;
         let rendering_mode = args.rendering_mode;
 
@@ -199,6 +209,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         core.logger.log(LogLevel::Info, format!("Loading game from '{}'", path_str).as_str());
 
         // TODO: Load game here
+        core.snem_cpu.temp_load_test();
 
         Ok(core)
     }
@@ -209,26 +220,6 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
 
     fn run(&mut self, env: &mut impl retro::env::Run, callbacks: &mut impl Callbacks) -> InputsPolled {
         let inputs_polled = self.update_input(callbacks);
-
-        if self.frame_count == 300 {
-            self.frame_buffer.resize((SNES_FRAME_WIDTH/32) as u16, (SNES_FRAME_HEIGHT/32) as u16);
-        
-            for y in 0..self.frame_buffer.width() {
-                for x in 0..self.frame_buffer.height() {
-                    let idx = (y*self.frame_buffer.width() + x) as usize;
-    
-                    let r = ((y as f64) / (self.frame_buffer.height() as f64) * 255.0) as u8;
-                    let g = ((x as f64) / (self.frame_buffer.width() as f64) * 255.0) as u8;
-    
-                    let col = XRGB8888::default()
-                        .with_r(r)
-                        .with_g(g)
-                        .with_b(0);
-    
-                    self.frame_buffer[idx] = col;
-                }
-            }
-        }
 
         self.cycle_frame();
 
