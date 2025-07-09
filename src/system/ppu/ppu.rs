@@ -895,7 +895,7 @@ impl PpuData {
                 match self.vram_addr_inc_mode.get() {
                     VramIncMode::LowByte => {
                         self.inc_vram_addr();
-                        println!("Inc VRAM addr to new addr ${:04X}", self.vram_addr.get());
+                        // println!("Inc VRAM addr to new addr ${:04X}", self.vram_addr.get());
                     },
                     _ => {}
                 }
@@ -912,7 +912,7 @@ impl PpuData {
                 match self.vram_addr_inc_mode.get() {
                     VramIncMode::HighByte => {
                         self.inc_vram_addr();
-                        println!("Inc VRAM addr to new addr ${:04X}", self.vram_addr.get());
+                        // println!("Inc VRAM addr to new addr ${:04X}", self.vram_addr.get());
                     },
                     _ => {}
                 }
@@ -973,19 +973,25 @@ impl PpuData {
 
             0x21 => {
                 self.cgram_addr.replace(data);
-                self.cgram_toggle.toggle();
+                self.cgram_toggle.set_lo();
             }
 
             0x22 => {
+                // print!("Write to CGRAM addr ${:02X} with data 0x{:02X}", self.cgram_addr.get(), data);
+
                 if self.cgram_toggle.toggle() {
-                    let addr = self.cgram_addr.get() as usize;
+                    let addr = self.cgram_addr.get();
                     let new_col = ((data as u16) << 8) | self.cgram_latch.get() as u16;
 
-                    self.cgram.0[addr].replace(new_col);
+                    self.cgram.0[addr as usize].replace(new_col);
 
-                    self.cgram_addr.replace((addr as u8) + 1);
+                    self.cgram_addr.replace(addr + 1);
+
+                    // println!(", new val = 0x{:04X}, new addr = ${:02X}", self.cgram.0[addr as usize].get(), addr+1);
                 } else {
                     self.cgram_latch.replace(data);
+
+                    // println!(", new latch = 0x{:02X}", data);
                 }
             }
 
@@ -1452,6 +1458,14 @@ impl Ppu5C7x {
 //     }
 // }
 
+fn cgram_word_to_xrgb(word: u16) -> XRGB8888 {
+    let r = ((word & 0x1F) as u32) << 19;
+    let g = ((word & 0x3E0) as u32) << 6;
+    let b = ((word & 0x7C00) as u32) >> 7;
+
+    XRGB8888::new_with_raw_value( 0xFF000000 | r | g | b )
+}
+
 impl Ppu5C7x {
     fn dot(&mut self, frame_buffer: &mut [XRGB8888]) {
         // let bg1_win_en = window_enable(
@@ -1506,31 +1520,25 @@ impl Ppu5C7x {
 
         let tile_data = self.vram_read(bg1_tile_addr);
 
-        let tile_idx = tile_data & 0x03FF;
+        let bg1_tile_pal = (tile_data >> 10) & 0x7;
+        let bg1_tile_idx = tile_data & 0x03FF;
 
-        // println!("Tile addr: ${bg1_tile_addr:04X}, data: 0x{tile_data:04X}, idx: 0x{tile_idx:04X}");
-
-        let chr_word_addr = ((self.bg1_char_base_addr() as u16) << 12) + (tile_idx << 3);
+        let bg1_chr_word_addr = ((self.bg1_char_base_addr() as u16) << 12) + (bg1_tile_idx << 3);
 
         let chr_x = (self.dot & 0x7) as u8;
         let chr_y = (self.scanline & 0x7) as u16;
 
-        let bitplanes = self.vram_read(chr_word_addr + chr_y);
+        let bitplanes = self.vram_read(bg1_chr_word_addr + chr_y);
         let bp0 = bitplanes as u8;
         let bp1 = (bitplanes >> 8) as u8;
         
         let bg1_pal_idx = ((bp0 >> (7-chr_x)) & 1) | (((bp1 >> (7-chr_x)) & 1) << 1);
 
-        let bg1_col = match bg1_pal_idx {
-            0 => XRGB8888::new_with_raw_value(0x00000000),
-            1 => XRGB8888::new_with_raw_value(0x00FF0000),
-            2 => XRGB8888::new_with_raw_value(0x0000FF00),
-            3 => XRGB8888::new_with_raw_value(0x000000FF),
-            _ => panic!("shouldn't have bg col > 3"),
-        };
+        let bg1_cgram_addr = (bg1_tile_pal << 2) | bg1_pal_idx as u16;
 
+        let bg1_col_data = self.registers.cgram.0[bg1_cgram_addr as usize].get();
 
-        frame_buffer[self.scanline * 256 + self.dot] = bg1_col;
+        frame_buffer[self.scanline * 256 + self.dot] = cgram_word_to_xrgb(bg1_col_data);
     }
 
     pub fn dump_vram(&mut self) {

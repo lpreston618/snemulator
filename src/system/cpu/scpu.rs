@@ -2752,20 +2752,20 @@ impl Cpu65c816 {
         let opcode = self.read_prg();
         let extra_clocks: u64;
 
-        if self.debug_instr_capture.len() < 3700 {
-            self.debug_instr_capture.push(opcode);
-        } else if self.debug_instr_capture.len() == 3700 {
-            for chunk in self.debug_instr_capture.chunks(16) {
-                for opcode in chunk {
-                    print!("{opcode:02X} ");
-                } 
-                println!();
-            }
+        // if self.debug_instr_capture.len() < 3700 {
+        //     self.debug_instr_capture.push(opcode);
+        // } else if self.debug_instr_capture.len() == 3700 {
+        //     for chunk in self.debug_instr_capture.chunks(16) {
+        //         for opcode in chunk {
+        //             print!("{opcode:02X} ");
+        //         } 
+        //         println!();
+        //     }
 
-            self.debug_instr_capture.push(0);
+        //     self.debug_instr_capture.push(0);
 
-            panic!();
-        }
+        //     panic!();
+        // }
 
         // if opcode != 0 && self.total_clocks < 2500 {
         //     println!("Exec opcode 0x{:02X} from PC ${:06X}", opcode, self.pc);
@@ -6341,8 +6341,6 @@ impl Cpu65c816 {
 
         self.load_cart(&cart);
 
-        self.rom.fill(0);
-
         /*
         clc
         xce
@@ -6352,6 +6350,13 @@ impl Cpu65c816 {
         
         lda #$1000
         sta $2116
+
+        lda #$0001
+        sta $2121
+
+        lda #$109F
+        sta $2122
+
         lda #$00FF
         sta $2118
         
@@ -6376,62 +6381,75 @@ impl Cpu65c816 {
 
         */
 
-        let prg = [
-            0x18, // CLC
-            0xFB, // XCE
-            0xA9, 0x01, // LDA imm
-            0x8D, 0x0B, 0x21, // STA abs 
-            0xC2, 0x30, // REP
-            0xA9, 0x00, 0x10, // LDA imm
-            0x8D, 0x16, 0x21, // STA abs
+        // let prg = [
+        //     0x18, // CLC
+        //     0xFB, // XCE
+        //     0xA9, 0x01, // LDA imm
+        //     0x8D, 0x0B, 0x21, // STA abs
+
+
+        //     // Set CGRAM bg1 pal0 col1 to pink-ish
+        //     0xA9, 0x01, // LDA imm
+        //     0x8D, 0x21, 0x21, // STA abs
+        //     0xA9, 0xDF, // LDA imm
+        //     0x8D, 0x22, 0x21, // STA abs
+        //     0xA9, 0x79, // LDA imm
+        //     0x8D, 0x22, 0x21, // STA abs
+
+        //     0xC2, 0x30, // REP
+
+        //     0xA9, 0x00, 0x10, // LDA imm
+        //     0x8D, 0x16, 0x21, // STA abs
             
-            0xA9, 0xFF, 0x00, // LDA imm
-            0x8D, 0x18, 0x21, // STA abs
-            0x8D, 0x18, 0x21, // STA abs
-            0x8D, 0x18, 0x21, // STA abs
-            0x8D, 0x18, 0x21, // STA abs
-            0x8D, 0x18, 0x21, // STA abs
-            0x8D, 0x18, 0x21, // STA abs
-            0x8D, 0x18, 0x21, // STA abs
-            0x8D, 0x18, 0x21, // STA abs
+        //     0xA9, 0xFF, 0x00, // LDA imm
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x8D, 0x18, 0x21, // STA abs
 
-            0xA9, 0x00, 0xFF, // LDA imm
-            0x8D, 0x18, 0x21, // STA abs
-            0x8D, 0x18, 0x21, // STA abs
-            0x8D, 0x18, 0x21, // STA abs
-            0x8D, 0x18, 0x21, // STA abs
-            0x8D, 0x18, 0x21, // STA abs
-            0x8D, 0x18, 0x21, // STA abs
-            0x8D, 0x18, 0x21, // STA abs
-            0x8D, 0x18, 0x21, // STA abs
+        //     0xA9, 0x00, 0xFF, // LDA imm
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x8D, 0x18, 0x21, // STA abs
 
-            0xA9, 0xFF, 0xFF, // LDA imm
-            0x8D, 0x18, 0x21, // STA abs
-            0x8D, 0x18, 0x21, // STA abs
-            0x8D, 0x18, 0x21, // STA abs
-            0x8D, 0x18, 0x21, // STA abs
-            0x8D, 0x18, 0x21, // STA abs
-            0x8D, 0x18, 0x21, // STA abs
-            0x8D, 0x18, 0x21, // STA abs
-            0x8D, 0x18, 0x21, // STA abs
+        //     0xA9, 0xFF, 0xFF, // LDA imm
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x8D, 0x18, 0x21, // STA abs
 
-            0x9C, 0x16, 0x21, // STZ abs
-            0xA9, 0x00, 0x00, // LDA imm
+        //     0x9C, 0x16, 0x21, // STZ abs
+        //     0xA9, 0x00, 0x00, // LDA imm
 
-            0x8D, 0x18, 0x21, // STA abs
-            0x1A, // INC accumulator
-            0xC9, 0x81, 0x03, // CMP imm
-            0xD0, 0xF7, // BNE rel8
+        //     0x8D, 0x18, 0x21, // STA abs
+        //     0x1A, // INC accumulator
+        //     0xC9, 0x81, 0x03, // CMP imm
+        //     0xD0, 0xF7, // BNE rel8
 
-            0xDB // STP
+        //     0xDB // STP
 
-            // 0xA9 as u8, 0b00011011, 0b00011011, // LDA imm
-            // 0x8D, 0x18, 0x21, // STA abs
-        ];
+        //     // 0xA9 as u8, 0b00011011, 0b00011011, // LDA imm
+        //     // 0x8D, 0x18, 0x21, // STA abs
+        // ];
 
-        for i in 0..prg.len() {
-            self.rom[i] = prg[i];
-        }
+        // self.rom.fill(0);
+
+        // for i in 0..prg.len() {
+        //     self.rom[i] = prg[i];
+        // }
 
         self.stk_ptr = 0x1ff;
         self.status = 0x34;
