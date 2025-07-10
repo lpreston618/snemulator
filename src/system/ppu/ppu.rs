@@ -377,7 +377,7 @@ pub struct PpuData {
     // $2117    hHHH HHHH    Write x2 Only
     //       - VRAM word address Low (L)
     //       - VRAM word address High (H)
-    vram_addr: Cell<u16>,
+    pub vram_addr: Cell<u16>,
 
     // $2118    LLLL LLLL
     // $2119    HHHH HHHH    Write x2 Only
@@ -651,7 +651,7 @@ impl PpuData {
             0x00 => {
                 self.in_fblank.replace(data.bit_en(7));
                 self.screen_brightness.replace(data & 0x0F);
-                println!("Set forced blanking to {} and screen brightness to {}", self.in_fblank.get(), self.screen_brightness.get());
+                // println!("Set forced blanking to {} and screen brightness to {}", self.in_fblank.get(), self.screen_brightness.get());
             }
 
             0x01 => {
@@ -671,7 +671,7 @@ impl PpuData {
                 self.name_secondary_select.replace((data >> 3) & 0x03);
                 self.name_base_addr.replace(data & 0x03);
 
-                println!("Set obj spr size to {:?}, secondary select to {}, and name base addr to ${:X}", self.obj_sprite_size.get(), self.name_secondary_select.get(), self.name_base_addr.get());
+                // println!("Set obj spr size to {:?}, secondary select to {}, and name base addr to ${:X}", self.obj_sprite_size.get(), self.name_secondary_select.get(), self.name_base_addr.get());
             }
 
             0x02 => {
@@ -1129,7 +1129,7 @@ impl PpuData {
             0x22 => {
                 // print!("Write to CGRAM addr ${:02X} with data 0x{:02X}", self.cgram_addr.get(), data);
 
-                if self.cgram_toggle.toggle() {
+                if !self.cgram_toggle.toggle() {
                     let addr = self.cgram_addr.get();
                     let new_col = ((data as u16) << 8) | self.cgram_latch.get() as u16;
 
@@ -1571,7 +1571,7 @@ impl Ppu5C7x {
             registers: ppu_data,
             dot: 0,
             scanline: 0,
-            clocks_until_dot: 0,
+            clocks_until_dot: 1,
             frame: 0,
             frame_finished: false,
         }
@@ -1602,10 +1602,15 @@ impl Ppu5C7x {
             self.dot = 0;
             self.scanline += 1;
 
+            // if self.frame > 7 {
+            //     std::thread::sleep(std::time::Duration::new(0, 50_000_000));
+            //     self.frame_finished = true;
+
+            //     println!("Scanline: {}, frame: {}", self.scanline, self.frame);
+            // }
+
             if self.scanline == VBLANK_END_SCANLINE_NTSC {
                 self.scanline = 0;
-                self.frame_finished = true;
-                self.frame += 1;
             }
         }
 
@@ -1621,6 +1626,8 @@ impl Ppu5C7x {
             }
             (0, VBLANK_START_SCANLINE) => {
                 self.registers.in_vblank.replace(true);
+                self.frame_finished = true;
+                self.frame += 1;
             }
             _ => {}
         }
@@ -1699,7 +1706,10 @@ impl Ppu5C7x {
         //     self.registers.obj_w2_enabled.get(),     
         //     self.registers.obj_w2_inverted.get(),    
         //     self.registers.obj_win_logic.get(),    
-        // );                                                  
+        // );       
+
+        // self.bg1_display_chr_table(frame_buffer);
+        // return;                                           
 
         match self.bg_mode() {
             BgMode::Mode0 => self.bg_mode0_dot(frame_buffer),
@@ -1713,18 +1723,16 @@ impl Ppu5C7x {
         }
     }
 
-    
-
     fn bg_mode0_dot(&mut self, frame_buffer: &mut [XRGB8888]) {
         const BG1_BASE_CGRAM_ADDR: u16 = 0x00;
         const BG2_BASE_CGRAM_ADDR: u16 = 0x20;
         const BG3_BASE_CGRAM_ADDR: u16 = 0x40;
         const BG4_BASE_CGRAM_ADDR: u16 = 0x60;
 
-        let tilemap_idx = ( (self.scanline / 8) * 32 + (self.dot / 8) ) as u16;
+        let tilemap_idx = ( (self.screen_y() / 8) * 32 + (self.screen_x() / 8) ) as u16;
 
-        let chr_x = (self.dot & 0x7) as u8;
-        let chr_y = (self.scanline & 0x7) as u16;
+        let chr_x = (self.screen_x() & 0x7) as u8;
+        let chr_y = (self.screen_y() & 0x7) as u16;
 
         let mode0_bg_col_data = |bg_vram_addr: u8, bg_chr_base_addr: u8, bg_cgram_base_addr: u16| -> Mode0ColorData {
             let bg_tile_addr = ((bg_vram_addr as u16) << 10) + tilemap_idx;
@@ -1742,7 +1750,7 @@ impl Ppu5C7x {
             
             let bg_pal_idx = ((bp0 >> (7-chr_x)) & 1) | (((bp1 >> (7-chr_x)) & 1) << 1);
 
-            let bg_cgram_addr = bg_cgram_base_addr + (bg_tile_pal << 2) + bg_pal_idx as u16;
+            let bg_cgram_addr = bg_cgram_base_addr | (bg_tile_pal << 2) | bg_pal_idx as u16;
 
             Mode0ColorData {
                 raw_color: self.registers.cgram.0[bg_cgram_addr as usize].get(),
@@ -1753,22 +1761,22 @@ impl Ppu5C7x {
 
         let bg1_col_data = mode0_bg_col_data(
             self.bg1_vram_addr(),
-            self.bg1_char_base_addr(),
+            self.bg1_chr_base_addr(),
             BG1_BASE_CGRAM_ADDR,
         );
         let bg2_col_data = mode0_bg_col_data(
             self.bg2_vram_addr(),
-            self.bg2_char_base_addr(),
+            self.bg2_chr_base_addr(),
             BG2_BASE_CGRAM_ADDR,
         );
         let bg3_col_data = mode0_bg_col_data(
             self.bg3_vram_addr(),
-            self.bg3_char_base_addr(),
+            self.bg3_chr_base_addr(),
             BG3_BASE_CGRAM_ADDR,
         );
         let bg4_col_data = mode0_bg_col_data(
             self.bg4_vram_addr(),
-            self.bg4_char_base_addr(),
+            self.bg4_chr_base_addr(),
             BG4_BASE_CGRAM_ADDR,
         );
 
@@ -1872,10 +1880,10 @@ impl Ppu5C7x {
     fn bg4_vram_addr(&self) -> u8 { self.registers.bg4_vram_addr.get() }
     fn bg4_tilemap_count_y(&self) -> TilemapCount { self.registers.bg4_tilemap_count_y.get() }
     fn bg4_tilemap_count_x(&self) -> TilemapCount { self.registers.bg4_tilemap_count_x.get() }
-    fn bg2_char_base_addr(&self) -> u8 { self.registers.bg2_chr_base_addr.get() }
-    fn bg1_char_base_addr(&self) -> u8 { self.registers.bg1_chr_base_addr.get() }
-    fn bg4_char_base_addr(&self) -> u8 { self.registers.bg4_chr_base_addr.get() }
-    fn bg3_char_base_addr(&self) -> u8 { self.registers.bg3_chr_base_addr.get() }
+    fn bg2_chr_base_addr(&self) -> u8 { self.registers.bg2_chr_base_addr.get() }
+    fn bg1_chr_base_addr(&self) -> u8 { self.registers.bg1_chr_base_addr.get() }
+    fn bg4_chr_base_addr(&self) -> u8 { self.registers.bg4_chr_base_addr.get() }
+    fn bg3_chr_base_addr(&self) -> u8 { self.registers.bg3_chr_base_addr.get() }
     fn m7_latch(&self) -> u8 { self.registers.m7_latch.get() }
     fn bg_offset_latch(&self) -> u8 { self.registers.bg_offset_latch.get() }
     fn bg_offset_x_latch(&self) -> u8 { self.registers.bg_offset_x_latch.get() }
@@ -2000,4 +2008,165 @@ impl Ppu5C7x {
     fn v_counter(&self) -> u16 { self.registers.v_counter.get() }
 
     fn vram_read(&self, address: u16) -> u16 { self.registers.vram.0[(address & 0x7FFF) as usize].get() }
+}
+
+
+pub fn dump_ppu_state(ppu: &Ppu5C7x) {
+    println!("screen_brightness: {:?}", ppu.screen_brightness());
+    println!("obj_sprite_size: {:?}", ppu.obj_sprite_size());
+    println!("name_secondary_select: {:?}", ppu.name_secondary_select());
+    println!("name_base_addr: {:?}", ppu.name_base_addr());
+    println!("oam_addr: {:?}", ppu.oam_addr());
+    println!("priority_rotation: {:?}", ppu.priority_rotation());
+    println!("oam_data: {:?}", ppu.oam_data());
+    println!("oam_data_latch: {:?}", ppu.oam_data_latch());
+    println!("bg4_char_size: {:?}", ppu.bg4_char_size());
+    println!("bg3_char_size: {:?}", ppu.bg3_char_size());
+    println!("bg2_char_size: {:?}", ppu.bg2_char_size());
+    println!("bg1_char_size: {:?}", ppu.bg1_char_size());
+    println!("bg3_priority: {:?}", ppu.bg3_priority());
+    println!("bg_mode: {:?}", ppu.bg_mode());
+    println!("mosaic_size: {:?}", ppu.mosaic_size());
+    println!("bg4_mosaic: {:?}", ppu.bg4_mosaic());
+    println!("bg3_mosaic: {:?}", ppu.bg3_mosaic());
+    println!("bg2_mosaic: {:?}", ppu.bg2_mosaic());
+    println!("bg1_mosaic: {:?}", ppu.bg1_mosaic());
+    println!("bg1_vram_addr: {:?}", ppu.bg1_vram_addr());
+    println!("bg1_tilemap_count_y: {:?}", ppu.bg1_tilemap_count_y());
+    println!("bg1_tilemap_count_x: {:?}", ppu.bg1_tilemap_count_x());
+    println!("bg2_vram_addr: {:?}", ppu.bg2_vram_addr());
+    println!("bg2_tilemap_count_y: {:?}", ppu.bg2_tilemap_count_y());
+    println!("bg2_tilemap_count_x: {:?}", ppu.bg2_tilemap_count_x());
+    println!("bg3_vram_addr: {:?}", ppu.bg3_vram_addr());
+    println!("bg3_tilemap_count_y: {:?}", ppu.bg3_tilemap_count_y());
+    println!("bg3_tilemap_count_x: {:?}", ppu.bg3_tilemap_count_x());
+    println!("bg4_vram_addr: {:?}", ppu.bg4_vram_addr());
+    println!("bg4_tilemap_count_y: {:?}", ppu.bg4_tilemap_count_y());
+    println!("bg4_tilemap_count_x: {:?}", ppu.bg4_tilemap_count_x());
+    println!("bg2_chr_base_addr: {:?}", ppu.bg2_chr_base_addr());
+    println!("bg1_chr_base_addr: {:?}", ppu.bg1_chr_base_addr());
+    println!("bg4_chr_base_addr: {:?}", ppu.bg4_chr_base_addr());
+    println!("bg3_chr_base_addr: {:?}", ppu.bg3_chr_base_addr());
+    println!("m7_latch: {:?}", ppu.m7_latch());
+    println!("bg_offset_latch: {:?}", ppu.bg_offset_latch());
+    println!("bg_offset_x_latch: {:?}", ppu.bg_offset_x_latch());
+    println!("bg1_m7_x_offset: {:?}", ppu.bg1_m7_x_offset());
+    println!("bg1_m7_y_offset: {:?}", ppu.bg1_m7_y_offset());
+    println!("bg2_x_offset: {:?}", ppu.bg2_x_offset());
+    println!("bg2_y_offset: {:?}", ppu.bg2_y_offset());
+    println!("bg3_x_offset: {:?}", ppu.bg3_x_offset());
+    println!("bg3_y_offset: {:?}", ppu.bg3_y_offset());
+    println!("bg4_x_offset: {:?}", ppu.bg4_x_offset());
+    println!("bg4_y_offset: {:?}", ppu.bg4_y_offset());
+    println!("vram_addr_inc_mode: {:?}", ppu.vram_addr_inc_mode());
+    println!("addr_remap_mode: {:?}", ppu.addr_remap_mode());
+    println!("addr_inc_size: {:?}", ppu.addr_inc_size());
+    println!("vram_addr: {:?}", ppu.vram_addr());
+    println!("vram_data: {:?}", ppu.vram_data());
+    println!("m7_tilemap_repeat: {:?}", ppu.m7_tilemap_repeat());
+    println!("m7_fill_mode: {:?}", ppu.m7_fill_mode());
+    println!("m7_flip_bg_y: {:?}", ppu.m7_flip_bg_y());
+    println!("m7_flip_bg_x: {:?}", ppu.m7_flip_bg_x());
+    println!("m7_matrix_a: {:?}", ppu.m7_matrix_a());
+    println!("m7_matrix_b: {:?}", ppu.m7_matrix_b());
+    println!("m7_matrix_c: {:?}", ppu.m7_matrix_c());
+    println!("m7_matrix_d: {:?}", ppu.m7_matrix_d());
+    println!("m7_center_x: {:?}", ppu.m7_center_x());
+    println!("m7_center_y: {:?}", ppu.m7_center_y());
+    println!("cgram_toggle: {:?}", ppu.cgram_toggle());
+    println!("cgram_addr: {:?}", ppu.cgram_addr());
+    println!("cgram_latch: {:?}", ppu.cgram_latch());
+    println!("cgram_data: {:?}", ppu.cgram_data());
+    println!("bg2_w2_enabled: {:?}", ppu.bg2_w2_enabled());
+    println!("bg2_w2_inverted: {:?}", ppu.bg2_w2_inverted());
+    println!("bg2_w1_enabled: {:?}", ppu.bg2_w1_enabled());
+    println!("bg2_w1_inverted: {:?}", ppu.bg2_w1_inverted());
+    println!("bg1_w2_enabled: {:?}", ppu.bg1_w2_enabled());
+    println!("bg1_w2_inverted: {:?}", ppu.bg1_w2_inverted());
+    println!("bg1_w1_enabled: {:?}", ppu.bg1_w1_enabled());
+    println!("bg1_w1_inverted: {:?}", ppu.bg1_w1_inverted());
+    println!("bg4_w2_enabled: {:?}", ppu.bg4_w2_enabled());
+    println!("bg4_w2_inverted: {:?}", ppu.bg4_w2_inverted());
+    println!("bg4_w1_enabled: {:?}", ppu.bg4_w1_enabled());
+    println!("bg4_w1_inverted: {:?}", ppu.bg4_w1_inverted());
+    println!("bg3_w2_enabled: {:?}", ppu.bg3_w2_enabled());
+    println!("bg3_w2_inverted: {:?}", ppu.bg3_w2_inverted());
+    println!("bg3_w1_enabled: {:?}", ppu.bg3_w1_enabled());
+    println!("bg3_w1_inverted: {:?}", ppu.bg3_w1_inverted());
+    println!("col_w2_enabled: {:?}", ppu.col_w2_enabled());
+    println!("col_w2_inverted: {:?}", ppu.col_w2_inverted());
+    println!("col_w1_enabled: {:?}", ppu.col_w1_enabled());
+    println!("col_w1_inverted: {:?}", ppu.col_w1_inverted());
+    println!("obj_w2_enabled: {:?}", ppu.obj_w2_enabled());
+    println!("obj_w2_inverted: {:?}", ppu.obj_w2_inverted());
+    println!("obj_w1_enabled: {:?}", ppu.obj_w1_enabled());
+    println!("obj_w1_inverted: {:?}", ppu.obj_w1_inverted());
+    println!("w1_left_pos: {:?}", ppu.w1_left_pos());
+    println!("w1_right_pos: {:?}", ppu.w1_right_pos());
+    println!("w2_left_pos: {:?}", ppu.w2_left_pos());
+    println!("w2_right_pos: {:?}", ppu.w2_right_pos());
+    println!("bg4_win_logic: {:?}", ppu.bg4_win_logic());
+    println!("bg3_win_logic: {:?}", ppu.bg3_win_logic());
+    println!("bg2_win_logic: {:?}", ppu.bg2_win_logic());
+    println!("bg1_win_logic: {:?}", ppu.bg1_win_logic());
+    println!("obj_win_logic: {:?}", ppu.obj_win_logic());
+    println!("col_win_logic: {:?}", ppu.col_win_logic());
+    println!("main_obj_enabled: {:?}", ppu.main_obj_enabled());
+    println!("main_l4_enabled: {:?}", ppu.main_l4_enabled());
+    println!("main_l3_enabled: {:?}", ppu.main_l3_enabled());
+    println!("main_l2_enabled: {:?}", ppu.main_l2_enabled());
+    println!("main_l1_enabled: {:?}", ppu.main_l1_enabled());
+    println!("sub_obj_enabled: {:?}", ppu.sub_obj_enabled());
+    println!("sub_l4_enabled: {:?}", ppu.sub_l4_enabled());
+    println!("sub_l3_enabled: {:?}", ppu.sub_l3_enabled());
+    println!("sub_l2_enabled: {:?}", ppu.sub_l2_enabled());
+    println!("sub_l1_enabled: {:?}", ppu.sub_l1_enabled());
+    println!("main_obj_win_enabled: {:?}", ppu.main_obj_win_enabled());
+    println!("main_l4_win_enabled: {:?}", ppu.main_l4_win_enabled());
+    println!("main_l3_win_enabled: {:?}", ppu.main_l3_win_enabled());
+    println!("main_l2_win_enabled: {:?}", ppu.main_l2_win_enabled());
+    println!("main_l1_win_enabled: {:?}", ppu.main_l1_win_enabled());
+    println!("sub_obj_win_enabled: {:?}", ppu.sub_obj_win_enabled());
+    println!("sub_l4_win_enabled: {:?}", ppu.sub_l4_win_enabled());
+    println!("sub_l3_win_enabled: {:?}", ppu.sub_l3_win_enabled());
+    println!("sub_l2_win_enabled: {:?}", ppu.sub_l2_win_enabled());
+    println!("sub_l1_win_enabled: {:?}", ppu.sub_l1_win_enabled());
+    println!("main_col_win_black_region: {:?}", ppu.main_col_win_black_region());
+    println!("sub_col_win_transparent_region: {:?}", ppu.sub_col_win_transparent_region());
+    println!("cmath_addend: {:?}", ppu.cmath_addend());
+    println!("direct_col_mode: {:?}", ppu.direct_col_mode());
+    println!("cmath_operator: {:?}", ppu.cmath_operator());
+    println!("cmath_half: {:?}", ppu.cmath_half());
+    println!("cmath_backdrop: {:?}", ppu.cmath_backdrop());
+    println!("cmath_obj_enabled: {:?}", ppu.cmath_obj_enabled());
+    println!("cmath_bg4_enabled: {:?}", ppu.cmath_bg4_enabled());
+    println!("cmath_bg3_enabled: {:?}", ppu.cmath_bg3_enabled());
+    println!("cmath_bg2_enabled: {:?}", ppu.cmath_bg2_enabled());
+    println!("cmath_bg1_enabled: {:?}", ppu.cmath_bg1_enabled());
+    println!("fixed_color: {:?}", ppu.fixed_color());
+    println!("_external_sync: {:?}", ppu._external_sync());
+    println!("ext_bg_enabled: {:?}", ppu.ext_bg_enabled());
+    println!("hi_res_enabled: {:?}", ppu.hi_res_enabled());
+    println!("overscan_enabled: {:?}", ppu.overscan_enabled());
+    println!("obj_interlace_enabled: {:?}", ppu.obj_interlace_enabled());
+    println!("screen_interlace_enabled: {:?}", ppu.screen_interlace_enabled());
+    println!("multiply_result: {:?}", ppu.multiply_result());
+    println!("vram_latch: {:?}", ppu.vram_latch());
+    println!("h_counter_toggle: {:?}", ppu.h_counter_toggle());
+    println!("h_counter_latch: {:?}", ppu.h_counter_latch());
+    println!("v_counter_toggle: {:?}", ppu.v_counter_toggle());
+    println!("v_counter_latch: {:?}", ppu.v_counter_latch());
+    println!("sprite_overflow: {:?}", ppu.sprite_overflow());
+    println!("sprite_tile_overflow: {:?}", ppu.sprite_tile_overflow());
+    println!("master_slave_state: {:?}", ppu.master_slave_state());
+    println!("ppu1_version: {:?}", ppu.ppu1_version());
+    println!("interlace_field: {:?}", ppu.interlace_field());
+    println!("counter_toggle: {:?}", ppu.counter_toggle());
+    println!("video_type: {:?}", ppu.video_type());
+    println!("ppu2_version: {:?}", ppu.ppu2_version());
+    println!("in_vblank: {:?}", ppu.in_vblank());
+    println!("in_hblank: {:?}", ppu.in_hblank());
+    println!("in_fblank: {:?}", ppu.in_fblank());
+    println!("h_counter: {:?}", ppu.h_counter());
+    println!("v_counter: {:?}", ppu.v_counter());
 }

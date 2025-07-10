@@ -111,15 +111,14 @@ impl SnemulatorCore {
         while !self.snem_ppu.frame_finished {
             self.cycle();
         }
-
-        // println!("Frame {} done", self.frame_count);
-
-        // if self.frame_count > 20 && self.frame_count < 40 {
-        //     sleep(time::Duration::new(0, 500000000));
-        // }
     
-        self.snem_cpu.vblank_irq = true;
+        self.snem_cpu.flag_for_vblank_nmi();
         self.snem_ppu.frame_finished = false;
+
+        if self.frame_count == 30 {
+            ppu::dump_ppu_state(&self.snem_ppu);
+            std::process::exit(1);
+        }
 
         // if self.frame_count == 100 {
         //     self.snem_ppu.dump_vram();

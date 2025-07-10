@@ -140,7 +140,8 @@ pub struct Cpu65c816 {
     a_bus_addr_lo: [u8; 8],
     a_bus_addr_hi: [u8; 8],
     a_bus_addr_bank: [u8; 8],
-    dma_byte_count: [u32; 8], // Also HDMA indirect address
+    dma_byte_count: [u16; 8], // Also HDMA indirect address lo+hi
+    hdma_indirect_table_bank: [u8; 8],
     hdma_table_addr: [u32; 8],
     hdma_line_counter: [u8; 8],
     dma_unused1: [u8; 8],
@@ -151,9 +152,8 @@ pub struct Cpu65c816 {
 
     ppu_data: Rc<PpuData>,
 
-    pub vblank_irq: bool,
-
-    debug_instr_capture: Vec<u8>,
+    vblank_nmi_ignore: bool,
+    vblank_nmi_flagged: bool,
 }
 
 // SNES System Functionality
@@ -198,6 +198,7 @@ impl Cpu65c816 {
             a_bus_addr_hi: [0; 8],
             a_bus_addr_bank: [0; 8],
             dma_byte_count: [0; 8],
+            hdma_indirect_table_bank: [0; 8],
             hdma_table_addr: [0; 8],
             // dma_byte_count_lo: [0; 8], // Also HDMA indirect addr lo
             // dma_byte_count_hi: [0; 8], // Also HDMA indirect addr hi
@@ -213,9 +214,8 @@ impl Cpu65c816 {
 
             ppu_data: ppu_data,
 
-            vblank_irq: false,
-
-            debug_instr_capture: Vec::new(),
+            vblank_nmi_ignore: true,
+            vblank_nmi_flagged: false,
         }
     }
 
@@ -227,6 +227,10 @@ impl Cpu65c816 {
 
     pub fn reset(&mut self) {
         self.hardware_interrupt(CpuInterrupt::Reset);
+    }
+
+    pub fn flag_for_vblank_nmi(&mut self) {
+        self.vblank_nmi_flagged = true;
     }
 }
 
@@ -325,6 +329,10 @@ impl Cpu65c816 {
                 self.ppu_data.write(mmio_address as u8, data);
             }
 
+            0x4200 => {
+                self.vblank_nmi_ignore = (data & 0x80) == 0;
+            }
+
             0x420B => {
                 if data == 0 {
                     self.dma_status = DmaStatus::Off;
@@ -333,6 +341,35 @@ impl Cpu65c816 {
                 }
 
                 self.dma_enable = data;
+
+                println!("CPU Write to DMA enable with 0x{:02X}", self.dma_enable);
+
+                for i in 0..8 {
+                    if (self.dma_enable & (1 << i)) != 0 {
+                        println!("  DMA Started on Ch. {i}");
+
+                        let a_bus_addr = u32::from_parts(
+                            self.a_bus_addr_bank[i],
+                            self.a_bus_addr_hi[i],
+                            self.a_bus_addr_lo[i]
+                        );
+                        let b_bus_addr = self.b_bus_addrs[i];
+
+                        if self.dma_params[i] & 0x80 == 0 {
+                            println!("  Src: ${a_bus_addr:06X} Dst: $21{b_bus_addr:02X}, VRAM addr: ${:04X}", self.ppu_data.vram_addr.get());
+                        } else {
+                            println!("  Src: ${b_bus_addr:02X} Dst: $21{a_bus_addr:06X}, VRAM addr: ${:04X}", self.ppu_data.vram_addr.get());
+                        }
+
+                        let num_bytes = if self.dma_byte_count[i] == 0 {
+                            0x10000
+                        } else {
+                            self.dma_byte_count[i] as u32
+                        };
+
+                        println!("  Total transfer size (bytes): {num_bytes}");
+                    }
+                }
             },
             0x420C => {
                 self.hdma_enable = data;
@@ -374,14 +411,20 @@ impl Cpu65c816 {
         let channel_idx = ((reg_address >> 4) & 7) as usize;
         let reg_address = reg_address & 0xFF0F;
 
+        println!("Write to DMA reg ${:02X} (ch {}) with 0x{:02X}", reg_address, channel_idx, data);
+
         match reg_address {
             0x4300 => { self.dma_params[channel_idx] = data; }
             0x4301 => { self.b_bus_addrs[channel_idx] = data; }
             0x4302 => { self.a_bus_addr_lo[channel_idx] = data; }
             0x4303 => { self.a_bus_addr_hi[channel_idx] = data; }
             0x4304 => { self.a_bus_addr_bank[channel_idx] = data; }
-            // 0x4305 => { self.dma_byte_count_lo[channel_idx] = data; }
-            // 0x4306 => { self.dma_byte_count_hi[channel_idx] = data; }
+            0x4305 => {
+                self.dma_byte_count[channel_idx] = (self.dma_byte_count[channel_idx] & 0xFF00) | (data as u16);
+            }
+            0x4306 => {
+                self.dma_byte_count[channel_idx] = (self.dma_byte_count[channel_idx] & 0x00FF) | ((data as u16) << 8);
+            }
             // 0x4307 => { self.hdma_indirect_addr_bank[channel_idx] = data; }
             // 0x4308 => { self.hdma_table_addr_lo[channel_idx] = data; }
             // 0x4309 => { self.hdma_table_addr_hi[channel_idx] = data; }
@@ -909,26 +952,24 @@ impl Cpu65c816 {
 
         // temporary debug tool!
         // println!("Interrupt");
-        self.vblank_irq = false;
         self.add_clocks(Cpu65c816::ONE_CYCLE);
     }
 
     fn get_b_with_offset(&self, dma_channel_idx: usize) -> u8 {
         let transfer_pattern = self.dma_params[dma_channel_idx] & 7;
-        let truncated_bw = self.dma_bytes_written as u8;
         let b_bus_addr = self.b_bus_addrs[dma_channel_idx];
 
         let offset_b_bus_addr = match transfer_pattern {
-            0 | 2 | 6 => b_bus_addr,                // 6 undocumented
-            1 | 5 => b_bus_addr + truncated_bw % 2, // 5 undocumented
-            3 | 7 => {                              // 7 undocumented
-                if truncated_bw % 4 < 2 {
+            0 | 2 | 6 => b_bus_addr,                                  // 6 undocumented
+            1 | 5 => b_bus_addr + (self.dma_bytes_written as u8) & 1, // 5 undocumented
+            3 | 7 => {                                                // 7 undocumented
+                if self.dma_bytes_written & 3 < 2 {
                     b_bus_addr
                 } else {
                     b_bus_addr + 1
                 }
             }
-            4 => b_bus_addr + truncated_bw % 4,
+            4 => b_bus_addr + (self.dma_bytes_written as u8) & 3,
             _ => unreachable!("Should not reach DMA transfer pattern > 7"),
         };
 
@@ -2630,9 +2671,13 @@ impl Cpu65c816 {
 // Cycle Functionality
 impl Cpu65c816 {
     pub fn clock(&mut self, logger: &mut SnemLogger) {
-        // if self.vblank_irq {
-        //     self.hardware_interrupt(CpuInterrupt::IRQ);
-        // }
+        if self.vblank_nmi_flagged {
+            self.vblank_nmi_flagged = false;
+
+            if !self.vblank_nmi_ignore {
+                self.hardware_interrupt(CpuInterrupt::IRQ);
+            }
+        }
         
         if self.stopped {
             return;
@@ -2695,13 +2740,14 @@ impl Cpu65c816 {
 
         self.dma_bytes_written += 1;
         
-        let dma_byte_count = (self.dma_byte_count[dma_channel_idx] as u16 - 1) as u32;
-        self.dma_byte_count[dma_channel_idx] &= 0xFF0000;
-        self.dma_byte_count[dma_channel_idx] |= dma_byte_count;
+        self.dma_byte_count[dma_channel_idx] -= 1;
 
-        if dma_byte_count == 0 {
+        if self.dma_byte_count[dma_channel_idx] == 0 {
+            println!("Finished DMA for Ch. {dma_channel_idx}. Remaining channels: {}", self.dma_enable.count_ones()-1);
+
             // Disable this DMA channel
             self.dma_enable ^= 1 << dma_channel_idx;
+
             self.dma_bytes_written = 0;
 
             // If there are no more active DMA channels, deactivate DMA
