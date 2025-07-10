@@ -112,11 +112,11 @@ impl SnemulatorCore {
             self.cycle();
         }
 
-        println!("Frame {} done", self.frame_count);
+        // println!("Frame {} done", self.frame_count);
 
-        if self.frame_count == 35 {
-            sleep(time::Duration::new(3, 0));
-        }
+        // if self.frame_count > 20 && self.frame_count < 40 {
+        //     sleep(time::Duration::new(0, 500000000));
+        // }
     
         self.snem_cpu.vblank_irq = true;
         self.snem_ppu.frame_finished = false;
