@@ -73,7 +73,7 @@ impl Togglable for Cell<ToggleState> {
 }
 
 #[derive(Clone, Copy, Default, Debug)]
-enum ObjectSize {
+enum ObjectSizeSelect {
     #[default]
     Size8x8_16x16,
     Size8x8_32x32,
@@ -83,6 +83,16 @@ enum ObjectSize {
     Size32x32_64x64,
     Size16x32_32x64,
     Size16x32_32x32,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ObjectSize {
+    Size8x8,
+    Size16x16,
+    Size32x32,
+    Size64x64,
+    Size16x32,
+    Size32x64,
 }
 
 #[derive(Clone, Copy, Default, Debug)]
@@ -241,7 +251,7 @@ pub struct PpuData {
     //       - OBJ sprite size (S)
     //       - Name secondary select (N)
     //       - Name base address (B)
-    obj_sprite_size: Cell<ObjectSize>,
+    obj_sprite_size: Cell<ObjectSizeSelect>,
     name_secondary_select: Cell<u8>,
     name_base_addr: Cell<u8>,
 
@@ -656,14 +666,14 @@ impl PpuData {
 
             0x01 => {
                 let new_obj_size = match data >> 5 {
-                    0 => ObjectSize::Size8x8_16x16,
-                    1 => ObjectSize::Size8x8_32x32,
-                    2 => ObjectSize::Size8x8_64x64,
-                    3 => ObjectSize::Size16x16_32x32,
-                    4 => ObjectSize::Size16x16_64x64,
-                    5 => ObjectSize::Size32x32_64x64,
-                    6 => ObjectSize::Size16x32_32x64,
-                    7 => ObjectSize::Size16x32_32x32,
+                    0 => ObjectSizeSelect::Size8x8_16x16,
+                    1 => ObjectSizeSelect::Size8x8_32x32,
+                    2 => ObjectSizeSelect::Size8x8_64x64,
+                    3 => ObjectSizeSelect::Size16x16_32x32,
+                    4 => ObjectSizeSelect::Size16x16_64x64,
+                    5 => ObjectSizeSelect::Size32x32_64x64,
+                    6 => ObjectSizeSelect::Size16x32_32x64,
+                    7 => ObjectSizeSelect::Size16x32_32x32,
                     _ => unreachable!()
                 };
 
@@ -700,23 +710,23 @@ impl PpuData {
                 if internal_oam_addr & 1 == 0 {
                     self.oam_data_latch.replace(data);
 
-                    // println!("Set OAM data latch to 0x{:02X}", self.oam_data_latch.get());
+                    println!("Set OAM data latch to 0x{:02X}", self.oam_data_latch.get());
                 } else if internal_oam_addr < 0x200 {
                     self.oam.0[internal_oam_addr - 1].replace(self.oam_data_latch.get());
                     self.oam.0[internal_oam_addr].replace(data);
 
-                    // println!("Wrote 0x{:02X} and 0x{:02X} to OAM addrs ${:04X} and ${:04X}", self.oam_data_latch.get(), data, internal_oam_addr-1, internal_oam_addr);
+                    println!("Wrote 0x{:02X} and 0x{:02X} to OAM addrs ${:04X} and ${:04X}", self.oam_data_latch.get(), data, internal_oam_addr-1, internal_oam_addr);
                 }
-
+                
                 if internal_oam_addr >= 0x200 {
                     self.oam.0[internal_oam_addr].replace(data);
 
-                    // println!("Wrote 0x{:02X} to OAM addr ${:04X}", data, internal_oam_addr);
+                    println!("Wrote 0x{:02X} to OAM addr ${:04X}", data, internal_oam_addr);
                 }
 
-                self.internal_oam_addr.replace(internal_oam_addr as u16 + 1);
+                self.internal_oam_addr.replace((internal_oam_addr as u16 + 1) & 0x1FF);
 
-                // println!("Incremented internal OAM addr to ${:04X}", self.internal_oam_addr.get());
+                println!("Incremented internal OAM addr to ${:04X}", self.internal_oam_addr.get());
             }
 
             0x05 => {
@@ -1386,7 +1396,7 @@ impl PpuData {
             }
 
             0x38 => {
-                let addr = self.oam_addr.replace(self.oam_addr.get() + 1);
+                let addr = self.internal_oam_addr.replace(self.internal_oam_addr.get() + 1);
 
                 self.oam.0[addr as usize].get()
             }
@@ -1548,9 +1558,17 @@ impl PpuData {
     }
 }
 
-// PPU Internal Access
-impl PpuData {
-
+struct OAMSprite {
+    x: u16,
+    max_x: u16,
+    y: u8,
+    tile_idx: u8,
+    use_second_obj_table: bool,
+    palette: u8,
+    priority: u8,
+    flip_x: bool,
+    flip_y: bool,
+    size: ObjectSize,
 }
 
 pub struct Ppu5C7x {
@@ -1559,8 +1577,10 @@ pub struct Ppu5C7x {
     dot: u16,
     scanline: u16,
     clocks_until_dot: u8,
-    
     frame: usize,
+
+    scanline_sprites: Vec<OAMSprite>,
+    scanline_spr_cnt: usize,
 
     pub frame_finished: bool,
 }
@@ -1573,6 +1593,8 @@ impl Ppu5C7x {
             scanline: 0,
             clocks_until_dot: 1,
             frame: 0,
+            scanline_sprites: Vec::with_capacity(32),
+            scanline_spr_cnt: 0,
             frame_finished: false,
         }
     }
@@ -1615,21 +1637,99 @@ impl Ppu5C7x {
         }
 
         match (self.dot, self.scanline) {
+            // End of v-blank, scanline 0 is not visible
             (0, 0) => {
                 self.registers.in_vblank.replace(false);
             }
-            (HBLANK_END_DOT, 0..=HBLANK_DISABLE_SCANLINE) => {
+            // Start of visible scanline, end of h-blank
+            (HBLANK_END_DOT, 1..=HBLANK_DISABLE_SCANLINE) => {
                 self.registers.in_hblank.replace(false);
+                self.find_scanline_sprites();
             }
+            // End of visible scanline, start of h-blank
             (HBLANK_START_DOT, 0..HBLANK_DISABLE_SCANLINE) => {
                 self.registers.in_hblank.replace(true);
             }
+            // Start of v-blank
             (0, VBLANK_START_SCANLINE) => {
                 self.registers.in_vblank.replace(true);
                 self.frame_finished = true;
                 self.frame += 1;
             }
             _ => {}
+        }
+    }
+
+    /// Finds all possible sprites that could be rendered on the current scanline
+    /// based on the y-positions of the sprites
+    fn find_scanline_sprites(&mut self) {
+        self.scanline_sprites.clear();
+
+        let screen_y = self.screen_y();
+
+        self.scanline_spr_cnt = 0;
+        for (spr_idx, spr_data) in self.registers.oam.0[..0x200].chunks(4).enumerate().rev() {
+            // This bit munging is absolutely horrifying but works. We need to 1) get the packed byte containing
+            // our data, 2) create a mask to get the bits within the packed byte, and 3) or the byte with the
+            // mask to get the relevant bits. Each byte looks like DdCcBbAa, with each letter pair corresponding
+            // to a single sprite (32 bytes * 4 pairs = 128, matching # of sprites in OAM).
+            let spr_extra_data = (self.registers.oam.0[0x200 | (spr_idx >> 2)].get() >> ((spr_idx & 3) << 1)) & 3;
+            let spr_size_sel = (spr_extra_data & 2) != 0;
+            let spr_size = if spr_size_sel {
+                match self.obj_sprite_size() {
+                    ObjectSizeSelect::Size8x8_16x16 => ObjectSize::Size16x16,
+                    ObjectSizeSelect::Size8x8_32x32 => ObjectSize::Size32x32,
+                    ObjectSizeSelect::Size8x8_64x64 => ObjectSize::Size64x64,
+                    ObjectSizeSelect::Size16x16_32x32 => ObjectSize::Size32x32,
+                    ObjectSizeSelect::Size16x16_64x64 => ObjectSize::Size64x64,
+                    ObjectSizeSelect::Size32x32_64x64 => ObjectSize::Size64x64,
+                    ObjectSizeSelect::Size16x32_32x64 => ObjectSize::Size32x64,
+                    ObjectSizeSelect::Size16x32_32x32 => ObjectSize::Size32x32,
+                }
+            } else {
+                match self.obj_sprite_size() {
+                    ObjectSizeSelect::Size8x8_16x16 => ObjectSize::Size8x8,
+                    ObjectSizeSelect::Size8x8_32x32 => ObjectSize::Size8x8,
+                    ObjectSizeSelect::Size8x8_64x64 => ObjectSize::Size8x8,
+                    ObjectSizeSelect::Size16x16_32x32 => ObjectSize::Size16x16,
+                    ObjectSizeSelect::Size16x16_64x64 => ObjectSize::Size16x16,
+                    ObjectSizeSelect::Size32x32_64x64 => ObjectSize::Size32x32,
+                    ObjectSizeSelect::Size16x32_32x64 => ObjectSize::Size16x32,
+                    ObjectSizeSelect::Size16x32_32x32 => ObjectSize::Size16x32,
+                }
+            };
+            let spr_y = spr_data[1].get();
+            let spr_x = (((spr_extra_data as u16) & 1) << 8) | (spr_data[0].get() as u16);
+            let (spr_max_x, spr_y_max) = match spr_size {
+                ObjectSize::Size8x8 => (spr_x + 8, spr_y + 8),
+                ObjectSize::Size16x16 => (spr_x + 16, spr_y + 16),
+                ObjectSize::Size16x32 | ObjectSize::Size32x32 => (spr_x + 32, spr_y + 32),
+                ObjectSize::Size32x64 | ObjectSize::Size64x64 => (spr_x + 64, spr_y + 64),
+            };
+
+            // Sprite should be on scanline
+            if spr_y as usize <= screen_y && screen_y < spr_y_max as usize  {
+                let sprite = OAMSprite {
+                    x: spr_x,
+                    max_x: spr_max_x,
+                    y: spr_y,
+                    tile_idx: spr_data[2].get(),
+                    use_second_obj_table: (spr_data[3].get() & 1) != 0,
+                    palette: (spr_data[3].get() >> 1) & 7,
+                    priority: (spr_data[3].get() >> 4) & 3,
+                    flip_x: (spr_data[3].get() & 0x40) != 0,
+                    flip_y: (spr_data[3].get() & 0x80) != 0,
+                    size: spr_size,
+                };
+
+                if self.scanline_sprites.len() < 32 {
+                    self.scanline_sprites.push(sprite);
+                } else {
+                    self.scanline_sprites[self.scanline_spr_cnt] = sprite;
+                }
+
+                self.scanline_spr_cnt = (self.scanline_spr_cnt + 1) & 0x1F;
+            }
         }
     }
 }
@@ -1645,9 +1745,15 @@ impl Ppu5C7x {
 //     }
 // }
 
-struct Mode0ColorData {
+struct BgColorData {
     raw_color: u16,
     priority: bool,
+    transparent: bool,
+}
+
+struct SpriteColorData {
+    raw_color: u16,
+    priority: u8,
     transparent: bool,
 }
 
@@ -1663,6 +1769,7 @@ fn cgram_raw_color_to_xrgb(word: u16) -> XRGB8888 {
 impl Ppu5C7x {
     fn screen_x(&self) -> usize { self.dot as usize - VISIBLE_SCANLINE_START_DOT }
     fn screen_y(&self) -> usize { self.scanline as usize - 1 }
+    fn transparent_color(&self) -> u16 { self.registers.cgram.0[0].get() }
 
     fn dot(&mut self, frame_buffer: &mut [XRGB8888]) {
         // let bg1_win_en = window_enable(
@@ -1711,30 +1818,129 @@ impl Ppu5C7x {
         // self.bg1_display_chr_table(frame_buffer);
         // return;                                           
 
-        match self.bg_mode() {
-            BgMode::Mode0 => self.bg_mode0_dot(frame_buffer),
-            BgMode::Mode1 => self.bg_mode1_dot(frame_buffer),
-            BgMode::Mode2 => self.bg_mode2_dot(frame_buffer),
-            BgMode::Mode3 => self.bg_mode3_dot(frame_buffer),
-            BgMode::Mode4 => self.bg_mode4_dot(frame_buffer),
-            BgMode::Mode5 => self.bg_mode5_dot(frame_buffer),
-            BgMode::Mode6 => self.bg_mode6_dot(frame_buffer),
-            BgMode::Mode7 => self.bg_mode7_dot(frame_buffer),
+        let screen_x = self.screen_x();
+        let screen_y = self.screen_y();
+
+        // Get color of sprite on this pixel. Different bg modes will use it
+        // differently depending on priority and register settings.
+        let spr_col = self.sprite_dot(screen_x, screen_y);
+
+        let dot_col = match self.bg_mode() {
+            BgMode::Mode0 => self.bg_mode0_dot(screen_x, screen_y, spr_col),
+            // BgMode::Mode1 => self.bg_mode1_dot(frame_buffer, spr_col),
+            // BgMode::Mode2 => self.bg_mode2_dot(frame_buffer, spr_col),
+            // BgMode::Mode3 => self.bg_mode3_dot(frame_buffer, spr_col),
+            // BgMode::Mode4 => self.bg_mode4_dot(frame_buffer, spr_col),
+            // BgMode::Mode5 => self.bg_mode5_dot(frame_buffer, spr_col),
+            // BgMode::Mode6 => self.bg_mode6_dot(frame_buffer, spr_col),
+            // BgMode::Mode7 => self.bg_mode7_dot(frame_buffer, spr_col),
+            _ => 0,
+        };
+
+        frame_buffer[screen_y * 256 + screen_x] = cgram_raw_color_to_xrgb(dot_col);
+    }
+
+    /// Gets the color of the first visible sprite on the screen.
+    fn sprite_dot(&mut self, screen_x: usize, screen_y: usize) -> SpriteColorData {
+        let mut scanline_spr_cnt = self.scanline_spr_cnt;
+
+        for i in 0..self.scanline_sprites.len() {
+            scanline_spr_cnt -= 1;
+
+            let sprite = &self.scanline_sprites[scanline_spr_cnt];
+
+            if scanline_spr_cnt == 0 {
+                scanline_spr_cnt = 32;
+            }
+
+            if sprite.x as usize <= screen_x && screen_x < sprite.max_x as usize  {
+                let sprite_col = screen_x - sprite.x as usize;
+                let sprite_row = screen_y - sprite.y as usize;
+                let (tile_x, tile_col) = (sprite_col / 8, sprite_col % 8);
+                let (tile_y, tile_row) = (sprite_row / 8, sprite_row % 8);
+                
+                let spr_width_tiles = match sprite.size {
+                    ObjectSize::Size8x8 => 1,
+                    ObjectSize::Size16x16 | ObjectSize::Size16x32 => 2,
+                    ObjectSize::Size32x32 | ObjectSize::Size32x64 => 4,
+                    ObjectSize::Size64x64 => 8,
+                };
+
+                let tile_idx = tile_y*spr_width_tiles + tile_x;
+
+                let obj_table_base_addr = if sprite.use_second_obj_table {
+                    ((self.name_base_addr() as u16) << 13) + ((self.name_secondary_select() as u16) << 12)
+                } else {
+                    (self.name_base_addr() as u16) << 13
+                };
+
+                let spr_tile_base_addr = obj_table_base_addr | ((sprite.tile_idx as u16) << 4);
+                let spr_tile_addr = spr_tile_base_addr + ((tile_idx as u16) << 4);
+                let spr_tile_row_addr = spr_tile_addr | ((tile_row as u16) << 1);
+                
+                let bp01 = self.vram_read(spr_tile_row_addr + 0);
+                let bp23 = self.vram_read(spr_tile_row_addr + 1);
+
+                let b0 = (bp01 >> (7-tile_col)) & 1;
+                let b1 = (bp01 >> (15-tile_col)) & 1;
+                let b2 = (bp23 >> (7-tile_col)) & 1;
+                let b3 = (bp23 >> (15-tile_col)) & 1;
+
+                let pal_idx = (b3 << 3) | (b2 << 2) | (b1 << 1) | b0;
+
+                // Transparent sprite
+                if pal_idx == 0 {
+                    // If it's the last sprite, all sprites were transparent
+                    if i == self.scanline_sprites.len() - 1 {
+                        return SpriteColorData {
+                            raw_color: 0,
+                            priority: sprite.priority,
+                            transparent: true,
+                        };
+                    }
+
+                    continue;
+                }
+
+                let cgram_addr = 0x200 | ((sprite.palette as u16) << 4) | pal_idx;
+
+                let spr_col = self.registers.cgram.0[cgram_addr as usize].get();
+
+                return SpriteColorData {
+                    raw_color: spr_col,
+                    priority: sprite.priority,
+                    transparent: false,
+                };
+            }
+        }
+
+        // No sprites on this dot, return a transparent color
+        SpriteColorData {
+            raw_color: 0,
+            priority: 0,
+            transparent: true,
         }
     }
 
-    fn bg_mode0_dot(&mut self, frame_buffer: &mut [XRGB8888]) {
+    /// Compute the color of this dot, combining all bg layers and object color
+    /// data. Computes only as many layers as it needs to before returning the
+    /// color of the dot.
+    fn bg_mode0_dot(&mut self, screen_x: usize, screen_y: usize, spr_col: SpriteColorData) -> u16 {
         const BG1_BASE_CGRAM_ADDR: u16 = 0x00;
         const BG2_BASE_CGRAM_ADDR: u16 = 0x20;
         const BG3_BASE_CGRAM_ADDR: u16 = 0x40;
         const BG4_BASE_CGRAM_ADDR: u16 = 0x60;
 
-        let tilemap_idx = ( (self.screen_y() / 8) * 32 + (self.screen_x() / 8) ) as u16;
+        if spr_col.priority == 3 && !spr_col.transparent {
+            return spr_col.raw_color;
+        }
 
-        let chr_x = (self.screen_x() & 0x7) as u8;
-        let chr_y = (self.screen_y() & 0x7) as u16;
+        let tilemap_idx = ( (screen_y / 8) * 32 + (screen_x / 8) ) as u16;
 
-        let mode0_bg_col_data = |bg_vram_addr: u8, bg_chr_base_addr: u8, bg_cgram_base_addr: u16| -> Mode0ColorData {
+        let chr_x = (screen_x & 0x7) as u8;
+        let chr_y = (screen_y & 0x7) as u16;
+
+        let mode0_bg_col_data = |bg_vram_addr: u8, bg_chr_base_addr: u8, bg_cgram_base_addr: u16| -> BgColorData {
             let bg_tile_addr = ((bg_vram_addr as u16) << 10) + tilemap_idx;
             let tile_data = self.vram_read(bg_tile_addr);
 
@@ -1752,69 +1958,78 @@ impl Ppu5C7x {
 
             let bg_cgram_addr = bg_cgram_base_addr | (bg_tile_pal << 2) | bg_pal_idx as u16;
 
-            Mode0ColorData {
+            BgColorData {
                 raw_color: self.registers.cgram.0[bg_cgram_addr as usize].get(),
                 priority: bg_priority,
                 transparent: (bg_pal_idx == 0)
             }
         };
 
-        let bg1_col_data = mode0_bg_col_data(
+        let bg1_col = mode0_bg_col_data(
             self.bg1_vram_addr(),
             self.bg1_chr_base_addr(),
             BG1_BASE_CGRAM_ADDR,
         );
-        let bg2_col_data = mode0_bg_col_data(
+
+        let bg2_col = mode0_bg_col_data(
             self.bg2_vram_addr(),
             self.bg2_chr_base_addr(),
             BG2_BASE_CGRAM_ADDR,
         );
-        let bg3_col_data = mode0_bg_col_data(
+
+        if bg2_col.priority && !bg2_col.transparent {
+            return bg2_col.raw_color;
+        }
+
+        if spr_col.priority == 2 && !spr_col.transparent {
+            return spr_col.raw_color;
+        }
+
+        if !bg1_col.transparent {
+            return bg1_col.raw_color;
+        }
+
+        if !bg2_col.transparent {
+            return bg2_col.raw_color;
+        }
+
+        if spr_col.priority == 1 && !spr_col.transparent {
+            return spr_col.raw_color;
+        }
+
+        let bg3_col = mode0_bg_col_data(
             self.bg3_vram_addr(),
             self.bg3_chr_base_addr(),
             BG3_BASE_CGRAM_ADDR,
         );
-        let bg4_col_data = mode0_bg_col_data(
+
+        if bg3_col.priority && !bg3_col.transparent {
+            return bg3_col.raw_color;
+        }
+
+        let bg4_col = mode0_bg_col_data(
             self.bg4_vram_addr(),
             self.bg4_chr_base_addr(),
             BG4_BASE_CGRAM_ADDR,
         );
 
-        const TRANSPARENT_COL: u16 = 0;
+        if bg4_col.priority && !bg4_col.transparent {
+            return bg4_col.raw_color;
+        }
 
-        let bg34_col = if bg3_col_data.transparent && bg4_col_data.transparent {
-            TRANSPARENT_COL
-        } else if bg3_col_data.transparent {
-            bg4_col_data.raw_color
-        } else if bg4_col_data.transparent {
-            bg3_col_data.raw_color
-        } else if bg4_col_data.priority && !bg3_col_data.priority {
-            bg4_col_data.raw_color
-        } else {
-            bg3_col_data.raw_color
-        };
+        if !spr_col.transparent {
+            return spr_col.raw_color;
+        }
 
-        let bg12_col = if bg1_col_data.transparent && bg2_col_data.transparent {
-            TRANSPARENT_COL
-        } else if bg1_col_data.transparent {
-            bg2_col_data.raw_color
-        } else if bg2_col_data.transparent {
-            bg1_col_data.raw_color
-        } else if bg2_col_data.priority && !bg1_col_data.priority {
-            bg2_col_data.raw_color
-        } else {
-            bg1_col_data.raw_color
-        };
+        if !bg3_col.transparent {
+            return bg3_col.raw_color;
+        }
 
-        let bg_col = if bg12_col == TRANSPARENT_COL && bg34_col == TRANSPARENT_COL {
-            self.registers.cgram.0[0].get()
-        } else if bg12_col == TRANSPARENT_COL {
-            bg34_col
-        } else {
-            bg12_col
-        };
+        if !bg4_col.transparent {
+            return bg4_col.raw_color;
+        }
 
-        frame_buffer[self.screen_y() * 256 + self.screen_x()] = cgram_raw_color_to_xrgb(bg_col);
+        self.transparent_color()
     }
 
     fn bg_mode1_dot(&mut self, frame_buffer: &mut [XRGB8888]) {
@@ -1850,7 +2065,7 @@ impl Ppu5C7x {
 // Getters & Setters for registers
 impl Ppu5C7x {
     fn screen_brightness(&self) -> u8 { self.registers.screen_brightness.get() }
-    fn obj_sprite_size(&self) -> ObjectSize { self.registers.obj_sprite_size.get() }
+    fn obj_sprite_size(&self) -> ObjectSizeSelect { self.registers.obj_sprite_size.get() }
     fn name_secondary_select(&self) -> u8 { self.registers.name_secondary_select.get() }
     fn name_base_addr(&self) -> u8 { self.registers.name_base_addr.get() }
     fn oam_addr(&self) -> u16 { self.registers.oam_addr.get() }
@@ -2031,7 +2246,7 @@ pub fn dump_ppu_state(ppu: &Ppu5C7x) {
     println!("bg3_mosaic: {:?}", ppu.bg3_mosaic());
     println!("bg2_mosaic: {:?}", ppu.bg2_mosaic());
     println!("bg1_mosaic: {:?}", ppu.bg1_mosaic());
-    println!("bg1_vram_addr: {:?}", ppu.bg1_vram_addr());
+    println!("bg1_vram_addr: ${:04X}", ((ppu.bg1_vram_addr() as u16) << 10) & 0x7FFF);
     println!("bg1_tilemap_count_y: {:?}", ppu.bg1_tilemap_count_y());
     println!("bg1_tilemap_count_x: {:?}", ppu.bg1_tilemap_count_x());
     println!("bg2_vram_addr: {:?}", ppu.bg2_vram_addr());
@@ -2061,7 +2276,7 @@ pub fn dump_ppu_state(ppu: &Ppu5C7x) {
     println!("vram_addr_inc_mode: {:?}", ppu.vram_addr_inc_mode());
     println!("addr_remap_mode: {:?}", ppu.addr_remap_mode());
     println!("addr_inc_size: {:?}", ppu.addr_inc_size());
-    println!("vram_addr: {:?}", ppu.vram_addr());
+    println!("vram_addr: ${:04X}", ppu.vram_addr());
     println!("vram_data: {:?}", ppu.vram_data());
     println!("m7_tilemap_repeat: {:?}", ppu.m7_tilemap_repeat());
     println!("m7_fill_mode: {:?}", ppu.m7_fill_mode());

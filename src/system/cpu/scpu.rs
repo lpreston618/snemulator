@@ -6381,6 +6381,7 @@ impl Cpu65c816 {
 
         // C:\Users\lance\Desktop\Pet Projects\RustProjects\snemulator\games\Super Mario World (USA).sfc
         let test_path_str = format!("tests/lemons/CPUTest/CPUADC.sfc");
+        // let test_path_str = format!("tests/test_dma.smc");
         // let test_path_str = format!("games/Super Mario World (USA).sfc");
         let test_path = Path::new(&test_path_str);
         let cart = Cartridge::from_path(test_path).unwrap();
