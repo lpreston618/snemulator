@@ -2758,6 +2758,7 @@ impl Cpu65c816 {
 
         let a_bus_addr = dma_channel.a_bus_addr();
         let b_bus_addr = 0x2100 | dma_channel.get_b_with_offset() as u32;
+        let dma_direction = dma_channel.direction.clone();
 
         dma_channel.inc_a_bus_addr();
 
@@ -2765,21 +2766,26 @@ impl Cpu65c816 {
         dma_channel.byte_count -= 1;
 
         if dma_channel.byte_count == 0 {
+            println!("Finished DMA of {} bytes thru channel {}", dma_channel.bytes_written, self.active_channel_idx);
+
             dma_channel.active = false;
             dma_channel.bytes_written = 0;
 
-            // Go to next DMA channel
-            self.active_channel_idx += 1;
+            self.dma_status = DmaStatus::Off;
 
-            // If there are no more active DMA channels, deactivate DMA
-            if self.active_channel_idx == 8 {
-                self.dma_status = DmaStatus::Off;
+            // Go to next active DMA channel
+            for i in self.active_channel_idx+1..8 {
+                if self.dma_channels[i].active {
+                    self.active_channel_idx = i;
+                    self.dma_status = DmaStatus::DMA;
+                    break;
+                }
             }
         }
 
         // Cannot perform DMA to/from MMIO addresses for A Bus
         if !is_mmio_addr(a_bus_addr) {
-            let (src_addr, dst_addr) = match dma_channel.direction {
+            let (src_addr, dst_addr) = match dma_direction {
                 dma::Direction::AtoB => (a_bus_addr, b_bus_addr),
                 dma::Direction::BtoA => (b_bus_addr, a_bus_addr),
             };

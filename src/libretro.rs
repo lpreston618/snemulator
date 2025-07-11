@@ -215,6 +215,8 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         self.render_audio(callbacks);
         self.render_video(callbacks);
 
+        // println!("FPS: {}", 1.0 / self.last_frame.elapsed().as_secs_f32());
+
         self.last_frame = time::Instant::now();
         self.frame_count += 1;
         
