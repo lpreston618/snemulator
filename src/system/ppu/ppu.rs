@@ -3,6 +3,7 @@ use std::{cell::Cell, rc::Rc};
 use libretro_rs::retro::pixel::format::XRGB8888;
 
 use crate::log::SnemLogger;
+use crate::tools::hexdump16_at;
 
 const VBLANK_START_SCANLINE: u16 = 225;
 const VBLANK_END_SCANLINE_NTSC: u16 = 261;
@@ -130,7 +131,7 @@ enum TilemapCount {
 }
 
 #[derive(Clone, Copy, Default, Debug)]
-enum VramIncMode {
+pub enum VramIncMode {
     LowByte,
     #[default]
     HighByte
@@ -146,7 +147,7 @@ enum AddressRemapping {
 }
 
 #[derive(Clone, Copy, Default, Debug)]
-enum IncrSize {
+pub enum IncrSize {
     #[default]
     Bytes2,
     Bytes64,
@@ -214,7 +215,7 @@ enum VideoType {
 }
 
 struct OamData([Cell<u8>; 0x220]);
-struct VramData([Cell<u16>; 32 * 1024]); // 64 KB VRAM (32768 words)
+pub struct VramData(pub [Cell<u16>; 32 * 1024]); // 64 KB VRAM (32768 words)
 struct CgRamData([Cell<u16>; 256]);
 
 impl Default for OamData {
@@ -379,9 +380,9 @@ pub struct PpuData {
     //       - VRAM address increment mode (M)
     //       - Remapping (R)
     //       - Increment size (I)
-    vram_addr_inc_mode: Cell<VramIncMode>,
+    pub vram_addr_inc_mode: Cell<VramIncMode>,
     addr_remap_mode: Cell<AddressRemapping>,
-    addr_inc_size: Cell<IncrSize>,
+    pub addr_inc_size: Cell<IncrSize>,
 
     // $2116    LLLL LLLL
     // $2117    hHHH HHHH    Write x2 Only
@@ -636,7 +637,7 @@ pub struct PpuData {
 
     // PPU Memory
     oam: OamData, // 544 Bytes of OAM
-    vram: VramData, // 64 KiB of VRAM
+    pub vram: VramData, // 64 KiB of VRAM
     cgram: CgRamData,
 
     // PPU State
@@ -659,8 +660,13 @@ impl PpuData {
 
         match address {
             0x00 => {
+                // if data.bit_en(7) != self.in_fblank.get() {
+                //     println!("Changed fblank to {}", data.bit_en(7));
+                // }
+
                 self.in_fblank.replace(data.bit_en(7));
                 self.screen_brightness.replace(data & 0x0F);
+
                 // println!("Set forced blanking to {} and screen brightness to {}", self.in_fblank.get(), self.screen_brightness.get());
             }
 
@@ -691,7 +697,7 @@ impl PpuData {
                 self.priority_rotation_idx.replace(data & 0xFE);
                 self.internal_oam_addr.replace((self.oam_addr.get() & 0x1FF) << 1);
 
-                println!("Set OAM addr to ${:04X}, internal OAM addr to ${:04X}, and priority rotation idx to 0x{:02X}", self.oam_addr.get(), self.internal_oam_addr.get(), self.priority_rotation_idx.get());
+                // println!("Set OAM addr to ${:04X}, internal OAM addr to ${:04X}, and priority rotation idx to 0x{:02X}", self.oam_addr.get(), self.internal_oam_addr.get(), self.priority_rotation_idx.get());
             }
 
             0x03 => {
@@ -701,7 +707,7 @@ impl PpuData {
                 self.priority_rotation.replace(data.bit_en(7));
                 self.internal_oam_addr.replace((self.oam_addr.get() & 0x1FF) << 1);
 
-                println!("Set OAM addr to ${:04X}, internal OAM addr to ${:04X}, and priority rotation to {}", self.oam_addr.get(), self.internal_oam_addr.get(), self.priority_rotation.get());
+                // println!("Set OAM addr to ${:04X}, internal OAM addr to ${:04X}, and priority rotation to {}", self.oam_addr.get(), self.internal_oam_addr.get(), self.priority_rotation.get());
             }
 
             0x04 => {
@@ -710,23 +716,23 @@ impl PpuData {
                 if internal_oam_addr & 1 == 0 {
                     self.oam_data_latch.replace(data);
 
-                    println!("Set OAM data latch to 0x{:02X}", self.oam_data_latch.get());
+                    // println!("Set OAM data latch to 0x{:02X}", self.oam_data_latch.get());
                 } else if internal_oam_addr < 0x200 {
                     self.oam.0[internal_oam_addr - 1].replace(self.oam_data_latch.get());
                     self.oam.0[internal_oam_addr].replace(data);
 
-                    println!("Wrote 0x{:02X} and 0x{:02X} to OAM addrs ${:04X} and ${:04X}", self.oam_data_latch.get(), data, internal_oam_addr-1, internal_oam_addr);
+                    // println!("Wrote 0x{:02X} and 0x{:02X} to OAM addrs ${:04X} and ${:04X}", self.oam_data_latch.get(), data, internal_oam_addr-1, internal_oam_addr);
                 }
                 
                 if internal_oam_addr >= 0x200 {
                     self.oam.0[internal_oam_addr].replace(data);
 
-                    println!("Wrote 0x{:02X} to OAM addr ${:04X}", data, internal_oam_addr);
+                    // println!("Wrote 0x{:02X} to OAM addr ${:04X}", data, internal_oam_addr);
                 }
 
                 self.internal_oam_addr.replace((internal_oam_addr as u16 + 1) & 0x1FF);
 
-                println!("Incremented internal OAM addr to ${:04X}", self.internal_oam_addr.get());
+                // println!("Incremented internal OAM addr to ${:04X}", self.internal_oam_addr.get());
             }
 
             0x05 => {
@@ -1022,9 +1028,11 @@ impl PpuData {
             }
 
             0x18 => {
-                if self.in_fblank.get() || self.in_vblank.get() {
+                // println!("Write to $2118 with data 0x{data:02X} with vblank: {} and fblank: {}", self.in_vblank.get(), self.in_fblank.get());
+
+                // if self.in_fblank.get() || self.in_vblank.get() {
                     self.vram.0[self.get_vram_addr() as usize].set_lo(data);
-                }
+                // }
 
                 // println!("$2118 VRAM addr: ${:04X}, data written: {:02X}", addr, data);
 
@@ -1037,9 +1045,9 @@ impl PpuData {
             }
 
             0x19 => {
-                if self.in_fblank.get() || self.in_vblank.get() {
+                // if self.in_fblank.get() || self.in_vblank.get() {
                     self.vram.0[self.get_vram_addr() as usize].set_hi(data);
-                }
+                // }
 
                 // println!("CPU wrote VRAM data (hi) to addr ${:04X} with data 0x{:02X}, new word = {:04X}", self.vram_addr.get(), data, self.vram.0[addr].get());
 
@@ -1133,13 +1141,13 @@ impl PpuData {
                 self.cgram_addr.replace(data);
                 self.cgram_toggle.set_lo();
 
-                println!("Set CGRAM addr to ${:02X} and CGRAM toggle to {:?}", self.cgram_addr.get(), self.cgram_toggle.get());
+                // println!("Set CGRAM addr to ${:02X} and CGRAM toggle to {:?}", self.cgram_addr.get(), self.cgram_toggle.get());
             }
 
             0x22 => {
                 // print!("Write to CGRAM addr ${:02X} with data 0x{:02X}", self.cgram_addr.get(), data);
 
-                if !self.cgram_toggle.toggle() {
+                if self.cgram_toggle.toggle() {
                     let addr = self.cgram_addr.get();
                     let new_col = ((data as u16) << 8) | self.cgram_latch.get() as u16;
 
@@ -1148,7 +1156,7 @@ impl PpuData {
                     self.cgram_addr.replace(addr + 1);
 
                     if addr == 0 {
-                        println!("Set transparent color to 0x{:04X}", self.cgram.0[0].get());
+                        // println!("Set transparent color to 0x{:04X}", self.cgram.0[0].get());
                     }
 
                     // println!(", new val = 0x{:04X}, new addr = ${:02X}", self.cgram.0[addr as usize].get(), addr+1);
@@ -1342,6 +1350,8 @@ impl PpuData {
                 self.cmath_bg3_enabled.replace(data.bit_en(2));
                 self.cmath_bg2_enabled.replace(data.bit_en(1));
                 self.cmath_bg1_enabled.replace(data.bit_en(0));
+
+                println!("Set bg1 color math enable to {}", self.cmath_bg1_enabled.get());
             }
 
             0x32 => {
@@ -1602,7 +1612,7 @@ impl Ppu5C7x {
     pub fn clock(&mut self, frame_buffer: &mut [XRGB8888], logger: &mut SnemLogger) {
         self.clocks_until_dot -= 1;
 
-        if self.clocks_until_dot == 0 {
+        if self.clocks_until_dot == 0 {            
             if !self.in_fblank() && !self.in_hblank() && !self.in_vblank() && self.scanline != 0 {
                 self.dot(frame_buffer);
             }
@@ -1636,10 +1646,11 @@ impl Ppu5C7x {
             }
         }
 
-        match (self.dot, self.scanline) {
+       match (self.dot, self.scanline) {
             // End of v-blank, scanline 0 is not visible
             (0, 0) => {
                 self.registers.in_vblank.replace(false);
+                // println!("V-blank end");
             }
             // Start of visible scanline, end of h-blank
             (HBLANK_END_DOT, 1..=HBLANK_DISABLE_SCANLINE) => {
@@ -1655,6 +1666,7 @@ impl Ppu5C7x {
                 self.registers.in_vblank.replace(true);
                 self.frame_finished = true;
                 self.frame += 1;
+                // println!("V-blank start");
             }
             _ => {}
         }
@@ -1935,47 +1947,78 @@ impl Ppu5C7x {
             return spr_col.raw_color;
         }
 
-        let tilemap_idx = ( (screen_y / 8) * 32 + (screen_x / 8) ) as u16;
+        let tile_x = (screen_x >> 3) as u16;
+        let tile_y = (screen_y >> 3) as u16;
 
-        let chr_x = (screen_x & 0x7) as u8;
-        let chr_y = (screen_y & 0x7) as u16;
+        let tilemap_idx = (tile_y << 5) | tile_x;
 
-        let mode0_bg_col_data = |bg_vram_addr: u8, bg_chr_base_addr: u8, bg_cgram_base_addr: u16| -> BgColorData {
-            let bg_tile_addr = ((bg_vram_addr as u16) << 10) + (tilemap_idx << 4);
-            let tile_data = self.vram_read(bg_tile_addr);
+        let tile_col = (screen_x & 7) as u8;
+        let tile_row = (screen_y & 7) as u16;
 
-            let bg_priority = (tile_data & 0x2000) != 0;
-            let bg_tile_pal = (tile_data >> 10) & 0x7;
-            let bg_tile_idx = tile_data & 0x03FF;
+        let mode0_bg_col = |bg_vram_base_addr: u16, bg_chr_base_addr: u16, bg_cgram_base_addr: u16| -> BgColorData {
+            let tile_data_addr = bg_vram_base_addr + tilemap_idx;
 
-            let bg_chr_word_addr = ((bg_chr_base_addr as u16) << 12) + (bg_tile_idx << 3);
+            let tile_data = self.vram_read(tile_data_addr);
+            let tile_chr_idx = tile_data & 0x3FF;
+            let tile_pal = (tile_data >> 10) & 7;
+            let tile_priority = (tile_data & 0x2000) != 0;
+            let flip_x = (tile_data & 0x4000) != 0;
+            let flip_y = (tile_data & 0x8000) != 0;
 
-            let bitplanes = self.vram_read(bg_chr_word_addr + chr_y);
-            let bp0 = bitplanes as u8;
-            let bp1 = (bitplanes >> 8) as u8;
+            let tile_chr_addr = bg_chr_base_addr + (tile_chr_idx << 3) + tile_row;
+
+            // if self.frame == 10 && screen_y == 34 && bg_cgram_base_addr == BG1_BASE_CGRAM_ADDR {
+            //     println!("x: {screen_x}, y: {screen_y}, tile_data: 0x{:04X}, tile_data_addr: ${tile_data_addr:04X}, chr addr ${:04X}, chr base addr: ${bg_chr_base_addr:04X}, chr data: 0x{:04X}", self.vram_read(tile_data_addr), tile_chr_addr, self.vram_read(tile_chr_addr));
+
+            //     if screen_x == 255 {
+            //         let mut vram_copy = Vec::new();
+
+            //         for i in 0xFC00..=0xFFFF {
+            //             vram_copy.push(self.vram_read(i));
+            //         }
+
+            //         hexdump16_at(&vram_copy, 0xFC00);
+
+            //         std::process::exit(0);
+            //     }
+            // }
+
+            let tile_chr_data = self.vram_read(tile_chr_addr); // 2bpp bitplanes
+            let b0 = (tile_chr_data >> (7-tile_col)) & 1;
+            let b1 = (tile_chr_data >> (15-tile_col)) & 1;
+            let pal_idx = (b1 << 1) | b0;
+            let transparent = pal_idx == 0;
             
-            let bg_pal_idx = ((bp0 >> (7-chr_x)) & 1) | (((bp1 >> (7-chr_x)) & 1) << 1);
+            let cgram_addr = bg_cgram_base_addr | (tile_pal << 2) | pal_idx;
 
-            let bg_cgram_addr = bg_cgram_base_addr | (bg_tile_pal << 2) | bg_pal_idx as u16;
+            let raw_color = if transparent {
+                self.transparent_color()
+            } else {
+                self.registers.cgram.0[cgram_addr as usize].get()
+            };
 
             BgColorData {
-                raw_color: self.registers.cgram.0[bg_cgram_addr as usize].get(),
-                priority: bg_priority,
-                transparent: (bg_pal_idx == 0)
+                raw_color,
+                priority: tile_priority,
+                transparent: transparent,
             }
         };
 
-        let bg1_col = mode0_bg_col_data(
-            self.bg1_vram_addr(),
-            self.bg1_chr_base_addr(),
+        let bg1_col = mode0_bg_col(
+            (self.bg1_vram_addr() as u16) << 10,
+            (self.bg1_chr_base_addr() as u16) << 12,
             BG1_BASE_CGRAM_ADDR,
         );
 
-        let bg2_col = mode0_bg_col_data(
-            self.bg2_vram_addr(),
-            self.bg2_chr_base_addr(),
+        let bg2_col = mode0_bg_col(
+            (self.bg2_vram_addr() as u16) << 10,
+            (self.bg2_chr_base_addr() as u16) << 12,
             BG2_BASE_CGRAM_ADDR,
         );
+
+        if bg1_col.priority && !bg1_col.transparent {
+            return bg1_col.raw_color;
+        }
 
         if bg2_col.priority && !bg2_col.transparent {
             return bg2_col.raw_color;
@@ -1997,9 +2040,9 @@ impl Ppu5C7x {
             return spr_col.raw_color;
         }
 
-        let bg3_col = mode0_bg_col_data(
-            self.bg3_vram_addr(),
-            self.bg3_chr_base_addr(),
+        let bg3_col = mode0_bg_col(
+            (self.bg3_vram_addr() as u16) << 10,
+            (self.bg3_chr_base_addr() as u16) << 12,
             BG3_BASE_CGRAM_ADDR,
         );
 
@@ -2007,9 +2050,9 @@ impl Ppu5C7x {
             return bg3_col.raw_color;
         }
 
-        let bg4_col = mode0_bg_col_data(
-            self.bg4_vram_addr(),
-            self.bg4_chr_base_addr(),
+        let bg4_col = mode0_bg_col(
+            (self.bg4_vram_addr() as u16) << 10,
+            (self.bg4_chr_base_addr() as u16) << 12,
             BG4_BASE_CGRAM_ADDR,
         );
 

@@ -1,4 +1,4 @@
 mod cartridge;
 
-pub mod cpu;
+pub mod scpu;
 pub mod ppu;

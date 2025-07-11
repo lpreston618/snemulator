@@ -1,8 +1,13 @@
+mod dma;
+
+use dma::{DmaChannel, DmaStatus};
+
 use std::rc::Rc;
 
 use crate::log::{LogLevel, SnemLogger};
 use crate::system::cartridge::Cartridge;
 use crate::system::ppu::PpuData;
+use crate::tools::{hexdump16_at, hexdump8};
 
 const WRAM_SIZE: usize = 128 * 1024; // 128 KiB
 
@@ -50,14 +55,6 @@ pub enum CpuInterrupt {
     NMI,
     Reset,
     Abort,
-}
-
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum DmaStatus {
-    Off,
-    DMA,
-    HDMA,
-    LayeredHDMA,
 }
 
 trait CpuAddress {
@@ -133,27 +130,32 @@ pub struct Cpu65c816 {
     debug_io_ops: usize,
 
     dma_status: DmaStatus,
-    dma_enable: u8,
-    hdma_enable: u8,
-    dma_params: [u8; 8],
-    b_bus_addrs: [u8; 8],
-    a_bus_addr_lo: [u8; 8],
-    a_bus_addr_hi: [u8; 8],
-    a_bus_addr_bank: [u8; 8],
-    dma_byte_count: [u16; 8], // Also HDMA indirect address lo+hi
-    hdma_indirect_table_bank: [u8; 8],
-    hdma_table_addr: [u32; 8],
-    hdma_line_counter: [u8; 8],
-    dma_unused1: [u8; 8],
-    dma_unused2: [u8; 8],
-    dma_bytes_written: usize,
-    hdma_bytes_written: usize,
-    hdma_current_channel: u8,
+    dma_channels: Vec<DmaChannel>,
+    active_channel_idx: usize,
+
+    // dma_enable: u8,
+    // hdma_enable: u8,
+    // dma_params: [u8; 8],
+    // b_bus_addrs: [u8; 8],
+    // a_bus_addr_lo: [u8; 8],
+    // a_bus_addr_hi: [u8; 8],
+    // a_bus_addr_bank: [u8; 8],
+    // dma_byte_count: [u16; 8], // Also HDMA indirect address lo+hi
+    // hdma_indirect_table_bank: [u8; 8],
+    // hdma_table_addr: [u32; 8],
+    // hdma_line_counter: [u8; 8],
+    // dma_unused1: [u8; 8],
+    // dma_unused2: [u8; 8],
+    // dma_bytes_written: usize,
+    // hdma_bytes_written: usize,
+    // hdma_current_channel: u8,
 
     ppu_data: Rc<PpuData>,
 
     vblank_nmi_ignore: bool,
     vblank_nmi_flagged: bool,
+
+    debug_dma_bytes_transfered: Vec<u8>,
 }
 
 // SNES System Functionality
@@ -190,32 +192,36 @@ impl Cpu65c816 {
             debug_io_ops: 0,
 
             dma_status: DmaStatus::Off,
-            dma_enable: 0,
-            hdma_enable: 0,
-            dma_params: [0; 8],
-            b_bus_addrs: [0; 8],
-            a_bus_addr_lo: [0; 8],
-            a_bus_addr_hi: [0; 8],
-            a_bus_addr_bank: [0; 8],
-            dma_byte_count: [0; 8],
-            hdma_indirect_table_bank: [0; 8],
-            hdma_table_addr: [0; 8],
-            // dma_byte_count_lo: [0; 8], // Also HDMA indirect addr lo
-            // dma_byte_count_hi: [0; 8], // Also HDMA indirect addr hi
-            // hdma_indirect_addr_bank: [0; 8],
-            // hdma_table_addr_lo: [0; 8],
-            // hdma_table_addr_hi: [0; 8],
-            hdma_line_counter: [0; 8],
-            dma_unused1: [0; 8],
-            dma_unused2: [0; 8],
-            dma_bytes_written: 0,
-            hdma_bytes_written: 0,
-            hdma_current_channel: 255,
+            dma_channels: vec![DmaChannel::default(); 8],
+            active_channel_idx: 0,
+            // dma_enable: 0,
+            // hdma_enable: 0,
+            // dma_params: [0; 8],
+            // b_bus_addrs: [0; 8],
+            // a_bus_addr_lo: [0; 8],
+            // a_bus_addr_hi: [0; 8],
+            // a_bus_addr_bank: [0; 8],
+            // dma_byte_count: [0; 8],
+            // hdma_indirect_table_bank: [0; 8],
+            // hdma_table_addr: [0; 8],
+            // // dma_byte_count_lo: [0; 8], // Also HDMA indirect addr lo
+            // // dma_byte_count_hi: [0; 8], // Also HDMA indirect addr hi
+            // // hdma_indirect_addr_bank: [0; 8],
+            // // hdma_table_addr_lo: [0; 8],
+            // // hdma_table_addr_hi: [0; 8],
+            // hdma_line_counter: [0; 8],
+            // dma_unused1: [0; 8],
+            // dma_unused2: [0; 8],
+            // dma_bytes_written: 0,
+            // hdma_bytes_written: 0,
+            // hdma_current_channel: 255,
 
             ppu_data: ppu_data,
 
             vblank_nmi_ignore: true,
             vblank_nmi_flagged: false,
+
+            debug_dma_bytes_transfered: Vec::new(),
         }
     }
 
@@ -226,7 +232,7 @@ impl Cpu65c816 {
     }
 
     pub fn reset(&mut self) {
-        self.hardware_interrupt(CpuInterrupt::Reset);
+        self.trigger_interrupt(CpuInterrupt::Reset);
     }
 
     pub fn flag_for_vblank_nmi(&mut self) {
@@ -317,7 +323,13 @@ impl Cpu65c816 {
 
             0x4300..=0x43FF if ((mmio_address >> 4) & 0xF) < 8 => self.read_dma_regs(mmio_address),
 
-            _ => 0,
+            _ => {
+                if mmio_address != 0x2180 {
+                    println!(" ==== Attempt to read mmio reg ${mmio_address:04X}");
+                }
+
+                0
+            },
         }
     }
 
@@ -331,6 +343,8 @@ impl Cpu65c816 {
 
             0x4200 => {
                 self.vblank_nmi_ignore = (data & 0x80) == 0;
+
+                println!("Vblank NMI ignore set to {}", self.vblank_nmi_ignore);
             }
 
             0x420B => {
@@ -340,48 +354,61 @@ impl Cpu65c816 {
                     self.dma_status = DmaStatus::DMA;
                 }
 
-                self.dma_enable = data;
+                for (i, dma_channel) in self.dma_channels.iter_mut().enumerate().rev() {
+                    dma_channel.active = (data & (1 << i)) != 0;
 
-                println!("CPU Write to DMA enable with 0x{:02X}", self.dma_enable);
-
-                for i in 0..8 {
-                    if (self.dma_enable & (1 << i)) != 0 {
-                        println!("  DMA Started on Ch. {i}");
-
-                        let a_bus_addr = u32::from_parts(
-                            self.a_bus_addr_bank[i],
-                            self.a_bus_addr_hi[i],
-                            self.a_bus_addr_lo[i]
-                        );
-                        let b_bus_addr = self.b_bus_addrs[i];
-
-                        if self.dma_params[i] & 0x80 == 0 {
-                            println!("  Src: ${a_bus_addr:06X} Dst: $21{b_bus_addr:02X}, VRAM addr: ${:04X}", self.ppu_data.vram_addr.get());
-                        } else {
-                            println!("  Src: ${b_bus_addr:02X} Dst: $21{a_bus_addr:06X}, VRAM addr: ${:04X}", self.ppu_data.vram_addr.get());
-                        }
-
-                        let num_bytes = if self.dma_byte_count[i] == 0 {
-                            0x10000
-                        } else {
-                            self.dma_byte_count[i] as u32
-                        };
-
-                        println!("  Total transfer size (bytes): {num_bytes}");
+                    if dma_channel.active {
+                        dma_channel.bytes_written = 0;
+                        self.active_channel_idx = i;
                     }
                 }
+
+                // println!("CPU Write to DMA enable with 0x{data:02X}");
+
+                self.debug_dma_bytes_transfered.clear();
+
+                // for (i, dma_channel) in self.dma_channels.iter().enumerate() {
+                //     if !dma_channel.active {
+                //         continue;
+                //     }
+
+                //     println!("  DMA Started on Ch. {i}");
+
+                //     println!("  A: ${:06X}, B: $21{:02X}, Dir: {:?}, VRAM addr: ${:04X}, VRAM inc mode: {:?}, VRAM inc size {:?}",
+                //         dma_channel.a_bus_addr(),
+                //         dma_channel.b_bus_addr,
+                //         dma_channel.direction,
+                //         self.ppu_data.vram_addr.get(),
+                //         self.ppu_data.vram_addr_inc_mode.get(),
+                //         self.ppu_data.addr_inc_size.get(),
+                //     );
+
+                //     let num_bytes = if dma_channel.byte_count == 0 {
+                //         0x10000
+                //     } else {
+                //         dma_channel.byte_count as u32
+                //     };
+
+                //     println!("  Total transfer size (bytes): {num_bytes}");
+                // }
             },
             0x420C => {
-                self.hdma_enable = data;
+                // for i in 0..8 {
+                //     self.dma_channels[i].active = (data & (1 << i)) != 0;
+                // }
 
-                self.hdma_bytes_written = 0;
+                println!("Wrote 0x{data:02X} to HDMA enable");
             }
 
             0x4300..=0x43FF if ((mmio_address >> 4) & 0xF) < 8 => {
                 self.write_dma_regs(mmio_address, data);
             }
 
-            _ => {},
+            _ => {
+                if mmio_address != 0x2180 {
+                    println!(" ==== Attempt to write mmio reg ${mmio_address:04X} with data 0x{data:02X}");
+                }
+            },
         }
     }
 
@@ -389,20 +416,22 @@ impl Cpu65c816 {
         let channel_idx = ((reg_address >> 4) & 7) as usize;
         let reg_address = reg_address & 0xFF0F;
 
+        let dma_channel = &self.dma_channels[channel_idx];
+
         match reg_address {
-            0x4300 => self.dma_params[channel_idx],
-            0x4301 => self.b_bus_addrs[channel_idx],
-            0x4302 => self.a_bus_addr_lo[channel_idx],
-            0x4303 => self.a_bus_addr_hi[channel_idx],
-            0x4304 => self.a_bus_addr_bank[channel_idx],
+            0x4300 => dma_channel.params_raw,
+            0x4301 => dma_channel.b_bus_addr,
+            0x4302 => dma_channel.a_bus_lo,
+            0x4303 => dma_channel.a_bus_hi,
+            0x4304 => dma_channel.a_bus_bank,
             // 0x4305 => self.dma_byte_count_lo[channel_idx],
             // 0x4306 => self.dma_byte_count_hi[channel_idx],
             // 0x4307 => self.hdma_indirect_addr_bank[channel_idx],
             // 0x4308 => self.hdma_table_addr_lo[channel_idx],
             // 0x4309 => self.hdma_table_addr_hi[channel_idx],
-            0x430A => self.hdma_line_counter[channel_idx],
-            0x430B => self.dma_unused1[channel_idx],
-            0x430F => self.dma_unused2[channel_idx],
+            // 0x430A => self.hdma_line_counter[channel_idx],
+            // 0x430B => self.dma_unused1[channel_idx],
+            // 0x430F => self.dma_unused2[channel_idx],
             _ => { 0 },
         }
     }
@@ -411,26 +440,71 @@ impl Cpu65c816 {
         let channel_idx = ((reg_address >> 4) & 7) as usize;
         let reg_address = reg_address & 0xFF0F;
 
-        println!("Write to DMA reg ${:02X} (ch {}) with 0x{:02X}", reg_address, channel_idx, data);
+        let dma_channel = &mut self.dma_channels[channel_idx];
+
+        // println!("Write to DMA reg ${:02X} (ch {}) with 0x{:02X}", reg_address, channel_idx, data);
 
         match reg_address {
-            0x4300 => { self.dma_params[channel_idx] = data; }
-            0x4301 => { self.b_bus_addrs[channel_idx] = data; }
-            0x4302 => { self.a_bus_addr_lo[channel_idx] = data; }
-            0x4303 => { self.a_bus_addr_hi[channel_idx] = data; }
-            0x4304 => { self.a_bus_addr_bank[channel_idx] = data; }
+            0x4300 => {
+                dma_channel.params_raw = data;
+                dma_channel.transfer_pattern = match data & 7 {
+                    0 => dma::TransferPattern::Pattern0,
+                    1 => dma::TransferPattern::Pattern1,
+                    2 => dma::TransferPattern::Pattern2,
+                    3 => dma::TransferPattern::Pattern3,
+                    4 => dma::TransferPattern::Pattern4,
+                    5 => dma::TransferPattern::Pattern5,
+                    6 => dma::TransferPattern::Pattern6,
+                    _ => dma::TransferPattern::Pattern7,
+                };
+                dma_channel.inc_mode = match (data >> 3) & 3 {
+                    0 => dma::AddressIncMode::Inc,
+                    2 => dma::AddressIncMode::Dec,
+                    _ => dma::AddressIncMode::Fixed,
+                };
+                dma_channel.indirect = (data & 0x40) != 0;
+                dma_channel.direction = match data >> 7 {
+                    0 => dma::Direction::AtoB,
+                    _ => dma::Direction::BtoA,
+                };
+                
+                // println!("Wrote 0x{data:02X} to DMA channel {channel_idx} Params (Transfer Pattern = {:?}, A Inc Mode = {:?}, Indirect = {}, Direction = {:?})",
+                //     dma_channel.transfer_pattern,
+                //     dma_channel.inc_mode,
+                //     dma_channel.indirect,
+                //     dma_channel.direction,
+                // );
+            }
+            0x4301 => {
+                dma_channel.b_bus_addr = data;
+                // println!("Wrote 0x{data:02X} to DMA channel {channel_idx} B-Bus Address");
+            }
+            0x4302 => {
+                dma_channel.a_bus_lo = data;
+                // println!("Wrote 0x{data:02X} to DMA channel {channel_idx} A-Bus Address Low");
+            }
+            0x4303 => { 
+                dma_channel.a_bus_hi = data;
+                // println!("Wrote 0x{data:02X} to DMA channel {channel_idx} A-Bus Address Hi");
+            }
+            0x4304 => {
+                dma_channel.a_bus_bank = data; 
+                // println!("Wrote 0x{data:02X} to DMA channel {channel_idx} A-Bus Address Bank");
+            }
             0x4305 => {
-                self.dma_byte_count[channel_idx] = (self.dma_byte_count[channel_idx] & 0xFF00) | (data as u16);
+                dma_channel.byte_count = (dma_channel.byte_count & 0xFF00) | (data as u16);
+                // println!("Wrote 0x{data:02X} to DMA channel {channel_idx} Byte Count Low");
             }
             0x4306 => {
-                self.dma_byte_count[channel_idx] = (self.dma_byte_count[channel_idx] & 0x00FF) | ((data as u16) << 8);
+                dma_channel.byte_count = (dma_channel.byte_count & 0x00FF) | ((data as u16) << 8);
+                // println!("Wrote 0x{data:02X} to DMA channel {channel_idx} Byte Count Hi");
             }
             // 0x4307 => { self.hdma_indirect_addr_bank[channel_idx] = data; }
             // 0x4308 => { self.hdma_table_addr_lo[channel_idx] = data; }
             // 0x4309 => { self.hdma_table_addr_hi[channel_idx] = data; }
-            0x430A => { self.hdma_line_counter[channel_idx] = data; }
-            0x430B => { self.dma_unused1[channel_idx] = data; }
-            0x430F => { self.dma_unused2[channel_idx] = data; }
+            // 0x430A => { self.hdma_line_counter[channel_idx] = data; }
+            // 0x430B => { self.dma_unused1[channel_idx] = data; }
+            // 0x430F => { self.dma_unused2[channel_idx] = data; }
             _ => {},
         }
     }
@@ -911,7 +985,9 @@ impl Cpu65c816 {
         }
     }
 
-    fn hardware_interrupt(&mut self, interrupt: CpuInterrupt) {
+    fn trigger_interrupt(&mut self, interrupt: CpuInterrupt) {
+        println!("CPU INTERRUPT ({:?})", interrupt);
+
         if interrupt == CpuInterrupt::Reset {
             self.set_mode(CpuMode::Emulation);
         }
@@ -953,27 +1029,6 @@ impl Cpu65c816 {
         // temporary debug tool!
         // println!("Interrupt");
         self.add_clocks(Cpu65c816::ONE_CYCLE);
-    }
-
-    fn get_b_with_offset(&self, dma_channel_idx: usize) -> u8 {
-        let transfer_pattern = self.dma_params[dma_channel_idx] & 7;
-        let b_bus_addr = self.b_bus_addrs[dma_channel_idx];
-
-        let offset_b_bus_addr = match transfer_pattern {
-            0 | 2 | 6 => b_bus_addr,                                  // 6 undocumented
-            1 | 5 => b_bus_addr + (self.dma_bytes_written as u8) & 1, // 5 undocumented
-            3 | 7 => {                                                // 7 undocumented
-                if self.dma_bytes_written & 3 < 2 {
-                    b_bus_addr
-                } else {
-                    b_bus_addr + 1
-                }
-            }
-            4 => b_bus_addr + (self.dma_bytes_written as u8) & 3,
-            _ => unreachable!("Should not reach DMA transfer pattern > 7"),
-        };
-
-        offset_b_bus_addr
     }
 }
 
@@ -2675,7 +2730,8 @@ impl Cpu65c816 {
             self.vblank_nmi_flagged = false;
 
             if !self.vblank_nmi_ignore {
-                self.hardware_interrupt(CpuInterrupt::IRQ);
+                println!("========== NMI ===========");
+                self.trigger_interrupt(CpuInterrupt::NMI);
             }
         }
         
@@ -2708,83 +2764,107 @@ impl Cpu65c816 {
     }
 
     fn do_dma(&mut self) {
-        let dma_channel_idx = self.dma_enable.ilog2() as usize;
+        let dma_channel = &mut self.dma_channels[self.active_channel_idx];
 
-        let direction_b_to_a = self.dma_params[dma_channel_idx] & 0x80 != 0;
-        let a_bus_addr = u32::from_parts(
-            self.a_bus_addr_bank[dma_channel_idx],
-            self.a_bus_addr_hi[dma_channel_idx],
-            self.a_bus_addr_lo[dma_channel_idx],
-        );
-        let b_bus_addr = 0x002100 | self.get_b_with_offset(dma_channel_idx) as u32;
-        let inc_mode = (self.dma_params[dma_channel_idx] >> 3) & 3;
+        let a_bus_addr = dma_channel.a_bus_addr();
+        let b_bus_addr = 0x2100 | dma_channel.get_b_with_offset() as u16;
 
-        let (src_addr, dst_addr) = match direction_b_to_a {
-            true => (b_bus_addr, a_bus_addr),
-            false => (a_bus_addr, b_bus_addr),
-        };
+        dma_channel.inc_a_bus_addr();
 
-        match inc_mode {
-            0 => { // Inc
-                let a_bus_addr_inc = a_bus_addr + 1;
-                self.a_bus_addr_hi[dma_channel_idx] = (a_bus_addr_inc >> 8) as u8;
-                self.a_bus_addr_lo[dma_channel_idx] = a_bus_addr_inc as u8;
-            },
-            2 => { // Dec
-                let a_bus_addr_dec = a_bus_addr - 1;
-                self.a_bus_addr_hi[dma_channel_idx] = (a_bus_addr_dec >> 8) as u8;
-                self.a_bus_addr_lo[dma_channel_idx] = a_bus_addr_dec as u8;
-            },
-            _ => {}, // Fixed
-        };
+        dma_channel.bytes_written += 1;
+        dma_channel.byte_count -= 1;
 
-        self.dma_bytes_written += 1;
-        
-        self.dma_byte_count[dma_channel_idx] -= 1;
+        if dma_channel.byte_count == 0 {
+            // println!("Finished DMA for Ch. {}", self.active_channel_idx);
+            // println!("  Src: ${a_bus_addr:06X} Dst: $21{b_bus_addr:02X}, VRAM addr: ${:04X}, VRAM inc mode: {:?}, VRAM inc size {:?}",
+            //     self.ppu_data.vram_addr.get(),
+            //     self.ppu_data.vram_addr_inc_mode.get(),
+            //     self.ppu_data.addr_inc_size.get()
+            // );
 
-        if self.dma_byte_count[dma_channel_idx] == 0 {
-            println!("Finished DMA for Ch. {dma_channel_idx}. Remaining channels: {}", self.dma_enable.count_ones()-1);
+            // if b_bus_addr == 0x18 && dma_channel.bytes_written > 1000 {
+            //     hexdump8(&self.debug_dma_bytes_transfered);
+                
+            //     let mut vram_copy = Vec::new();
 
-            // Disable this DMA channel
-            self.dma_enable ^= 1 << dma_channel_idx;
+            //     for i in 0x0000..0x0400 {
+            //         vram_copy.push(self.ppu_data.vram.0[i].get());
+            //     }
 
-            self.dma_bytes_written = 0;
+            //     hexdump16_at(&vram_copy, 0);
+
+            //     std::process::exit(0);
+            // }
+
+            dma_channel.active = false;
+            dma_channel.bytes_written = 0;
+
+            // Go to next DMA channel
+            self.active_channel_idx += 1;
 
             // If there are no more active DMA channels, deactivate DMA
-            if self.dma_enable == 0 {
+            if self.active_channel_idx == 8 {
                 self.dma_status = DmaStatus::Off;
             }
         }
 
+
+        // let direction_b_to_a = self.dma_params[dma_channel_idx] & 0x80 != 0;
+        // let a_bus_addr = u32::from_parts(
+        //     self.a_bus_addr_bank[dma_channel_idx],
+        //     self.a_bus_addr_hi[dma_channel_idx],
+        //     self.a_bus_addr_lo[dma_channel_idx],
+        // );
+        // let inc_mode = (self.dma_params[dma_channel_idx] >> 3) & 3;
+
+        // let (src_addr, dst_addr) = match direction_b_to_a {
+        //     true => (b_bus_addr, a_bus_addr),
+        //     false => (a_bus_addr, b_bus_addr),
+        // };
+
         // Cannot perform DMA to/from MMIO addresses for A Bus
         if !is_mmio_addr(a_bus_addr) {
+
+            match dma_channel.direction {
+                dma::Direction::AtoB => {
+                    let data = self.read(a_bus_addr);
+                    self.write_mmio_regs(b_bus_addr, data);
+
+                    self.debug_dma_bytes_transfered.push(data);
+                }
+                dma::Direction::BtoA => {
+                    let data = self.read_mmio_regs(b_bus_addr);
+                    self.write(a_bus_addr, data);
+
+                    self.debug_dma_bytes_transfered.push(data);
+                }
+            }
+
             // Only perform a single byte transfer per call, to keep
             // synchronized with the PPU.
-            let data = self.read(src_addr);
-            self.write(dst_addr, data);
         }
 
         self.add_clocks(Cpu65c816::ONE_CYCLE);
     }
 
     fn do_hdma(&mut self) {
-        let hdma_channel_idx = self.hdma_enable.ilog2() as usize;
+        // let hdma_channel_idx = self.hdma_enable.ilog2() as usize;
 
-        let hdma_indirect = self.dma_params[hdma_channel_idx] & 0x40 != 0;
-        let dst_addr = 0x002100 | self.get_b_with_offset(hdma_channel_idx) as u32;
-        let mut hdma_table_addr = self.hdma_table_addr[hdma_channel_idx];
+        // let hdma_indirect = self.dma_params[hdma_channel_idx] & 0x40 != 0;
+        // let dst_addr = 0x002100 | self.get_b_with_offset(hdma_channel_idx) as u32;
+        // let mut hdma_table_addr = self.hdma_table_addr[hdma_channel_idx];
 
-        // Starting a new HDMA channel transfer
-        if hdma_channel_idx as u8 != self.hdma_current_channel {
-            self.hdma_current_channel = hdma_channel_idx as u8;
-            self.hdma_bytes_written = 0;
+        // // Starting a new HDMA channel transfer
+        // if hdma_channel_idx as u8 != self.hdma_current_channel {
+        //     self.hdma_current_channel = hdma_channel_idx as u8;
+        //     self.hdma_bytes_written = 0;
 
-            let control_byte = self.read(hdma_table_addr);
+        //     let control_byte = self.read(hdma_table_addr);
 
-            self.hdma_line_counter[hdma_channel_idx] = self.read(hdma_table_addr);
-        }
+        //     self.hdma_line_counter[hdma_channel_idx] = self.read(hdma_table_addr);
+        // }
 
-        hdma_table_addr += 1;
+        // hdma_table_addr += 1;
 
         // self.hdma_table_addr_lo[hdma_channel_idx] = hdma_table_addr as u8;
         // self.hdma_table_addr_hi[hdma_channel_idx] = (hdma_table_addr >> 8) as u8;

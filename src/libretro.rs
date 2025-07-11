@@ -27,7 +27,7 @@ use libretro_rs::retro::{
 
 use retro::framebuf::ResizableFrameBuffer;
 
-use crate::system::cpu::Cpu65c816;
+use crate::system::scpu::Cpu65c816;
 
 const SNES_FRAME_WIDTH: usize = 512;
 const SNES_FRAME_HEIGHT: usize = 448;
@@ -115,8 +115,8 @@ impl SnemulatorCore {
         self.snem_cpu.flag_for_vblank_nmi();
         self.snem_ppu.frame_finished = false;
 
-        // if self.frame_count == 30 {
-        //     ppu::dump_ppu_state(&self.snem_ppu);
+        // if self.frame_count == 4 {
+        //     // ppu::dump_ppu_state(&self.snem_ppu);
         //     std::process::exit(1);
         // }
 
@@ -229,6 +229,8 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
 
         self.render_audio(callbacks);
         self.render_video(callbacks);
+
+        println!("FPS: {}", 1.0 / self.last_frame.elapsed().as_secs_f32());
 
         self.last_frame = time::Instant::now();
         self.frame_count += 1;
