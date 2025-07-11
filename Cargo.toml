@@ -14,6 +14,7 @@ rand="*"
 
 [profile.dev]
 overflow-checks = false
+debug = 2
 
 [profile.release]
 overflow-checks = false

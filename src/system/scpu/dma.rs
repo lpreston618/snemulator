@@ -15,6 +15,7 @@ pub(super) enum Direction {
 }
 
 #[derive(Clone, Debug, Default)]
+#[repr(u8)]
 pub(super) enum AddressIncMode {
     #[default]
     Inc,

@@ -118,8 +118,7 @@ pub struct Cpu65c816 {
     page_crossed: bool,
     stopped: bool,
     awaiting_interrupt: bool,
-    total_clocks: u64,
-    until_cpu_clocks: usize,
+    sys_clocks_until_clock: u8,
 
     wram: [u8; WRAM_SIZE],
     rom: Vec<u8>,
@@ -180,8 +179,7 @@ impl Cpu65c816 {
             page_crossed: false,
             stopped: false,
             awaiting_interrupt: false,
-            total_clocks: 0,
-            until_cpu_clocks: 0,
+            sys_clocks_until_clock: 0,
 
             wram: [0; WRAM_SIZE],
             rom: Vec::new(),
@@ -193,7 +191,7 @@ impl Cpu65c816 {
 
             dma_status: DmaStatus::Off,
             dma_channels: vec![DmaChannel::default(); 8],
-            active_channel_idx: 0,
+            active_channel_idx: 8,
             // dma_enable: 0,
             // hdma_enable: 0,
             // dma_params: [0; 8],
@@ -242,15 +240,14 @@ impl Cpu65c816 {
 
 // Internal Helper Functions / Bus Behavior
 impl Cpu65c816 {
-    const ONE_CYCLE: u64 = 6;
-    const ONE_CYCLE_SLOW: u64 = 8;
-    const TWO_CYCLE: u64 = 12;
-    const THREE_CYCLE: u64 = 18;
-    const FOUR_CYCLE: u64 = 24;
+    const ONE_CYCLE: u8 = 6;
+    const ONE_CYCLE_SLOW: u8 = 8;
+    const TWO_CYCLE: u8 = 12;
+    const THREE_CYCLE: u8 = 18;
+    const FOUR_CYCLE: u8 = 24;
 
-    fn add_clocks(&mut self, clocks: u64) {
-        self.total_clocks += clocks;
-        self.until_cpu_clocks += clocks as usize;
+    fn add_clocks(&mut self, clocks: u8) {
+        self.sys_clocks_until_clock += clocks as u8;
     }
 
     fn read(&mut self, address: u32) -> u8 {
@@ -259,7 +256,7 @@ impl Cpu65c816 {
         self.debug_io_ops += 1;
 
         let data: u8;
-        let clocks: u64;
+        let clocks: u8;
 
         if is_mmio_addr(address) {
             data = self.read_mmio_regs(address.bank_addr());
@@ -289,7 +286,7 @@ impl Cpu65c816 {
 
         self.debug_io_ops += 1;
 
-        let clocks: u64;
+        let clocks: u8;
 
         if is_mmio_addr(address) {
             self.write_mmio_regs(address.bank_addr(), data);
@@ -365,7 +362,7 @@ impl Cpu65c816 {
 
                 // println!("CPU Write to DMA enable with 0x{data:02X}");
 
-                self.debug_dma_bytes_transfered.clear();
+                // self.debug_dma_bytes_transfered.clear();
 
                 // for (i, dma_channel) in self.dma_channels.iter().enumerate() {
                 //     if !dma_channel.active {
@@ -509,9 +506,9 @@ impl Cpu65c816 {
         }
     }
 
-    fn read_lorom(&mut self, address: u32) -> (u8, u64) {
+    fn read_lorom(&mut self, address: u32) -> (u8, u8) {
         let data: u8;
-        let clocks: u64;
+        let clocks: u8;
 
         // Memory map diagram here: https://snes.nesdev.org/wiki/Memory_map#LoROM
         match (address.bank(), address.bank_addr()) {
@@ -569,8 +566,8 @@ impl Cpu65c816 {
         (data, clocks)
     }
 
-    fn write_lorom(&mut self, address: u32, data: u8) -> u64 {
-        let clocks: u64;
+    fn write_lorom(&mut self, address: u32, data: u8) -> u8 {
+        let clocks: u8;
 
         // Memory map diagram here: https://snes.nesdev.org/wiki/Memory_map#LoROM
         match (address.bank(), address.bank_addr()) {
@@ -623,9 +620,9 @@ impl Cpu65c816 {
         clocks
     }
 
-    fn read_hirom(&mut self, address: u32) -> (u8, u64) {
+    fn read_hirom(&mut self, address: u32) -> (u8, u8) {
         let data: u8;
-        let clocks: u64;
+        let clocks: u8;
 
         match (address.bank(), address.bank_addr()) {
             // Normal ROM read (banks C0-FF are in linear order in HiROM).
@@ -678,8 +675,8 @@ impl Cpu65c816 {
         (data, clocks)
     }
 
-    fn write_hirom(&mut self, address: u32, data: u8) -> u64 {
-        let clocks: u64;
+    fn write_hirom(&mut self, address: u32, data: u8) -> u8 {
+        let clocks: u8;
 
         match (address.bank(), address.bank_addr()) {
             // Normal ROM read (banks C0-FF are in linear order in HiROM).
@@ -725,9 +722,9 @@ impl Cpu65c816 {
         clocks
     }
 
-    fn read_exhirom(&mut self, address: u32) -> (u8, u64) {
+    fn read_exhirom(&mut self, address: u32) -> (u8, u8) {
         let data: u8;
-        let clocks: u64;
+        let clocks: u8;
 
         match (address.bank(), address.bank_addr()) {
             // Lower half of ROM (stored in the upper part of memory, hence ExHiROM).
@@ -795,8 +792,8 @@ impl Cpu65c816 {
         (data, clocks)
     }
 
-    fn write_exhirom(&mut self, address: u32, data: u8) -> u64 {
-        let clocks: u64;
+    fn write_exhirom(&mut self, address: u32, data: u8) -> u8 {
+        let clocks: u8;
         
         match (address.bank(), address.bank_addr()) {
             // Lower half of ROM (stored in the upper part of memory, hence ExHiROM).
@@ -2725,7 +2722,12 @@ impl Cpu65c816 {
 
 // Cycle Functionality
 impl Cpu65c816 {
+    pub fn remove_clocks(&mut self, clocks: u8) { self.sys_clocks_until_clock -= clocks; }
+    pub fn sys_clocks_left(&self) -> u8 { self.sys_clocks_until_clock }
+
     pub fn clock(&mut self, logger: &mut SnemLogger) {
+        self.sys_clocks_until_clock = 0;
+
         if self.vblank_nmi_flagged {
             self.vblank_nmi_flagged = false;
 
@@ -2734,40 +2736,28 @@ impl Cpu65c816 {
                 self.trigger_interrupt(CpuInterrupt::NMI);
             }
         }
-        
-        if self.stopped {
-            return;
-        }
 
-        if self.until_cpu_clocks == 0 {
-            match self.dma_status {
-                DmaStatus::Off => {
-                    self.exec_instr()
-                },
-                DmaStatus::DMA => {
-                    self.do_dma()
-                },
-                DmaStatus::HDMA => {
-                    self.do_hdma()
-                },
-                DmaStatus::LayeredHDMA => {
-                    self.do_hdma()
-                },
-            }
-
-            if self.until_cpu_clocks == 0 {
-                self.until_cpu_clocks += 1;
+        match self.dma_status {
+            DmaStatus::Off => {
+                self.exec_instr()
+            },
+            DmaStatus::DMA => {
+                self.do_dma()
+            },
+            DmaStatus::HDMA => {
+                self.do_hdma()
+            },
+            DmaStatus::LayeredHDMA => {
+                self.do_hdma()
             }
         }
-
-        self.until_cpu_clocks -= 1;
     }
 
     fn do_dma(&mut self) {
         let dma_channel = &mut self.dma_channels[self.active_channel_idx];
 
         let a_bus_addr = dma_channel.a_bus_addr();
-        let b_bus_addr = 0x2100 | dma_channel.get_b_with_offset() as u16;
+        let b_bus_addr = 0x2100 | dma_channel.get_b_with_offset() as u32;
 
         dma_channel.inc_a_bus_addr();
 
@@ -2775,27 +2765,6 @@ impl Cpu65c816 {
         dma_channel.byte_count -= 1;
 
         if dma_channel.byte_count == 0 {
-            // println!("Finished DMA for Ch. {}", self.active_channel_idx);
-            // println!("  Src: ${a_bus_addr:06X} Dst: $21{b_bus_addr:02X}, VRAM addr: ${:04X}, VRAM inc mode: {:?}, VRAM inc size {:?}",
-            //     self.ppu_data.vram_addr.get(),
-            //     self.ppu_data.vram_addr_inc_mode.get(),
-            //     self.ppu_data.addr_inc_size.get()
-            // );
-
-            // if b_bus_addr == 0x18 && dma_channel.bytes_written > 1000 {
-            //     hexdump8(&self.debug_dma_bytes_transfered);
-                
-            //     let mut vram_copy = Vec::new();
-
-            //     for i in 0x0000..0x0400 {
-            //         vram_copy.push(self.ppu_data.vram.0[i].get());
-            //     }
-
-            //     hexdump16_at(&vram_copy, 0);
-
-            //     std::process::exit(0);
-            // }
-
             dma_channel.active = false;
             dma_channel.bytes_written = 0;
 
@@ -2808,46 +2777,22 @@ impl Cpu65c816 {
             }
         }
 
-
-        // let direction_b_to_a = self.dma_params[dma_channel_idx] & 0x80 != 0;
-        // let a_bus_addr = u32::from_parts(
-        //     self.a_bus_addr_bank[dma_channel_idx],
-        //     self.a_bus_addr_hi[dma_channel_idx],
-        //     self.a_bus_addr_lo[dma_channel_idx],
-        // );
-        // let inc_mode = (self.dma_params[dma_channel_idx] >> 3) & 3;
-
-        // let (src_addr, dst_addr) = match direction_b_to_a {
-        //     true => (b_bus_addr, a_bus_addr),
-        //     false => (a_bus_addr, b_bus_addr),
-        // };
-
         // Cannot perform DMA to/from MMIO addresses for A Bus
         if !is_mmio_addr(a_bus_addr) {
+            let (src_addr, dst_addr) = match dma_channel.direction {
+                dma::Direction::AtoB => (a_bus_addr, b_bus_addr),
+                dma::Direction::BtoA => (b_bus_addr, a_bus_addr),
+            };
 
-            match dma_channel.direction {
-                dma::Direction::AtoB => {
-                    let data = self.read(a_bus_addr);
-                    self.write_mmio_regs(b_bus_addr, data);
-
-                    self.debug_dma_bytes_transfered.push(data);
-                }
-                dma::Direction::BtoA => {
-                    let data = self.read_mmio_regs(b_bus_addr);
-                    self.write(a_bus_addr, data);
-
-                    self.debug_dma_bytes_transfered.push(data);
-                }
-            }
-
-            // Only perform a single byte transfer per call, to keep
-            // synchronized with the PPU.
+            let data = self.read(src_addr);
+            self.write(dst_addr, data);
         }
 
         self.add_clocks(Cpu65c816::ONE_CYCLE);
     }
 
     fn do_hdma(&mut self) {
+        self.add_clocks(Cpu65c816::ONE_CYCLE);
         // let hdma_channel_idx = self.hdma_enable.ilog2() as usize;
 
         // let hdma_indirect = self.dma_params[hdma_channel_idx] & 0x40 != 0;
@@ -2876,28 +2821,7 @@ impl Cpu65c816 {
         self.debug_io_ops = 0;
 
         let opcode = self.read_prg();
-        let extra_clocks: u64;
-
-        // if self.debug_instr_capture.len() < 3700 {
-        //     self.debug_instr_capture.push(opcode);
-        // } else if self.debug_instr_capture.len() == 3700 {
-        //     for chunk in self.debug_instr_capture.chunks(16) {
-        //         for opcode in chunk {
-        //             print!("{opcode:02X} ");
-        //         } 
-        //         println!();
-        //     }
-
-        //     self.debug_instr_capture.push(0);
-
-        //     panic!();
-        // }
-
-        // if opcode != 0 && self.total_clocks < 2500 {
-        //     println!("Exec opcode 0x{:02X} from PC ${:06X}", opcode, self.pc);
-
-        //     println!("{}", self.lemon_cpu_str());
-        // }
+        let extra_clocks: u8;
 
         match (opcode, self.mode, self.acc_size(), self.idx_size()) {
             // brk, imp
@@ -6661,9 +6585,11 @@ impl Cpu65c816 {
 mod tests {
     use std::path::Path;
 
+    use libretro_rs::retro::{framebuf::ResizableFrameBuffer, log::PlatformLogger, pixel::format::XRGB8888};
+
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
-    use crate::system::cartridge::Cartridge;
+    use crate::system::{cartridge::Cartridge, ppu::Ppu5C7x};
 
     /// Prints out a slice of bytes in hex and ASCII format, side by side. When
     /// startval is specified, indices beginning at the startval will be printed
@@ -6933,13 +6859,14 @@ mod tests {
     }
 
     #[test]
-    fn test_cpu_speed() {
+    fn test_speed() {
         let test_path_str = format!("tests/lemons/CPUTest/CPUADC.sfc");
         let test_path = Path::new(&test_path_str);
         let cart = Cartridge::from_path(test_path).unwrap();
 
         let ppu_data = Rc::new(PpuData::new());
-        let mut cpu = Cpu65c816::new(ppu_data);
+        let mut cpu = Cpu65c816::new(ppu_data.clone());
+        let mut ppu = Ppu5C7x::new(ppu_data.clone());
         cpu.load_cart(&cart);
 
         cpu.stk_ptr = 0x1ff;
@@ -6952,24 +6879,41 @@ mod tests {
         let start = std::time::Instant::now();
         const TOTAL_SECONDS: f32 = 10.0;
 
+        let mut frame_buffer: ResizableFrameBuffer<XRGB8888, {512*448}> = ResizableFrameBuffer::new();
+        frame_buffer.resize(256, 224).unwrap();
+        // Logger not to be used during tests!
+        let mut logger = unsafe { std::mem::transmute(0u64) };
+
+        let mut master_clocks = 0u64;
+
         while std::time::Instant::now()
             .duration_since(start)
             .as_secs_f32()
             < TOTAL_SECONDS
         {
-            cpu.exec_instr();
+            // print!("{master_clocks} ");
+            if ppu.sys_clocks_until_clock < cpu.sys_clocks_until_clock {
+                // println!("PPU");
+                master_clocks += ppu.sys_clocks_until_clock as u64;
+                cpu.sys_clocks_until_clock -= ppu.sys_clocks_until_clock;
+                ppu.clock(&mut frame_buffer, &mut logger);
+            } else {
+                // println!("CPU");
+                master_clocks += cpu.sys_clocks_until_clock as u64;
+                ppu.sys_clocks_until_clock -= cpu.sys_clocks_until_clock;
+                cpu.clock(&mut logger);
+            }
 
             if cpu.pc == 0xef1b {
                 cpu.pc = 0x8000;
             }
         }
 
-        let snes_mhz = ((cpu.total_clocks as f32) / 1000000.0) / TOTAL_SECONDS;
+        let snes_mhz = ((master_clocks as f32) / 1000000.0) / TOTAL_SECONDS;
         let cpu_mhz = snes_mhz / 6.0;
 
         println!(
-            "In {TOTAL_SECONDS} seconds, {} master clocks elapsed",
-            cpu.total_clocks
+            "In {TOTAL_SECONDS} seconds, {master_clocks} master clocks elapsed",
         );
         println!("Master Clock Speed: {snes_mhz} MHz");
         println!("CPU Speed: {cpu_mhz} MHz");

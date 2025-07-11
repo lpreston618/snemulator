@@ -100,29 +100,27 @@ impl SnemulatorCore {
         inputs_polled
     }
 
+    /// Clocks the PPU or the CPU, depending on which one is supposed to be clocked next.
     fn cycle(&mut self) {
-        self.snem_ppu.clock(&mut self.frame_buffer, &mut self.logger);
-        self.snem_cpu.clock(&mut self.logger);
+        let ppu_clocks = self.snem_ppu.sys_clocks_left();
+        let cpu_clocks = self.snem_cpu.sys_clocks_left();
+
+        if ppu_clocks < cpu_clocks {
+            self.snem_cpu.remove_clocks(ppu_clocks);
+            self.snem_ppu.clock(&mut self.frame_buffer, &mut self.logger);
+        } else {
+            self.snem_ppu.remove_clocks(cpu_clocks);
+            self.snem_cpu.clock(&mut self.logger);
+        }
     }
 
     fn cycle_frame(&mut self) {
-        // println!("Frame start");
-
         while !self.snem_ppu.frame_finished {
             self.cycle();
         }
     
         self.snem_cpu.flag_for_vblank_nmi();
         self.snem_ppu.frame_finished = false;
-
-        // if self.frame_count == 4 {
-        //     // ppu::dump_ppu_state(&self.snem_ppu);
-        //     std::process::exit(1);
-        // }
-
-        // if self.frame_count == 100 {
-        //     self.snem_ppu.dump_vram();
-        // }
     }
 
 
@@ -162,19 +160,6 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         let ppu_data = Rc::new(PpuData::new());
         let snem_cpu = Cpu65c816::new(ppu_data.clone());
         let snem_ppu = Ppu5C7x::new(ppu_data.clone());
-
-        // for y in 0..SNES_FRAME_HEIGHT {
-        //     for x in 0..SNES_FRAME_WIDTH {
-        //         let idx = y*SNES_FRAME_WIDTH + x;
-        //         let r = ((y as f64) / (SNES_FRAME_HEIGHT as f64) * 255.0) as u8;
-        //         let g = ((x as f64) / (SNES_FRAME_WIDTH as f64) * 255.0) as u8;
-        //         let col = XRGB8888::default()
-        //             .with_r(r)
-        //             .with_g(g)
-        //             .with_b(0);
-        //         frame_buffer[idx] = col;
-        //     }
-        // }
 
         let core = SnemulatorCore{
             logger,
@@ -229,8 +214,6 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
 
         self.render_audio(callbacks);
         self.render_video(callbacks);
-
-        println!("FPS: {}", 1.0 / self.last_frame.elapsed().as_secs_f32());
 
         self.last_frame = time::Instant::now();
         self.frame_count += 1;

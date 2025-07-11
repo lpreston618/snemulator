@@ -1586,7 +1586,7 @@ pub struct Ppu5C7x {
 
     dot: u16,
     scanline: u16,
-    clocks_until_dot: u8,
+    pub sys_clocks_until_clock: u8,
     frame: usize,
 
     scanline_sprites: Vec<OAMSprite>,
@@ -1601,7 +1601,7 @@ impl Ppu5C7x {
             registers: ppu_data,
             dot: 0,
             scanline: 0,
-            clocks_until_dot: 1,
+            sys_clocks_until_clock: 1,
             frame: 0,
             scanline_sprites: Vec::with_capacity(32),
             scanline_spr_cnt: 0,
@@ -1609,21 +1609,22 @@ impl Ppu5C7x {
         }
     }
 
+    pub fn remove_clocks(&mut self, clocks: u8) { self.sys_clocks_until_clock -= clocks; }
+    pub fn sys_clocks_left(&self) -> u8 { self.sys_clocks_until_clock }
+
     pub fn clock(&mut self, frame_buffer: &mut [XRGB8888], logger: &mut SnemLogger) {
-        self.clocks_until_dot -= 1;
+        self.sys_clocks_until_clock = 0;
 
-        if self.clocks_until_dot == 0 {            
-            if !self.in_fblank() && !self.in_hblank() && !self.in_vblank() && self.scanline != 0 {
-                self.dot(frame_buffer);
-            }
-    
-            self.update_dot_and_scanline();
+        if !self.in_fblank() && !self.in_hblank() && !self.in_vblank() && self.scanline != 0 {
+            self.dot(frame_buffer);
+        }
 
-            self.clocks_until_dot += 4;
+        self.update_dot_and_scanline();
 
-            if self.dot >= SCANLINE_END_DOT-4 {
-                self.clocks_until_dot += 1;
-            }
+        self.sys_clocks_until_clock += 4;
+
+        if self.dot >= SCANLINE_END_DOT-4 {
+            self.sys_clocks_until_clock += 1;
         }
     }
 
