@@ -1941,7 +1941,7 @@ impl Ppu5C7x {
         let chr_y = (screen_y & 0x7) as u16;
 
         let mode0_bg_col_data = |bg_vram_addr: u8, bg_chr_base_addr: u8, bg_cgram_base_addr: u16| -> BgColorData {
-            let bg_tile_addr = ((bg_vram_addr as u16) << 10) + tilemap_idx;
+            let bg_tile_addr = ((bg_vram_addr as u16) << 10) + (tilemap_idx << 4);
             let tile_data = self.vram_read(bg_tile_addr);
 
             let bg_priority = (tile_data & 0x2000) != 0;
