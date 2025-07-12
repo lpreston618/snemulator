@@ -222,7 +222,7 @@ impl Cpu65c816 {
     }
 
     /// Sets the CPU to its proper initial state. Can be triggered by an interrupt.
-    pub fn reset(&mut self) {
+    pub fn initialize(&mut self) {
         self.mode = CpuMode::Emulation;
         self.x &= 0x00FF;
         self.y &= 0x00FF;
@@ -6407,115 +6407,6 @@ impl Cpu65c816 {
         let cart = Cartridge::from_path(test_path).unwrap();
 
         self.load_cart(&cart);
-
-        /*
-        clc
-        xce
-        lda #$01
-        sta $210B
-        rep #$30
-
-        lda #$1000
-        sta $2116
-
-        lda #$0001
-        sta $2121
-
-        lda #$109F
-        sta $2122
-
-        lda #$00FF
-        sta $2118
-
-        lda #$1001
-        sta $2116
-        lda #$FF00
-        sta $2118
-
-        lda #$1002
-        sta $2116
-        lda #$FFFF
-        sta $2118
-
-        stz $2116
-        lda #$0000
-
-        sta #$2118
-        inc accumulator
-        cmp #$0381
-        jne #$801D
-        stp
-
-        */
-
-        // let prg = [
-        //     0x18, // CLC
-        //     0xFB, // XCE
-        //     0xA9, 0x01, // LDA imm
-        //     0x8D, 0x0B, 0x21, // STA abs
-
-        //     // Set CGRAM bg1 pal0 col1 to pink-ish
-        //     0xA9, 0x01, // LDA imm
-        //     0x8D, 0x21, 0x21, // STA abs
-        //     0xA9, 0xDF, // LDA imm
-        //     0x8D, 0x22, 0x21, // STA abs
-        //     0xA9, 0x79, // LDA imm
-        //     0x8D, 0x22, 0x21, // STA abs
-
-        //     0xC2, 0x30, // REP
-
-        //     0xA9, 0x00, 0x10, // LDA imm
-        //     0x8D, 0x16, 0x21, // STA abs
-
-        //     0xA9, 0xFF, 0x00, // LDA imm
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x8D, 0x18, 0x21, // STA abs
-
-        //     0xA9, 0x00, 0xFF, // LDA imm
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x8D, 0x18, 0x21, // STA abs
-
-        //     0xA9, 0xFF, 0xFF, // LDA imm
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x8D, 0x18, 0x21, // STA abs
-
-        //     0x9C, 0x16, 0x21, // STZ abs
-        //     0xA9, 0x00, 0x00, // LDA imm
-
-        //     0x8D, 0x18, 0x21, // STA abs
-        //     0x1A, // INC accumulator
-        //     0xC9, 0x81, 0x03, // CMP imm
-        //     0xD0, 0xF7, // BNE rel8
-
-        //     0xDB // STP
-
-        //     // 0xA9 as u8, 0b00011011, 0b00011011, // LDA imm
-        //     // 0x8D, 0x18, 0x21, // STA abs
-        // ];
-
-        // self.rom.fill(0);
-
-        // for i in 0..prg.len() {
-        //     self.rom[i] = prg[i];
-        // }
 
         self.stk_ptr = 0x1ff;
         self.status = 0x34;
