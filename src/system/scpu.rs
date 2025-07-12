@@ -148,7 +148,6 @@ pub struct Cpu65c816 {
     // dma_bytes_written: usize,
     // hdma_bytes_written: usize,
     // hdma_current_channel: u8,
-
     ppu_data: Rc<PpuData>,
 
     vblank_nmi_ignore: bool,
@@ -213,7 +212,6 @@ impl Cpu65c816 {
             // dma_bytes_written: 0,
             // hdma_bytes_written: 0,
             // hdma_current_channel: 255,
-
             ppu_data: ppu_data,
 
             vblank_nmi_ignore: true,
@@ -221,6 +219,22 @@ impl Cpu65c816 {
 
             debug_dma_bytes_transfered: Vec::new(),
         }
+    }
+
+    /// Sets the CPU to its proper initial state. Can be triggered by an interrupt.
+    pub fn reset(&mut self) {
+        self.mode = CpuMode::Emulation;
+        self.x &= 0x00FF;
+        self.y &= 0x00FF;
+        self.data_bank = 0;
+        self.prg_bank = 0;
+        self.direct_page = 0;
+        // Sets SP to 0x01nn, where nn retains its previous value pre-reset.
+        self.stk_ptr &= 0x00FF;
+        self.stk_ptr |= 0x0100;
+        // Sets status to nn1101n1.
+        self.status &= 0xF7;
+        self.status |= 0x35;
     }
 
     pub fn load_cart(&mut self, cart: &Cartridge) {
@@ -270,12 +284,11 @@ impl Cpu65c816 {
                 MappingMode::HiROM => self.read_hirom(address),
                 MappingMode::ExHiROM => self.read_exhirom(address),
             }
-
         }
 
         match self.dma_status {
             DmaStatus::Off => self.add_clocks(clocks),
-            _ => {},
+            _ => {}
         }
 
         data
@@ -301,10 +314,10 @@ impl Cpu65c816 {
                 MappingMode::ExHiROM => self.write_exhirom(address, data),
             }
         }
-        
+
         match self.dma_status {
             DmaStatus::Off => self.add_clocks(clocks),
-            _ => {},
+            _ => {}
         }
     }
 
@@ -326,7 +339,7 @@ impl Cpu65c816 {
                 }
 
                 0
-            },
+            }
         }
     }
 
@@ -388,7 +401,7 @@ impl Cpu65c816 {
 
                 //     println!("  Total transfer size (bytes): {num_bytes}");
                 // }
-            },
+            }
             0x420C => {
                 // for i in 0..8 {
                 //     self.dma_channels[i].active = (data & (1 << i)) != 0;
@@ -405,7 +418,7 @@ impl Cpu65c816 {
                 if mmio_address != 0x2180 {
                     println!(" ==== Attempt to write mmio reg ${mmio_address:04X} with data 0x{data:02X}");
                 }
-            },
+            }
         }
     }
 
@@ -429,7 +442,7 @@ impl Cpu65c816 {
             // 0x430A => self.hdma_line_counter[channel_idx],
             // 0x430B => self.dma_unused1[channel_idx],
             // 0x430F => self.dma_unused2[channel_idx],
-            _ => { 0 },
+            _ => 0,
         }
     }
 
@@ -464,7 +477,7 @@ impl Cpu65c816 {
                     0 => dma::Direction::AtoB,
                     _ => dma::Direction::BtoA,
                 };
-                
+
                 // println!("Wrote 0x{data:02X} to DMA channel {channel_idx} Params (Transfer Pattern = {:?}, A Inc Mode = {:?}, Indirect = {}, Direction = {:?})",
                 //     dma_channel.transfer_pattern,
                 //     dma_channel.inc_mode,
@@ -480,12 +493,12 @@ impl Cpu65c816 {
                 dma_channel.a_bus_lo = data;
                 // println!("Wrote 0x{data:02X} to DMA channel {channel_idx} A-Bus Address Low");
             }
-            0x4303 => { 
+            0x4303 => {
                 dma_channel.a_bus_hi = data;
                 // println!("Wrote 0x{data:02X} to DMA channel {channel_idx} A-Bus Address Hi");
             }
             0x4304 => {
-                dma_channel.a_bus_bank = data; 
+                dma_channel.a_bus_bank = data;
                 // println!("Wrote 0x{data:02X} to DMA channel {channel_idx} A-Bus Address Bank");
             }
             0x4305 => {
@@ -502,7 +515,7 @@ impl Cpu65c816 {
             // 0x430A => { self.hdma_line_counter[channel_idx] = data; }
             // 0x430B => { self.dma_unused1[channel_idx] = data; }
             // 0x430F => { self.dma_unused2[channel_idx] = data; }
-            _ => {},
+            _ => {}
         }
     }
 
@@ -794,7 +807,7 @@ impl Cpu65c816 {
 
     fn write_exhirom(&mut self, address: u32, data: u8) -> u8 {
         let clocks: u8;
-        
+
         match (address.bank(), address.bank_addr()) {
             // Lower half of ROM (stored in the upper part of memory, hence ExHiROM).
             // Fast ROM region.
@@ -2722,8 +2735,12 @@ impl Cpu65c816 {
 
 // Cycle Functionality
 impl Cpu65c816 {
-    pub fn remove_clocks(&mut self, clocks: u8) { self.sys_clocks_until_clock -= clocks; }
-    pub fn sys_clocks_left(&self) -> u8 { self.sys_clocks_until_clock }
+    pub fn remove_clocks(&mut self, clocks: u8) {
+        self.sys_clocks_until_clock -= clocks;
+    }
+    pub fn sys_clocks_left(&self) -> u8 {
+        self.sys_clocks_until_clock
+    }
 
     pub fn clock(&mut self, logger: &mut SnemLogger) {
         self.sys_clocks_until_clock = 0;
@@ -2738,18 +2755,10 @@ impl Cpu65c816 {
         }
 
         match self.dma_status {
-            DmaStatus::Off => {
-                self.exec_instr()
-            },
-            DmaStatus::DMA => {
-                self.do_dma()
-            },
-            DmaStatus::HDMA => {
-                self.do_hdma()
-            },
-            DmaStatus::LayeredHDMA => {
-                self.do_hdma()
-            }
+            DmaStatus::Off => self.exec_instr(),
+            DmaStatus::DMA => self.do_dma(),
+            DmaStatus::HDMA => self.do_hdma(),
+            DmaStatus::LayeredHDMA => self.do_hdma(),
         }
     }
 
@@ -2766,7 +2775,10 @@ impl Cpu65c816 {
         dma_channel.byte_count -= 1;
 
         if dma_channel.byte_count == 0 {
-            println!("Finished DMA of {} bytes thru channel {}", dma_channel.bytes_written, self.active_channel_idx);
+            println!(
+                "Finished DMA of {} bytes thru channel {}",
+                dma_channel.bytes_written, self.active_channel_idx
+            );
 
             dma_channel.active = false;
             dma_channel.bytes_written = 0;
@@ -2774,7 +2786,7 @@ impl Cpu65c816 {
             self.dma_status = DmaStatus::Off;
 
             // Go to next active DMA channel
-            for i in self.active_channel_idx+1..8 {
+            for i in self.active_channel_idx + 1..8 {
                 if self.dma_channels[i].active {
                     self.active_channel_idx = i;
                     self.dma_status = DmaStatus::DMA;
@@ -2819,8 +2831,6 @@ impl Cpu65c816 {
 
         // self.hdma_table_addr_lo[hdma_channel_idx] = hdma_table_addr as u8;
         // self.hdma_table_addr_hi[hdma_channel_idx] = (hdma_table_addr >> 8) as u8;
-
-        
     }
 
     fn exec_instr(&mut self) {
@@ -6404,7 +6414,7 @@ impl Cpu65c816 {
         lda #$01
         sta $210B
         rep #$30
-        
+
         lda #$1000
         sta $2116
 
@@ -6416,7 +6426,7 @@ impl Cpu65c816 {
 
         lda #$00FF
         sta $2118
-        
+
         lda #$1001
         sta $2116
         lda #$FF00
@@ -6444,7 +6454,6 @@ impl Cpu65c816 {
         //     0xA9, 0x01, // LDA imm
         //     0x8D, 0x0B, 0x21, // STA abs
 
-
         //     // Set CGRAM bg1 pal0 col1 to pink-ish
         //     0xA9, 0x01, // LDA imm
         //     0x8D, 0x21, 0x21, // STA abs
@@ -6457,7 +6466,7 @@ impl Cpu65c816 {
 
         //     0xA9, 0x00, 0x10, // LDA imm
         //     0x8D, 0x16, 0x21, // STA abs
-            
+
         //     0xA9, 0xFF, 0x00, // LDA imm
         //     0x8D, 0x18, 0x21, // STA abs
         //     0x8D, 0x18, 0x21, // STA abs
@@ -6591,7 +6600,9 @@ impl Cpu65c816 {
 mod tests {
     use std::path::Path;
 
-    use libretro_rs::retro::{framebuf::ResizableFrameBuffer, log::PlatformLogger, pixel::format::XRGB8888};
+    use libretro_rs::retro::{
+        framebuf::ResizableFrameBuffer, log::PlatformLogger, pixel::format::XRGB8888,
+    };
 
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
@@ -6885,7 +6896,8 @@ mod tests {
         let start = std::time::Instant::now();
         const TOTAL_SECONDS: f32 = 10.0;
 
-        let mut frame_buffer: ResizableFrameBuffer<XRGB8888, {512*448}> = ResizableFrameBuffer::new();
+        let mut frame_buffer: ResizableFrameBuffer<XRGB8888, { 512 * 448 }> =
+            ResizableFrameBuffer::new();
         frame_buffer.resize(256, 224).unwrap();
         // Logger not to be used during tests!
         let mut logger = unsafe { std::mem::transmute(0u64) };
@@ -6918,9 +6930,7 @@ mod tests {
         let snes_mhz = ((master_clocks as f32) / 1000000.0) / TOTAL_SECONDS;
         let cpu_mhz = snes_mhz / 6.0;
 
-        println!(
-            "In {TOTAL_SECONDS} seconds, {master_clocks} master clocks elapsed",
-        );
+        println!("In {TOTAL_SECONDS} seconds, {master_clocks} master clocks elapsed",);
         println!("Master Clock Speed: {snes_mhz} MHz");
         println!("CPU Speed: {cpu_mhz} MHz");
     }
