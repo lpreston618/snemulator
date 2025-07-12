@@ -97,18 +97,18 @@ enum ObjectSize {
 }
 
 #[derive(Clone, Copy, Default, Debug)]
-enum CharSize {
+enum TileSize {
     #[default]
-    Small,
-    Large,
+    Size8x8,
+    Size16x16,
 }
 
-#[derive(Clone, Copy, Default, Debug)]
-enum BgPriority {
-    #[default]
-    High,
-    Low,
-}
+// #[derive(Clone, Copy, Default, Debug)]
+// enum BgPriority {
+//     #[default]
+//     High,
+//     Low,
+// }
 
 #[derive(Clone, Copy, Default, Debug)]
 enum BgMode {
@@ -275,11 +275,11 @@ pub struct PpuData {
     //       - Tilemap tile size (#)
     //       - BG3 priority (P)
     //       - BG mode (M)
-    bg4_char_size: Cell<CharSize>,
-    bg3_char_size: Cell<CharSize>,
-    bg2_char_size: Cell<CharSize>,
-    bg1_char_size: Cell<CharSize>,
-    bg3_priority: Cell<BgPriority>,
+    bg4_char_size: Cell<TileSize>,
+    bg3_char_size: Cell<TileSize>,
+    bg2_char_size: Cell<TileSize>,
+    bg1_char_size: Cell<TileSize>,
+    bg3_priority: Cell<bool>,
     bg_mode: Cell<BgMode>,
 
     // $2106    SSSS 4321    Write Only
@@ -560,11 +560,11 @@ pub struct PpuData {
     cmath_operator: Cell<CMathOperator>,
     cmath_half: Cell<bool>,
     cmath_backdrop: Cell<bool>,
-    cmath_obj_enabled: Cell<bool>,
-    cmath_bg4_enabled: Cell<bool>,
-    cmath_bg3_enabled: Cell<bool>,
-    cmath_bg2_enabled: Cell<bool>,
-    cmath_bg1_enabled: Cell<bool>,
+    obj_cmath_enabled: Cell<bool>,
+    bg4_cmath_enabled: Cell<bool>,
+    bg3_cmath_enabled: Cell<bool>,
+    bg2_cmath_enabled: Cell<bool>,
+    bg1_cmath_enabled: Cell<bool>,
 
     // $2132    BGRC CCCC    Write Only
     //       - Fixed color channel select (BGR) and value (C)
@@ -737,20 +737,18 @@ impl PpuData {
 
             0x05 => {
                 self.bg4_char_size.replace(
-                    if data.bit_en(7) { CharSize::Large } else { CharSize::Small }
+                    if data.bit_en(7) { TileSize::Size16x16 } else { TileSize::Size8x8 }
                 );
                 self.bg3_char_size.replace(
-                    if data.bit_en(6) { CharSize::Large } else { CharSize::Small }
+                    if data.bit_en(6) { TileSize::Size16x16 } else { TileSize::Size8x8 }
                 );
                 self.bg2_char_size.replace(
-                    if data.bit_en(5) { CharSize::Large } else { CharSize::Small }
+                    if data.bit_en(5) { TileSize::Size16x16 } else { TileSize::Size8x8 }
                 );
                 self.bg1_char_size.replace(
-                    if data.bit_en(4) { CharSize::Large } else { CharSize::Small }
+                    if data.bit_en(4) { TileSize::Size16x16 } else { TileSize::Size8x8 }
                 );
-                self.bg3_priority.replace(
-                    if data.bit_en(3) { BgPriority::High } else { BgPriority::Low }
-                );
+                self.bg3_priority.replace(data.bit_en(3));
                 self.bg_mode.replace(
                     match data & 0x07 {
                         0 => BgMode::Mode0,
@@ -1359,13 +1357,13 @@ impl PpuData {
                 );
                 self.cmath_half.replace(data.bit_en(6));
                 self.cmath_backdrop.replace(data.bit_en(5));
-                self.cmath_obj_enabled.replace(data.bit_en(4));
-                self.cmath_bg4_enabled.replace(data.bit_en(3));
-                self.cmath_bg3_enabled.replace(data.bit_en(2));
-                self.cmath_bg2_enabled.replace(data.bit_en(1));
-                self.cmath_bg1_enabled.replace(data.bit_en(0));
+                self.obj_cmath_enabled.replace(data.bit_en(4));
+                self.bg4_cmath_enabled.replace(data.bit_en(3));
+                self.bg3_cmath_enabled.replace(data.bit_en(2));
+                self.bg2_cmath_enabled.replace(data.bit_en(1));
+                self.bg1_cmath_enabled.replace(data.bit_en(0));
 
-                println!("Set bg1 color math enable to {}", self.cmath_bg1_enabled.get());
+                println!("Set bg1 color math enable to {}", self.bg1_cmath_enabled.get());
             }
 
             0x32 => {
@@ -1772,16 +1770,26 @@ impl Ppu5C7x {
 //     }
 // }
 
-struct BgColorData {
-    raw_color: u16,
-    priority: bool,
-    transparent: bool,
+enum ColorLayer {
+    Bg1,
+    Bg2,
+    Bg3,
+    Bg4,
+    Obj,
+    Back,
 }
 
-struct SpriteColorData {
+struct ColorData {
     raw_color: u16,
     priority: u8,
     transparent: bool,
+    layer: ColorLayer,
+}
+
+struct TilePosData {
+    tilemap_idx: u16,
+    tile_row: u8,
+    tile_col: u8,
 }
 
 /// Converts a u16 of the form (.bbb bbgg gggr rrrr) into an XRGB8888 color
@@ -1799,62 +1807,15 @@ impl Ppu5C7x {
     fn transparent_color(&self) -> u16 { self.registers.cgram.0[0].get() }
 
     fn dot(&mut self, frame_buffer: &mut [XRGB8888]) {
-        // let bg1_win_en = window_enable(
-        //     self.registers.bg1_w1_enabled.get(),
-        //     self.registers.bg1_w1_inverted.get(),
-        //     self.registers.bg1_w2_enabled.get(),
-        //     self.registers.bg1_w2_inverted.get(),
-        //     self.registers.bg1_win_logic.get(),
-        // );
-        // let bg2_win_en = window_enable(            
-        //     self.registers.bg2_w1_enabled.get(),    
-        //     self.registers.bg2_w1_inverted.get(),    
-        //     self.registers.bg2_w2_enabled.get(),     
-        //     self.registers.bg2_w2_inverted.get(),    
-        //     self.registers.bg2_win_logic.get(),    
-        // );                                                  
-        // let bg3_win_en = window_enable(            
-        //     self.registers.bg3_w1_enabled.get(),    
-        //     self.registers.bg3_w1_inverted.get(),    
-        //     self.registers.bg3_w2_enabled.get(),     
-        //     self.registers.bg3_w2_inverted.get(),    
-        //     self.registers.bg3_win_logic.get(),    
-        // );                                                  
-        // let bg4_win_en = window_enable(            
-        //     self.registers.bg4_w1_enabled.get(),    
-        //     self.registers.bg4_w1_inverted.get(),    
-        //     self.registers.bg4_w2_enabled.get(),     
-        //     self.registers.bg4_w2_inverted.get(),    
-        //     self.registers.bg4_win_logic.get(),    
-        // );                                                  
-        // let col_win_en = window_enable(            
-        //     self.registers.col_w1_enabled.get(),    
-        //     self.registers.col_w1_inverted.get(),    
-        //     self.registers.col_w2_enabled.get(),     
-        //     self.registers.col_w2_inverted.get(),    
-        //     self.registers.col_win_logic.get(),    
-        // );                                                  
-        // let obj_win_en = window_enable(
-        //     self.registers.obj_w1_enabled.get(),
-        //     self.registers.obj_w1_inverted.get(),
-        //     self.registers.obj_w2_enabled.get(),
-        //     self.registers.obj_w2_inverted.get(),
-        //     self.registers.obj_win_logic.get(),
-        // );
-
-        // self.bg1_display_chr_table(frame_buffer);
-        // return;                                           
-
         let screen_x = self.screen_x();
         let screen_y = self.screen_y();
 
-        // Get color of sprite on this pixel. Different bg modes will use it
-        // differently depending on priority and register settings.
+        // All bg modes need spr_col
         let spr_col = self.sprite_dot(screen_x, screen_y);
 
         let dot_col = match self.bg_mode() {
             BgMode::Mode0 => self.bg_mode0_dot(screen_x, screen_y, spr_col),
-            // BgMode::Mode1 => self.bg_mode1_dot(frame_buffer, spr_col),
+            BgMode::Mode1 => self.bg_mode1_dot(screen_x, screen_y, spr_col),
             // BgMode::Mode2 => self.bg_mode2_dot(frame_buffer, spr_col),
             // BgMode::Mode3 => self.bg_mode3_dot(frame_buffer, spr_col),
             // BgMode::Mode4 => self.bg_mode4_dot(frame_buffer, spr_col),
@@ -1868,7 +1829,7 @@ impl Ppu5C7x {
     }
 
     /// Gets the color of the first visible sprite on the screen.
-    fn sprite_dot(&mut self, screen_x: usize, screen_y: usize) -> SpriteColorData {
+    fn sprite_dot(&mut self, screen_x: usize, screen_y: usize) -> ColorData {
         let mut scanline_spr_cnt = self.scanline_spr_cnt;
 
         if scanline_spr_cnt == 0 {
@@ -1923,10 +1884,11 @@ impl Ppu5C7x {
                 if pal_idx == 0 {
                     // If it's the last sprite, all sprites were transparent
                     if i == self.scanline_sprites.len() - 1 {
-                        return SpriteColorData {
+                        return ColorData {
                             raw_color: 0,
                             priority: sprite.priority,
                             transparent: true,
+                            layer: ColorLayer::Obj,
                         };
                     }
 
@@ -1937,32 +1899,34 @@ impl Ppu5C7x {
 
                 let spr_col = self.registers.cgram.0[cgram_addr as usize].get();
 
-                return SpriteColorData {
+                return ColorData {
                     raw_color: spr_col,
                     priority: sprite.priority,
                     transparent: false,
+                    layer: ColorLayer::Obj,
                 };
             }
         }
 
         // No sprites on this dot, return a transparent color
-        SpriteColorData {
-            raw_color: 0,
+        ColorData {
+            raw_color: self.transparent_color(),
             priority: 0,
             transparent: true,
+            layer: ColorLayer::Obj,
         }
     }
 
     /// Compute the color of this dot, combining all bg layers and object color
     /// data. Computes only as many layers as it needs to before returning the
     /// color of the dot.
-    fn bg_mode0_dot(&mut self, screen_x: usize, screen_y: usize, spr_col: SpriteColorData) -> u16 {
+    fn bg_mode0_dot(&mut self, screen_x: usize, screen_y: usize, spr_col: ColorData) -> u16 {
         let (main_col, sub_col) = self.bg_mode0_main_sub_cols(screen_x, screen_y, spr_col);
 
         main_col
     }
 
-    fn bg_mode0_main_sub_cols(&mut self, screen_x: usize, screen_y: usize, spr_col: SpriteColorData) -> (u16, u16) {
+    fn bg_mode0_main_sub_cols(&mut self, screen_x: usize, screen_y: usize, spr_col: ColorData) -> (u16, u16) {
         const BG1_BASE_CGRAM_ADDR: u16 = 0x00;
         const BG2_BASE_CGRAM_ADDR: u16 = 0x20;
         const BG3_BASE_CGRAM_ADDR: u16 = 0x40;
@@ -1991,48 +1955,53 @@ impl Ppu5C7x {
         let tilemap_idx = (tile_y << 5) | tile_x;
 
         let tile_col = (screen_x & 7) as u8;
-        let tile_row = (screen_y & 7) as u16;
+        let tile_row = (screen_y & 7) as u8;
 
-        let mode0_bg_col = |bg_vram_base_addr: u16, bg_chr_base_addr: u16, bg_cgram_base_addr: u16| -> BgColorData {
-            let tile_data_addr = bg_vram_base_addr + tilemap_idx;
+        // let mode0_bg_col = |bg_vram_base_addr: u16, bg_chr_base_addr: u16, bg_cgram_base_addr: u16, layer: ColorLayer| -> ColorData {
+        //     let tile_data_addr = bg_vram_base_addr + tilemap_idx;
 
-            let tile_data = self.vram_read(tile_data_addr);
-            let tile_chr_idx = tile_data & 0x3FF;
-            let tile_pal = (tile_data >> 10) & 7;
-            let tile_priority = (tile_data & 0x2000) != 0;
-            let flip_x = (tile_data & 0x4000) != 0;
-            let flip_y = (tile_data & 0x8000) != 0;
+        //     let tile_data = self.vram_read(tile_data_addr);
+        //     let tile_chr_idx = tile_data & 0x3FF;
+        //     let tile_pal = (tile_data >> 10) & 7;
+        //     let tile_priority = ((tile_data >> 13) & 1) as u8;
+        //     let flip_x = (tile_data & 0x4000) != 0;
+        //     let flip_y = (tile_data & 0x8000) != 0;
 
-            let tile_chr_addr = bg_chr_base_addr + (tile_chr_idx << 3) + tile_row;
+        //     let tile_chr_addr = bg_chr_base_addr + (tile_chr_idx << 3) + tile_row;
 
-            let tile_chr_data = self.vram_read(tile_chr_addr); // 2bpp bitplanes
-            let b0 = (tile_chr_data >> (7-tile_col)) & 1;
-            let b1 = (tile_chr_data >> (15-tile_col)) & 1;
-            let pal_idx = (b1 << 1) | b0;
-            let transparent = pal_idx == 0;
+        //     let tile_chr_data = self.vram_read(tile_chr_addr); // 2bpp bitplanes
+        //     let b0 = (tile_chr_data >> (7-tile_col)) & 1;
+        //     let b1 = (tile_chr_data >> (15-tile_col)) & 1;
+        //     let pal_idx = (b1 << 1) | b0;
+        //     let transparent = pal_idx == 0;
             
-            let cgram_addr = bg_cgram_base_addr | (tile_pal << 2) | pal_idx;
+        //     let cgram_addr = bg_cgram_base_addr | (tile_pal << 2) | pal_idx;
 
-            let raw_color = if transparent {
-                self.transparent_color()
-            } else {
-                self.registers.cgram.0[cgram_addr as usize].get()
-            };
+        //     let raw_color = if transparent {
+        //         self.transparent_color()
+        //     } else {
+        //         self.registers.cgram.0[cgram_addr as usize].get()
+        //     };
 
-            BgColorData {
-                raw_color,
-                priority: tile_priority,
-                transparent: transparent,
-            }
-        };
+        //     ColorData {
+        //         raw_color,
+        //         priority: tile_priority,
+        //         transparent: transparent,
+        //         layer
+        //     }
+        // };
 
-        let bg1_col = mode0_bg_col(
-            (self.bg1_vram_addr() as u16) << 10,
-            (self.bg1_chr_base_addr() as u16) << 12,
+        let bg1_col = self.bg_col_2bpp(
+            tilemap_idx,
+            tile_row,
+            tile_col,
+            self.bg1_vram_base_addr(),
+            self.bg1_chr_base_addr(),
             BG1_BASE_CGRAM_ADDR,
+            ColorLayer::Bg1,
         );
 
-        if bg1_col.priority && !bg1_col.transparent {
+        if bg1_col.priority != 0 && !bg1_col.transparent {
             if main_col.is_none() && self.bg1_main_enabled() {
                 main_col = Some(bg1_col.raw_color);
             }
@@ -2046,13 +2015,17 @@ impl Ppu5C7x {
             return (main_col, sub_col);
         }
 
-        let bg2_col = mode0_bg_col(
-            (self.bg2_vram_addr() as u16) << 10,
-            (self.bg2_chr_base_addr() as u16) << 12,
+        let bg2_col = self.bg_col_2bpp(
+            tilemap_idx,
+            tile_row,
+            tile_col,
+            self.bg2_vram_base_addr(),
+            self.bg2_chr_base_addr(),
             BG2_BASE_CGRAM_ADDR,
+            ColorLayer::Bg2,
         );
 
-        if bg2_col.priority && !bg2_col.transparent {
+        if bg2_col.priority != 0 && !bg2_col.transparent {
             if main_col.is_none() && self.bg2_main_enabled() {
                 main_col = Some(bg2_col.raw_color);
             }
@@ -2106,13 +2079,17 @@ impl Ppu5C7x {
             return (main_col, sub_col);
         }
 
-        let bg3_col = mode0_bg_col(
-            (self.bg3_vram_addr() as u16) << 10,
-            (self.bg3_chr_base_addr() as u16) << 12,
+        let bg3_col = self.bg_col_2bpp(
+            tilemap_idx,
+            tile_row,
+            tile_col,
+            self.bg3_vram_base_addr(),
+            self.bg3_chr_base_addr(),
             BG3_BASE_CGRAM_ADDR,
+            ColorLayer::Bg3,
         );
 
-        if bg3_col.priority && !bg3_col.transparent {
+        if bg3_col.priority != 0 && !bg3_col.transparent {
             if main_col.is_none() && self.bg3_main_enabled() {
                 main_col = Some(bg3_col.raw_color);
             }
@@ -2126,13 +2103,17 @@ impl Ppu5C7x {
             return (main_col, sub_col);
         }
 
-        let bg4_col = mode0_bg_col(
-            (self.bg4_vram_addr() as u16) << 10,
-            (self.bg4_chr_base_addr() as u16) << 12,
+        let bg4_col = self.bg_col_2bpp(
+            tilemap_idx,
+            tile_row,
+            tile_col,
+            self.bg4_vram_base_addr(),
+            self.bg4_chr_base_addr(),
             BG4_BASE_CGRAM_ADDR,
+            ColorLayer::Bg4,
         );
 
-        if bg4_col.priority && !bg4_col.transparent {
+        if bg4_col.priority != 0 && !bg4_col.transparent {
             if main_col.is_none() && self.bg4_main_enabled() {
                 main_col = Some(bg4_col.raw_color);
             }
@@ -2183,8 +2164,139 @@ impl Ppu5C7x {
         (main_col.unwrap(), sub_col.unwrap())
     }
 
-    fn bg_mode1_dot(&mut self, frame_buffer: &mut [XRGB8888]) {
+    fn bg_mode1_dot(&mut self, screen_x: usize, screen_y: usize, spr_col: ColorData) -> u16 {
+        let main_col = self.bg_mode1_main_col(screen_x, screen_y, spr_col);
 
+        let color_math_en = match main_col.layer {
+            ColorLayer::Bg1 => self.bg1_cmath_enabled(),
+            ColorLayer::Bg2 => self.bg2_cmath_enabled(),
+            ColorLayer::Bg3 => self.bg3_cmath_enabled(),
+            ColorLayer::Bg4 => self.bg4_cmath_enabled(),
+            ColorLayer::Obj => self.obj_cmath_enabled(),
+            ColorLayer::Back => false,
+        };
+
+        let final_col = if color_math_en {
+            let sub_color = self.bg_mode1_sub_col(main_col.layer);
+
+            main_col.raw_color
+        } else {
+            main_col.raw_color
+        };
+
+        final_col
+    }
+
+    /// Computes the color of the dot on the main screen given by the highest 
+    /// priority non-transparent layer.
+    fn bg_mode1_main_col(&mut self, screen_x: usize, screen_y: usize, spr_col: ColorData) -> ColorData {
+        const BG1_CGRAM_BASE_ADDR: u16 = 0x0000;
+        const BG2_CGRAM_BASE_ADDR: u16 = 0x0000;
+        const BG3_CGRAM_BASE_ADDR: u16 = 0x0000;
+
+        let bg1_tilemap_data = self.bg_tile_idx(
+            screen_x, screen_y,
+            self.bg1_m7_x_offset(),
+            self.bg1_m7_y_offset(),
+            self.bg1_tile_size(),
+        );
+        let bg2_tilemap_data = self.bg_tile_idx(
+            screen_x, screen_y,
+            self.bg2_x_offset(),
+            self.bg2_y_offset(),
+            self.bg2_tile_size(),
+        );
+        let bg3_tilemap_data = self.bg_tile_idx(
+            screen_x, screen_y,
+            self.bg3_x_offset(),
+            self.bg3_y_offset(),
+            self.bg3_tile_size(),
+        );
+
+
+        let bg3_col = self.bg_col_2bpp(
+            bg3_tilemap_data.tilemap_idx, 
+            bg3_tilemap_data.tile_row, 
+            bg3_tilemap_data.tile_col, 
+            self.bg3_vram_base_addr(), 
+            self.bg3_chr_base_addr(), 
+            BG3_CGRAM_BASE_ADDR,
+            ColorLayer::Bg3,
+        );
+
+        if self.bg3_main_enabled() && self.bg3_priority() 
+            && bg3_col.priority != 0 && !bg3_col.transparent {
+
+            return bg3_col;
+        }
+
+        if self.obj_main_enabled() && spr_col.priority == 3 && !spr_col.transparent {
+            return spr_col;
+        }
+
+        let bg1_col = self.bg_col_4bpp(
+            bg1_tilemap_data.tilemap_idx, 
+            bg1_tilemap_data.tile_row, 
+            bg1_tilemap_data.tile_col, 
+            self.bg1_vram_base_addr(), 
+            self.bg1_chr_base_addr(), 
+            BG1_CGRAM_BASE_ADDR,
+            ColorLayer::Bg1,
+        );
+
+        if self.bg1_main_enabled() && bg1_col.priority != 0 && !bg1_col.transparent {
+            return bg1_col;
+        }
+
+        let bg2_col = self.bg_col_4bpp(
+            bg2_tilemap_data.tilemap_idx, 
+            bg2_tilemap_data.tile_row, 
+            bg2_tilemap_data.tile_col, 
+            self.bg2_vram_base_addr(), 
+            self.bg2_chr_base_addr(), 
+            BG2_CGRAM_BASE_ADDR,
+            ColorLayer::Bg2,
+        );
+
+        if self.bg2_main_enabled() && bg2_col.priority != 0 && !bg2_col.transparent {
+            return bg2_col;
+        }
+
+        if self.obj_main_enabled() && spr_col.priority == 2 && !spr_col.transparent {
+            return spr_col;
+        }
+
+        if self.bg1_main_enabled() && !bg1_col.transparent {
+            return bg1_col;
+        }
+
+        if self.bg2_main_enabled() && !bg2_col.transparent {
+            return bg2_col;
+        }
+
+        if self.obj_main_enabled() && spr_col.priority == 1 && !spr_col.transparent {
+            return spr_col;
+        }
+
+        if self.bg3_main_enabled() && bg3_col.priority != 0 && !bg3_col.transparent {
+            return bg3_col;
+        }
+
+        if self.obj_main_enabled() && !spr_col.transparent {
+            return spr_col;
+        }
+
+        ColorData {
+            raw_color: self.transparent_color(),
+            priority: 0,
+            transparent: true,
+            layer: ColorLayer::Back
+        }
+    }
+
+    /// Computes the color of given layer on the sub screen
+    fn bg_mode1_sub_col(&mut self, layer: ColorLayer) -> ColorData {
+        ColorData { raw_color: 0, priority: 0, transparent: true, layer: ColorLayer::Back }
     }
 
     fn bg_mode2_dot(&mut self, frame_buffer: &mut [XRGB8888]) {
@@ -2211,10 +2323,130 @@ impl Ppu5C7x {
 
     }
 
+    fn bg_tile_idx(&self, screen_x: usize, screen_y: usize, 
+        scroll_x: u16, scroll_y: u16, tile_size: TileSize) -> TilePosData {
+
+        match tile_size {
+            TileSize::Size8x8 => {
+                let shifted_x = ((screen_x as u16) - (scroll_x as u16 & 0x1FF)) & 0xFF;
+                let shifted_y = ((screen_y as u16) - (scroll_y as u16 & 0x1FF)) & 0xFF;
+
+                let tilemap_idx = ((shifted_y >> 3) << 5) | (shifted_x >> 3);
+
+                TilePosData {
+                    tilemap_idx,
+                    tile_row: (shifted_y & 7) as u8,
+                    tile_col: (shifted_x & 7) as u8,
+                }
+            }
+
+            TileSize::Size16x16 => {
+                let shifted_x = ((screen_x as u16) - (scroll_x as u16 & 0x3FF)) & 0xFF;
+                let shifted_y = ((screen_y as u16) - (scroll_y as u16 & 0x3FF)) & 0xFF;
+
+                let tilemap_idx = (shifted_y & 0xF0) | (shifted_x >> 4);
+
+                TilePosData {
+                    tilemap_idx,
+                    tile_row: (shifted_y & 0xF) as u8,
+                    tile_col: (shifted_x & 0xF) as u8,
+                }
+            }
+        }
+    }
+
+    fn bg_col_2bpp(&self, tilemap_idx: u16, tile_row: u8, tile_col: u8,
+        bg_vram_base_addr: u16, bg_chr_base_addr: u16,
+        bg_cgram_base_addr: u16, layer: ColorLayer) -> ColorData {
+
+            let tile_data_addr = bg_vram_base_addr + tilemap_idx;
+
+            let tile_data = self.vram_read(tile_data_addr);
+            let tile_chr_idx = tile_data & 0x3FF;
+            let tile_pal = (tile_data >> 10) & 7;
+            let tile_priority = ((tile_data >> 13) & 1) as u8;
+            let flip_x = (tile_data & 0x4000) != 0; // TODO: implement h/v flipping
+            let flip_y = (tile_data & 0x8000) != 0;
+
+            let tile_chr_addr = bg_chr_base_addr + (tile_chr_idx << 3) + tile_row as u16;
+
+            let bp01 = self.vram_read(tile_chr_addr);
+
+            let b0 = (bp01 >> (7-tile_col)) & 1;
+            let b1 = (bp01 >> (15-tile_col)) & 1;
+
+            let pal_idx = (b1 << 1) | b0;
+            
+            let cgram_addr = bg_cgram_base_addr | (tile_pal << 2) | pal_idx;
+
+            let raw_color = if pal_idx == 0 {
+                self.transparent_color()
+            } else {
+                self.registers.cgram.0[cgram_addr as usize].get()
+            };
+
+            ColorData {
+                raw_color,
+                priority: tile_priority,
+                transparent: pal_idx == 0,
+                layer
+            }
+        }
+
+    fn bg_col_4bpp(&self, tilemap_idx: u16, tile_row: u8, tile_col: u8,
+        bg_vram_base_addr: u16, bg_chr_base_addr: u16,
+        bg_cgram_base_addr: u16, layer: ColorLayer) -> ColorData {
+
+            let tile_data_addr = bg_vram_base_addr + tilemap_idx;
+
+            let tile_data = self.vram_read(tile_data_addr);
+            let tile_chr_idx = tile_data & 0x3FF;
+            let tile_pal = (tile_data >> 10) & 7;
+            let tile_priority = ((tile_data >> 13) & 1) as u8;
+            let flip_x = (tile_data & 0x4000) != 0; // TODO: implement h/v flipping
+            let flip_y = (tile_data & 0x8000) != 0;
+
+            let tile_chr_addr = bg_chr_base_addr + (tile_chr_idx << 4) + (tile_row << 1) as u16;
+
+            let bp01 = self.vram_read(tile_chr_addr + 0);
+            let bp23 = self.vram_read(tile_chr_addr + 1);
+
+            let b0 = (bp01 >> (7-tile_col)) & 1;
+            let b1 = (bp01 >> (15-tile_col)) & 1;
+            let b2 = (bp23 >> (7-tile_col)) & 1;
+            let b3 = (bp23 >> (15-tile_col)) & 1;
+
+            let pal_idx = (b3 << 3) | (b2 << 2) | (b1 << 1) | b0;
+            
+            let cgram_addr = bg_cgram_base_addr | (tile_pal << 4) | pal_idx;
+
+            let raw_color = if pal_idx == 0 {
+                self.transparent_color()
+            } else {
+                self.registers.cgram.0[cgram_addr as usize].get()
+            };
+
+            ColorData {
+                raw_color,
+                priority: tile_priority,
+                transparent: pal_idx == 0,
+                layer
+            }
+    }
 }
 
 // Getters & Setters for registers
 impl Ppu5C7x {
+    fn bg1_vram_base_addr(&self) -> u16 { (self.registers.bg1_vram_addr.get() as u16) << 10 }
+    fn bg2_vram_base_addr(&self) -> u16 { (self.registers.bg2_vram_addr.get() as u16) << 10 }
+    fn bg3_vram_base_addr(&self) -> u16 { (self.registers.bg3_vram_addr.get() as u16) << 10 }
+    fn bg4_vram_base_addr(&self) -> u16 { (self.registers.bg4_vram_addr.get() as u16) << 10 }
+
+    fn bg1_chr_base_addr(&self) -> u16 { (self.registers.bg1_chr_base_addr.get() as u16) << 12 }    
+    fn bg2_chr_base_addr(&self) -> u16 { (self.registers.bg2_chr_base_addr.get() as u16) << 12 }
+    fn bg3_chr_base_addr(&self) -> u16 { (self.registers.bg3_chr_base_addr.get() as u16) << 12 }
+    fn bg4_chr_base_addr(&self) -> u16 { (self.registers.bg4_chr_base_addr.get() as u16) << 12 }
+
     fn screen_brightness(&self) -> u8 { self.registers.screen_brightness.get() }
     fn obj_sprite_size(&self) -> ObjectSizeSelect { self.registers.obj_sprite_size.get() }
     fn name_secondary_select(&self) -> u8 { self.registers.name_secondary_select.get() }
@@ -2223,33 +2455,25 @@ impl Ppu5C7x {
     fn priority_rotation(&self) -> bool { self.registers.priority_rotation.get() }
     fn oam_data(&self) -> u8 { self.registers.oam_data.get() }
     fn oam_data_latch(&self) -> u8 { self.registers.oam_data_latch.get() }
-    fn bg4_char_size(&self) -> CharSize { self.registers.bg4_char_size.get() }
-    fn bg3_char_size(&self) -> CharSize { self.registers.bg3_char_size.get() }
-    fn bg2_char_size(&self) -> CharSize { self.registers.bg2_char_size.get() }
-    fn bg1_char_size(&self) -> CharSize { self.registers.bg1_char_size.get() }
-    fn bg3_priority(&self) -> BgPriority { self.registers.bg3_priority.get() }
+    fn bg4_char_size(&self) -> TileSize { self.registers.bg4_char_size.get() }
+    fn bg3_tile_size(&self) -> TileSize { self.registers.bg3_char_size.get() }
+    fn bg2_tile_size(&self) -> TileSize { self.registers.bg2_char_size.get() }
+    fn bg1_tile_size(&self) -> TileSize { self.registers.bg1_char_size.get() }
+    fn bg3_priority(&self) -> bool { self.registers.bg3_priority.get() }
     fn bg_mode(&self) -> BgMode { self.registers.bg_mode.get() }
     fn mosaic_size(&self) -> u8 { self.registers.mosaic_size.get() }
     fn bg4_mosaic(&self) -> bool { self.registers.bg4_mosaic.get() }
     fn bg3_mosaic(&self) -> bool { self.registers.bg3_mosaic.get() }
     fn bg2_mosaic(&self) -> bool { self.registers.bg2_mosaic.get() }
     fn bg1_mosaic(&self) -> bool { self.registers.bg1_mosaic.get() }
-    fn bg1_vram_addr(&self) -> u8 { self.registers.bg1_vram_addr.get() }
     fn bg1_tilemap_count_y(&self) -> TilemapCount { self.registers.bg1_tilemap_count_y.get() }
     fn bg1_tilemap_count_x(&self) -> TilemapCount { self.registers.bg1_tilemap_count_x.get() }
-    fn bg2_vram_addr(&self) -> u8 { self.registers.bg2_vram_addr.get() }
     fn bg2_tilemap_count_y(&self) -> TilemapCount { self.registers.bg2_tilemap_count_y.get() }
     fn bg2_tilemap_count_x(&self) -> TilemapCount { self.registers.bg2_tilemap_count_x.get() }
-    fn bg3_vram_addr(&self) -> u8 { self.registers.bg3_vram_addr.get() }
     fn bg3_tilemap_count_y(&self) -> TilemapCount { self.registers.bg3_tilemap_count_y.get() }
     fn bg3_tilemap_count_x(&self) -> TilemapCount { self.registers.bg3_tilemap_count_x.get() }
-    fn bg4_vram_addr(&self) -> u8 { self.registers.bg4_vram_addr.get() }
     fn bg4_tilemap_count_y(&self) -> TilemapCount { self.registers.bg4_tilemap_count_y.get() }
     fn bg4_tilemap_count_x(&self) -> TilemapCount { self.registers.bg4_tilemap_count_x.get() }
-    fn bg2_chr_base_addr(&self) -> u8 { self.registers.bg2_chr_base_addr.get() }
-    fn bg1_chr_base_addr(&self) -> u8 { self.registers.bg1_chr_base_addr.get() }
-    fn bg4_chr_base_addr(&self) -> u8 { self.registers.bg4_chr_base_addr.get() }
-    fn bg3_chr_base_addr(&self) -> u8 { self.registers.bg3_chr_base_addr.get() }
     fn m7_latch(&self) -> u8 { self.registers.m7_latch.get() }
     fn bg_offset_latch(&self) -> u8 { self.registers.bg_offset_latch.get() }
     fn bg_offset_x_latch(&self) -> u8 { self.registers.bg_offset_x_latch.get() }
@@ -2341,11 +2565,11 @@ impl Ppu5C7x {
     fn cmath_operator(&self) -> CMathOperator { self.registers.cmath_operator.get() }
     fn cmath_half(&self) -> bool { self.registers.cmath_half.get() }
     fn cmath_backdrop(&self) -> bool { self.registers.cmath_backdrop.get() }
-    fn cmath_obj_enabled(&self) -> bool { self.registers.cmath_obj_enabled.get() }
-    fn cmath_bg4_enabled(&self) -> bool { self.registers.cmath_bg4_enabled.get() }
-    fn cmath_bg3_enabled(&self) -> bool { self.registers.cmath_bg3_enabled.get() }
-    fn cmath_bg2_enabled(&self) -> bool { self.registers.cmath_bg2_enabled.get() }
-    fn cmath_bg1_enabled(&self) -> bool { self.registers.cmath_bg1_enabled.get() }
+    fn obj_cmath_enabled(&self) -> bool { self.registers.obj_cmath_enabled.get() }
+    fn bg4_cmath_enabled(&self) -> bool { self.registers.bg4_cmath_enabled.get() }
+    fn bg3_cmath_enabled(&self) -> bool { self.registers.bg3_cmath_enabled.get() }
+    fn bg2_cmath_enabled(&self) -> bool { self.registers.bg2_cmath_enabled.get() }
+    fn bg1_cmath_enabled(&self) -> bool { self.registers.bg1_cmath_enabled.get() }
     fn fixed_color(&self) -> u16 { self.registers.fixed_color.get() }
     fn _external_sync(&self) -> bool { self.registers._external_sync.get() }
     fn ext_bg_enabled(&self) -> bool { self.registers.ext_bg_enabled.get() }
@@ -2374,165 +2598,4 @@ impl Ppu5C7x {
     fn v_counter(&self) -> u16 { self.registers.v_counter.get() }
 
     fn vram_read(&self, address: u16) -> u16 { self.registers.vram.0[(address & 0x7FFF) as usize].get() }
-}
-
-
-pub fn dump_ppu_state(ppu: &Ppu5C7x) {
-    println!("screen_brightness: {:?}", ppu.screen_brightness());
-    println!("obj_sprite_size: {:?}", ppu.obj_sprite_size());
-    println!("name_secondary_select: {:?}", ppu.name_secondary_select());
-    println!("name_base_addr: {:?}", ppu.name_base_addr());
-    println!("oam_addr: {:?}", ppu.oam_addr());
-    println!("priority_rotation: {:?}", ppu.priority_rotation());
-    println!("oam_data: {:?}", ppu.oam_data());
-    println!("oam_data_latch: {:?}", ppu.oam_data_latch());
-    println!("bg4_char_size: {:?}", ppu.bg4_char_size());
-    println!("bg3_char_size: {:?}", ppu.bg3_char_size());
-    println!("bg2_char_size: {:?}", ppu.bg2_char_size());
-    println!("bg1_char_size: {:?}", ppu.bg1_char_size());
-    println!("bg3_priority: {:?}", ppu.bg3_priority());
-    println!("bg_mode: {:?}", ppu.bg_mode());
-    println!("mosaic_size: {:?}", ppu.mosaic_size());
-    println!("bg4_mosaic: {:?}", ppu.bg4_mosaic());
-    println!("bg3_mosaic: {:?}", ppu.bg3_mosaic());
-    println!("bg2_mosaic: {:?}", ppu.bg2_mosaic());
-    println!("bg1_mosaic: {:?}", ppu.bg1_mosaic());
-    println!("bg1_vram_addr: ${:04X}", ((ppu.bg1_vram_addr() as u16) << 10) & 0x7FFF);
-    println!("bg1_tilemap_count_y: {:?}", ppu.bg1_tilemap_count_y());
-    println!("bg1_tilemap_count_x: {:?}", ppu.bg1_tilemap_count_x());
-    println!("bg2_vram_addr: {:?}", ppu.bg2_vram_addr());
-    println!("bg2_tilemap_count_y: {:?}", ppu.bg2_tilemap_count_y());
-    println!("bg2_tilemap_count_x: {:?}", ppu.bg2_tilemap_count_x());
-    println!("bg3_vram_addr: {:?}", ppu.bg3_vram_addr());
-    println!("bg3_tilemap_count_y: {:?}", ppu.bg3_tilemap_count_y());
-    println!("bg3_tilemap_count_x: {:?}", ppu.bg3_tilemap_count_x());
-    println!("bg4_vram_addr: {:?}", ppu.bg4_vram_addr());
-    println!("bg4_tilemap_count_y: {:?}", ppu.bg4_tilemap_count_y());
-    println!("bg4_tilemap_count_x: {:?}", ppu.bg4_tilemap_count_x());
-    println!("bg2_chr_base_addr: {:?}", ppu.bg2_chr_base_addr());
-    println!("bg1_chr_base_addr: {:?}", ppu.bg1_chr_base_addr());
-    println!("bg4_chr_base_addr: {:?}", ppu.bg4_chr_base_addr());
-    println!("bg3_chr_base_addr: {:?}", ppu.bg3_chr_base_addr());
-    println!("m7_latch: {:?}", ppu.m7_latch());
-    println!("bg_offset_latch: {:?}", ppu.bg_offset_latch());
-    println!("bg_offset_x_latch: {:?}", ppu.bg_offset_x_latch());
-    println!("bg1_m7_x_offset: {:?}", ppu.bg1_m7_x_offset());
-    println!("bg1_m7_y_offset: {:?}", ppu.bg1_m7_y_offset());
-    println!("bg2_x_offset: {:?}", ppu.bg2_x_offset());
-    println!("bg2_y_offset: {:?}", ppu.bg2_y_offset());
-    println!("bg3_x_offset: {:?}", ppu.bg3_x_offset());
-    println!("bg3_y_offset: {:?}", ppu.bg3_y_offset());
-    println!("bg4_x_offset: {:?}", ppu.bg4_x_offset());
-    println!("bg4_y_offset: {:?}", ppu.bg4_y_offset());
-    println!("vram_addr_inc_mode: {:?}", ppu.vram_addr_inc_mode());
-    println!("addr_remap_mode: {:?}", ppu.addr_remap_mode());
-    println!("addr_inc_size: {:?}", ppu.addr_inc_size());
-    println!("vram_addr: ${:04X}", ppu.vram_addr());
-    println!("vram_data: {:?}", ppu.vram_data());
-    println!("m7_tilemap_repeat: {:?}", ppu.m7_tilemap_repeat());
-    println!("m7_fill_mode: {:?}", ppu.m7_fill_mode());
-    println!("m7_flip_bg_y: {:?}", ppu.m7_flip_bg_y());
-    println!("m7_flip_bg_x: {:?}", ppu.m7_flip_bg_x());
-    println!("m7_matrix_a: {:?}", ppu.m7_matrix_a());
-    println!("m7_matrix_b: {:?}", ppu.m7_matrix_b());
-    println!("m7_matrix_c: {:?}", ppu.m7_matrix_c());
-    println!("m7_matrix_d: {:?}", ppu.m7_matrix_d());
-    println!("m7_center_x: {:?}", ppu.m7_center_x());
-    println!("m7_center_y: {:?}", ppu.m7_center_y());
-    println!("cgram_toggle: {:?}", ppu.cgram_toggle());
-    println!("cgram_addr: {:?}", ppu.cgram_addr());
-    println!("cgram_latch: {:?}", ppu.cgram_latch());
-    println!("cgram_data: {:?}", ppu.cgram_data());
-    println!("bg2_w2_enabled: {:?}", ppu.bg2_w2_enabled());
-    println!("bg2_w2_inverted: {:?}", ppu.bg2_w2_inverted());
-    println!("bg2_w1_enabled: {:?}", ppu.bg2_w1_enabled());
-    println!("bg2_w1_inverted: {:?}", ppu.bg2_w1_inverted());
-    println!("bg1_w2_enabled: {:?}", ppu.bg1_w2_enabled());
-    println!("bg1_w2_inverted: {:?}", ppu.bg1_w2_inverted());
-    println!("bg1_w1_enabled: {:?}", ppu.bg1_w1_enabled());
-    println!("bg1_w1_inverted: {:?}", ppu.bg1_w1_inverted());
-    println!("bg4_w2_enabled: {:?}", ppu.bg4_w2_enabled());
-    println!("bg4_w2_inverted: {:?}", ppu.bg4_w2_inverted());
-    println!("bg4_w1_enabled: {:?}", ppu.bg4_w1_enabled());
-    println!("bg4_w1_inverted: {:?}", ppu.bg4_w1_inverted());
-    println!("bg3_w2_enabled: {:?}", ppu.bg3_w2_enabled());
-    println!("bg3_w2_inverted: {:?}", ppu.bg3_w2_inverted());
-    println!("bg3_w1_enabled: {:?}", ppu.bg3_w1_enabled());
-    println!("bg3_w1_inverted: {:?}", ppu.bg3_w1_inverted());
-    println!("col_w2_enabled: {:?}", ppu.col_w2_enabled());
-    println!("col_w2_inverted: {:?}", ppu.col_w2_inverted());
-    println!("col_w1_enabled: {:?}", ppu.col_w1_enabled());
-    println!("col_w1_inverted: {:?}", ppu.col_w1_inverted());
-    println!("obj_w2_enabled: {:?}", ppu.obj_w2_enabled());
-    println!("obj_w2_inverted: {:?}", ppu.obj_w2_inverted());
-    println!("obj_w1_enabled: {:?}", ppu.obj_w1_enabled());
-    println!("obj_w1_inverted: {:?}", ppu.obj_w1_inverted());
-    println!("w1_left_pos: {:?}", ppu.w1_left_pos());
-    println!("w1_right_pos: {:?}", ppu.w1_right_pos());
-    println!("w2_left_pos: {:?}", ppu.w2_left_pos());
-    println!("w2_right_pos: {:?}", ppu.w2_right_pos());
-    println!("bg4_win_logic: {:?}", ppu.bg4_win_logic());
-    println!("bg3_win_logic: {:?}", ppu.bg3_win_logic());
-    println!("bg2_win_logic: {:?}", ppu.bg2_win_logic());
-    println!("bg1_win_logic: {:?}", ppu.bg1_win_logic());
-    println!("obj_win_logic: {:?}", ppu.obj_win_logic());
-    println!("col_win_logic: {:?}", ppu.col_win_logic());
-    println!("main_obj_enabled: {:?}", ppu.obj_main_enabled());
-    println!("main_l4_enabled: {:?}", ppu.bg4_main_enabled());
-    println!("main_l3_enabled: {:?}", ppu.bg3_main_enabled());
-    println!("main_l2_enabled: {:?}", ppu.bg2_main_enabled());
-    println!("main_l1_enabled: {:?}", ppu.bg1_main_enabled());
-    println!("sub_obj_enabled: {:?}", ppu.obj_sub_enabled());
-    println!("bg4_sub_enabled: {:?}", ppu.bg4_sub_enabled());
-    println!("bg3_sub_enabled: {:?}", ppu.bg3_sub_enabled());
-    println!("bg2_sub_enabled: {:?}", ppu.bg2_sub_enabled());
-    println!("bg1_sub_enabled: {:?}", ppu.bg1_sub_enabled());
-    println!("main_obj_win_enabled: {:?}", ppu.main_obj_win_enabled());
-    println!("bg4_win_main_enabled: {:?}", ppu.bg4_win_main_enabled());
-    println!("bg3_win_main_enabled: {:?}", ppu.bg3_win_main_enabled());
-    println!("bg2_win_main_enabled: {:?}", ppu.bg2_win_main_enabled());
-    println!("bg1_win_main_enabled: {:?}", ppu.bg1_win_main_enabled());
-    println!("sub_obj_win_enabled: {:?}", ppu.sub_obj_win_enabled());
-    println!("bg4_win_sub_enabled: {:?}", ppu.bg4_win_sub_enabled());
-    println!("bg3_win_sub_enabled: {:?}", ppu.bg3_win_sub_enabled());
-    println!("bg2_win_sub_enabled: {:?}", ppu.bg2_win_sub_enabled());
-    println!("bg1_win_sub_enabled: {:?}", ppu.bg1_win_sub_enabled());
-    println!("main_col_win_black_region: {:?}", ppu.main_col_win_black_region());
-    println!("sub_col_win_transparent_region: {:?}", ppu.sub_col_win_transparent_region());
-    println!("cmath_addend: {:?}", ppu.cmath_addend());
-    println!("direct_col_mode: {:?}", ppu.direct_col_mode());
-    println!("cmath_operator: {:?}", ppu.cmath_operator());
-    println!("cmath_half: {:?}", ppu.cmath_half());
-    println!("cmath_backdrop: {:?}", ppu.cmath_backdrop());
-    println!("cmath_obj_enabled: {:?}", ppu.cmath_obj_enabled());
-    println!("cmath_bg4_enabled: {:?}", ppu.cmath_bg4_enabled());
-    println!("cmath_bg3_enabled: {:?}", ppu.cmath_bg3_enabled());
-    println!("cmath_bg2_enabled: {:?}", ppu.cmath_bg2_enabled());
-    println!("cmath_bg1_enabled: {:?}", ppu.cmath_bg1_enabled());
-    println!("fixed_color: {:?}", ppu.fixed_color());
-    println!("_external_sync: {:?}", ppu._external_sync());
-    println!("ext_bg_enabled: {:?}", ppu.ext_bg_enabled());
-    println!("hi_res_enabled: {:?}", ppu.hi_res_enabled());
-    println!("overscan_enabled: {:?}", ppu.overscan_enabled());
-    println!("obj_interlace_enabled: {:?}", ppu.obj_interlace_enabled());
-    println!("screen_interlace_enabled: {:?}", ppu.screen_interlace_enabled());
-    println!("multiply_result: {:?}", ppu.multiply_result());
-    println!("vram_latch: {:?}", ppu.vram_latch());
-    println!("h_counter_toggle: {:?}", ppu.h_counter_toggle());
-    println!("h_counter_latch: {:?}", ppu.h_counter_latch());
-    println!("v_counter_toggle: {:?}", ppu.v_counter_toggle());
-    println!("v_counter_latch: {:?}", ppu.v_counter_latch());
-    println!("sprite_overflow: {:?}", ppu.sprite_overflow());
-    println!("sprite_tile_overflow: {:?}", ppu.sprite_tile_overflow());
-    println!("master_slave_state: {:?}", ppu.master_slave_state());
-    println!("ppu1_version: {:?}", ppu.ppu1_version());
-    println!("interlace_field: {:?}", ppu.interlace_field());
-    println!("counter_toggle: {:?}", ppu.counter_toggle());
-    println!("video_type: {:?}", ppu.video_type());
-    println!("ppu2_version: {:?}", ppu.ppu2_version());
-    println!("in_vblank: {:?}", ppu.in_vblank());
-    println!("in_hblank: {:?}", ppu.in_hblank());
-    println!("in_fblank: {:?}", ppu.in_fblank());
-    println!("h_counter: {:?}", ppu.h_counter());
-    println!("v_counter: {:?}", ppu.v_counter());
 }
