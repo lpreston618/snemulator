@@ -233,9 +233,9 @@ impl Cartridge {
     }
 
     // The size of the cartridge ROM (in KiB). Always a power of 2.
-    pub fn rom_size(&self) -> usize {
-        (1 << self.header.rom_size) * 1024
-    }
+    // pub fn rom_size(&self) -> usize {
+    //     (1 << self.header.rom_size) * 1024
+    // }
 }
 
 /// Pad the ROM data to a power of two size, correctly mirroring the smaller
@@ -248,7 +248,7 @@ fn pad_rom(rom: Vec<u8>) -> Result<Vec<u8>, String> {
             // Get the width of the binary representation of ROM size.
             // Ex: if rom size is 1024 bytes, bitwidth = 10 (2^10 = 1024).
             let bitwidth = rom.len().ilog2() as usize;
-            let larger_size = 1usize << bitwidth;
+            let larger_size = 1 << bitwidth;
             let smaller_size = rom.len() & (larger_size - 1);
             let repeat_count = larger_size / smaller_size;
 
@@ -264,9 +264,9 @@ fn pad_rom(rom: Vec<u8>) -> Result<Vec<u8>, String> {
         }
         _ => {
             let bitwidth = rom.len().ilog2() as usize;
-            let larger_size = 1usize << bitwidth;
+            let larger_size = 1 << bitwidth;
             let smaller_size = rom.len() & (larger_size - 1);
-            let smaller_pow2_size = smaller_size.next_power_of_two(); // WTH rust just has this?
+            let smaller_pow2_size = smaller_size.next_power_of_two();
             let repeat_count = larger_size / smaller_pow2_size;
 
             let mut padded_rom = rom[..larger_size].to_vec();

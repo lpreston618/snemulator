@@ -223,24 +223,20 @@ impl Cpu65c816 {
 
     /// Sets the CPU to its proper initial state. Can be triggered by an interrupt.
     pub fn initialize(&mut self) {
-        self.mode = CpuMode::Emulation;
-        self.x &= 0x00FF;
-        self.y &= 0x00FF;
+        self.x = 0;
+        self.y = 0;
         self.data_bank = 0;
         self.prg_bank = 0;
         self.direct_page = 0;
-        // Sets SP to 0x01nn, where nn retains its previous value pre-reset.
-        self.stk_ptr &= 0x00FF;
-        self.stk_ptr |= 0x0100;
-        // Sets status to nn1101n1.
-        self.status &= 0xF7;
-        self.status |= 0x35;
+        self.stk_ptr = 0x01FF;
+        self.status = 0x34;
+        self.reset();
     }
 
     pub fn load_cart(&mut self, cart: &Cartridge) {
         self.mapping_mode = cart.mapping_mode();
-        self.rom_mirror = cart.rom_size() - 1;
         self.rom = cart.rom_data();
+        self.rom_mirror = self.rom.len() - 1;
     }
 
     pub fn reset(&mut self) {
