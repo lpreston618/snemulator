@@ -513,35 +513,35 @@ pub struct PpuData {
 
     // $212C    ...O 4321    Write Only
     //       - Main screen layer enable (#)
-    main_obj_enabled: Cell<bool>,
-    main_l4_enabled: Cell<bool>,
-    main_l3_enabled: Cell<bool>,
-    main_l2_enabled: Cell<bool>,
-    main_l1_enabled: Cell<bool>,
+    obj_main_enabled: Cell<bool>,
+    bg4_main_enabled: Cell<bool>,
+    bg3_main_enabled: Cell<bool>,
+    bg2_main_enabled: Cell<bool>,
+    bg1_main_enabled: Cell<bool>,
 
     // $212D    ...O 4321    Write Only
     //       - Sub screen layer enable (#)
-    sub_obj_enabled: Cell<bool>,
-    sub_l4_enabled: Cell<bool>,
-    sub_l3_enabled: Cell<bool>,
-    sub_l2_enabled: Cell<bool>,
-    sub_l1_enabled: Cell<bool>,
+    obj_sub_enabled: Cell<bool>,
+    bg4_sub_enabled: Cell<bool>,
+    bg3_sub_enabled: Cell<bool>,
+    bg2_sub_enabled: Cell<bool>,
+    bg1_sub_enabled: Cell<bool>,
 
     // $212E    ...O 4321    Write Only
     //       - Main screen layer window enable
-    main_obj_win_enabled: Cell<bool>,
-    main_l4_win_enabled: Cell<bool>,
-    main_l3_win_enabled: Cell<bool>,
-    main_l2_win_enabled: Cell<bool>,
-    main_l1_win_enabled: Cell<bool>,
+    obj_win_main_enabled: Cell<bool>,
+    bg4_win_main_enabled: Cell<bool>,
+    bg3_win_main_enabled: Cell<bool>,
+    bg2_win_main_enabled: Cell<bool>,
+    bg1_win_main_enabled: Cell<bool>,
 
     // $212F    ...O 4321    Write Only
     //       - Sub screen layer window enable
-    sub_obj_win_enabled: Cell<bool>,
-    sub_l4_win_enabled: Cell<bool>,
-    sub_l3_win_enabled: Cell<bool>,
-    sub_l2_win_enabled: Cell<bool>,
-    sub_l1_win_enabled: Cell<bool>,
+    obj_win_sub_enabled: Cell<bool>,
+    bg4_win_sub_enabled: Cell<bool>,
+    bg3_win_sub_enabled: Cell<bool>,
+    bg2_win_sub_enabled: Cell<bool>,
+    bg1_win_sub_enabled: Cell<bool>,
 
     // $2130    MMSS ..AD    Write Only
     //       - main/sub screen color window black/transparent regions (MS)
@@ -1176,6 +1176,8 @@ impl PpuData {
                 self.bg1_w2_inverted.replace(data.bit_en(2));
                 self.bg1_w1_enabled.replace(data.bit_en(1));
                 self.bg1_w1_inverted.replace(data.bit_en(0));
+
+                println!("Wrote 0x{data:02X} to bg2&1 win enable and invert");
             }
 
             0x24 => {
@@ -1187,6 +1189,8 @@ impl PpuData {
                 self.bg3_w2_inverted.replace(data.bit_en(2));
                 self.bg3_w1_enabled.replace(data.bit_en(1));
                 self.bg3_w1_inverted.replace(data.bit_en(0));
+
+                println!("Wrote 0x{data:02X} to bg4&3 win enable and invert");
             }
 
             0x25 => {
@@ -1198,6 +1202,8 @@ impl PpuData {
                 self.obj_w2_inverted.replace(data.bit_en(2));
                 self.obj_w1_enabled.replace(data.bit_en(1));
                 self.obj_w1_inverted.replace(data.bit_en(0));
+
+                println!("Wrote 0x{data:02X} to obj&col win enable and invert");
             }
 
             0x26 => {
@@ -1277,35 +1283,43 @@ impl PpuData {
             }
 
             0x2C => {
-                self.main_obj_enabled.replace(data.bit_en(4));
-                self.main_l4_enabled.replace(data.bit_en(3));
-                self.main_l3_enabled.replace(data.bit_en(2));
-                self.main_l2_enabled.replace(data.bit_en(1));
-                self.main_l1_enabled.replace(data.bit_en(0));
+                self.obj_main_enabled.replace(data.bit_en(4));
+                self.bg4_main_enabled.replace(data.bit_en(3));
+                self.bg3_main_enabled.replace(data.bit_en(2));
+                self.bg2_main_enabled.replace(data.bit_en(1));
+                self.bg1_main_enabled.replace(data.bit_en(0));
+
+                println!("Set main screen enable to Obj: {}, Bg4: {}, Bg3: {}, Bg2: {}, Bg1: {}",
+                    self.obj_main_enabled.get(),
+                    self.bg4_main_enabled.get(),
+                    self.bg3_main_enabled.get(),
+                    self.bg2_main_enabled.get(),
+                    self.bg1_main_enabled.get(),
+                );
             }
 
             0x2D => {
-                self.sub_obj_enabled.replace(data.bit_en(4));
-                self.sub_l4_enabled.replace(data.bit_en(3));
-                self.sub_l3_enabled.replace(data.bit_en(2));
-                self.sub_l2_enabled.replace(data.bit_en(1));
-                self.sub_l1_enabled.replace(data.bit_en(0));
+                self.obj_sub_enabled.replace(data.bit_en(4));
+                self.bg4_sub_enabled.replace(data.bit_en(3));
+                self.bg3_sub_enabled.replace(data.bit_en(2));
+                self.bg2_sub_enabled.replace(data.bit_en(1));
+                self.bg1_sub_enabled.replace(data.bit_en(0));
             }
 
             0x2E => {
-                self.main_obj_win_enabled.replace(data.bit_en(4));
-                self.main_l4_win_enabled.replace(data.bit_en(3));
-                self.main_l3_win_enabled.replace(data.bit_en(2));
-                self.main_l2_win_enabled.replace(data.bit_en(1));
-                self.main_l1_win_enabled.replace(data.bit_en(0));
+                self.obj_win_main_enabled.replace(data.bit_en(4));
+                self.bg4_win_main_enabled.replace(data.bit_en(3));
+                self.bg3_win_main_enabled.replace(data.bit_en(2));
+                self.bg2_win_main_enabled.replace(data.bit_en(1));
+                self.bg1_win_main_enabled.replace(data.bit_en(0));
             }
 
             0x2F => {
-                self.sub_obj_win_enabled.replace(data.bit_en(4));
-                self.sub_l4_win_enabled.replace(data.bit_en(3));
-                self.sub_l3_win_enabled.replace(data.bit_en(2));
-                self.sub_l2_win_enabled.replace(data.bit_en(1));
-                self.sub_l1_win_enabled.replace(data.bit_en(0));
+                self.obj_win_sub_enabled.replace(data.bit_en(4));
+                self.bg4_win_sub_enabled.replace(data.bit_en(3));
+                self.bg3_win_sub_enabled.replace(data.bit_en(2));
+                self.bg2_win_sub_enabled.replace(data.bit_en(1));
+                self.bg1_win_sub_enabled.replace(data.bit_en(0));
             }
 
             0x30 => {
@@ -1820,13 +1834,13 @@ impl Ppu5C7x {
         //     self.registers.col_w2_inverted.get(),    
         //     self.registers.col_win_logic.get(),    
         // );                                                  
-        // let obj_win_en = window_enable(            
-        //     self.registers.obj_w1_enabled.get(),    
-        //     self.registers.obj_w1_inverted.get(),    
-        //     self.registers.obj_w2_enabled.get(),     
-        //     self.registers.obj_w2_inverted.get(),    
-        //     self.registers.obj_win_logic.get(),    
-        // );       
+        // let obj_win_en = window_enable(
+        //     self.registers.obj_w1_enabled.get(),
+        //     self.registers.obj_w1_inverted.get(),
+        //     self.registers.obj_w2_enabled.get(),
+        //     self.registers.obj_w2_inverted.get(),
+        //     self.registers.obj_win_logic.get(),
+        // );
 
         // self.bg1_display_chr_table(frame_buffer);
         // return;                                           
@@ -1856,6 +1870,10 @@ impl Ppu5C7x {
     /// Gets the color of the first visible sprite on the screen.
     fn sprite_dot(&mut self, screen_x: usize, screen_y: usize) -> SpriteColorData {
         let mut scanline_spr_cnt = self.scanline_spr_cnt;
+
+        if scanline_spr_cnt == 0 {
+            scanline_spr_cnt = 32;
+        }
 
         for i in 0..self.scanline_sprites.len() {
             scanline_spr_cnt -= 1;
@@ -1939,13 +1957,32 @@ impl Ppu5C7x {
     /// data. Computes only as many layers as it needs to before returning the
     /// color of the dot.
     fn bg_mode0_dot(&mut self, screen_x: usize, screen_y: usize, spr_col: SpriteColorData) -> u16 {
+        let (main_col, sub_col) = self.bg_mode0_main_sub_cols(screen_x, screen_y, spr_col);
+
+        main_col
+    }
+
+    fn bg_mode0_main_sub_cols(&mut self, screen_x: usize, screen_y: usize, spr_col: SpriteColorData) -> (u16, u16) {
         const BG1_BASE_CGRAM_ADDR: u16 = 0x00;
         const BG2_BASE_CGRAM_ADDR: u16 = 0x20;
         const BG3_BASE_CGRAM_ADDR: u16 = 0x40;
         const BG4_BASE_CGRAM_ADDR: u16 = 0x60;
 
+        let mut main_col: Option<u16> = None;
+        let mut sub_col: Option<u16> = None;
+
         if spr_col.priority == 3 && !spr_col.transparent {
-            return spr_col.raw_color;
+            if self.obj_main_enabled() {
+                main_col = Some(spr_col.raw_color);
+            }
+
+            if self.obj_sub_enabled() {
+                sub_col = Some(spr_col.raw_color);
+            }
+        }
+
+        if let (Some(main_col), Some(sub_col)) = (main_col, sub_col) {
+            return (main_col, sub_col);
         }
 
         let tile_x = (screen_x >> 3) as u16;
@@ -1967,22 +2004,6 @@ impl Ppu5C7x {
             let flip_y = (tile_data & 0x8000) != 0;
 
             let tile_chr_addr = bg_chr_base_addr + (tile_chr_idx << 3) + tile_row;
-
-            // if self.frame == 10 && screen_y == 34 && bg_cgram_base_addr == BG1_BASE_CGRAM_ADDR {
-            //     println!("x: {screen_x}, y: {screen_y}, tile_data: 0x{:04X}, tile_data_addr: ${tile_data_addr:04X}, chr addr ${:04X}, chr base addr: ${bg_chr_base_addr:04X}, chr data: 0x{:04X}", self.vram_read(tile_data_addr), tile_chr_addr, self.vram_read(tile_chr_addr));
-
-            //     if screen_x == 255 {
-            //         let mut vram_copy = Vec::new();
-
-            //         for i in 0xFC00..=0xFFFF {
-            //             vram_copy.push(self.vram_read(i));
-            //         }
-
-            //         hexdump16_at(&vram_copy, 0xFC00);
-
-            //         std::process::exit(0);
-            //     }
-            // }
 
             let tile_chr_data = self.vram_read(tile_chr_addr); // 2bpp bitplanes
             let b0 = (tile_chr_data >> (7-tile_col)) & 1;
@@ -2011,34 +2032,78 @@ impl Ppu5C7x {
             BG1_BASE_CGRAM_ADDR,
         );
 
+        if bg1_col.priority && !bg1_col.transparent {
+            if main_col.is_none() && self.bg1_main_enabled() {
+                main_col = Some(bg1_col.raw_color);
+            }
+
+            if sub_col.is_none() && self.bg1_sub_enabled() {
+                sub_col = Some(bg1_col.raw_color);
+            }
+        }
+
+        if let (Some(main_col), Some(sub_col)) = (main_col, sub_col) {
+            return (main_col, sub_col);
+        }
+
         let bg2_col = mode0_bg_col(
             (self.bg2_vram_addr() as u16) << 10,
             (self.bg2_chr_base_addr() as u16) << 12,
             BG2_BASE_CGRAM_ADDR,
         );
 
-        if bg1_col.priority && !bg1_col.transparent {
-            return bg1_col.raw_color;
-        }
-
         if bg2_col.priority && !bg2_col.transparent {
-            return bg2_col.raw_color;
+            if main_col.is_none() && self.bg2_main_enabled() {
+                main_col = Some(bg2_col.raw_color);
+            }
+
+            if sub_col.is_none() && self.bg2_sub_enabled() {
+                sub_col = Some(bg2_col.raw_color);
+            }
         }
 
         if spr_col.priority == 2 && !spr_col.transparent {
-            return spr_col.raw_color;
+            if main_col.is_none() && self.obj_main_enabled() {
+                main_col = Some(spr_col.raw_color);
+            }
+
+            if main_col.is_none() && self.obj_sub_enabled() {
+                sub_col = Some(spr_col.raw_color);
+            }
         }
 
         if !bg1_col.transparent {
-            return bg1_col.raw_color;
+            if main_col.is_none() && self.bg1_main_enabled() {
+                main_col = Some(bg1_col.raw_color);
+            }
+
+            if sub_col.is_none() && self.bg1_sub_enabled() {
+                sub_col = Some(bg1_col.raw_color);
+            }
         }
 
         if !bg2_col.transparent {
-            return bg2_col.raw_color;
+            if main_col.is_none() && self.bg2_main_enabled() {
+                main_col = Some(bg2_col.raw_color);
+            }
+
+            if sub_col.is_none() && self.bg2_sub_enabled() {
+                sub_col = Some(bg2_col.raw_color);
+            }
         }
 
         if spr_col.priority == 1 && !spr_col.transparent {
-            return spr_col.raw_color;
+            if main_col.is_none() && self.obj_main_enabled() {
+                main_col = Some(spr_col.raw_color);
+            }
+
+            if main_col.is_none() && self.obj_sub_enabled() {
+                sub_col = Some(spr_col.raw_color);
+            }
+        }
+
+        if let (Some(main_col), Some(sub_col)) = (main_col, sub_col) {
+            return (main_col, sub_col);
         }
 
         let bg3_col = mode0_bg_col(
@@ -2048,7 +2113,17 @@ impl Ppu5C7x {
         );
 
         if bg3_col.priority && !bg3_col.transparent {
-            return bg3_col.raw_color;
+            if main_col.is_none() && self.bg3_main_enabled() {
+                main_col = Some(bg3_col.raw_color);
+            }
+
+            if sub_col.is_none() && self.bg3_sub_enabled() {
+                sub_col = Some(bg3_col.raw_color);
+            }
+        }
+
+        if let (Some(main_col), Some(sub_col)) = (main_col, sub_col) {
+            return (main_col, sub_col);
         }
 
         let bg4_col = mode0_bg_col(
@@ -2058,22 +2133,54 @@ impl Ppu5C7x {
         );
 
         if bg4_col.priority && !bg4_col.transparent {
-            return bg4_col.raw_color;
+            if main_col.is_none() && self.bg4_main_enabled() {
+                main_col = Some(bg4_col.raw_color);
+            }
+
+            if sub_col.is_none() && self.bg4_sub_enabled() {
+                sub_col = Some(bg4_col.raw_color);
+            }
         }
 
         if !spr_col.transparent {
-            return spr_col.raw_color;
+            if main_col.is_none() && self.obj_main_enabled() {
+                main_col = Some(spr_col.raw_color);
+            }
+
+            if main_col.is_none() && self.obj_sub_enabled() {
+                sub_col = Some(spr_col.raw_color);
+            }
         }
 
         if !bg3_col.transparent {
-            return bg3_col.raw_color;
+            if main_col.is_none() && self.bg3_main_enabled() {
+                main_col = Some(bg3_col.raw_color);
+            }
+
+            if sub_col.is_none() && self.bg3_sub_enabled() {
+                sub_col = Some(bg3_col.raw_color);
+            }
         }
 
         if !bg4_col.transparent {
-            return bg4_col.raw_color;
+            if main_col.is_none() && self.bg4_main_enabled() {
+                main_col = Some(bg4_col.raw_color);
+            }
+
+            if sub_col.is_none() && self.bg4_sub_enabled() {
+                sub_col = Some(bg4_col.raw_color);
+            }
         }
 
-        self.transparent_color()
+        if main_col.is_none() {
+            main_col = Some(self.transparent_color());
+        }
+
+        if sub_col.is_none() {
+            sub_col = Some(self.transparent_color());
+        }
+
+        (main_col.unwrap(), sub_col.unwrap())
     }
 
     fn bg_mode1_dot(&mut self, frame_buffer: &mut [XRGB8888]) {
@@ -2207,26 +2314,26 @@ impl Ppu5C7x {
     fn bg1_win_logic(&self) -> WindowLogic { self.registers.bg1_win_logic.get() }
     fn obj_win_logic(&self) -> WindowLogic { self.registers.obj_win_logic.get() }
     fn col_win_logic(&self) -> WindowLogic { self.registers.col_win_logic.get() }
-    fn main_obj_enabled(&self) -> bool { self.registers.main_obj_enabled.get() }
-    fn main_l4_enabled(&self) -> bool { self.registers.main_l4_enabled.get() }
-    fn main_l3_enabled(&self) -> bool { self.registers.main_l3_enabled.get() }
-    fn main_l2_enabled(&self) -> bool { self.registers.main_l2_enabled.get() }
-    fn main_l1_enabled(&self) -> bool { self.registers.main_l1_enabled.get() }
-    fn sub_obj_enabled(&self) -> bool { self.registers.sub_obj_enabled.get() }
-    fn sub_l4_enabled(&self) -> bool { self.registers.sub_l4_enabled.get() }
-    fn sub_l3_enabled(&self) -> bool { self.registers.sub_l3_enabled.get() }
-    fn sub_l2_enabled(&self) -> bool { self.registers.sub_l2_enabled.get() }
-    fn sub_l1_enabled(&self) -> bool { self.registers.sub_l1_enabled.get() }
-    fn main_obj_win_enabled(&self) -> bool { self.registers.main_obj_win_enabled.get() }
-    fn main_l4_win_enabled(&self) -> bool { self.registers.main_l4_win_enabled.get() }
-    fn main_l3_win_enabled(&self) -> bool { self.registers.main_l3_win_enabled.get() }
-    fn main_l2_win_enabled(&self) -> bool { self.registers.main_l2_win_enabled.get() }
-    fn main_l1_win_enabled(&self) -> bool { self.registers.main_l1_win_enabled.get() }
-    fn sub_obj_win_enabled(&self) -> bool { self.registers.sub_obj_win_enabled.get() }
-    fn sub_l4_win_enabled(&self) -> bool { self.registers.sub_l4_win_enabled.get() }
-    fn sub_l3_win_enabled(&self) -> bool { self.registers.sub_l3_win_enabled.get() }
-    fn sub_l2_win_enabled(&self) -> bool { self.registers.sub_l2_win_enabled.get() }
-    fn sub_l1_win_enabled(&self) -> bool { self.registers.sub_l1_win_enabled.get() }
+    fn obj_main_enabled(&self) -> bool { self.registers.obj_main_enabled.get() }
+    fn bg4_main_enabled(&self) -> bool { self.registers.bg4_main_enabled.get() }
+    fn bg3_main_enabled(&self) -> bool { self.registers.bg3_main_enabled.get() }
+    fn bg2_main_enabled(&self) -> bool { self.registers.bg2_main_enabled.get() }
+    fn bg1_main_enabled(&self) -> bool { self.registers.bg1_main_enabled.get() }
+    fn obj_sub_enabled(&self) -> bool { self.registers.obj_sub_enabled.get() }
+    fn bg4_sub_enabled(&self) -> bool { self.registers.bg4_sub_enabled.get() }
+    fn bg3_sub_enabled(&self) -> bool { self.registers.bg3_sub_enabled.get() }
+    fn bg2_sub_enabled(&self) -> bool { self.registers.bg2_sub_enabled.get() }
+    fn bg1_sub_enabled(&self) -> bool { self.registers.bg1_sub_enabled.get() }
+    fn main_obj_win_enabled(&self) -> bool { self.registers.obj_win_main_enabled.get() }
+    fn bg4_win_main_enabled(&self) -> bool { self.registers.bg4_win_main_enabled.get() }
+    fn bg3_win_main_enabled(&self) -> bool { self.registers.bg3_win_main_enabled.get() }
+    fn bg2_win_main_enabled(&self) -> bool { self.registers.bg2_win_main_enabled.get() }
+    fn bg1_win_main_enabled(&self) -> bool { self.registers.bg1_win_main_enabled.get() }
+    fn sub_obj_win_enabled(&self) -> bool { self.registers.obj_win_sub_enabled.get() }
+    fn bg4_win_sub_enabled(&self) -> bool { self.registers.bg4_win_sub_enabled.get() }
+    fn bg3_win_sub_enabled(&self) -> bool { self.registers.bg3_win_sub_enabled.get() }
+    fn bg2_win_sub_enabled(&self) -> bool { self.registers.bg2_win_sub_enabled.get() }
+    fn bg1_win_sub_enabled(&self) -> bool { self.registers.bg1_win_sub_enabled.get() }
     fn main_col_win_black_region(&self) -> WindowColorRegion { self.registers.main_col_win_black_region.get() }
     fn sub_col_win_transparent_region(&self) -> WindowColorRegion { self.registers.sub_col_win_transparent_region.get() }
     fn cmath_addend(&self) -> CMathAddend { self.registers.cmath_addend.get() }
@@ -2370,26 +2477,26 @@ pub fn dump_ppu_state(ppu: &Ppu5C7x) {
     println!("bg1_win_logic: {:?}", ppu.bg1_win_logic());
     println!("obj_win_logic: {:?}", ppu.obj_win_logic());
     println!("col_win_logic: {:?}", ppu.col_win_logic());
-    println!("main_obj_enabled: {:?}", ppu.main_obj_enabled());
-    println!("main_l4_enabled: {:?}", ppu.main_l4_enabled());
-    println!("main_l3_enabled: {:?}", ppu.main_l3_enabled());
-    println!("main_l2_enabled: {:?}", ppu.main_l2_enabled());
-    println!("main_l1_enabled: {:?}", ppu.main_l1_enabled());
-    println!("sub_obj_enabled: {:?}", ppu.sub_obj_enabled());
-    println!("sub_l4_enabled: {:?}", ppu.sub_l4_enabled());
-    println!("sub_l3_enabled: {:?}", ppu.sub_l3_enabled());
-    println!("sub_l2_enabled: {:?}", ppu.sub_l2_enabled());
-    println!("sub_l1_enabled: {:?}", ppu.sub_l1_enabled());
+    println!("main_obj_enabled: {:?}", ppu.obj_main_enabled());
+    println!("main_l4_enabled: {:?}", ppu.bg4_main_enabled());
+    println!("main_l3_enabled: {:?}", ppu.bg3_main_enabled());
+    println!("main_l2_enabled: {:?}", ppu.bg2_main_enabled());
+    println!("main_l1_enabled: {:?}", ppu.bg1_main_enabled());
+    println!("sub_obj_enabled: {:?}", ppu.obj_sub_enabled());
+    println!("bg4_sub_enabled: {:?}", ppu.bg4_sub_enabled());
+    println!("bg3_sub_enabled: {:?}", ppu.bg3_sub_enabled());
+    println!("bg2_sub_enabled: {:?}", ppu.bg2_sub_enabled());
+    println!("bg1_sub_enabled: {:?}", ppu.bg1_sub_enabled());
     println!("main_obj_win_enabled: {:?}", ppu.main_obj_win_enabled());
-    println!("main_l4_win_enabled: {:?}", ppu.main_l4_win_enabled());
-    println!("main_l3_win_enabled: {:?}", ppu.main_l3_win_enabled());
-    println!("main_l2_win_enabled: {:?}", ppu.main_l2_win_enabled());
-    println!("main_l1_win_enabled: {:?}", ppu.main_l1_win_enabled());
+    println!("bg4_win_main_enabled: {:?}", ppu.bg4_win_main_enabled());
+    println!("bg3_win_main_enabled: {:?}", ppu.bg3_win_main_enabled());
+    println!("bg2_win_main_enabled: {:?}", ppu.bg2_win_main_enabled());
+    println!("bg1_win_main_enabled: {:?}", ppu.bg1_win_main_enabled());
     println!("sub_obj_win_enabled: {:?}", ppu.sub_obj_win_enabled());
-    println!("sub_l4_win_enabled: {:?}", ppu.sub_l4_win_enabled());
-    println!("sub_l3_win_enabled: {:?}", ppu.sub_l3_win_enabled());
-    println!("sub_l2_win_enabled: {:?}", ppu.sub_l2_win_enabled());
-    println!("sub_l1_win_enabled: {:?}", ppu.sub_l1_win_enabled());
+    println!("bg4_win_sub_enabled: {:?}", ppu.bg4_win_sub_enabled());
+    println!("bg3_win_sub_enabled: {:?}", ppu.bg3_win_sub_enabled());
+    println!("bg2_win_sub_enabled: {:?}", ppu.bg2_win_sub_enabled());
+    println!("bg1_win_sub_enabled: {:?}", ppu.bg1_win_sub_enabled());
     println!("main_col_win_black_region: {:?}", ppu.main_col_win_black_region());
     println!("sub_col_win_transparent_region: {:?}", ppu.sub_col_win_transparent_region());
     println!("cmath_addend: {:?}", ppu.cmath_addend());

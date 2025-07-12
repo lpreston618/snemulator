@@ -154,6 +154,7 @@ impl Cartridge {
 
     // Returns the address of the header in cartridge ROM
     fn find_header(cart_rom: &Vec<u8>) -> Result<usize, String> {
+        return Ok(LoROM_POS);
         // Positions of the start of the header for different memory mappings
         const LoROM_POS: usize = 0x007FC0;
         const HiROM_POS: usize = 0x00FFC0;
