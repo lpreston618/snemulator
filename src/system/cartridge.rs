@@ -2,11 +2,14 @@ use std::{io::Read, path::Path};
 
 use crate::system::scpu::{self, MappingMode};
 
-struct Header {
+#[derive(Default)]
+pub struct Cartridge {
+    cart_rom: Option<Vec<u8>>,
+
     title: [u8; 0x15],
 
     fast_rom: bool,
-    map_mode: scpu::MappingMode,
+    mapping_mode: scpu::MappingMode,
 
     extra_ram: bool,
     battery: bool,
@@ -22,13 +25,36 @@ struct Header {
     interrupt_vectors: [u8; 32],
 }
 
-impl Header {
-    pub fn from_bytes(bytes: &[u8]) -> Self {
-        let mut title: [u8; 0x15] = [0; 0x15];
-        title.clone_from_slice(&bytes[..0x15]);
 
-        let fast_rom = (bytes[0x15] & 0x10) > 0;
-        let map_mode = match bytes[0x15] & 0x0F {
+impl Cartridge {
+    /// Read in a cartridge from the given path to an spc or sfc file
+    pub fn from_path(path: &Path) -> Result<Cartridge, String> {
+        let rom_file = std::fs::File::open(path).unwrap();
+
+        let mut cart_rom: Vec<u8> = rom_file.bytes().map(|b| b.unwrap()).collect();
+
+        // Ignore optional 512 byte header
+        if cart_rom.len() % 1024 == 512 {
+            cart_rom.drain(0..512);
+        }
+
+        let cart_rom = pad_rom(cart_rom)?;
+
+        let header_start = Cartridge::find_header(&cart_rom)?;
+        let header_end = header_start + 0x40 as usize;
+
+        let mut cart = Cartridge::default();
+
+        cart.populate_header_data(&cart_rom[header_start..header_end]);
+        cart.cart_rom = Some(cart_rom);
+
+        Ok(cart)
+    }
+
+    fn populate_header_data(&mut self, bytes: &[u8]) {
+        self.title.copy_from_slice(&bytes[..0x15]);
+        self.fast_rom = (bytes[0x15] & 0x10) > 0;
+        self.mapping_mode = match bytes[0x15] & 0x0F {
             0 => scpu::MappingMode::LoROM,
             1 => scpu::MappingMode::HiROM,
             5 => scpu::MappingMode::ExHiROM,
@@ -36,8 +62,7 @@ impl Header {
                 panic!("unimplemented mapping mode");
             }
         };
-
-        let (extra_ram, battery, coprocessor) = match bytes[0x16] & 0x0F {
+        (self.extra_ram, self.battery, self.coprocessor) = match bytes[0x16] & 0x0F {
             0 => (false, false, false), // $00 - ROM only
             1 => (true, false, false),  // $01 - ROM + RAM
             2 => (true, true, false),   // $02 - ROM + RAM + battery
@@ -45,116 +70,17 @@ impl Header {
             4 => (true, false, true),   // $x4 - ROM + coprocessor + RAM
             5 => (true, true, true),    // $x5 - ROM + coprocessor + RAM + battery
             6 => (false, true, true),   // $x6 - ROM + coprocessor + battery
-
             _ => (false, false, false), // Should not happen
         };
-        let coprocessor_id = bytes[0x16] >> 4;
-
-        let rom_size = bytes[0x17];
-
-        let ram_size = bytes[0x18];
-
-        let is_ntsc = bytes[0x19] > 0;
-
-        let mut interrupt_vectors: [u8; 0x20] = [0; 0x20];
-        interrupt_vectors.clone_from_slice(&bytes[0x20..0x40]);
-
-        Self {
-            title,
-            fast_rom,
-            map_mode,
-            extra_ram,
-            battery,
-            coprocessor,
-            coprocessor_id,
-            rom_size,
-            ram_size,
-            is_ntsc,
-            interrupt_vectors,
-        }
+        self.coprocessor_id = bytes[0x16] >> 4;
+        self.rom_size = bytes[0x17];
+        self.ram_size = bytes[0x18];
+        self.is_ntsc = bytes[0x19] > 0;
+        self.interrupt_vectors.copy_from_slice(&bytes[0x20..0x40]);
     }
 
-    pub fn print(&self) {
-        println!("title: {:?}", std::str::from_utf8(&self.title).unwrap());
-        println!("fast_rom: {:?}", self.fast_rom);
-        println!("map_mode: {:?}", self.map_mode);
-        println!("extra_ram: {:?}", self.extra_ram);
-        println!("battery: {:?}", self.battery);
-        println!("coprocessor: {:?}", self.coprocessor);
-        println!("coprocessor_id: {:?}", self.coprocessor_id);
-        println!("rom_size: {:?}", self.rom_size);
-        println!("ram_size: {:?}", self.ram_size);
-        println!("is_ntsc: {:?}", self.is_ntsc);
-        println!("interrupt_vectors: {:?}", self.interrupt_vectors);
-    }
-}
-
-pub struct Cartridge {
-    cart_rom: Vec<u8>,
-    header: Header,
-}
-
-// Reading Cartridge
-impl Cartridge {
-    // Read in a cartridge from the given path to an spc or sfc file
-    pub fn from_path(path: &Path) -> Result<Self, String> {
-        let rom_file = std::fs::File::open(path).unwrap();
-
-        let mut cart_rom: Vec<u8> = rom_file.bytes().map(|b| b.unwrap()).collect();
-
-        // Ignore optional 512 byte header
-        if cart_rom.len() % 1024 == 512 {
-            cart_rom.drain(0..512);
-        }
-
-        // println!("ROM LEN BEFORE PAD: 0x{:x}", cart_rom.len());
-
-        let cart_rom = pad_rom(cart_rom)?;
-
-        // println!("PADDED ROM LEN: 0x{:x}", cart_rom.len());
-
-        // println!("CHECKSUM: 0x{:x}", Self::compute_checksum(&cart_rom));
-
-        let header_start = Cartridge::find_header(&cart_rom)?;
-        let header_end = header_start + 0x40 as usize;
-
-        let header = Header::from_bytes(&cart_rom[header_start..header_end]);
-
-        // header.print();
-
-        Ok(Self { cart_rom, header })
-    }
-
-    // Used for testing purposes. Forcibly loads a cart using the given mapping
-    // mode, ignoring the checksum.
-    pub fn from_path_with_mode(path: &Path, mode: MappingMode) -> Result<Cartridge, String> {
-        let rom_file = std::fs::File::open(path).unwrap();
-
-        let mut cart_rom: Vec<u8> = rom_file.bytes().map(|b| b.unwrap()).collect();
-
-        // Ignore optional 512 byte header
-        if cart_rom.len() % 1024 == 512 {
-            cart_rom.drain(0..512);
-        }
-        let cart_rom = pad_rom(cart_rom)?;
-
-        let header_start = match mode {
-            MappingMode::LoROM => 0x007FC0,
-            MappingMode::HiROM => 0x00FFC0,
-            MappingMode::ExHiROM => 0x40FFC0,
-        };
-        let header_end = header_start + 0x40 as usize;
-
-        let header = Header::from_bytes(&cart_rom[header_start..header_end]);
-
-        // header.print();
-
-        Ok(Self { cart_rom, header })
-    }
-
-    // Returns the address of the header in cartridge ROM
+    /// Returns the address of the header in cartridge ROM
     fn find_header(cart_rom: &Vec<u8>) -> Result<usize, String> {
-        return Ok(LoROM_POS);
         // Positions of the start of the header for different memory mappings
         const LoROM_POS: usize = 0x007FC0;
         const HiROM_POS: usize = 0x00FFC0;
@@ -222,20 +148,13 @@ impl Cartridge {
 
 // Public Access
 impl Cartridge {
-    // The mapping mode of the cartridge as determined by the location of the header in the ROM
     pub fn mapping_mode(&self) -> scpu::MappingMode {
-        self.header.map_mode
+        self.mapping_mode
     }
 
-    // The entire cartridge rom
-    pub fn rom_data(&self) -> Vec<u8> {
-        self.cart_rom.clone()
+    pub fn rom_data(self) -> Vec<u8> {
+        self.cart_rom.unwrap()
     }
-
-    // The size of the cartridge ROM (in KiB). Always a power of 2.
-    // pub fn rom_size(&self) -> usize {
-    //     (1 << self.header.rom_size) * 1024
-    // }
 }
 
 /// Pad the ROM data to a power of two size, correctly mirroring the smaller
@@ -283,9 +202,4 @@ fn pad_rom(rom: Vec<u8>) -> Result<Vec<u8>, String> {
             return Ok(padded_rom);
         }
     }
-}
-
-/// Checks if a number is a power of 2 using bitwise operations.
-fn is_pow_two(num: usize) -> bool {
-    num & (num - 1) == 0
 }

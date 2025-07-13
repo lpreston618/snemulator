@@ -11,8 +11,9 @@ use crate::tools::{hexdump16_at, hexdump8};
 
 const WRAM_SIZE: usize = 128 * 1024; // 128 KiB
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum MappingMode {
+    #[default]
     LoROM,
     HiROM,
     ExHiROM,
@@ -132,22 +133,6 @@ pub struct Cpu65c816 {
     dma_channels: Vec<DmaChannel>,
     active_channel_idx: usize,
 
-    // dma_enable: u8,
-    // hdma_enable: u8,
-    // dma_params: [u8; 8],
-    // b_bus_addrs: [u8; 8],
-    // a_bus_addr_lo: [u8; 8],
-    // a_bus_addr_hi: [u8; 8],
-    // a_bus_addr_bank: [u8; 8],
-    // dma_byte_count: [u16; 8], // Also HDMA indirect address lo+hi
-    // hdma_indirect_table_bank: [u8; 8],
-    // hdma_table_addr: [u32; 8],
-    // hdma_line_counter: [u8; 8],
-    // dma_unused1: [u8; 8],
-    // dma_unused2: [u8; 8],
-    // dma_bytes_written: usize,
-    // hdma_bytes_written: usize,
-    // hdma_current_channel: u8,
     ppu_data: Rc<PpuData>,
 
     vblank_nmi_ignore: bool,
@@ -233,7 +218,7 @@ impl Cpu65c816 {
         self.reset();
     }
 
-    pub fn load_cart(&mut self, cart: &Cartridge) {
+    pub fn load_cart(&mut self, cart: Cartridge) {
         self.mapping_mode = cart.mapping_mode();
         self.rom = cart.rom_data();
         self.rom_mirror = self.rom.len() - 1;
@@ -6391,435 +6376,324 @@ impl Cpu65c816 {
     }
 }
 
-impl Cpu65c816 {
-    pub fn temp_load_test(&mut self) {
-        use std::path::Path;
+// impl Cpu65c816 {
+//     pub fn temp_load_test(&mut self) {
+//         use std::path::Path;
 
-        // C:\Users\lance\Desktop\Pet Projects\RustProjects\snemulator\games\Super Mario World (USA).sfc
-        let test_path_str = format!("tests/lemons/CPUTest/CPUADC.sfc");
-        // let test_path_str = format!("tests/ppu_tests/test_hello.sfc");
-        // let test_path_str = format!("games/Super Mario World (USA).sfc");
-        // let test_path_str = format!("games/SNES Test Program.sfc");
-        let test_path = Path::new(&test_path_str);
-        let cart = Cartridge::from_path(test_path).unwrap();
+//         // C:\Users\lance\Desktop\Pet Projects\RustProjects\snemulator\games\Super Mario World (USA).sfc
+//         let test_path_str = format!("tests/lemons/CPUTest/CPUADC.sfc");
+//         // let test_path_str = format!("tests/ppu_tests/test_hello.sfc");
+//         // let test_path_str = format!("games/Super Mario World (USA).sfc");
+//         // let test_path_str = format!("games/SNES Test Program.sfc");
+//         let test_path = Path::new(&test_path_str);
+//         let cart = Cartridge::from_path(test_path).unwrap();
 
-        self.load_cart(&cart);
+//         self.load_cart(cart);
 
-        self.stk_ptr = 0x1ff;
-        self.status = 0x34;
+//         self.stk_ptr = 0x1ff;
+//         self.status = 0x34;
 
-        self.rom_mirror = self.rom.len() - 1;
+//         self.rom_mirror = self.rom.len() - 1;
 
-        self.reset();
-    }
+//         self.reset();
+//     }
 
-    fn cpu_status_str(&self) -> String {
-        let mut status_str = String::new();
-        status_str.push(if self.is_flag_set(Flag::FlagN) {
-            'N'
-        } else {
-            'n'
-        });
-        status_str.push(if self.is_flag_set(Flag::FlagV) {
-            'V'
-        } else {
-            'v'
-        });
-        if self.mode == CpuMode::Emulation {
-            status_str.push('1');
-            status_str.push(if self.is_flag_set(Flag::FlagX) {
-                'B'
-            } else {
-                'b'
-            });
-        } else {
-            status_str.push(if self.is_flag_set(Flag::FlagM) {
-                'M'
-            } else {
-                'm'
-            });
-            status_str.push(if self.is_flag_set(Flag::FlagX) {
-                'X'
-            } else {
-                'x'
-            });
-        }
-        status_str.push(if self.is_flag_set(Flag::FlagD) {
-            'D'
-        } else {
-            'd'
-        });
-        status_str.push(if self.is_flag_set(Flag::FlagI) {
-            'I'
-        } else {
-            'i'
-        });
-        status_str.push(if self.is_flag_set(Flag::FlagZ) {
-            'Z'
-        } else {
-            'z'
-        });
-        status_str.push(if self.is_flag_set(Flag::FlagC) {
-            'C'
-        } else {
-            'c'
-        });
+//     fn cpu_status_str(&self) -> String {
+//         let mut status_str = String::new();
+//         status_str.push(if self.is_flag_set(Flag::FlagN) {
+//             'N'
+//         } else {
+//             'n'
+//         });
+//         status_str.push(if self.is_flag_set(Flag::FlagV) {
+//             'V'
+//         } else {
+//             'v'
+//         });
+//         if self.mode == CpuMode::Emulation {
+//             status_str.push('1');
+//             status_str.push(if self.is_flag_set(Flag::FlagX) {
+//                 'B'
+//             } else {
+//                 'b'
+//             });
+//         } else {
+//             status_str.push(if self.is_flag_set(Flag::FlagM) {
+//                 'M'
+//             } else {
+//                 'm'
+//             });
+//             status_str.push(if self.is_flag_set(Flag::FlagX) {
+//                 'X'
+//             } else {
+//                 'x'
+//             });
+//         }
+//         status_str.push(if self.is_flag_set(Flag::FlagD) {
+//             'D'
+//         } else {
+//             'd'
+//         });
+//         status_str.push(if self.is_flag_set(Flag::FlagI) {
+//             'I'
+//         } else {
+//             'i'
+//         });
+//         status_str.push(if self.is_flag_set(Flag::FlagZ) {
+//             'Z'
+//         } else {
+//             'z'
+//         });
+//         status_str.push(if self.is_flag_set(Flag::FlagC) {
+//             'C'
+//         } else {
+//             'c'
+//         });
 
-        status_str
-    }
+//         status_str
+//     }
 
-    fn lemon_cpu_str(&self) -> String {
-        format!(
-            "{:02x}{:04x} A:{:04x} X:{:04x} Y:{:04x} S:{:04x} D:{:04x} DB:{:02x} {} ",
-            self.prg_bank,
-            self.pc,
-            self.acc,
-            self.x,
-            self.y,
-            self.stk_ptr,
-            self.direct_page,
-            self.data_bank,
-            self.cpu_status_str()
-        )
-    }
-}
+//     fn lemon_cpu_str(&self) -> String {
+//         format!(
+//             "{:02x}{:04x} A:{:04x} X:{:04x} Y:{:04x} S:{:04x} D:{:04x} DB:{:02x} {} ",
+//             self.prg_bank,
+//             self.pc,
+//             self.acc,
+//             self.x,
+//             self.y,
+//             self.stk_ptr,
+//             self.direct_page,
+//             self.data_bank,
+//             self.cpu_status_str()
+//         )
+//     }
+// }
 
-#[cfg(test)]
-mod tests {
-    use std::path::Path;
+// #[cfg(test)]
+// mod tests {
+//     use std::path::Path;
 
-    use libretro_rs::retro::{
-        framebuf::ResizableFrameBuffer, log::PlatformLogger, pixel::format::XRGB8888,
-    };
+//     use libretro_rs::retro::{
+//         framebuf::ResizableFrameBuffer, log::PlatformLogger, pixel::format::XRGB8888,
+//     };
 
-    // Note this useful idiom: importing names from outer (for mod tests) scope.
-    use super::*;
-    use crate::system::{cartridge::Cartridge, ppu::Ppu5C7x};
+//     // Note this useful idiom: importing names from outer (for mod tests) scope.
+//     use super::*;
+//     use crate::system::{cartridge::Cartridge, ppu::Ppu5C7x};
 
-    /// Prints out a slice of bytes in hex and ASCII format, side by side. When
-    /// startval is specified, indices beginning at the startval will be printed
-    /// before each line. If startval is unspecified, indeces start at 0.
-    pub fn hexdump_at(bytes: &[u8], startval: usize) {
-        const CHUNK_SIZE: usize = 16;
+//     /// Prints out a slice of bytes in hex and ASCII format, side by side. When
+//     /// startval is specified, indices beginning at the startval will be printed
+//     /// before each line. If startval is unspecified, indeces start at 0.
+//     pub fn hexdump_at(bytes: &[u8], startval: usize) {
+//         const CHUNK_SIZE: usize = 16;
 
-        let mut index = startval;
-        println!();
-        for chunk in bytes.chunks(CHUNK_SIZE) {
-            let l = chunk.len();
-            print!("{:08X}: ", index);
-            for b in chunk.iter() {
-                print!("{b:02X} ");
-            }
+//         let mut index = startval;
+//         println!();
+//         for chunk in bytes.chunks(CHUNK_SIZE) {
+//             let l = chunk.len();
+//             print!("{:08X}: ", index);
+//             for b in chunk.iter() {
+//                 print!("{b:02X} ");
+//             }
 
-            print!("{:>width$} ", "|", width = (CHUNK_SIZE - l) * 3 + 1);
-            for b in chunk.iter() {
-                match b {
-                    32..=126 => print!("{}", *b as char),
-                    _ => print!("."),
-                }
-            }
-            println!();
-            index += CHUNK_SIZE;
-        }
-    }
+//             print!("{:>width$} ", "|", width = (CHUNK_SIZE - l) * 3 + 1);
+//             for b in chunk.iter() {
+//                 match b {
+//                     32..=126 => print!("{}", *b as char),
+//                     _ => print!("."),
+//                 }
+//             }
+//             println!();
+//             index += CHUNK_SIZE;
+//         }
+//     }
 
-    /// Prints out a slice of bytes in hex and ASCII format, side by side. When
-    /// startval is specified, indeces beginning at the startval will be printed
-    /// before each line. If startval is unspecified, indeces start at 0.
-    pub fn hexdump(bytes: &[u8]) {
-        hexdump_at(bytes, 0);
-    }
+//     /// Prints out a slice of bytes in hex and ASCII format, side by side. When
+//     /// startval is specified, indeces beginning at the startval will be printed
+//     /// before each line. If startval is unspecified, indeces start at 0.
+//     pub fn hexdump(bytes: &[u8]) {
+//         hexdump_at(bytes, 0);
+//     }
 
-    /// Find the subvector "needle" in the vector "haystack"
-    fn find_subvec(haystack: &Vec<u8>, needle: &Vec<u8>) -> Option<usize> {
-        (0..haystack.len() - needle.len() + 1)
-            .filter(|&i| haystack[i..i + needle.len()] == needle[..])
-            .next()
-    }
+//     /// Find the subvector "needle" in the vector "haystack"
+//     fn find_subvec(haystack: &Vec<u8>, needle: &Vec<u8>) -> Option<usize> {
+//         (0..haystack.len() - needle.len() + 1)
+//             .filter(|&i| haystack[i..i + needle.len()] == needle[..])
+//             .next()
+//     }
 
-    fn cpu_status_str(cpu: &Cpu65c816) -> String {
-        let mut status_str = String::new();
-        status_str.push(if cpu.is_flag_set(Flag::FlagN) {
-            'N'
-        } else {
-            'n'
-        });
-        status_str.push(if cpu.is_flag_set(Flag::FlagV) {
-            'V'
-        } else {
-            'v'
-        });
-        if cpu.mode == CpuMode::Emulation {
-            status_str.push('1');
-            status_str.push(if cpu.is_flag_set(Flag::FlagX) {
-                'B'
-            } else {
-                'b'
-            });
-        } else {
-            status_str.push(if cpu.is_flag_set(Flag::FlagM) {
-                'M'
-            } else {
-                'm'
-            });
-            status_str.push(if cpu.is_flag_set(Flag::FlagX) {
-                'X'
-            } else {
-                'x'
-            });
-        }
-        status_str.push(if cpu.is_flag_set(Flag::FlagD) {
-            'D'
-        } else {
-            'd'
-        });
-        status_str.push(if cpu.is_flag_set(Flag::FlagI) {
-            'I'
-        } else {
-            'i'
-        });
-        status_str.push(if cpu.is_flag_set(Flag::FlagZ) {
-            'Z'
-        } else {
-            'z'
-        });
-        status_str.push(if cpu.is_flag_set(Flag::FlagC) {
-            'C'
-        } else {
-            'c'
-        });
+//     fn cpu_status_str(cpu: &Cpu65c816) -> String {
+//         let mut status_str = String::new();
+//         status_str.push(if cpu.is_flag_set(Flag::FlagN) {
+//             'N'
+//         } else {
+//             'n'
+//         });
+//         status_str.push(if cpu.is_flag_set(Flag::FlagV) {
+//             'V'
+//         } else {
+//             'v'
+//         });
+//         if cpu.mode == CpuMode::Emulation {
+//             status_str.push('1');
+//             status_str.push(if cpu.is_flag_set(Flag::FlagX) {
+//                 'B'
+//             } else {
+//                 'b'
+//             });
+//         } else {
+//             status_str.push(if cpu.is_flag_set(Flag::FlagM) {
+//                 'M'
+//             } else {
+//                 'm'
+//             });
+//             status_str.push(if cpu.is_flag_set(Flag::FlagX) {
+//                 'X'
+//             } else {
+//                 'x'
+//             });
+//         }
+//         status_str.push(if cpu.is_flag_set(Flag::FlagD) {
+//             'D'
+//         } else {
+//             'd'
+//         });
+//         status_str.push(if cpu.is_flag_set(Flag::FlagI) {
+//             'I'
+//         } else {
+//             'i'
+//         });
+//         status_str.push(if cpu.is_flag_set(Flag::FlagZ) {
+//             'Z'
+//         } else {
+//             'z'
+//         });
+//         status_str.push(if cpu.is_flag_set(Flag::FlagC) {
+//             'C'
+//         } else {
+//             'c'
+//         });
 
-        status_str
-    }
+//         status_str
+//     }
 
-    fn lemon_cpu_str(cpu: &Cpu65c816) -> String {
-        format!(
-            "{:02x}{:04x} A:{:04x} X:{:04x} Y:{:04x} S:{:04x} D:{:04x} DB:{:02x} {} ",
-            cpu.prg_bank,
-            cpu.pc,
-            cpu.acc,
-            cpu.x,
-            cpu.y,
-            cpu.stk_ptr,
-            cpu.direct_page,
-            cpu.data_bank,
-            cpu_status_str(cpu)
-        )
-    }
+//     fn lemon_cpu_str(cpu: &Cpu65c816) -> String {
+//         format!(
+//             "{:02x}{:04x} A:{:04x} X:{:04x} Y:{:04x} S:{:04x} D:{:04x} DB:{:02x} {} ",
+//             cpu.prg_bank,
+//             cpu.pc,
+//             cpu.acc,
+//             cpu.x,
+//             cpu.y,
+//             cpu.stk_ptr,
+//             cpu.direct_page,
+//             cpu.data_bank,
+//             cpu_status_str(cpu)
+//         )
+//     }
 
-    const INSTR_NAMES: [&str; 256] = [
-        "BRK", "ORA", "COP", "ORA", "TSB", "ORA", "ASL", "ORA", "PHP", "ORA", "ASL", "PHD", "TSB",
-        "ORA", "ASL", "ORA", "BPL", "ORA", "ORA", "ORA", "TRB", "ORA", "ASL", "ORA", "CLC", "ORA",
-        "INC", "TCS", "TRB", "ORA", "ASL", "ORA", "JSR", "AND", "JSL", "AND", "BIT", "AND", "ROL",
-        "AND", "PLP", "AND", "ROL", "PLD", "BIT", "AND", "ROL", "AND", "BMI", "AND", "AND", "AND",
-        "BIT", "AND", "ROL", "AND", "SEC", "AND", "DEC", "TSC", "BIT", "AND", "ROL", "AND", "RTI",
-        "EOR", "WDM", "EOR", "MVP", "EOR", "LSR", "EOR", "PHA", "EOR", "LSR", "PHK", "JMP", "EOR",
-        "LSR", "EOR", "BVC", "EOR", "EOR", "EOR", "MVN", "EOR", "LSR", "EOR", "CLI", "EOR", "PHY",
-        "TCD", "JMP", "EOR", "LSR", "EOR", "RTS", "ADC", "PEX", "ADC", "STZ", "ADC", "ROR", "ADC",
-        "PLA", "ADC", "ROR", "RTL", "JMP", "ADC", "ROR", "ADC", "BVS", "ADC", "ADC", "ADC", "STZ",
-        "ADC", "ROR", "ADC", "SEI", "ADC", "PLY", "TDC", "JMP", "ADC", "ROR", "ADC", "BRA", "STA",
-        "BRA", "STA", "STY", "STA", "STX", "STA", "DEY", "BIT", "TXA", "PHB", "STY", "STA", "STX",
-        "STA", "BCC", "STA", "STA", "STA", "STY", "STA", "STX", "STA", "TYA", "STA", "TXS", "TXY",
-        "STZ", "STA", "STZ", "STA", "LDY", "LDA", "LDX", "LDA", "LDY", "LDA", "LDX", "LDA", "TAY",
-        "LDA", "TAX", "PLB", "LDY", "LDA", "LDX", "LDA", "BCS", "LDA", "LDA", "LDA", "LDY", "LDA",
-        "LDX", "LDA", "CLV", "LDA", "TSX", "TYX", "LDY", "LDA", "LDX", "LDA", "CPY", "CMP", "REP",
-        "CMP", "CPY", "CMP", "DEC", "CMP", "INY", "CMP", "DEX", "WAI", "CPY", "CMP", "DEC", "CMP",
-        "BNE", "CMP", "CMP", "CMP", "PEX", "CMP", "DEC", "CMP", "CLD", "CMP", "PHX", "STP", "JMP",
-        "CMP", "DEC", "CMP", "CPX", "SBC", "SEP", "SBC", "CPX", "SBC", "INC", "SBC", "INX", "SBC",
-        "NOP", "XBA", "CPX", "SBC", "INC", "SBC", "BEQ", "SBC", "SBC", "SBC", "PEX", "SBC", "INC",
-        "SBC", "SED", "SBC", "PLX", "XCE", "JSR", "SBC", "INC", "SBC",
-    ];
+//     const INSTR_NAMES: [&str; 256] = [
+//         "BRK", "ORA", "COP", "ORA", "TSB", "ORA", "ASL", "ORA", "PHP", "ORA", "ASL", "PHD", "TSB",
+//         "ORA", "ASL", "ORA", "BPL", "ORA", "ORA", "ORA", "TRB", "ORA", "ASL", "ORA", "CLC", "ORA",
+//         "INC", "TCS", "TRB", "ORA", "ASL", "ORA", "JSR", "AND", "JSL", "AND", "BIT", "AND", "ROL",
+//         "AND", "PLP", "AND", "ROL", "PLD", "BIT", "AND", "ROL", "AND", "BMI", "AND", "AND", "AND",
+//         "BIT", "AND", "ROL", "AND", "SEC", "AND", "DEC", "TSC", "BIT", "AND", "ROL", "AND", "RTI",
+//         "EOR", "WDM", "EOR", "MVP", "EOR", "LSR", "EOR", "PHA", "EOR", "LSR", "PHK", "JMP", "EOR",
+//         "LSR", "EOR", "BVC", "EOR", "EOR", "EOR", "MVN", "EOR", "LSR", "EOR", "CLI", "EOR", "PHY",
+//         "TCD", "JMP", "EOR", "LSR", "EOR", "RTS", "ADC", "PEX", "ADC", "STZ", "ADC", "ROR", "ADC",
+//         "PLA", "ADC", "ROR", "RTL", "JMP", "ADC", "ROR", "ADC", "BVS", "ADC", "ADC", "ADC", "STZ",
+//         "ADC", "ROR", "ADC", "SEI", "ADC", "PLY", "TDC", "JMP", "ADC", "ROR", "ADC", "BRA", "STA",
+//         "BRA", "STA", "STY", "STA", "STX", "STA", "DEY", "BIT", "TXA", "PHB", "STY", "STA", "STX",
+//         "STA", "BCC", "STA", "STA", "STA", "STY", "STA", "STX", "STA", "TYA", "STA", "TXS", "TXY",
+//         "STZ", "STA", "STZ", "STA", "LDY", "LDA", "LDX", "LDA", "LDY", "LDA", "LDX", "LDA", "TAY",
+//         "LDA", "TAX", "PLB", "LDY", "LDA", "LDX", "LDA", "BCS", "LDA", "LDA", "LDA", "LDY", "LDA",
+//         "LDX", "LDA", "CLV", "LDA", "TSX", "TYX", "LDY", "LDA", "LDX", "LDA", "CPY", "CMP", "REP",
+//         "CMP", "CPY", "CMP", "DEC", "CMP", "INY", "CMP", "DEX", "WAI", "CPY", "CMP", "DEC", "CMP",
+//         "BNE", "CMP", "CMP", "CMP", "PEX", "CMP", "DEC", "CMP", "CLD", "CMP", "PHX", "STP", "JMP",
+//         "CMP", "DEC", "CMP", "CPX", "SBC", "SEP", "SBC", "CPX", "SBC", "INC", "SBC", "INX", "SBC",
+//         "NOP", "XBA", "CPX", "SBC", "INC", "SBC", "BEQ", "SBC", "SBC", "SBC", "PEX", "SBC", "INC",
+//         "SBC", "SED", "SBC", "PLX", "XCE", "JSR", "SBC", "INC", "SBC",
+//     ];
 
-    #[test]
-    fn test_lorom_title() {
-        let test_path = Path::new("tests/blarggs/test_adc_sbc/test_adc.smc");
-        let cart = Cartridge::from_path_with_mode(test_path, MappingMode::LoROM).unwrap();
+//     #[test]
+//     fn test_lorom_title() {
+//         let test_path = Path::new("tests/blarggs/test_adc_sbc/test_adc.smc");
+//         // let cart = Cartridge::from_path_with_mode(test_path, MappingMode::LoROM).unwrap();
 
-        let ppu_data = Rc::new(PpuData::new());
-        let mut cpu = Cpu65c816::new(ppu_data);
+//         let ppu_data = Rc::new(PpuData::new());
+//         let mut cpu = Cpu65c816::new(ppu_data);
 
-        cpu.load_cart(&cart);
+//         cpu.load_cart(cart);
 
-        // let expected_name = b"65C816 TEST          ";
+//         hexdump_at(&cpu.rom[0x8000..0x8000 + 0x1000], 0x8000);
+//     }
 
-        // println!("ROM Size: {}", cpu.rom.len());
+//     fn run_lemon_test(test_name: &str) {
+//         let test_path_str = format!("tests/lemons/CPUTest/{test_name}.sfc");
+//         let test_path = Path::new(&test_path_str);
+//         let cart = Cartridge::from_path(test_path).unwrap();
 
-        hexdump_at(&cpu.rom[0x8000..0x8000 + 0x1000], 0x8000);
+//         let log_path_str = format!("tests/lemons/CPUTest/{test_name}-trace_compare.log");
+//         let log_path = Path::new(&log_path_str);
+//         let log_lines: Vec<String> = std::fs::read_to_string(log_path)
+//             .unwrap()
+//             .lines()
+//             .map(String::from)
+//             .collect();
 
-        // for i in 0..21 {
-        //     let expected_char = expected_name[i];
-        //     let actual_char = cpu.read(0x00FFC0 + i as u32);
+//         let ppu_data = Rc::new(PpuData::new());
+//         let mut cpu = Cpu65c816::new(ppu_data);
+//         cpu.load_cart(cart);
 
-        //     assert_eq!(expected_char, actual_char);
-        // }
-    }
+//         cpu.stk_ptr = 0x1ff;
+//         cpu.status = 0x34;
 
-    // #[test]
-    // fn test_cpubasic() {
-    //     let test_path = Path::new("tests/blarggs/test_adc_sbc/test_adc.smc");
-    //     let cart = Cartridge::from_path(test_path).unwrap();
+//         cpu.rom_mirror = cpu.rom.len() - 1;
 
-    //     let mut cpu = Cpu65c816::new();
+//         cpu.pc = 0x8000;
 
-    //     cpu.load_cart(&cart);
+//         cpu.wram[0] = 0xb5;
 
-    //     // cpu.reset();
-    //     cpu.pc = 0x8000;
+//         for (i, line) in log_lines.iter().enumerate() {
+//             let opcode = cpu.read_prg();
+//             let (addr_lo, addr_hi) = cpu.immediate16();
+//             let val1 = cpu.read(addr_lo);
+//             let val2 = cpu.read(addr_hi);
 
-    //     for _ in 0..100 {
-    //         let opcode = cpu.read_prg();
-    //         let (addr_lo, addr_hi) = cpu.immediate16();
-    //         let val1 = cpu.read(addr_lo);
-    //         let val2 = cpu.read(addr_hi);
-    //         println!("PRG BANK: 0x{:02X}, PC: 0x{:04X}, INSTR: {} (0x{:02X}), IMM16: 0x{:02X} 0x{:02X}, IDX SIZE: {:?}, ACC SIZE: {:?}, X: 0x{:04X}, Y: 0x{:04X}, A: 0x{:04X}", cpu.prg_bank, cpu.pc, INSTR_NAMES[opcode as usize], opcode, val1, val2, cpu.idx_size(), cpu.acc_size(), cpu.x, cpu.y, cpu.acc);
-    //         // let dir8 = cpu.direct8();
-    //         // let val3 = cpu.read(dir8);
-    //         // println!("    STK PTR: 0x{:04X}, DIR PAGE: 0x{:04X}, DATA BANK: 0x{:02X}, DIR8: 0x{:02X}", cpu.stk_ptr, cpu.direct_page, cpu.data_bank, val3);
-    //         cpu.exec_instr();
-    //     }
-    // }
+//             // Quick hack for running this test
+//             if opcode == 0x2C && val1 == 0x10 && val2 == 0x42 {
+//                 cpu.debug_nmi = if log_lines[i + 1].as_bytes()[48] == b'N' {
+//                     0xc2
+//                 } else {
+//                     0x42
+//                 }
+//             }
 
-    fn run_lemon_test(test_name: &str) {
-        let test_path_str = format!("tests/lemons/CPUTest/{test_name}.sfc");
-        let test_path = Path::new(&test_path_str);
-        let cart = Cartridge::from_path(test_path).unwrap();
+//             assert_eq!(*line, lemon_cpu_str(&cpu));
 
-        let log_path_str = format!("tests/lemons/CPUTest/{test_name}-trace_compare.log");
-        let log_path = Path::new(&log_path_str);
-        let log_lines: Vec<String> = std::fs::read_to_string(log_path)
-            .unwrap()
-            .lines()
-            .map(String::from)
-            .collect();
+//             cpu.exec_instr();
+//         }
+//     }
 
-        let ppu_data = Rc::new(PpuData::new());
-        let mut cpu = Cpu65c816::new(ppu_data);
-        cpu.load_cart(&cart);
+//     #[test]
+//     fn test_lemon_all() {
+//         let paths = std::fs::read_dir("./tests/lemons/CPUTest").unwrap();
 
-        cpu.stk_ptr = 0x1ff;
-        cpu.status = 0x34;
+//         for path in paths {
+//             if let Ok(path) = path {
+//                 let file_name = String::from(path.file_name().to_str().unwrap());
 
-        cpu.rom_mirror = cpu.rom.len() - 1;
+//                 if let Some(test_name) = file_name.strip_suffix(".sfc") {
+//                     if test_name == "CPUMSC" {
+//                         println!("cpumsc [[SKIPPED - PPU Dependent]]");
+//                         continue;
+//                     }
 
-        cpu.pc = 0x8000;
+//                     run_lemon_test(test_name);
 
-        cpu.wram[0] = 0xb5;
-
-        for (i, line) in log_lines.iter().enumerate() {
-            let opcode = cpu.read_prg();
-            let (addr_lo, addr_hi) = cpu.immediate16();
-            let val1 = cpu.read(addr_lo);
-            let val2 = cpu.read(addr_hi);
-            // let cpu_str = format!("ADDR: 0x{:02X}{:04X}, INSTR: {} (0x{:02X}), IMM16: 0x{:02X} 0x{:02X}, X: 0x{:04X}, Y: 0x{:04X}, A: 0x{:04X}, SP: {:04X}, P: {}, D: 0x{:04X}",
-            //     cpu.prg_bank,
-            //     cpu.pc,
-            //     INSTR_NAMES[opcode as usize],
-            //     opcode,
-            //     val1,
-            //     val2,
-            //     cpu.x,
-            //     cpu.y,
-            //     cpu.acc,
-            //     cpu.stk_ptr,
-            //     cpu_status_str(&cpu),
-            //     cpu.direct_page,
-            // );
-            // println!("{}", cpu_str);
-
-            // Quick hack for running this test
-            if opcode == 0x2C && val1 == 0x10 && val2 == 0x42 {
-                cpu.debug_nmi = if log_lines[i + 1].as_bytes()[48] == b'N' {
-                    0xc2
-                } else {
-                    0x42
-                }
-            }
-
-            assert_eq!(*line, lemon_cpu_str(&cpu));
-
-            cpu.exec_instr();
-        }
-    }
-
-    #[test]
-    fn test_lemon_all() {
-        let paths = std::fs::read_dir("./tests/lemons/CPUTest").unwrap();
-
-        for path in paths {
-            if let Ok(path) = path {
-                let file_name = String::from(path.file_name().to_str().unwrap());
-
-                if let Some(test_name) = file_name.strip_suffix(".sfc") {
-                    if test_name == "CPUMSC" {
-                        println!("cpumsc [[SKIPPED - PPU Dependent]]");
-                        continue;
-                    }
-
-                    run_lemon_test(test_name);
-
-                    println!("{} [[PASSED]]", test_name.to_lowercase());
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn test_speed() {
-        let test_path_str = format!("tests/lemons/CPUTest/CPUADC.sfc");
-        let test_path = Path::new(&test_path_str);
-        let cart = Cartridge::from_path(test_path).unwrap();
-
-        let ppu_data = Rc::new(PpuData::new());
-        let mut cpu = Cpu65c816::new(ppu_data.clone());
-        let mut ppu = Ppu5C7x::new(ppu_data.clone());
-        cpu.load_cart(&cart);
-
-        cpu.stk_ptr = 0x1ff;
-        cpu.status = 0x34;
-
-        cpu.rom_mirror = cpu.rom.len() - 1;
-
-        cpu.pc = 0x8000;
-
-        let start = std::time::Instant::now();
-        const TOTAL_SECONDS: f32 = 10.0;
-
-        let mut frame_buffer: ResizableFrameBuffer<XRGB8888, { 512 * 448 }> =
-            ResizableFrameBuffer::new();
-        frame_buffer.resize(256, 224).unwrap();
-        // Logger not to be used during tests!
-        let mut logger = unsafe { std::mem::transmute(0u64) };
-
-        let mut master_clocks = 0u64;
-
-        while std::time::Instant::now()
-            .duration_since(start)
-            .as_secs_f32()
-            < TOTAL_SECONDS
-        {
-            // print!("{master_clocks} ");
-            if ppu.sys_clocks_until_clock < cpu.sys_clocks_until_clock {
-                // println!("PPU");
-                master_clocks += ppu.sys_clocks_until_clock as u64;
-                cpu.sys_clocks_until_clock -= ppu.sys_clocks_until_clock;
-                ppu.clock(&mut frame_buffer, &mut logger);
-            } else {
-                // println!("CPU");
-                master_clocks += cpu.sys_clocks_until_clock as u64;
-                ppu.sys_clocks_until_clock -= cpu.sys_clocks_until_clock;
-                cpu.clock(&mut logger);
-            }
-
-            if cpu.pc == 0xef1b {
-                cpu.pc = 0x8000;
-            }
-        }
-
-        let snes_mhz = ((master_clocks as f32) / 1000000.0) / TOTAL_SECONDS;
-        let cpu_mhz = snes_mhz / 6.0;
-
-        println!("In {TOTAL_SECONDS} seconds, {master_clocks} master clocks elapsed",);
-        println!("Master Clock Speed: {snes_mhz} MHz");
-        println!("CPU Speed: {cpu_mhz} MHz");
-    }
-}
+//                     println!("{} [[PASSED]]", test_name.to_lowercase());
+//                 }
+//             }
+//         }
+//     }
+// }

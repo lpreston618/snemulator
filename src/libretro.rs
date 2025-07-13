@@ -183,25 +183,25 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
             game.as_data().unwrap().path().unwrap().as_str()
         } else {
             core.logger
-                .log(LogLevel::Error, "Game provided is neither path nor data.");
+                .log(LogLevel::Error, "game provided is neither path nor data");
             return Err(CoreError::new());
         };
 
         core.logger.log(
             LogLevel::Info,
-            format!("Loading game from '{}'", path_str).as_str(),
+            format!("loading game from '{}'", path_str).as_str(),
         );
 
         let game_path = std::path::Path::new(&path_str);
         let cart_res = Cartridge::from_path(game_path);
 
-        if let Err(_) = cart_res {
+        if let Err(msg) = cart_res {
             core.logger
-                .log(LogLevel::Error, "Could not open game from path.");
+                .log(LogLevel::Error, format!("failed to load game: {}", msg).as_str());
             return Err(CoreError::new());
         }
 
-        core.snem_cpu.load_cart(&cart_res.unwrap());
+        core.snem_cpu.load_cart(cart_res.unwrap());
         core.snem_cpu.initialize();
 
         Ok(core)
