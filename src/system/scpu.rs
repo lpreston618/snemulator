@@ -331,7 +331,7 @@ impl Cpu65c816 {
 
             _ => {
                 if mmio_address != 0x2180 {
-                    println!(" ==== Attempt to read mmio reg ${mmio_address:04X}");
+                    // println!(" ==== Attempt to read mmio reg ${mmio_address:04X}");
                 }
 
                 0
@@ -412,7 +412,7 @@ impl Cpu65c816 {
 
             _ => {
                 if mmio_address != 0x2180 {
-                    println!(" ==== Attempt to write mmio reg ${mmio_address:04X} with data 0x{data:02X}");
+                    // println!(" ==== Attempt to write mmio reg ${mmio_address:04X} with data 0x{data:02X}");
                 }
             }
         }
@@ -6399,6 +6399,7 @@ impl Cpu65c816 {
         let test_path_str = format!("tests/lemons/CPUTest/CPUADC.sfc");
         // let test_path_str = format!("tests/ppu_tests/test_hello.sfc");
         // let test_path_str = format!("games/Super Mario World (USA).sfc");
+        // let test_path_str = format!("games/SNES Test Program.sfc");
         let test_path = Path::new(&test_path_str);
         let cart = Cartridge::from_path(test_path).unwrap();
 
@@ -6409,7 +6410,7 @@ impl Cpu65c816 {
 
         self.rom_mirror = self.rom.len() - 1;
 
-        self.pc = 0x8000;
+        self.reset();
     }
 
     fn cpu_status_str(&self) -> String {

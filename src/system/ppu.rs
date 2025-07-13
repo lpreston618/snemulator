@@ -180,13 +180,6 @@ enum WindowColorRegion {
 }
 
 #[derive(Clone, Copy, Default, Debug)]
-enum CMathAddend {
-    #[default]
-    Fixed,
-    Subscreen,
-}
-
-#[derive(Clone, Copy, Default, Debug)]
 enum DirectColorMode {
     #[default]
     Palette,
@@ -279,7 +272,7 @@ pub struct PpuData {
     bg3_char_size: Cell<TileSize>,
     bg2_char_size: Cell<TileSize>,
     bg1_char_size: Cell<TileSize>,
-    bg3_priority: Cell<bool>,
+    bg3_mode1_priority: Cell<bool>,
     bg_mode: Cell<BgMode>,
 
     // $2106    SSSS 4321    Write Only
@@ -547,9 +540,9 @@ pub struct PpuData {
     //       - main/sub screen color window black/transparent regions (MS)
     //       - fixed/subscreen (A)
     //       - direct color (D)
-    main_col_win_black_region: Cell<WindowColorRegion>,
-    sub_col_win_transparent_region: Cell<WindowColorRegion>,
-    cmath_addend: Cell<CMathAddend>,
+    col_win_main_region: Cell<WindowColorRegion>,
+    col_win_sub_region: Cell<WindowColorRegion>,
+    sub_color_fixed: Cell<bool>,
     direct_col_mode: Cell<DirectColorMode>,
 
     // $2131    MHBO 4321    Write Only
@@ -559,7 +552,7 @@ pub struct PpuData {
     //       - layer enable (O4321)
     cmath_operator: Cell<CMathOperator>,
     cmath_half: Cell<bool>,
-    cmath_backdrop: Cell<bool>,
+    back_cmath_enabled: Cell<bool>,
     obj_cmath_enabled: Cell<bool>,
     bg4_cmath_enabled: Cell<bool>,
     bg3_cmath_enabled: Cell<bool>,
@@ -748,7 +741,7 @@ impl PpuData {
                 self.bg1_char_size.replace(
                     if data.bit_en(4) { TileSize::Size16x16 } else { TileSize::Size8x8 }
                 );
-                self.bg3_priority.replace(data.bit_en(3));
+                self.bg3_mode1_priority.replace(data.bit_en(3));
                 self.bg_mode.replace(
                     match data & 0x07 {
                         0 => BgMode::Mode0,
@@ -768,7 +761,7 @@ impl PpuData {
                     self.bg3_char_size.get(),
                     self.bg2_char_size.get(),
                     self.bg1_char_size.get(),
-                    self.bg3_priority.get(),
+                    self.bg3_mode1_priority.get(),
                     self.bg_mode.get(),
                 );
             }
@@ -1321,7 +1314,7 @@ impl PpuData {
             }
 
             0x30 => {
-                self.main_col_win_black_region.replace(
+                self.col_win_main_region.replace(
                     match data >> 6 {
                         0 => WindowColorRegion::Nowhere,
                         1 => WindowColorRegion::Outside,
@@ -1330,7 +1323,7 @@ impl PpuData {
                         _ => unreachable!(),
                     }
                 );
-                self.sub_col_win_transparent_region.replace(
+                self.col_win_sub_region.replace(
                     match (data >> 4) & 3 {
                         0 => WindowColorRegion::Nowhere,
                         1 => WindowColorRegion::Outside,
@@ -1339,9 +1332,7 @@ impl PpuData {
                         _ => unreachable!(),
                     }
                 );
-                self.cmath_addend.replace(
-                    if data.bit_en(1) { CMathAddend::Subscreen } else { CMathAddend::Fixed }
-                );
+                self.sub_color_fixed.replace(data.bit_en(1));
                 self.direct_col_mode.replace(
                     if data.bit_en(0) { DirectColorMode::Palette } else { DirectColorMode::Direct }
                 );
@@ -1356,7 +1347,7 @@ impl PpuData {
                     }
                 );
                 self.cmath_half.replace(data.bit_en(6));
-                self.cmath_backdrop.replace(data.bit_en(5));
+                self.back_cmath_enabled.replace(data.bit_en(5));
                 self.obj_cmath_enabled.replace(data.bit_en(4));
                 self.bg4_cmath_enabled.replace(data.bit_en(3));
                 self.bg3_cmath_enabled.replace(data.bit_en(2));
@@ -1770,6 +1761,7 @@ impl Ppu5C7x {
 //     }
 // }
 
+#[derive(Clone, Copy)]
 enum ColorLayer {
     Bg1,
     Bg2,
@@ -1779,6 +1771,7 @@ enum ColorLayer {
     Back,
 }
 
+#[derive(Clone)]
 struct ColorData {
     raw_color: u16,
     priority: u8,
@@ -1805,13 +1798,21 @@ impl Ppu5C7x {
     fn screen_x(&self) -> usize { self.dot as usize - VISIBLE_SCANLINE_START_DOT }
     fn screen_y(&self) -> usize { self.scanline as usize - 1 }
     fn transparent_color(&self) -> u16 { self.registers.cgram.0[0].get() }
+    fn transparent_color_data(&self, layer: ColorLayer) -> ColorData { 
+        ColorData {
+            raw_color: self.transparent_color(),
+            priority: 0,
+            transparent: true,
+            layer
+        }
+    }
 
     fn dot(&mut self, frame_buffer: &mut [XRGB8888]) {
         let screen_x = self.screen_x();
         let screen_y = self.screen_y();
 
         // All bg modes need spr_col
-        let spr_col = self.sprite_dot(screen_x, screen_y);
+        let spr_col = self.sprite_col(screen_x, screen_y);
 
         let dot_col = match self.bg_mode() {
             BgMode::Mode0 => self.bg_mode0_dot(screen_x, screen_y, spr_col),
@@ -1829,7 +1830,7 @@ impl Ppu5C7x {
     }
 
     /// Gets the color of the first visible sprite on the screen.
-    fn sprite_dot(&mut self, screen_x: usize, screen_y: usize) -> ColorData {
+    fn sprite_col(&mut self, screen_x: usize, screen_y: usize) -> ColorData {
         let mut scanline_spr_cnt = self.scanline_spr_cnt;
 
         if scanline_spr_cnt == 0 {
@@ -2164,35 +2165,20 @@ impl Ppu5C7x {
         (main_col.unwrap(), sub_col.unwrap())
     }
 
+    /// Computes the color of the dot on the screen using the Mode 1 process.
+    /// Mode 1 used layers Bg1 at 4bpp, Bg2 at 4bpp, Bg3 at 2bpp, and Obj.
+    /// It is able to use the features: Mosaic, Scroll, Interlace,
+    /// 8x8 or 16x16 Tiles, Windowing, and Color Math.
     fn bg_mode1_dot(&mut self, screen_x: usize, screen_y: usize, spr_col: ColorData) -> u16 {
-        let main_col = self.bg_mode1_main_col(screen_x, screen_y, spr_col);
-
-        let color_math_en = match main_col.layer {
-            ColorLayer::Bg1 => self.bg1_cmath_enabled(),
-            ColorLayer::Bg2 => self.bg2_cmath_enabled(),
-            ColorLayer::Bg3 => self.bg3_cmath_enabled(),
-            ColorLayer::Bg4 => self.bg4_cmath_enabled(),
-            ColorLayer::Obj => self.obj_cmath_enabled(),
-            ColorLayer::Back => false,
-        };
-
-        let final_col = if color_math_en {
-            let sub_color = self.bg_mode1_sub_col(main_col.layer);
-
-            main_col.raw_color
-        } else {
-            main_col.raw_color
-        };
-
-        final_col
-    }
-
-    /// Computes the color of the dot on the main screen given by the highest 
-    /// priority non-transparent layer.
-    fn bg_mode1_main_col(&mut self, screen_x: usize, screen_y: usize, spr_col: ColorData) -> ColorData {
         const BG1_CGRAM_BASE_ADDR: u16 = 0x0000;
         const BG2_CGRAM_BASE_ADDR: u16 = 0x0000;
         const BG3_CGRAM_BASE_ADDR: u16 = 0x0000;
+
+        let col_win_en = self.col_win_active_signal(screen_x);
+        let (obj_win_main, obj_win_sub) = self.obj_win_active_signals(screen_x);
+        let (bg1_win_main, bg1_win_sub) = self.bg1_win_active_signals(screen_x);
+        let (bg2_win_main, bg2_win_sub) = self.bg2_win_active_signals(screen_x);
+        let (bg3_win_main, bg3_win_sub) = self.bg3_win_active_signals(screen_x);
 
         let bg1_tilemap_data = self.bg_tile_idx(
             screen_x, screen_y,
@@ -2213,26 +2199,17 @@ impl Ppu5C7x {
             self.bg3_tile_size(),
         );
 
-
-        let bg3_col = self.bg_col_2bpp(
-            bg3_tilemap_data.tilemap_idx, 
-            bg3_tilemap_data.tile_row, 
-            bg3_tilemap_data.tile_col, 
-            self.bg3_vram_base_addr(), 
-            self.bg3_chr_base_addr(), 
-            BG3_CGRAM_BASE_ADDR,
-            ColorLayer::Bg3,
-        );
-
-        if self.bg3_main_enabled() && self.bg3_priority() 
-            && bg3_col.priority != 0 && !bg3_col.transparent {
-
-            return bg3_col;
-        }
-
-        if self.obj_main_enabled() && spr_col.priority == 3 && !spr_col.transparent {
-            return spr_col;
-        }
+        let spr_main_col = if self.obj_main_enabled() && !obj_win_main {
+            spr_col.clone()
+        } else {
+            self.transparent_color_data(ColorLayer::Obj)
+        };
+        let spr_sub_col = if self.obj_sub_enabled() && !obj_win_sub {
+            spr_col.clone()
+        } else {
+            self.transparent_color_data(ColorLayer::Obj)
+        };
+        drop(spr_col); // Obj col should not be used past this point
 
         let bg1_col = self.bg_col_4bpp(
             bg1_tilemap_data.tilemap_idx, 
@@ -2243,10 +2220,17 @@ impl Ppu5C7x {
             BG1_CGRAM_BASE_ADDR,
             ColorLayer::Bg1,
         );
-
-        if self.bg1_main_enabled() && bg1_col.priority != 0 && !bg1_col.transparent {
-            return bg1_col;
-        }
+        let bg1_main_col = if self.bg1_main_enabled() && !bg1_win_main {
+            bg1_col.clone()
+        } else {
+            self.transparent_color_data(ColorLayer::Bg1)
+        };
+        let bg1_sub_col = if self.bg1_sub_enabled() && !bg1_win_sub {
+            bg1_col.clone()
+        } else {
+            self.transparent_color_data(ColorLayer::Bg1)
+        };
+        drop(bg1_col); // Bg1 col should not be used past this point
 
         let bg2_col = self.bg_col_4bpp(
             bg2_tilemap_data.tilemap_idx, 
@@ -2257,46 +2241,122 @@ impl Ppu5C7x {
             BG2_CGRAM_BASE_ADDR,
             ColorLayer::Bg2,
         );
+        let bg2_main_col = if self.bg2_main_enabled() && !bg2_win_main {
+            bg2_col.clone()
+        } else {
+            self.transparent_color_data(ColorLayer::Bg2)
+        };
+        let bg2_sub_col = if self.bg2_sub_enabled() && !bg2_win_sub {
+            bg2_col.clone()
+        } else {
+            self.transparent_color_data(ColorLayer::Bg2)
+        };
+        drop(bg2_col); // Bg2 col should not be used past this point
 
-        if self.bg2_main_enabled() && bg2_col.priority != 0 && !bg2_col.transparent {
-            return bg2_col;
-        }
+        let bg3_col = self.bg_col_2bpp(
+            bg3_tilemap_data.tilemap_idx, 
+            bg3_tilemap_data.tile_row, 
+            bg3_tilemap_data.tile_col, 
+            self.bg3_vram_base_addr(), 
+            self.bg3_chr_base_addr(), 
+            BG3_CGRAM_BASE_ADDR,
+            ColorLayer::Bg3,
+        );
+        let bg3_main_col = if self.bg3_main_enabled() && !bg3_win_main {
+            bg3_col.clone()
+        } else {
+            self.transparent_color_data(ColorLayer::Bg3)
+        };
+        let bg3_sub_col = if self.bg3_sub_enabled() && !bg3_win_sub {
+            bg3_col.clone()
+        } else {
+            self.transparent_color_data(ColorLayer::Bg3)
+        };
+        drop(bg3_col); // Bg3 col should not be used past this point
 
-        if self.obj_main_enabled() && spr_col.priority == 2 && !spr_col.transparent {
-            return spr_col;
-        }
+        let (main_col, main_layer) = if self.bg3_mode1_priority() && bg3_main_col.priority != 0 && !bg3_main_col.transparent {
+            (bg3_main_col.raw_color, bg3_main_col.layer)
+        } else if spr_main_col.priority == 3 && !spr_main_col.transparent {
+            (spr_main_col.raw_color, spr_main_col.layer)
+        } else if bg1_main_col.priority != 0 && !bg1_main_col.transparent {
+            (bg1_main_col.raw_color, bg1_main_col.layer)
+        } else if bg2_main_col.priority != 0 && !bg2_main_col.transparent {
+            (bg2_main_col.raw_color, bg2_main_col.layer)
+        } else if spr_main_col.priority == 2 && !spr_main_col.transparent {
+            (spr_main_col.raw_color, spr_main_col.layer)
+        } else if !bg1_main_col.transparent {
+            (bg1_main_col.raw_color, bg1_main_col.layer)
+        } else if !bg2_main_col.transparent {
+            (bg2_main_col.raw_color, bg2_main_col.layer)
+        } else if spr_main_col.priority == 1 && !spr_main_col.transparent {
+            (spr_main_col.raw_color, spr_main_col.layer)
+        } else if bg3_main_col.priority != 0 && !bg3_main_col.transparent {
+            (bg3_main_col.raw_color, bg3_main_col.layer)
+        } else if !spr_main_col.transparent {
+            (spr_main_col.raw_color, spr_main_col.layer)
+        } else if !bg3_main_col.transparent {
+            (bg3_main_col.raw_color, bg3_main_col.layer)
+        } else {
+            (0, ColorLayer::Back) // Main screen color is black if all layers are transparent
+        };
 
-        if self.bg1_main_enabled() && !bg1_col.transparent {
-            return bg1_col;
-        }
+        let sub_col = if self.sub_color_fixed() {
+            self.fixed_color()
+        } else if self.bg3_mode1_priority() && bg3_sub_col.priority != 0 && !bg3_sub_col.transparent {
+            bg3_sub_col.raw_color
+        } else if spr_sub_col.priority == 3 && !spr_sub_col.transparent {
+            spr_sub_col.raw_color
+        } else if bg1_sub_col.priority != 0 && !bg1_sub_col.transparent {
+            bg1_sub_col.raw_color
+        } else if bg2_sub_col.priority != 0 && !bg2_sub_col.transparent {
+            bg2_sub_col.raw_color
+        } else if spr_sub_col.priority == 2 && !spr_sub_col.transparent {
+            spr_sub_col.raw_color
+        } else if !bg1_sub_col.transparent {
+            bg1_sub_col.raw_color
+        } else if !bg2_sub_col.transparent {
+            bg2_sub_col.raw_color
+        } else if spr_sub_col.priority == 1 && !spr_sub_col.transparent {
+            spr_sub_col.raw_color
+        } else if bg3_sub_col.priority != 0 && !bg3_sub_col.transparent {
+            bg3_sub_col.raw_color
+        } else if !spr_sub_col.transparent {
+            spr_sub_col.raw_color
+        } else if !bg3_sub_col.transparent {
+            bg3_sub_col.raw_color
+        } else {
+            self.fixed_color() // Sub screen is fixed color if all layers are transparent
+        };
 
-        if self.bg2_main_enabled() && !bg2_col.transparent {
-            return bg2_col;
-        }
+        let main_col = match self.col_win_main_region() {
+            WindowColorRegion::Nowhere => main_col,
+            WindowColorRegion::Outside => if col_win_en { main_col } else { 0 },
+            WindowColorRegion::Inside => if col_win_en { 0 } else { main_col },
+            WindowColorRegion::Everywhere => { 0 }
+        };
+        let sub_col = match self.col_win_main_region() {
+            WindowColorRegion::Nowhere => sub_col,
+            WindowColorRegion::Outside => if col_win_en { sub_col } else { self.fixed_color() },
+            WindowColorRegion::Inside => if col_win_en { self.fixed_color() } else { sub_col },
+            WindowColorRegion::Everywhere => { self.fixed_color() }
+        };
 
-        if self.obj_main_enabled() && spr_col.priority == 1 && !spr_col.transparent {
-            return spr_col;
-        }
+        let cmath_en = match main_layer {
+            ColorLayer::Bg1 => self.bg1_cmath_enabled(),
+            ColorLayer::Bg2 => self.bg2_cmath_enabled(),
+            ColorLayer::Bg3 => self.bg3_cmath_enabled(),
+            ColorLayer::Obj => self.obj_cmath_enabled(),
+            ColorLayer::Back => self.back_cmath_enabled(),
+            _ => unreachable!(), // No other layers considered in Mode 1
+        };
 
-        if self.bg3_main_enabled() && bg3_col.priority != 0 && !bg3_col.transparent {
-            return bg3_col;
-        }
+        let pixel_col = if cmath_en {
+            self.apply_cmath(main_col, sub_col)
+        } else {
+            main_col
+        };
 
-        if self.obj_main_enabled() && !spr_col.transparent {
-            return spr_col;
-        }
-
-        ColorData {
-            raw_color: self.transparent_color(),
-            priority: 0,
-            transparent: true,
-            layer: ColorLayer::Back
-        }
-    }
-
-    /// Computes the color of given layer on the sub screen
-    fn bg_mode1_sub_col(&mut self, layer: ColorLayer) -> ColorData {
-        ColorData { raw_color: 0, priority: 0, transparent: true, layer: ColorLayer::Back }
+        pixel_col
     }
 
     fn bg_mode2_dot(&mut self, frame_buffer: &mut [XRGB8888]) {
@@ -2433,6 +2493,34 @@ impl Ppu5C7x {
                 layer
             }
     }
+
+    fn apply_cmath(&self, main_col: u16, sub_col: u16) -> u16 {
+        let main_r = (main_col >> 0) & 0x1F;
+        let main_g = (main_col >> 5) & 0x1F;
+        let main_b = (main_col >> 10) & 0x1F;
+
+        let sub_r = (sub_col >> 0) & 0x1F;
+        let sub_g = (sub_col >> 5) & 0x1F;
+        let sub_b = (sub_col >> 10) & 0x1F;
+
+        let (r,g,b) = match self.cmath_operator() {
+            CMathOperator::Add => (main_r + sub_r, main_g + sub_g, main_b + sub_b),
+            CMathOperator::Subtract => (main_r - sub_r, main_g - sub_g, main_b - sub_b),
+        };
+
+        let (r,g,b) = if self.cmath_half() {
+            (r >> 1, g >> 1, b >> 1)
+        } else {
+            (r, g, b)
+        };
+
+        // Negative values clamped to 0, positive values clamped to 31
+        let r = if (r & 0x8000) != 0 { 0 } else { r & 0x1F };
+        let g = if (g & 0x8000) != 0 { 0 } else { g & 0x1F };
+        let b = if (b & 0x8000) != 0 { 0 } else { b & 0x1F };
+
+        (b << 10) | (g << 5) | r
+    }
 }
 
 // Getters & Setters for registers
@@ -2447,6 +2535,145 @@ impl Ppu5C7x {
     fn bg3_chr_base_addr(&self) -> u16 { (self.registers.bg3_chr_base_addr.get() as u16) << 12 }
     fn bg4_chr_base_addr(&self) -> u16 { (self.registers.bg4_chr_base_addr.get() as u16) << 12 }
 
+    fn win_active_signal(&self, screen_x: usize, layer_w1_en: bool, layer_w2_en: bool,
+        layer_w1_inv: bool, layer_w2_inv: bool, win_logic: WindowLogic) -> bool {
+
+        let w1_left = self.w1_left_pos() as usize;
+        let w1_right = self.w1_right_pos() as usize;
+        let w2_left = self.w2_left_pos() as usize;
+        let w2_right = self.w2_right_pos() as usize;
+
+        let in_w1 = w1_left <= screen_x && screen_x <= w1_right;
+        let in_w2 = w2_left <= screen_x && screen_x <= w2_right;
+
+        let w1_en = (layer_w1_en && in_w1) ^ layer_w1_inv;
+        let w2_en = (layer_w2_en && in_w2) ^ layer_w2_inv;
+
+        let win_en = if layer_w1_en && layer_w2_en {
+            match win_logic {
+                WindowLogic::Or => w1_en || w2_en,
+                WindowLogic::And => w1_en && w2_en,
+                WindowLogic::Xor => w1_en ^ w2_en,
+                WindowLogic::Xnor => !(w1_en ^ w2_en),
+            }
+        } else if layer_w1_en {
+            w1_en
+        } else if layer_w2_en {
+            w2_en
+        } else {
+            false
+        };
+
+        win_en
+    }
+
+    fn bg1_win_active_signals(&self, screen_x: usize) -> (bool, bool) {
+        let win_en = if self.bg1_win_main_enabled() || self.bg1_win_sub_enabled() {
+            self.win_active_signal(screen_x,
+                self.bg1_w1_enabled(),
+                self.bg1_w2_enabled(),
+                self.bg1_w1_inverted(),
+                self.bg1_w2_inverted(),
+                self.bg1_win_logic()
+            )
+        } else {
+            false
+        };
+
+        let bg1_win_main_en = win_en && self.bg1_win_main_enabled();
+        let bg1_win_sub_en = win_en && self.bg1_win_sub_enabled();
+
+        (bg1_win_main_en, bg1_win_sub_en)
+    }
+
+    fn bg2_win_active_signals(&self, screen_x: usize) -> (bool, bool) {
+        let win_en = if self.bg2_win_main_enabled() || self.bg2_win_sub_enabled() {
+            self.win_active_signal(screen_x,
+                self.bg2_w1_enabled(),
+                self.bg2_w2_enabled(),
+                self.bg2_w1_inverted(),
+                self.bg2_w2_inverted(),
+                self.bg2_win_logic()
+            )
+        } else {
+            false
+        };
+
+        let bg2_win_main_en = win_en && self.bg2_win_main_enabled();
+        let bg2_win_sub_en = win_en && self.bg2_win_sub_enabled();
+
+        (bg2_win_main_en, bg2_win_sub_en)
+    }
+
+    fn bg3_win_active_signals(&self, screen_x: usize) -> (bool, bool) {
+        let win_en = if self.bg3_win_main_enabled() || self.bg3_win_sub_enabled() {
+            self.win_active_signal(screen_x,
+                self.bg3_w1_enabled(),
+                self.bg3_w2_enabled(),
+                self.bg3_w1_inverted(),
+                self.bg3_w2_inverted(),
+                self.bg3_win_logic()
+            )
+        } else {
+            false
+        };
+
+        let bg3_win_main_en = win_en && self.bg3_win_main_enabled();
+        let bg3_win_sub_en = win_en && self.bg3_win_sub_enabled();
+
+        (bg3_win_main_en, bg3_win_sub_en)
+    }
+
+    fn bg4_win_active_signals(&self, screen_x: usize) -> (bool, bool) {
+        let win_en = if self.bg4_win_main_enabled() || self.bg4_win_sub_enabled() {
+            self.win_active_signal(screen_x,
+                self.bg4_w1_enabled(),
+                self.bg4_w2_enabled(),
+                self.bg4_w1_inverted(),
+                self.bg4_w2_inverted(),
+                self.bg4_win_logic()
+            )
+        } else {
+            false
+        };
+
+        let bg4_win_main_en = win_en && self.bg4_win_main_enabled();
+        let bg4_win_sub_en = win_en && self.bg4_win_sub_enabled();
+
+        (bg4_win_main_en, bg4_win_sub_en)
+    }
+
+    fn obj_win_active_signals(&self, screen_x: usize) -> (bool, bool) {
+        let win_en = if self.obj_win_main_enabled() || self.obj_win_sub_enabled() {
+            self.win_active_signal(screen_x,
+                self.obj_w1_enabled(),
+                self.obj_w2_enabled(),
+                self.obj_w1_inverted(),
+                self.obj_w2_inverted(),
+                self.obj_win_logic()
+            )
+        } else {
+            false
+        };
+
+        let obj_win_main_en = win_en && self.obj_win_main_enabled();
+        let obj_win_sub_en = win_en && self.obj_win_sub_enabled();
+
+        (obj_win_main_en, obj_win_sub_en)
+    }
+
+    fn col_win_active_signal(&self, screen_x: usize) -> bool {
+        let win_en = self.win_active_signal(screen_x,
+            self.col_w1_enabled(),
+            self.col_w2_enabled(),
+            self.col_w1_inverted(),
+            self.col_w2_inverted(),
+            self.col_win_logic()
+        );
+
+        win_en
+    }
+
     fn screen_brightness(&self) -> u8 { self.registers.screen_brightness.get() }
     fn obj_sprite_size(&self) -> ObjectSizeSelect { self.registers.obj_sprite_size.get() }
     fn name_secondary_select(&self) -> u8 { self.registers.name_secondary_select.get() }
@@ -2459,7 +2686,7 @@ impl Ppu5C7x {
     fn bg3_tile_size(&self) -> TileSize { self.registers.bg3_char_size.get() }
     fn bg2_tile_size(&self) -> TileSize { self.registers.bg2_char_size.get() }
     fn bg1_tile_size(&self) -> TileSize { self.registers.bg1_char_size.get() }
-    fn bg3_priority(&self) -> bool { self.registers.bg3_priority.get() }
+    fn bg3_mode1_priority(&self) -> bool { self.registers.bg3_mode1_priority.get() }
     fn bg_mode(&self) -> BgMode { self.registers.bg_mode.get() }
     fn mosaic_size(&self) -> u8 { self.registers.mosaic_size.get() }
     fn bg4_mosaic(&self) -> bool { self.registers.bg4_mosaic.get() }
@@ -2548,23 +2775,23 @@ impl Ppu5C7x {
     fn bg3_sub_enabled(&self) -> bool { self.registers.bg3_sub_enabled.get() }
     fn bg2_sub_enabled(&self) -> bool { self.registers.bg2_sub_enabled.get() }
     fn bg1_sub_enabled(&self) -> bool { self.registers.bg1_sub_enabled.get() }
-    fn main_obj_win_enabled(&self) -> bool { self.registers.obj_win_main_enabled.get() }
+    fn obj_win_main_enabled(&self) -> bool { self.registers.obj_win_main_enabled.get() }
     fn bg4_win_main_enabled(&self) -> bool { self.registers.bg4_win_main_enabled.get() }
     fn bg3_win_main_enabled(&self) -> bool { self.registers.bg3_win_main_enabled.get() }
     fn bg2_win_main_enabled(&self) -> bool { self.registers.bg2_win_main_enabled.get() }
     fn bg1_win_main_enabled(&self) -> bool { self.registers.bg1_win_main_enabled.get() }
-    fn sub_obj_win_enabled(&self) -> bool { self.registers.obj_win_sub_enabled.get() }
+    fn obj_win_sub_enabled(&self) -> bool { self.registers.obj_win_sub_enabled.get() }
     fn bg4_win_sub_enabled(&self) -> bool { self.registers.bg4_win_sub_enabled.get() }
     fn bg3_win_sub_enabled(&self) -> bool { self.registers.bg3_win_sub_enabled.get() }
     fn bg2_win_sub_enabled(&self) -> bool { self.registers.bg2_win_sub_enabled.get() }
     fn bg1_win_sub_enabled(&self) -> bool { self.registers.bg1_win_sub_enabled.get() }
-    fn main_col_win_black_region(&self) -> WindowColorRegion { self.registers.main_col_win_black_region.get() }
-    fn sub_col_win_transparent_region(&self) -> WindowColorRegion { self.registers.sub_col_win_transparent_region.get() }
-    fn cmath_addend(&self) -> CMathAddend { self.registers.cmath_addend.get() }
+    fn col_win_main_region(&self) -> WindowColorRegion { self.registers.col_win_main_region.get() }
+    fn col_win_sub_region(&self) -> WindowColorRegion { self.registers.col_win_sub_region.get() }
+    fn sub_color_fixed(&self) -> bool { self.registers.sub_color_fixed.get() }
     fn direct_col_mode(&self) -> DirectColorMode { self.registers.direct_col_mode.get() }
     fn cmath_operator(&self) -> CMathOperator { self.registers.cmath_operator.get() }
     fn cmath_half(&self) -> bool { self.registers.cmath_half.get() }
-    fn cmath_backdrop(&self) -> bool { self.registers.cmath_backdrop.get() }
+    fn back_cmath_enabled(&self) -> bool { self.registers.back_cmath_enabled.get() }
     fn obj_cmath_enabled(&self) -> bool { self.registers.obj_cmath_enabled.get() }
     fn bg4_cmath_enabled(&self) -> bool { self.registers.bg4_cmath_enabled.get() }
     fn bg3_cmath_enabled(&self) -> bool { self.registers.bg3_cmath_enabled.get() }
