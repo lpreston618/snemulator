@@ -111,6 +111,10 @@ impl SnemulatorCore {
     }
 
     fn cycle_frame(&mut self) {
+        // if self.frame_count == 30 {
+        //     self.snem_cpu.trigger_interrupt(crate::system::scpu::CpuInterrupt::NMI);
+        // }
+
         while !self.snem_ppu.frame_finished {
             self.cycle();
         }

@@ -1783,7 +1783,6 @@ struct ColorData {
     raw_color: u16,
     priority: u8,
     transparent: bool,
-    layer: ColorLayer,
 }
 
 struct TilePosData {
@@ -1805,12 +1804,11 @@ impl Ppu5C7x {
     fn screen_x(&self) -> usize { self.dot as usize - VISIBLE_SCANLINE_START_DOT }
     fn screen_y(&self) -> usize { self.scanline as usize - 1 }
     fn transparent_color(&self) -> u16 { self.registers.cgram.0[0].get() }
-    fn transparent_color_data(&self, layer: ColorLayer) -> ColorData { 
+    fn transparent_color_data(&self) -> ColorData { 
         ColorData {
             raw_color: self.transparent_color(),
             priority: 0,
             transparent: true,
-            layer
         }
     }
 
@@ -1896,7 +1894,6 @@ impl Ppu5C7x {
                             raw_color: 0,
                             priority: sprite.priority,
                             transparent: true,
-                            layer: ColorLayer::Obj,
                         };
                     }
 
@@ -1911,7 +1908,6 @@ impl Ppu5C7x {
                     raw_color: spr_col,
                     priority: sprite.priority,
                     transparent: false,
-                    layer: ColorLayer::Obj,
                 };
             }
         }
@@ -1921,7 +1917,6 @@ impl Ppu5C7x {
             raw_color: self.transparent_color(),
             priority: 0,
             transparent: true,
-            layer: ColorLayer::Obj,
         }
     }
 
@@ -1929,257 +1924,228 @@ impl Ppu5C7x {
     /// data. Computes only as many layers as it needs to before returning the
     /// color of the dot.
     fn bg_mode0_dot(&mut self, screen_x: usize, screen_y: usize, spr_col: ColorData) -> u16 {
-        let (main_col, sub_col) = self.bg_mode0_main_sub_cols(screen_x, screen_y, spr_col);
+        const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
+        const BG2_CGRAM_BASE_ADDR: u8 = 0x20;
+        const BG3_CGRAM_BASE_ADDR: u8 = 0x40;
+        const BG4_CGRAM_BASE_ADDR: u8 = 0x60;
 
-        main_col
-    }
+        let col_win_en = self.col_win_active_signal(screen_x);
+        let (obj_win_main, obj_win_sub) = self.obj_win_active_signals(screen_x);
+        let (bg1_win_main, bg1_win_sub) = self.bg1_win_active_signals(screen_x);
+        let (bg2_win_main, bg2_win_sub) = self.bg2_win_active_signals(screen_x);
+        let (bg3_win_main, bg3_win_sub) = self.bg3_win_active_signals(screen_x);
+        let (bg4_win_main, bg4_win_sub) = self.bg4_win_active_signals(screen_x);
 
-    fn bg_mode0_main_sub_cols(&mut self, screen_x: usize, screen_y: usize, spr_col: ColorData) -> (u16, u16) {
-        const BG1_BASE_CGRAM_ADDR: u16 = 0x00;
-        const BG2_BASE_CGRAM_ADDR: u16 = 0x20;
-        const BG3_BASE_CGRAM_ADDR: u16 = 0x40;
-        const BG4_BASE_CGRAM_ADDR: u16 = 0x60;
+        let bg1_tilemap_data = self.bg_tile_idx(
+            screen_x, screen_y,
+            self.bg1_m7_x_offset(),
+            self.bg1_m7_y_offset(),
+            self.bg1_tile_size(),
+        );
+        let bg2_tilemap_data = self.bg_tile_idx(
+            screen_x, screen_y,
+            self.bg2_x_offset(),
+            self.bg2_y_offset(),
+            self.bg2_tile_size(),
+        );
+        let bg3_tilemap_data = self.bg_tile_idx(
+            screen_x, screen_y,
+            self.bg3_x_offset(),
+            self.bg3_y_offset(),
+            self.bg3_tile_size(),
+        );
+        let bg4_tilemap_data = self.bg_tile_idx(
+            screen_x, screen_y,
+            self.bg4_x_offset(),
+            self.bg4_y_offset(),
+            self.bg4_tile_size(),
+        );
 
-        let mut main_col: Option<u16> = None;
-        let mut sub_col: Option<u16> = None;
-
-        if spr_col.priority == 3 && !spr_col.transparent {
-            if self.obj_main_enabled() {
-                main_col = Some(spr_col.raw_color);
-            }
-
-            if self.obj_sub_enabled() {
-                sub_col = Some(spr_col.raw_color);
-            }
-        }
-
-        if let (Some(main_col), Some(sub_col)) = (main_col, sub_col) {
-            return (main_col, sub_col);
-        }
-
-        let tile_x = (screen_x >> 3) as u16;
-        let tile_y = (screen_y >> 3) as u16;
-
-        let tilemap_idx = (tile_y << 5) | tile_x;
-
-        let tile_col = (screen_x & 7) as u8;
-        let tile_row = (screen_y & 7) as u8;
-
-        // let mode0_bg_col = |bg_vram_base_addr: u16, bg_chr_base_addr: u16, bg_cgram_base_addr: u16, layer: ColorLayer| -> ColorData {
-        //     let tile_data_addr = bg_vram_base_addr + tilemap_idx;
-
-        //     let tile_data = self.vram_read(tile_data_addr);
-        //     let tile_chr_idx = tile_data & 0x3FF;
-        //     let tile_pal = (tile_data >> 10) & 7;
-        //     let tile_priority = ((tile_data >> 13) & 1) as u8;
-        //     let flip_x = (tile_data & 0x4000) != 0;
-        //     let flip_y = (tile_data & 0x8000) != 0;
-
-        //     let tile_chr_addr = bg_chr_base_addr + (tile_chr_idx << 3) + tile_row;
-
-        //     let tile_chr_data = self.vram_read(tile_chr_addr); // 2bpp bitplanes
-        //     let b0 = (tile_chr_data >> (7-tile_col)) & 1;
-        //     let b1 = (tile_chr_data >> (15-tile_col)) & 1;
-        //     let pal_idx = (b1 << 1) | b0;
-        //     let transparent = pal_idx == 0;
-            
-        //     let cgram_addr = bg_cgram_base_addr | (tile_pal << 2) | pal_idx;
-
-        //     let raw_color = if transparent {
-        //         self.transparent_color()
-        //     } else {
-        //         self.registers.cgram.0[cgram_addr as usize].get()
-        //     };
-
-        //     ColorData {
-        //         raw_color,
-        //         priority: tile_priority,
-        //         transparent: transparent,
-        //         layer
-        //     }
-        // };
+        let spr_main_col = if self.obj_main_enabled() && !obj_win_main {
+            spr_col.clone()
+        } else {
+            self.transparent_color_data()
+        };
+        let spr_sub_col = if self.obj_sub_enabled() && !obj_win_sub {
+            spr_col.clone()
+        } else {
+            self.transparent_color_data()
+        };
+        drop(spr_col); // Obj col should not be used past this point
 
         let bg1_col = self.bg_col_2bpp(
-            tilemap_idx,
-            tile_row,
-            tile_col,
-            self.bg1_vram_base_addr(),
-            self.bg1_chr_base_addr(),
-            BG1_BASE_CGRAM_ADDR,
-            ColorLayer::Bg1,
+            bg1_tilemap_data.tilemap_idx, 
+            bg1_tilemap_data.tile_row, 
+            bg1_tilemap_data.tile_col, 
+            self.bg1_vram_base_addr(), 
+            self.bg1_chr_base_addr(), 
+            BG1_CGRAM_BASE_ADDR,
         );
-
-        if bg1_col.priority != 0 && !bg1_col.transparent {
-            if main_col.is_none() && self.bg1_main_enabled() {
-                main_col = Some(bg1_col.raw_color);
-            }
-
-            if sub_col.is_none() && self.bg1_sub_enabled() {
-                sub_col = Some(bg1_col.raw_color);
-            }
-        }
-
-        if let (Some(main_col), Some(sub_col)) = (main_col, sub_col) {
-            return (main_col, sub_col);
-        }
+        let bg1_main_col = if self.bg1_main_enabled() && !bg1_win_main {
+            bg1_col.clone()
+        } else {
+            self.transparent_color_data()
+        };
+        let bg1_sub_col = if self.bg1_sub_enabled() && !bg1_win_sub {
+            bg1_col.clone()
+        } else {
+            self.transparent_color_data()
+        };
+        drop(bg1_col); // Bg1 col should not be used past this point
 
         let bg2_col = self.bg_col_2bpp(
-            tilemap_idx,
-            tile_row,
-            tile_col,
-            self.bg2_vram_base_addr(),
-            self.bg2_chr_base_addr(),
-            BG2_BASE_CGRAM_ADDR,
-            ColorLayer::Bg2,
+            bg2_tilemap_data.tilemap_idx, 
+            bg2_tilemap_data.tile_row, 
+            bg2_tilemap_data.tile_col, 
+            self.bg2_vram_base_addr(), 
+            self.bg2_chr_base_addr(), 
+            BG2_CGRAM_BASE_ADDR,
         );
-
-        if bg2_col.priority != 0 && !bg2_col.transparent {
-            if main_col.is_none() && self.bg2_main_enabled() {
-                main_col = Some(bg2_col.raw_color);
-            }
-
-            if sub_col.is_none() && self.bg2_sub_enabled() {
-                sub_col = Some(bg2_col.raw_color);
-            }
-        }
-
-        if spr_col.priority == 2 && !spr_col.transparent {
-            if main_col.is_none() && self.obj_main_enabled() {
-                main_col = Some(spr_col.raw_color);
-            }
-
-            if main_col.is_none() && self.obj_sub_enabled() {
-                sub_col = Some(spr_col.raw_color);
-            }
-        }
-
-        if !bg1_col.transparent {
-            if main_col.is_none() && self.bg1_main_enabled() {
-                main_col = Some(bg1_col.raw_color);
-            }
-
-            if sub_col.is_none() && self.bg1_sub_enabled() {
-                sub_col = Some(bg1_col.raw_color);
-            }
-        }
-
-        if !bg2_col.transparent {
-            if main_col.is_none() && self.bg2_main_enabled() {
-                main_col = Some(bg2_col.raw_color);
-            }
-
-            if sub_col.is_none() && self.bg2_sub_enabled() {
-                sub_col = Some(bg2_col.raw_color);
-            }
-        }
-
-        if spr_col.priority == 1 && !spr_col.transparent {
-            if main_col.is_none() && self.obj_main_enabled() {
-                main_col = Some(spr_col.raw_color);
-            }
-
-            if main_col.is_none() && self.obj_sub_enabled() {
-                sub_col = Some(spr_col.raw_color);
-            }
-        }
-
-        if let (Some(main_col), Some(sub_col)) = (main_col, sub_col) {
-            return (main_col, sub_col);
-        }
+        let bg2_main_col = if self.bg2_main_enabled() && !bg2_win_main {
+            bg2_col.clone()
+        } else {
+            self.transparent_color_data()
+        };
+        let bg2_sub_col = if self.bg2_sub_enabled() && !bg2_win_sub {
+            bg2_col.clone()
+        } else {
+            self.transparent_color_data()
+        };
+        drop(bg2_col); // Bg2 col should not be used past this point
 
         let bg3_col = self.bg_col_2bpp(
-            tilemap_idx,
-            tile_row,
-            tile_col,
-            self.bg3_vram_base_addr(),
-            self.bg3_chr_base_addr(),
-            BG3_BASE_CGRAM_ADDR,
-            ColorLayer::Bg3,
+            bg3_tilemap_data.tilemap_idx, 
+            bg3_tilemap_data.tile_row, 
+            bg3_tilemap_data.tile_col, 
+            self.bg3_vram_base_addr(), 
+            self.bg3_chr_base_addr(), 
+            BG3_CGRAM_BASE_ADDR,
         );
-
-        if bg3_col.priority != 0 && !bg3_col.transparent {
-            if main_col.is_none() && self.bg3_main_enabled() {
-                main_col = Some(bg3_col.raw_color);
-            }
-
-            if sub_col.is_none() && self.bg3_sub_enabled() {
-                sub_col = Some(bg3_col.raw_color);
-            }
-        }
-
-        if let (Some(main_col), Some(sub_col)) = (main_col, sub_col) {
-            return (main_col, sub_col);
-        }
+        let bg3_main_col = if self.bg3_main_enabled() && !bg3_win_main {
+            bg3_col.clone()
+        } else {
+            self.transparent_color_data()
+        };
+        let bg3_sub_col = if self.bg3_sub_enabled() && !bg3_win_sub {
+            bg3_col.clone()
+        } else {
+            self.transparent_color_data()
+        };
+        drop(bg3_col); // Bg3 col should not be used past this point
 
         let bg4_col = self.bg_col_2bpp(
-            tilemap_idx,
-            tile_row,
-            tile_col,
-            self.bg4_vram_base_addr(),
-            self.bg4_chr_base_addr(),
-            BG4_BASE_CGRAM_ADDR,
-            ColorLayer::Bg4,
+            bg4_tilemap_data.tilemap_idx, 
+            bg4_tilemap_data.tile_row, 
+            bg4_tilemap_data.tile_col, 
+            self.bg4_vram_base_addr(), 
+            self.bg4_chr_base_addr(), 
+            BG4_CGRAM_BASE_ADDR,
         );
+        let bg4_main_col = if self.bg4_main_enabled() && !bg4_win_main {
+            bg4_col.clone()
+        } else {
+            self.transparent_color_data()
+        };
+        let bg4_sub_col = if self.bg4_sub_enabled() && !bg4_win_sub {
+            bg4_col.clone()
+        } else {
+            self.transparent_color_data()
+        };
+        drop(bg4_col); // Bg3 col should not be used past this point
 
-        if bg4_col.priority != 0 && !bg4_col.transparent {
-            if main_col.is_none() && self.bg4_main_enabled() {
-                main_col = Some(bg4_col.raw_color);
-            }
 
-            if sub_col.is_none() && self.bg4_sub_enabled() {
-                sub_col = Some(bg4_col.raw_color);
-            }
+        let (main_col, main_layer) = if spr_main_col.priority == 3 && !spr_main_col.transparent {
+            (spr_main_col.raw_color, ColorLayer::Obj)
+        } else if bg1_main_col.priority != 0 && !bg1_main_col.transparent {
+            (bg1_main_col.raw_color, ColorLayer::Bg1)
+        } else if bg2_main_col.priority != 0 && !bg2_main_col.transparent {
+            (bg2_main_col.raw_color, ColorLayer::Bg2)
+        } else if spr_main_col.priority == 2 && !spr_main_col.transparent {
+            (spr_main_col.raw_color, ColorLayer::Obj)
+        } else if !bg1_main_col.transparent {
+            (bg1_main_col.raw_color, ColorLayer::Bg1)
+        } else if !bg2_main_col.transparent {
+            (bg2_main_col.raw_color, ColorLayer::Bg2)
+        } else if spr_main_col.priority == 1 && !spr_main_col.transparent {
+            (spr_main_col.raw_color, ColorLayer::Obj)
+        } else if bg3_main_col.priority != 0 && !bg3_main_col.transparent {
+            (bg3_main_col.raw_color, ColorLayer::Bg3)
+        } else if bg4_main_col.priority != 0 && !bg4_main_col.transparent {
+            (bg4_main_col.raw_color, ColorLayer::Bg4)
+        } else if !spr_main_col.transparent {
+            (spr_main_col.raw_color, ColorLayer::Obj)
+        } else if !bg3_main_col.transparent {
+            (bg3_main_col.raw_color, ColorLayer::Bg3)
+        } else if !bg4_main_col.transparent {
+            (bg4_main_col.raw_color, ColorLayer::Bg4)
+        } else {
+            (self.transparent_color(), ColorLayer::Back) // Main screen color is black if all layers are transparent
+        };
+
+        let cmath_en = match main_layer {
+            ColorLayer::Bg1 => self.bg1_cmath_enabled(),
+            ColorLayer::Bg2 => self.bg2_cmath_enabled(),
+            ColorLayer::Bg3 => self.bg3_cmath_enabled(),
+            ColorLayer::Obj => self.obj_cmath_enabled(),
+            ColorLayer::Back => self.back_cmath_enabled(),
+            _ => unreachable!(), // No other layers considered in Mode 1
+        };
+
+        if !cmath_en {
+            return main_col;
         }
 
-        if !spr_col.transparent {
-            if main_col.is_none() && self.obj_main_enabled() {
-                main_col = Some(spr_col.raw_color);
-            }
+        let sub_col = if spr_sub_col.priority == 3 && !spr_sub_col.transparent {
+            spr_sub_col.raw_color
+        } else if bg1_sub_col.priority != 0 && !bg1_sub_col.transparent {
+            bg1_sub_col.raw_color
+        } else if bg2_sub_col.priority != 0 && !bg2_sub_col.transparent {
+            bg2_sub_col.raw_color
+        } else if spr_sub_col.priority == 2 && !spr_sub_col.transparent {
+            spr_sub_col.raw_color
+        } else if !bg1_sub_col.transparent {
+            bg1_sub_col.raw_color
+        } else if !bg2_sub_col.transparent {
+            bg2_sub_col.raw_color
+        } else if spr_sub_col.priority == 1 && !spr_sub_col.transparent {
+            spr_sub_col.raw_color
+        } else if bg3_sub_col.priority != 0 && !bg3_sub_col.transparent {
+            bg3_sub_col.raw_color
+        } else if bg4_sub_col.priority != 0 && !bg4_sub_col.transparent {
+            bg4_sub_col.raw_color
+        } else if !spr_sub_col.transparent {
+            spr_sub_col.raw_color
+        } else if !bg3_sub_col.transparent {
+            bg3_sub_col.raw_color
+        } else if !bg4_sub_col.transparent {
+            bg4_sub_col.raw_color
+        } else {
+            self.fixed_color() // sub screen color is black if all layers are transparent
+        };
 
-            if main_col.is_none() && self.obj_sub_enabled() {
-                sub_col = Some(spr_col.raw_color);
-            }
-        }
+        let main_col = match self.col_win_main_region() {
+            WindowColorRegion::Nowhere => main_col,
+            WindowColorRegion::Outside => if col_win_en { main_col } else { 0 },
+            WindowColorRegion::Inside => if col_win_en { 0 } else { main_col },
+            WindowColorRegion::Everywhere => { 0 }
+        };
+        let sub_col = match self.col_win_main_region() {
+            WindowColorRegion::Nowhere => sub_col,
+            WindowColorRegion::Outside => if col_win_en { sub_col } else { self.fixed_color() },
+            WindowColorRegion::Inside => if col_win_en { self.fixed_color() } else { sub_col },
+            WindowColorRegion::Everywhere => { self.fixed_color() }
+        };
 
-        if !bg3_col.transparent {
-            if main_col.is_none() && self.bg3_main_enabled() {
-                main_col = Some(bg3_col.raw_color);
-            }
-
-            if sub_col.is_none() && self.bg3_sub_enabled() {
-                sub_col = Some(bg3_col.raw_color);
-            }
-        }
-
-        if !bg4_col.transparent {
-            if main_col.is_none() && self.bg4_main_enabled() {
-                main_col = Some(bg4_col.raw_color);
-            }
-
-            if sub_col.is_none() && self.bg4_sub_enabled() {
-                sub_col = Some(bg4_col.raw_color);
-            }
-        }
-
-        if main_col.is_none() {
-            main_col = Some(self.transparent_color());
-        }
-
-        if sub_col.is_none() {
-            sub_col = Some(self.transparent_color());
-        }
-
-        (main_col.unwrap(), sub_col.unwrap())
+        self.apply_cmath(main_col, sub_col)
     }
-
     /// Computes the color of the dot on the screen using the Mode 1 process.
     /// Mode 1 used layers Bg1 at 4bpp, Bg2 at 4bpp, Bg3 at 2bpp, and Obj.
     /// It is able to use the features: Mosaic, Scroll, Interlace,
     /// 8x8 or 16x16 Tiles, Windowing, and Color Math.
     fn bg_mode1_dot(&mut self, screen_x: usize, screen_y: usize, spr_col: ColorData) -> u16 {
-        const BG1_CGRAM_BASE_ADDR: u16 = 0x0000;
-        const BG2_CGRAM_BASE_ADDR: u16 = 0x0000;
-        const BG3_CGRAM_BASE_ADDR: u16 = 0x0000;
+        const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
+        const BG2_CGRAM_BASE_ADDR: u8 = 0x00;
+        const BG3_CGRAM_BASE_ADDR: u8 = 0x00;
 
         let col_win_en = self.col_win_active_signal(screen_x);
         let (obj_win_main, obj_win_sub) = self.obj_win_active_signals(screen_x);
@@ -2209,12 +2175,12 @@ impl Ppu5C7x {
         let spr_main_col = if self.obj_main_enabled() && !obj_win_main {
             spr_col.clone()
         } else {
-            self.transparent_color_data(ColorLayer::Obj)
+            self.transparent_color_data()
         };
         let spr_sub_col = if self.obj_sub_enabled() && !obj_win_sub {
             spr_col.clone()
         } else {
-            self.transparent_color_data(ColorLayer::Obj)
+            self.transparent_color_data()
         };
         drop(spr_col); // Obj col should not be used past this point
 
@@ -2225,17 +2191,16 @@ impl Ppu5C7x {
             self.bg1_vram_base_addr(), 
             self.bg1_chr_base_addr(), 
             BG1_CGRAM_BASE_ADDR,
-            ColorLayer::Bg1,
         );
         let bg1_main_col = if self.bg1_main_enabled() && !bg1_win_main {
             bg1_col.clone()
         } else {
-            self.transparent_color_data(ColorLayer::Bg1)
+            self.transparent_color_data()
         };
         let bg1_sub_col = if self.bg1_sub_enabled() && !bg1_win_sub {
             bg1_col.clone()
         } else {
-            self.transparent_color_data(ColorLayer::Bg1)
+            self.transparent_color_data()
         };
         drop(bg1_col); // Bg1 col should not be used past this point
 
@@ -2246,17 +2211,16 @@ impl Ppu5C7x {
             self.bg2_vram_base_addr(), 
             self.bg2_chr_base_addr(), 
             BG2_CGRAM_BASE_ADDR,
-            ColorLayer::Bg2,
         );
         let bg2_main_col = if self.bg2_main_enabled() && !bg2_win_main {
             bg2_col.clone()
         } else {
-            self.transparent_color_data(ColorLayer::Bg2)
+            self.transparent_color_data()
         };
         let bg2_sub_col = if self.bg2_sub_enabled() && !bg2_win_sub {
             bg2_col.clone()
         } else {
-            self.transparent_color_data(ColorLayer::Bg2)
+            self.transparent_color_data()
         };
         drop(bg2_col); // Bg2 col should not be used past this point
 
@@ -2267,44 +2231,43 @@ impl Ppu5C7x {
             self.bg3_vram_base_addr(), 
             self.bg3_chr_base_addr(), 
             BG3_CGRAM_BASE_ADDR,
-            ColorLayer::Bg3,
         );
         let bg3_main_col = if self.bg3_main_enabled() && !bg3_win_main {
             bg3_col.clone()
         } else {
-            self.transparent_color_data(ColorLayer::Bg3)
+            self.transparent_color_data()
         };
         let bg3_sub_col = if self.bg3_sub_enabled() && !bg3_win_sub {
             bg3_col.clone()
         } else {
-            self.transparent_color_data(ColorLayer::Bg3)
+            self.transparent_color_data()
         };
         drop(bg3_col); // Bg3 col should not be used past this point
 
         let (main_col, main_layer) = if self.bg3_mode1_priority() && bg3_main_col.priority != 0 && !bg3_main_col.transparent {
-            (bg3_main_col.raw_color, bg3_main_col.layer)
+            (bg3_main_col.raw_color, ColorLayer::Bg3)
         } else if spr_main_col.priority == 3 && !spr_main_col.transparent {
-            (spr_main_col.raw_color, spr_main_col.layer)
+            (spr_main_col.raw_color, ColorLayer::Obj)
         } else if bg1_main_col.priority != 0 && !bg1_main_col.transparent {
-            (bg1_main_col.raw_color, bg1_main_col.layer)
+            (bg1_main_col.raw_color, ColorLayer::Bg1)
         } else if bg2_main_col.priority != 0 && !bg2_main_col.transparent {
-            (bg2_main_col.raw_color, bg2_main_col.layer)
+            (bg2_main_col.raw_color, ColorLayer::Bg2)
         } else if spr_main_col.priority == 2 && !spr_main_col.transparent {
-            (spr_main_col.raw_color, spr_main_col.layer)
+            (spr_main_col.raw_color, ColorLayer::Obj)
         } else if !bg1_main_col.transparent {
-            (bg1_main_col.raw_color, bg1_main_col.layer)
+            (bg1_main_col.raw_color, ColorLayer::Bg1)
         } else if !bg2_main_col.transparent {
-            (bg2_main_col.raw_color, bg2_main_col.layer)
+            (bg2_main_col.raw_color, ColorLayer::Bg2)
         } else if spr_main_col.priority == 1 && !spr_main_col.transparent {
-            (spr_main_col.raw_color, spr_main_col.layer)
+            (spr_main_col.raw_color, ColorLayer::Obj)
         } else if bg3_main_col.priority != 0 && !bg3_main_col.transparent {
-            (bg3_main_col.raw_color, bg3_main_col.layer)
+            (bg3_main_col.raw_color, ColorLayer::Bg3)
         } else if !spr_main_col.transparent {
-            (spr_main_col.raw_color, spr_main_col.layer)
+            (spr_main_col.raw_color, ColorLayer::Obj)
         } else if !bg3_main_col.transparent {
-            (bg3_main_col.raw_color, bg3_main_col.layer)
+            (bg3_main_col.raw_color, ColorLayer::Bg3)
         } else {
-            (0, ColorLayer::Back) // Main screen color is black if all layers are transparent
+            (self.transparent_color(), ColorLayer::Back) // Main screen color is black if all layers are transparent
         };
 
         let cmath_en = match main_layer {
@@ -2422,13 +2385,13 @@ impl Ppu5C7x {
 
     fn bg_col_2bpp(&self, tilemap_idx: u16, tile_row: u8, tile_col: u8,
         bg_vram_base_addr: u16, bg_chr_base_addr: u16,
-        bg_cgram_base_addr: u16, layer: ColorLayer) -> ColorData {
+        bg_cgram_base_addr: u8) -> ColorData {
 
             let tile_data_addr = bg_vram_base_addr + tilemap_idx;
 
             let tile_data = self.vram_read(tile_data_addr);
             let tile_chr_idx = tile_data & 0x3FF;
-            let tile_pal = (tile_data >> 10) & 7;
+            let tile_pal = ((tile_data >> 10) & 7) as u8;
             let tile_priority = ((tile_data >> 13) & 1) as u8;
             let flip_x = (tile_data & 0x4000) != 0; // TODO: implement h/v flipping
             let flip_y = (tile_data & 0x8000) != 0;
@@ -2437,8 +2400,8 @@ impl Ppu5C7x {
 
             let bp01 = self.vram_read(tile_chr_addr);
 
-            let b0 = (bp01 >> (7-tile_col)) & 1;
-            let b1 = (bp01 >> (15-tile_col)) & 1;
+            let b0 = ((bp01 >> (7-tile_col)) & 1) as u8;
+            let b1 = ((bp01 >> (15-tile_col)) & 1) as u8;
 
             let pal_idx = (b1 << 1) | b0;
             
@@ -2454,19 +2417,18 @@ impl Ppu5C7x {
                 raw_color,
                 priority: tile_priority,
                 transparent: pal_idx == 0,
-                layer
             }
         }
 
     fn bg_col_4bpp(&self, tilemap_idx: u16, tile_row: u8, tile_col: u8,
         bg_vram_base_addr: u16, bg_chr_base_addr: u16,
-        bg_cgram_base_addr: u16, layer: ColorLayer) -> ColorData {
+        bg_cgram_base_addr: u8) -> ColorData {
 
             let tile_data_addr = bg_vram_base_addr + tilemap_idx;
 
             let tile_data = self.vram_read(tile_data_addr);
             let tile_chr_idx = tile_data & 0x3FF;
-            let tile_pal = (tile_data >> 10) & 7;
+            let tile_pal = ((tile_data >> 10) & 7) as u8;
             let tile_priority = ((tile_data >> 13) & 1) as u8;
             let flip_x = (tile_data & 0x4000) != 0; // TODO: implement h/v flipping
             let flip_y = (tile_data & 0x8000) != 0;
@@ -2476,10 +2438,10 @@ impl Ppu5C7x {
             let bp01 = self.vram_read(tile_chr_addr + 0);
             let bp23 = self.vram_read(tile_chr_addr + 1);
 
-            let b0 = (bp01 >> (7-tile_col)) & 1;
-            let b1 = (bp01 >> (15-tile_col)) & 1;
-            let b2 = (bp23 >> (7-tile_col)) & 1;
-            let b3 = (bp23 >> (15-tile_col)) & 1;
+            let b0 = ((bp01 >> (7-tile_col)) & 1) as u8;
+            let b1 = ((bp01 >> (15-tile_col)) & 1) as u8;
+            let b2 = ((bp23 >> (7-tile_col)) & 1) as u8;
+            let b3 = ((bp23 >> (15-tile_col)) & 1) as u8;
 
             let pal_idx = (b3 << 3) | (b2 << 2) | (b1 << 1) | b0;
             
@@ -2495,7 +2457,6 @@ impl Ppu5C7x {
                 raw_color,
                 priority: tile_priority,
                 transparent: pal_idx == 0,
-                layer
             }
     }
 
@@ -2687,7 +2648,7 @@ impl Ppu5C7x {
     fn priority_rotation(&self) -> bool { self.registers.priority_rotation.get() }
     fn oam_data(&self) -> u8 { self.registers.oam_data.get() }
     fn oam_data_latch(&self) -> u8 { self.registers.oam_data_latch.get() }
-    fn bg4_char_size(&self) -> TileSize { self.registers.bg4_char_size.get() }
+    fn bg4_tile_size(&self) -> TileSize { self.registers.bg4_char_size.get() }
     fn bg3_tile_size(&self) -> TileSize { self.registers.bg3_char_size.get() }
     fn bg2_tile_size(&self) -> TileSize { self.registers.bg2_char_size.get() }
     fn bg1_tile_size(&self) -> TileSize { self.registers.bg1_char_size.get() }

@@ -245,22 +245,37 @@ impl Cpu65c816 {
 
         self.debug_io_ops += 1;
 
-        let data: u8;
-        let clocks: u8;
+        let (data, clocks) = match (address.bank(), address.bank_addr()) {
+            // Mirror of low RAM
+            (bank @ 0..=0x3F, bank_addr @ 0..=0x1FFF)
+            | (bank @ 0x80..=0xBF, bank_addr @ 0..=0x1FFF) => {
+                let mirrored_addr = bank_addr & 0x1FFF;
 
-        if is_mmio_addr(address) {
-            data = self.read_mmio_regs(address.bank_addr());
-            clocks = Cpu65c816::ONE_CYCLE;
-        } else if 0x7E0000 <= address && address <= 0x7FFFFF {
-            data = self.wram[(address - 0x7E0000) as usize];
-            clocks = Cpu65c816::ONE_CYCLE_SLOW;
-        } else {
-            (data, clocks) = match self.mapping_mode {
-                MappingMode::LoROM => self.read_lorom(address),
-                MappingMode::HiROM => self.read_hirom(address),
-                MappingMode::ExHiROM => self.read_exhirom(address),
+                (self.wram[mirrored_addr as usize], Cpu65c816::ONE_CYCLE_SLOW)
+            },
+
+            // WRAM
+            (bank @ 0x7E..=0x7F, bank_addr) => {
+                let ram_addr = address & 0x01FFFF;
+
+                (self.wram[ram_addr as usize], Cpu65c816::ONE_CYCLE_SLOW)
             }
-        }
+
+            // MMIO Registers
+            (bank @ 0..=0x3F, bank_addr @ 0x2000..=0x7FFF)
+            | (bank @ 0x80..=0xBF, bank_addr @ 0x2000..=0x7FFF) => {
+                (self.read_mmio_regs(bank_addr), Cpu65c816::ONE_CYCLE_SLOW)
+            }
+
+            // Anywhere else in the addressable space (dependent on mapping mode)
+            _ => {
+                match self.mapping_mode {
+                    MappingMode::LoROM => self.read_lorom(address),
+                    MappingMode::HiROM => self.read_hirom(address),
+                    MappingMode::ExHiROM => self.read_exhirom(address),
+                }
+            },
+        };
 
         match self.dma_status {
             DmaStatus::Off => self.add_clocks(clocks),
@@ -271,30 +286,48 @@ impl Cpu65c816 {
     }
 
     fn write(&mut self, address: u32, data: u8) {
-        // println!("Write to: 0x{address:06x} with data 0x{data:02x}");
-
         self.debug_io_ops += 1;
 
-        let clocks: u8;
+        let clocks = match (address.bank(), address.bank_addr()) {
+            // Mirror of low RAM
+            (0..=0x3F, bank_addr @ 0..=0x1FFF)
+            | (0x80..=0xBF, bank_addr @ 0..=0x1FFF) => {
+                let mirrored_addr = bank_addr & 0x1FFF;
+                self.wram[mirrored_addr as usize] = data;
 
-        if is_mmio_addr(address) {
-            self.write_mmio_regs(address.bank_addr(), data);
-            clocks = Cpu65c816::ONE_CYCLE;
-        } else if 0x7E0000 <= address && address <= 0x7FFFFF {
-            self.wram[(address - 0x7E0000) as usize] = data;
-            clocks = Cpu65c816::ONE_CYCLE_SLOW;
-        } else {
-            clocks = match self.mapping_mode {
-                MappingMode::LoROM => self.write_lorom(address, data),
-                MappingMode::HiROM => self.write_hirom(address, data),
-                MappingMode::ExHiROM => self.write_exhirom(address, data),
+                Cpu65c816::ONE_CYCLE_SLOW
+            },
+
+            // WRAM
+            (0x7E..=0x7F, _) => {
+                let ram_addr = address & 0x01FFFF;
+                self.wram[ram_addr as usize] = data;
+
+                Cpu65c816::ONE_CYCLE_SLOW
             }
-        }
+
+            // MMIO Registers
+            (0..=0x3F, bank_addr @ 0x2000..=0x7FFF)
+            | (0x80..=0xBF, bank_addr @ 0x2000..=0x7FFF) => {
+                self.write_mmio_regs(bank_addr, data);
+
+                Cpu65c816::ONE_CYCLE_SLOW
+            }
+
+            // Anywhere else in the addressable space (dependent on mapping mode)
+            _ => {
+                match self.mapping_mode {
+                    MappingMode::LoROM => self.write_lorom(address, data),
+                    MappingMode::HiROM => self.write_hirom(address, data),
+                    MappingMode::ExHiROM => self.write_exhirom(address, data),
+                }
+            },
+        };
 
         match self.dma_status {
             DmaStatus::Off => self.add_clocks(clocks),
             _ => {}
-        }
+        };
     }
 
     fn read_mmio_regs(&mut self, mmio_address: u16) -> u8 {
@@ -319,7 +352,7 @@ impl Cpu65c816 {
 
             _ => {
                 // if mmio_address != 0x2180 {
-                println!(" ==== Attempt to read mmio reg ${mmio_address:04X}");
+                // println!(" ==== Attempt to read mmio reg ${mmio_address:04X}");
                 // }
 
                 0
@@ -363,35 +396,6 @@ impl Cpu65c816 {
                         self.active_channel_idx = i;
                     }
                 }
-
-                // println!("CPU Write to DMA enable with 0x{data:02X}");
-
-                // self.debug_dma_bytes_transfered.clear();
-
-                // for (i, dma_channel) in self.dma_channels.iter().enumerate() {
-                //     if !dma_channel.active {
-                //         continue;
-                //     }
-
-                //     println!("  DMA Started on Ch. {i}");
-
-                //     println!("  A: ${:06X}, B: $21{:02X}, Dir: {:?}, VRAM addr: ${:04X}, VRAM inc mode: {:?}, VRAM inc size {:?}",
-                //         dma_channel.a_bus_addr(),
-                //         dma_channel.b_bus_addr,
-                //         dma_channel.direction,
-                //         self.ppu_data.vram_addr.get(),
-                //         self.ppu_data.vram_addr_inc_mode.get(),
-                //         self.ppu_data.addr_inc_size.get(),
-                //     );
-
-                //     let num_bytes = if dma_channel.byte_count == 0 {
-                //         0x10000
-                //     } else {
-                //         dma_channel.byte_count as u32
-                //     };
-
-                //     println!("  Total transfer size (bytes): {num_bytes}");
-                // }
             }
             0x420C => {
                 // for i in 0..8 {
@@ -407,7 +411,7 @@ impl Cpu65c816 {
 
             _ => {
                 // if mmio_address != 0x2180 {
-                println!(" ==== Attempt to write mmio reg ${mmio_address:04X} with data 0x{data:02X}");
+                // println!(" ==== Attempt to write mmio reg ${mmio_address:04X} with data 0x{data:02X}");
                 // }
             }
         }
@@ -510,116 +514,63 @@ impl Cpu65c816 {
         }
     }
 
+    fn map_lorom_addr(&self, address: u32) -> u32 {
+        ((address & 0x7F0000) >> 1) | (address & 0x007FFF)
+    }
+
+    fn map_hirom_addr(&self, address: u32) -> u32 {
+        address & 0x3FFFFF
+    }
+
+    fn map_exhirom_addr(&self, address: u32) -> u32 {
+        (((address & 0x800000) ^ 0x800000) >> 1) | (address & 0x3FFFFF)
+    }
+
+    /// Read from ROM (or SRAM) in LoROM mapping mode
+    /// Memory map diagram here: https://snes.nesdev.org/wiki/Memory_map#LoROM
     fn read_lorom(&mut self, address: u32) -> (u8, u8) {
-        let data: u8;
-        let clocks: u8;
-
-        // Memory map diagram here: https://snes.nesdev.org/wiki/Memory_map#LoROM
-        match (address.bank(), address.bank_addr()) {
-            // ROM Mirror (Slow)
-            (bank @ 0x00..=0x7D, bank_addr @ 0x8000..=0xFFFF) => {
-                let addr = ((bank as u32) << 15) | ((bank_addr - 0x8000) as u32);
-                data = self.rom[(addr as usize) & self.rom_mirror];
-                clocks = Cpu65c816::ONE_CYCLE_SLOW;
-            }
-            // ROM Mirror (SLow)
-            (bank @ 0x40..=0x6F, bank_addr @ 0x0000..=0x7FFF) => {
-                let addr = ((bank as u32) << 15) | (bank_addr as u32);
-                data = self.rom[(addr as usize) & self.rom_mirror];
-                clocks = Cpu65c816::ONE_CYCLE_SLOW;
-            }
-            // SRAM or ROM Mirror (Slow)
-            (bank @ 0x70..=0x7F, bank_addr @ 0x0000..=0x7FFF) => {
-                if self.has_sram {
-                    todo!("Access SRAM");
-                } else {
-                    let addr = ((bank as u32) << 15) | (bank_addr as u32);
-                    data = self.rom[(addr as usize) & self.rom_mirror];
-                }
-                clocks = Cpu65c816::ONE_CYCLE_SLOW;
-            }
-            // ROM Mirror (Slow)
-            (bank @ 0xC0..=0xFF, bank_addr @ 0x0000..=0x7FFF) => {
-                let addr = (((bank - 0x80) as u32) << 15) | (bank_addr as u32);
-                data = self.rom[(addr as usize) & self.rom_mirror];
-                clocks = Cpu65c816::ONE_CYCLE_SLOW;
-            }
-            // ROM (Fast)
-            (bank @ 0x80..=0xFF, bank_addr @ 0x8000..=0xFFFF) => {
-                let addr = (((bank - 0x80) as u32) << 15) | ((bank_addr - 0x8000) as u32);
-                data = self.rom[(addr as usize) & self.rom_mirror];
-
-                clocks = match self.mem_sel {
-                    MemSel::FastROM => Cpu65c816::ONE_CYCLE,
-                    MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
-                };
-            }
-            // Mirror of Low RAM
-            (0x00..=0x3F, bank_addr @ 0x0000..=0x1FFF)
-            | (0x80..=0xBF, bank_addr @ 0x0000..=0x1FFF) => {
-                data = self.wram[bank_addr as usize];
-                clocks = Cpu65c816::ONE_CYCLE_SLOW;
-            }
-
-            _ => {
-                data = 0;
-                clocks = 0;
-            }
+        if 0xF0 <= (address.bank() | 0x80) && address.bank_addr() <= 0x7FFF && self.has_sram {
+            todo!("Read SRAM");
         }
+
+        let mirror_addr = if (address & 0x00FFFF) >= 0x8000 {
+            address | 0x800000
+        } else {
+            (address & 0xBFFFFF) | 0x008000
+        };
+
+        // 0 if mapped_addr > rom.len() ? or mirror ?
+        let mapped_addr = (self.map_lorom_addr(mirror_addr) as usize) & self.rom_mirror;
+
+        let data = self.rom[mapped_addr];
+
+        let clocks = if address.bank() >= 0x80 && address.bank_addr() >= 0x8000 {
+            match self.mem_sel {
+                MemSel::FastROM => Cpu65c816::ONE_CYCLE,
+                MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
+            }
+        } else {
+            Cpu65c816::ONE_CYCLE_SLOW
+        };
 
         (data, clocks)
     }
 
+    /// Write to SRAM (ROM writes are ignored but still take cycles)
+    /// Memory map diagram here: https://snes.nesdev.org/wiki/Memory_map#LoROM
     fn write_lorom(&mut self, address: u32, data: u8) -> u8 {
-        let clocks: u8;
-
-        // Memory map diagram here: https://snes.nesdev.org/wiki/Memory_map#LoROM
-        match (address.bank(), address.bank_addr()) {
-            // ROM Mirror (Slow)
-            (bank @ 0x00..=0x7D, bank_addr @ 0x8000..=0xFFFF) => {
-                // let addr = ((bank as u32) << 15) | ((bank_addr - 0x8000) as u32);
-                // self.rom[(addr as usize) & self.rom_mirror] = data;
-                clocks = Cpu65c816::ONE_CYCLE_SLOW;
-            }
-            // ROM Mirror (SLow)
-            (bank @ 0x40..=0x6F, bank_addr @ 0x0000..=0x7FFF) => {
-                // let addr = ((bank as u32) << 15) | (bank_addr as u32);
-                // self.rom[(addr as usize) & self.rom_mirror] = data;
-                clocks = Cpu65c816::ONE_CYCLE_SLOW;
-            }
-            // SRAM or ROM Mirror (Slow)
-            (bank @ 0x70..=0x7F, bank_addr @ 0x0000..=0x7FFF) => {
-                if self.has_sram {
-                    todo!("Access SRAM");
-                }
-                clocks = Cpu65c816::ONE_CYCLE_SLOW;
-            }
-            // ROM Mirror (Slow)
-            (bank @ 0xC0..=0xFF, bank_addr @ 0x0000..=0x7FFF) => {
-                // let addr = (((bank - 0x80) as u32) << 15) | (bank_addr as u32);
-                // self.rom[(addr as usize) & self.rom_mirror] = data;
-                clocks = Cpu65c816::ONE_CYCLE_SLOW;
-            }
-            // ROM (Fast)
-            (bank @ 0x80..=0xFF, bank_addr @ 0x8000..=0xFFFF) => {
-                // let addr = (((bank - 0x80) as u32) << 15) | ((bank_addr - 0x8000) as u32);
-                // self.rom[(addr as usize) & self.rom_mirror] = data;
-
-                clocks = match self.mem_sel {
-                    MemSel::FastROM => Cpu65c816::ONE_CYCLE,
-                    MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
-                };
-            }
-            // Mirror of Low RAM
-            (0x00..=0x3F, bank_addr @ 0x0000..=0x1FFF)
-            | (0x80..=0xBF, bank_addr @ 0x0000..=0x1FFF) => {
-                self.wram[bank_addr as usize] = data;
-                clocks = Cpu65c816::ONE_CYCLE_SLOW;
-            }
-            _ => {
-                clocks = 0;
-            }
+        if 0xF0 <= (address.bank() | 0x80) && address.bank_addr() <= 0x7FFF && self.has_sram {
+            todo!("Write SRAM");
         }
+
+        let clocks = if address.bank() >= 0x80 && address.bank_addr() >= 0x8000 {
+            match self.mem_sel {
+                MemSel::FastROM => Cpu65c816::ONE_CYCLE,
+                MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
+            }
+        } else {
+            Cpu65c816::ONE_CYCLE_SLOW
+        };
 
         clocks
     }
@@ -986,7 +937,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn trigger_interrupt(&mut self, interrupt: CpuInterrupt) {
+    pub fn trigger_interrupt(&mut self, interrupt: CpuInterrupt) {
         if interrupt == CpuInterrupt::Reset {
             self.set_mode(CpuMode::Emulation);
         }
@@ -2827,6 +2778,8 @@ impl Cpu65c816 {
 
         let opcode = self.read_prg();
         let extra_clocks: u8;
+
+        // println!("Opcode 0x{opcode:02X} from PC ${:04X}", self.pc);
 
         match (opcode, self.mode, self.acc_size(), self.idx_size()) {
             // brk, imp
