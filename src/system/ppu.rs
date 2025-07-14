@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::{cell::Cell, rc::Rc};
 
 use libretro_rs::retro::pixel::format::XRGB8888;
@@ -1569,6 +1570,9 @@ impl PpuData {
 
         self.vram_addr.replace(self.vram_addr.get() + inc);
     }
+
+    pub fn in_vblank(&self) -> bool { self.in_vblank.get() }
+    pub fn in_hblank(&self) -> bool { self.in_hblank.get() }
 }
 
 struct OAMSprite {
@@ -1596,10 +1600,12 @@ pub struct Ppu5C7x {
     scanline_spr_cnt: usize,
 
     pub frame_finished: bool,
+
+    logger: Rc<RefCell<SnemLogger>>,
 }
 
 impl Ppu5C7x {
-    pub fn new(ppu_data: Rc<PpuData>) -> Self {
+    pub fn new(ppu_data: Rc<PpuData>, logger: Rc<RefCell<SnemLogger>>) -> Self {
         Ppu5C7x {
             registers: ppu_data,
             dot: 0,
@@ -1609,13 +1615,14 @@ impl Ppu5C7x {
             scanline_sprites: Vec::with_capacity(32),
             scanline_spr_cnt: 0,
             frame_finished: false,
+            logger,
         }
     }
 
     pub fn remove_clocks(&mut self, clocks: u8) { self.sys_clocks_until_clock -= clocks; }
     pub fn sys_clocks_left(&self) -> u8 { self.sys_clocks_until_clock }
 
-    pub fn clock(&mut self, frame_buffer: &mut [XRGB8888], logger: &mut SnemLogger) {
+    pub fn clock(&mut self, frame_buffer: &mut [XRGB8888]) {
         self.sys_clocks_until_clock = 0;
 
         if !self.in_fblank() && !self.in_hblank() && !self.in_vblank() && self.scanline != 0 {
@@ -1761,7 +1768,7 @@ impl Ppu5C7x {
 //     }
 // }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum ColorLayer {
     Bg1,
     Bg2,
@@ -1874,10 +1881,10 @@ impl Ppu5C7x {
                 let bp01 = self.vram_read(spr_tile_row_addr + 0);
                 let bp23 = self.vram_read(spr_tile_row_addr + 1);
 
-                let b0 = (bp01 >> (7-tile_col)) & 1;
-                let b1 = (bp01 >> (15-tile_col)) & 1;
-                let b2 = (bp23 >> (7-tile_col)) & 1;
-                let b3 = (bp23 >> (15-tile_col)) & 1;
+                let b0 = ((bp01 >> (7-tile_col)) as u8) & 1;
+                let b1 = ((bp01 >> (15-tile_col)) as u8) & 1;
+                let b2 = ((bp23 >> (7-tile_col)) as u8) & 1;
+                let b3 = ((bp23 >> (15-tile_col)) as u8) & 1;
 
                 let pal_idx = (b3 << 3) | (b2 << 2) | (b1 << 1) | b0;
 
@@ -1896,7 +1903,7 @@ impl Ppu5C7x {
                     continue;
                 }
 
-                let cgram_addr = 0x200 | ((sprite.palette as u16) << 4) | pal_idx;
+                let cgram_addr = 0x80 | (sprite.palette << 4) | pal_idx;
 
                 let spr_col = self.registers.cgram.0[cgram_addr as usize].get();
 
@@ -2300,6 +2307,19 @@ impl Ppu5C7x {
             (0, ColorLayer::Back) // Main screen color is black if all layers are transparent
         };
 
+        let cmath_en = match main_layer {
+            ColorLayer::Bg1 => self.bg1_cmath_enabled(),
+            ColorLayer::Bg2 => self.bg2_cmath_enabled(),
+            ColorLayer::Bg3 => self.bg3_cmath_enabled(),
+            ColorLayer::Obj => self.obj_cmath_enabled(),
+            ColorLayer::Back => self.back_cmath_enabled(),
+            _ => unreachable!(), // No other layers considered in Mode 1
+        };
+
+        if !cmath_en {
+            return main_col;
+        }
+
         let sub_col = if self.sub_color_fixed() {
             self.fixed_color()
         } else if self.bg3_mode1_priority() && bg3_sub_col.priority != 0 && !bg3_sub_col.transparent {
@@ -2341,22 +2361,7 @@ impl Ppu5C7x {
             WindowColorRegion::Everywhere => { self.fixed_color() }
         };
 
-        let cmath_en = match main_layer {
-            ColorLayer::Bg1 => self.bg1_cmath_enabled(),
-            ColorLayer::Bg2 => self.bg2_cmath_enabled(),
-            ColorLayer::Bg3 => self.bg3_cmath_enabled(),
-            ColorLayer::Obj => self.obj_cmath_enabled(),
-            ColorLayer::Back => self.back_cmath_enabled(),
-            _ => unreachable!(), // No other layers considered in Mode 1
-        };
-
-        let pixel_col = if cmath_en {
-            self.apply_cmath(main_col, sub_col)
-        } else {
-            main_col
-        };
-
-        pixel_col
+        self.apply_cmath(main_col, sub_col)
     }
 
     fn bg_mode2_dot(&mut self, frame_buffer: &mut [XRGB8888]) {

@@ -17,7 +17,6 @@ pub struct Cartridge {
     coprocessor_id: u8,
 
     rom_size: u8, // ROM size is (1 << rom_size) kb
-
     ram_size: u8, // RAM size is (1 << ram_size) kb
 
     is_ntsc: bool,
@@ -29,9 +28,15 @@ pub struct Cartridge {
 impl Cartridge {
     /// Read in a cartridge from the given path to an spc or sfc file
     pub fn from_path(path: &Path) -> Result<Cartridge, String> {
-        let rom_file = std::fs::File::open(path).unwrap();
+        let mut rom_file = std::fs::File::open(path).unwrap();
 
-        let mut cart_rom: Vec<u8> = rom_file.bytes().map(|b| b.unwrap()).collect();
+        let mut cart_rom = Vec::new();
+
+        let res = rom_file.read_to_end(&mut cart_rom);
+
+        if let Err(_) = res {
+            return Err("failed to read ROM bytes".to_string());
+        }
 
         // Ignore optional 512 byte header
         if cart_rom.len() % 1024 == 512 {
@@ -89,55 +94,90 @@ impl Cartridge {
         const CHECKSUM_OFFSET: usize = 0x1E;
         const COMPLEMENT_OFFSET: usize = 0x1C;
 
+        let mut rom_mapping_mode: Option<MappingMode> = None;
+
         let checksum = Cartridge::compute_checksum(cart_rom);
         let complement = !checksum;
 
-        if cart_rom.len() < LoROM_POS + 2 {
-            return Err(String::from("cart too small for LoROM check"));
-        }
+        let rom_mirror = cart_rom.len() - 1;
+
+        let read_rom = |addr: usize| { cart_rom[addr & rom_mirror] };
+
         let maybe_checksum = u16::from_le_bytes([
-            cart_rom[LoROM_POS + CHECKSUM_OFFSET],
-            cart_rom[LoROM_POS + CHECKSUM_OFFSET + 1],
+            read_rom(LoROM_POS + CHECKSUM_OFFSET + 0),
+            read_rom(LoROM_POS + CHECKSUM_OFFSET + 1),
         ]);
         let maybe_complement = u16::from_le_bytes([
-            cart_rom[LoROM_POS + COMPLEMENT_OFFSET],
-            cart_rom[LoROM_POS + COMPLEMENT_OFFSET + 1],
+            read_rom(LoROM_POS + COMPLEMENT_OFFSET + 0),
+            read_rom(LoROM_POS + COMPLEMENT_OFFSET + 1),
         ]);
         if (checksum == maybe_checksum) && (complement == maybe_complement) {
-            return Ok(LoROM_POS);
+            rom_mapping_mode = Some(MappingMode::LoROM);
         }
 
-        if cart_rom.len() < HiROM_POS + 2 {
-            return Err(String::from("cart too small for HiROM check"));
-        }
         let maybe_checksum = u16::from_le_bytes([
-            cart_rom[HiROM_POS + CHECKSUM_OFFSET],
-            cart_rom[HiROM_POS + CHECKSUM_OFFSET + 1],
+            read_rom(HiROM_POS + CHECKSUM_OFFSET + 0),
+            read_rom(HiROM_POS + CHECKSUM_OFFSET + 1),
         ]);
         let maybe_complement = u16::from_le_bytes([
-            cart_rom[HiROM_POS + COMPLEMENT_OFFSET],
-            cart_rom[HiROM_POS + COMPLEMENT_OFFSET + 1],
+            read_rom(HiROM_POS + COMPLEMENT_OFFSET + 0),
+            read_rom(HiROM_POS + COMPLEMENT_OFFSET + 1),
         ]);
-        if (checksum == maybe_checksum) && (complement == maybe_complement) {
-            return Ok(HiROM_POS);
+        if (checksum == maybe_checksum) && (complement == maybe_complement) && rom_mapping_mode.is_none() {
+            rom_mapping_mode = Some(MappingMode::HiROM);
         }
 
-        if cart_rom.len() < ExHiROM_POS + 2 {
-            return Err(String::from("cart too small for ExHiROM check"));
-        }
         let maybe_checksum = u16::from_le_bytes([
-            cart_rom[ExHiROM_POS + CHECKSUM_OFFSET],
-            cart_rom[ExHiROM_POS + CHECKSUM_OFFSET + 1],
+            read_rom(ExHiROM_POS + CHECKSUM_OFFSET + 0),
+            read_rom(ExHiROM_POS + CHECKSUM_OFFSET + 1),
         ]);
         let maybe_complement = u16::from_le_bytes([
-            cart_rom[ExHiROM_POS + COMPLEMENT_OFFSET],
-            cart_rom[ExHiROM_POS + COMPLEMENT_OFFSET + 1],
+            read_rom(ExHiROM_POS + COMPLEMENT_OFFSET + 0),
+            read_rom(ExHiROM_POS + COMPLEMENT_OFFSET + 1),
         ]);
-        if (checksum == maybe_checksum) && (complement == maybe_complement) {
-            return Ok(ExHiROM_POS);
+        if (checksum == maybe_checksum) && (complement == maybe_complement) && rom_mapping_mode.is_none() {
+            rom_mapping_mode = Some(MappingMode::ExHiROM);
         }
 
-        Err(String::from("ROM header not found"))
+        if rom_mapping_mode.is_none() {
+            return Err(String::from("ROM header not found"));
+        }
+
+        let rom_mapping_mode = rom_mapping_mode.unwrap();
+
+        let header_pos = match rom_mapping_mode {
+            MappingMode::LoROM => LoROM_POS,
+            MappingMode::HiROM => HiROM_POS,
+            MappingMode::ExHiROM => ExHiROM_POS,
+        };
+        let expected_self_ident = match rom_mapping_mode {
+            MappingMode::LoROM => 0,
+            MappingMode::HiROM => 1,
+            MappingMode::ExHiROM => 5,
+        };
+
+        let rom_mapping_mode_self_ident = read_rom(header_pos + 0x15) & 0xF;
+
+        if rom_mapping_mode_self_ident != expected_self_ident {
+            let map_mode_str = match rom_mapping_mode {
+                MappingMode::LoROM => "LoROM",
+                MappingMode::HiROM => "HiROM",
+                MappingMode::ExHiROM => "ExHiROM",
+            };
+
+            let expected_map_mode_str = match rom_mapping_mode_self_ident {
+                0 => "LoROM",
+                1 => "HiROM",
+                5 => "ExHiROM",
+                _ => unreachable!(),
+            };
+
+            let err_msg = format!("found header in {} pos, but header wants {}", map_mode_str, expected_map_mode_str);
+
+            return Err(err_msg);
+        }
+
+        Ok(header_pos)
     }
 
     // Compute the checksum of the cartridge using the proper mirroring

@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::ffi::{c_char, CStr};
 use std::rc::Rc;
 use std::thread::sleep;
@@ -38,7 +39,7 @@ const AUDIO_FREQ: usize = 44100;
 const AUDIO_BUFFER_SAMPLES: usize = AUDIO_FREQ / 60;
 
 struct SnemulatorCore {
-    logger: SnemLogger,
+    logger: Rc<RefCell<SnemLogger>>,
     frame_buffer: ResizableFrameBuffer<XRGB8888, FRAME_BUF_SIZE>,
     pixel_format: ActiveFormat<XRGB8888>,
     rendering_mode: SoftwareRenderEnabled,
@@ -102,11 +103,10 @@ impl SnemulatorCore {
 
         if ppu_clocks < cpu_clocks {
             self.snem_cpu.remove_clocks(ppu_clocks);
-            self.snem_ppu
-                .clock(&mut self.frame_buffer, &mut self.logger);
+            self.snem_ppu.clock(&mut self.frame_buffer);
         } else {
             self.snem_ppu.remove_clocks(cpu_clocks);
-            self.snem_cpu.clock(&mut self.logger);
+            self.snem_cpu.clock();
         }
     }
 
@@ -136,9 +136,11 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
     fn load_without_content<E: retro::env::LoadGame>(
         args: LoadGameExtraArgs<'a, '_, E, Self::Init>,
     ) -> Result<Self, retro::error::CoreError> {
-        let mut logger = SnemLogger::new(args.env.get_log_interface()?);
+        let mut logger = Rc::new(RefCell::new(
+            SnemLogger::new(args.env.get_log_interface()?)
+        ));
 
-        logger.log(LogLevel::Info, "Loading Snemulator core with no content.");
+        logger.borrow_mut().log(LogLevel::Info, "loading Snemulator core with no content");
 
         args.env.set_hw_render_none()?;
 
@@ -150,8 +152,8 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         let rendering_mode = args.rendering_mode;
 
         let ppu_data = Rc::new(PpuData::new());
-        let snem_cpu = Cpu65c816::new(ppu_data.clone());
-        let snem_ppu = Ppu5C7x::new(ppu_data.clone());
+        let snem_cpu = Cpu65c816::new(ppu_data.clone(), logger.clone());
+        let snem_ppu = Ppu5C7x::new(ppu_data.clone(), logger.clone());
 
         let core = SnemulatorCore {
             logger,
@@ -174,7 +176,8 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
     fn load_game<E: retro::env::LoadGame>(
         game: &GameInfo,
         args: LoadGameExtraArgs<'a, '_, E, Self::Init>,
-    ) -> Result<Self, retro::error::CoreError> {
+        ) -> Result<Self, retro::error::CoreError> {
+
         let mut core = SnemulatorCore::load_without_content(args)?;
 
         let path_str = if game.is_path() {
@@ -182,12 +185,12 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         } else if game.is_data() {
             game.as_data().unwrap().path().unwrap().as_str()
         } else {
-            core.logger
+            core.logger.borrow_mut()
                 .log(LogLevel::Error, "game provided is neither path nor data");
             return Err(CoreError::new());
         };
 
-        core.logger.log(
+        core.logger.borrow_mut().log(
             LogLevel::Info,
             format!("loading game from '{}'", path_str).as_str(),
         );
@@ -196,12 +199,17 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         let cart_res = Cartridge::from_path(game_path);
 
         if let Err(msg) = cart_res {
-            core.logger
+            core.logger.borrow_mut()
                 .log(LogLevel::Error, format!("failed to load game: {}", msg).as_str());
             return Err(CoreError::new());
         }
 
-        core.snem_cpu.load_cart(cart_res.unwrap());
+        let cart = cart_res.unwrap();
+
+        core.logger.borrow_mut().log(LogLevel::Info, 
+            format!("loaded ROM with {:?} memory mapping", cart.mapping_mode()).as_str());
+
+        core.snem_cpu.load_cart(cart);
         core.snem_cpu.initialize();
 
         Ok(core)
@@ -218,7 +226,8 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         &mut self,
         env: &mut impl retro::env::Run,
         callbacks: &mut impl Callbacks,
-    ) -> InputsPolled {
+        ) -> InputsPolled {
+
         let inputs_polled = self.update_input(callbacks);
 
         self.cycle_frame();
@@ -235,11 +244,12 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
     }
 
     fn reset(&mut self, env: &mut impl retro::env::Reset) {
+        self.logger.borrow_mut().log(LogLevel::Info, "core reset");
         todo!("Reset Core");
     }
 
     fn unload_game(mut self, env: &mut impl retro::env::UnloadGame) -> Self::Init {
-        self.logger.log(LogLevel::Info, "Unloading game..");
+        self.logger.borrow_mut().log(LogLevel::Info, "unloading game");
     }
 
     fn set_environment(env: &mut impl retro::env::SetEnvironment) {

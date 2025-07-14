@@ -2,6 +2,7 @@ mod dma;
 
 use dma::{DmaChannel, DmaStatus};
 
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::log::{LogLevel, SnemLogger};
@@ -35,6 +36,14 @@ enum RegSize {
 enum MemSel {
     FastROM,
     SlowROM,
+}
+
+#[derive(Debug)]
+enum HVTimerIRQ {
+    None,   // Ignore H/V Timers
+    HTimer, // IRQ when H counter == HTIME
+    VTimer, // IRQ when V counter == VTIME and H counter == 0
+    Both,   // IRQ when V counter == VTIME and H counter == HTIME
 }
 
 pub enum Flag {
@@ -135,16 +144,19 @@ pub struct Cpu65c816 {
 
     ppu_data: Rc<PpuData>,
 
+    hv_timer_irq: HVTimerIRQ,
     vblank_nmi_ignore: bool,
     vblank_nmi_flagged: bool,
 
     debug_dma_bytes_transfered: Vec<u8>,
+
+    logger: Rc<RefCell<SnemLogger>>,
 }
 
 // SNES System Functionality
 impl Cpu65c816 {
     // Creates a new, uninitialized 65c816 CPU
-    pub fn new(ppu_data: Rc<PpuData>) -> Self {
+    pub fn new(ppu_data: Rc<PpuData>, logger: Rc<RefCell<SnemLogger>>) -> Self {
         Self {
             acc: 0,
             x: 0,
@@ -176,33 +188,16 @@ impl Cpu65c816 {
             dma_status: DmaStatus::Off,
             dma_channels: vec![DmaChannel::default(); 8],
             active_channel_idx: 8,
-            // dma_enable: 0,
-            // hdma_enable: 0,
-            // dma_params: [0; 8],
-            // b_bus_addrs: [0; 8],
-            // a_bus_addr_lo: [0; 8],
-            // a_bus_addr_hi: [0; 8],
-            // a_bus_addr_bank: [0; 8],
-            // dma_byte_count: [0; 8],
-            // hdma_indirect_table_bank: [0; 8],
-            // hdma_table_addr: [0; 8],
-            // // dma_byte_count_lo: [0; 8], // Also HDMA indirect addr lo
-            // // dma_byte_count_hi: [0; 8], // Also HDMA indirect addr hi
-            // // hdma_indirect_addr_bank: [0; 8],
-            // // hdma_table_addr_lo: [0; 8],
-            // // hdma_table_addr_hi: [0; 8],
-            // hdma_line_counter: [0; 8],
-            // dma_unused1: [0; 8],
-            // dma_unused2: [0; 8],
-            // dma_bytes_written: 0,
-            // hdma_bytes_written: 0,
-            // hdma_current_channel: 255,
+            
             ppu_data: ppu_data,
 
+            hv_timer_irq: HVTimerIRQ::None,
             vblank_nmi_ignore: true,
             vblank_nmi_flagged: false,
 
             debug_dma_bytes_transfered: Vec::new(),
+
+            logger,
         }
     }
 
@@ -312,12 +307,20 @@ impl Cpu65c816 {
             // will be removed later.
             0x4210 => self.debug_nmi,
 
+            0x4212 => {
+                let vblank_bit = if self.ppu_data.in_vblank() { 0x80 } else { 0 };
+                let hblank_bit = if self.ppu_data.in_hblank() { 0x40 } else { 0 };
+                let auto_joypad_read_bit = 0;
+
+                vblank_bit | hblank_bit | auto_joypad_read_bit
+            }
+
             0x4300..=0x43FF if ((mmio_address >> 4) & 0xF) < 8 => self.read_dma_regs(mmio_address),
 
             _ => {
-                if mmio_address != 0x2180 {
-                    // println!(" ==== Attempt to read mmio reg ${mmio_address:04X}");
-                }
+                // if mmio_address != 0x2180 {
+                println!(" ==== Attempt to read mmio reg ${mmio_address:04X}");
+                // }
 
                 0
             }
@@ -334,8 +337,15 @@ impl Cpu65c816 {
 
             0x4200 => {
                 self.vblank_nmi_ignore = (data & 0x80) == 0;
+                self.hv_timer_irq = match (data >> 4) & 3 {
+                    0 => HVTimerIRQ::None,
+                    1 => HVTimerIRQ::HTimer,
+                    2 => HVTimerIRQ::VTimer,
+                    3 => HVTimerIRQ::Both,
+                    _ => unreachable!(),
+                };
 
-                println!("Vblank NMI ignore set to {}", self.vblank_nmi_ignore);
+                println!("Vblank NMI ignore set to {} and H/V Timer IRQ to {:?}", self.vblank_nmi_ignore, self.hv_timer_irq);
             }
 
             0x420B => {
@@ -396,9 +406,9 @@ impl Cpu65c816 {
             }
 
             _ => {
-                if mmio_address != 0x2180 {
-                    // println!(" ==== Attempt to write mmio reg ${mmio_address:04X} with data 0x{data:02X}");
-                }
+                // if mmio_address != 0x2180 {
+                println!(" ==== Attempt to write mmio reg ${mmio_address:04X} with data 0x{data:02X}");
+                // }
             }
         }
     }
@@ -977,8 +987,6 @@ impl Cpu65c816 {
     }
 
     fn trigger_interrupt(&mut self, interrupt: CpuInterrupt) {
-        println!("CPU INTERRUPT ({:?})", interrupt);
-
         if interrupt == CpuInterrupt::Reset {
             self.set_mode(CpuMode::Emulation);
         }
@@ -2723,7 +2731,7 @@ impl Cpu65c816 {
         self.sys_clocks_until_clock
     }
 
-    pub fn clock(&mut self, logger: &mut SnemLogger) {
+    pub fn clock(&mut self) {
         self.sys_clocks_until_clock = 0;
 
         if self.vblank_nmi_flagged {
