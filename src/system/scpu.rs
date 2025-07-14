@@ -146,7 +146,6 @@ pub struct Cpu65c816 {
 
     hv_timer_irq: HVTimerIRQ,
     vblank_nmi_ignore: bool,
-    vblank_nmi_flagged: bool,
 
     debug_dma_bytes_transfered: Vec<u8>,
 
@@ -193,7 +192,6 @@ impl Cpu65c816 {
 
             hv_timer_irq: HVTimerIRQ::None,
             vblank_nmi_ignore: true,
-            vblank_nmi_flagged: false,
 
             debug_dma_bytes_transfered: Vec::new(),
 
@@ -222,10 +220,6 @@ impl Cpu65c816 {
     pub fn reset(&mut self) {
         self.trigger_interrupt(CpuInterrupt::Reset);
     }
-
-    pub fn flag_for_vblank_nmi(&mut self) {
-        self.vblank_nmi_flagged = true;
-    }
 }
 
 // Internal Helper Functions / Bus Behavior
@@ -247,23 +241,23 @@ impl Cpu65c816 {
 
         let (data, clocks) = match (address.bank(), address.bank_addr()) {
             // Mirror of low RAM
-            (bank @ 0..=0x3F, bank_addr @ 0..=0x1FFF)
-            | (bank @ 0x80..=0xBF, bank_addr @ 0..=0x1FFF) => {
+            (0..=0x3F, bank_addr @ 0..=0x1FFF)
+            | (0x80..=0xBF, bank_addr @ 0..=0x1FFF) => {
                 let mirrored_addr = bank_addr & 0x1FFF;
 
                 (self.wram[mirrored_addr as usize], Cpu65c816::ONE_CYCLE_SLOW)
             },
 
             // WRAM
-            (bank @ 0x7E..=0x7F, bank_addr) => {
+            (0x7E..=0x7F, _) => {
                 let ram_addr = address & 0x01FFFF;
 
                 (self.wram[ram_addr as usize], Cpu65c816::ONE_CYCLE_SLOW)
             }
 
             // MMIO Registers
-            (bank @ 0..=0x3F, bank_addr @ 0x2000..=0x7FFF)
-            | (bank @ 0x80..=0xBF, bank_addr @ 0x2000..=0x7FFF) => {
+            (0..=0x3F, bank_addr @ 0x2000..=0x7FFF)
+            | (0x80..=0xBF, bank_addr @ 0x2000..=0x7FFF) => {
                 (self.read_mmio_regs(bank_addr), Cpu65c816::ONE_CYCLE_SLOW)
             }
 
@@ -338,7 +332,16 @@ impl Cpu65c816 {
 
             // NOTE: This read is only for cpu debugging purposes, and
             // will be removed later.
-            0x4210 => self.debug_nmi,
+            0x4210 => {
+                let vblank_nmi_bit = if self.ppu_data.cpu_vblank_nmi() { 0x80 } else { 0 };
+                let cpu_version_bits = 0;
+
+                self.ppu_data.clear_cpu_vblank_nmi();
+
+                // println!("read 0x{:02X} from vblanknmi", vblank_nmi_bit);
+
+                vblank_nmi_bit | cpu_version_bits
+            },
 
             0x4212 => {
                 let vblank_bit = if self.ppu_data.in_vblank() { 0x80 } else { 0 };
@@ -352,7 +355,7 @@ impl Cpu65c816 {
 
             _ => {
                 // if mmio_address != 0x2180 {
-                // println!(" ==== Attempt to read mmio reg ${mmio_address:04X}");
+                println!(" ==== Attempt to read mmio reg ${mmio_address:04X}");
                 // }
 
                 0
@@ -2685,12 +2688,10 @@ impl Cpu65c816 {
     pub fn clock(&mut self) {
         self.sys_clocks_until_clock = 0;
 
-        if self.vblank_nmi_flagged {
-            self.vblank_nmi_flagged = false;
-
+        if self.ppu_data.cpu_vblank_nmi() {
             if !self.vblank_nmi_ignore {
-                println!("========== NMI ===========");
                 self.trigger_interrupt(CpuInterrupt::NMI);
+                self.ppu_data.clear_cpu_vblank_nmi(); // ?
             }
         }
 

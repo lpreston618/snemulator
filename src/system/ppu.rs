@@ -639,6 +639,8 @@ pub struct PpuData {
     in_hblank: Cell<bool>,
     h_counter: Cell<u16>,
     v_counter: Cell<u16>,
+
+    cpu_vblank_nmi: Cell<bool>,
 }
 
 impl PpuData {
@@ -1573,6 +1575,8 @@ impl PpuData {
 
     pub fn in_vblank(&self) -> bool { self.in_vblank.get() }
     pub fn in_hblank(&self) -> bool { self.in_hblank.get() }
+    pub fn cpu_vblank_nmi(&self) -> bool { self.cpu_vblank_nmi.get() }
+    pub fn clear_cpu_vblank_nmi(&self) { self.cpu_vblank_nmi.set(false); }
 }
 
 struct OAMSprite {
@@ -1645,13 +1649,6 @@ impl Ppu5C7x {
             self.dot = 0;
             self.scanline += 1;
 
-            // if self.frame > 7 {
-            //     std::thread::sleep(std::time::Duration::new(0, 50_000_000));
-            //     self.frame_finished = true;
-
-            //     println!("Scanline: {}, frame: {}", self.scanline, self.frame);
-            // }
-
             if self.scanline == VBLANK_END_SCANLINE_NTSC {
                 self.scanline = 0;
             }
@@ -1661,23 +1658,28 @@ impl Ppu5C7x {
             // End of v-blank, scanline 0 is not visible
             (0, 0) => {
                 self.registers.in_vblank.replace(false);
+                self.registers.cpu_vblank_nmi.replace(false);
                 // println!("V-blank end");
             }
             // Start of visible scanline, end of h-blank
-            (HBLANK_END_DOT, 1..=HBLANK_DISABLE_SCANLINE) => {
+            (HBLANK_END_DOT, _) => {
                 self.registers.in_hblank.replace(false);
-                self.find_scanline_sprites();
+
+                if 1 <= self.scanline && self.scanline <= HBLANK_DISABLE_SCANLINE {
+                    self.find_scanline_sprites();
+                }
             }
-            // End of visible scanline, start of h-blank
-            (HBLANK_START_DOT, 0..HBLANK_DISABLE_SCANLINE) => {
+            // End of scanline, start of h-blank
+            (HBLANK_START_DOT, _) => {
                 self.registers.in_hblank.replace(true);
             }
             // Start of v-blank
             (0, VBLANK_START_SCANLINE) => {
                 self.registers.in_vblank.replace(true);
+                self.registers.cpu_vblank_nmi.replace(true);
                 self.frame_finished = true;
                 self.frame += 1;
-                // println!("V-blank start");
+                // println!("V-blank start, set vblank nmi to {}", self.registers.cpu_vblank_nmi());
             }
             _ => {}
         }
@@ -1825,7 +1827,7 @@ impl Ppu5C7x {
             // BgMode::Mode2 => self.bg_mode2_dot(frame_buffer, spr_col),
             // BgMode::Mode3 => self.bg_mode3_dot(frame_buffer, spr_col),
             // BgMode::Mode4 => self.bg_mode4_dot(frame_buffer, spr_col),
-            // BgMode::Mode5 => self.bg_mode5_dot(frame_buffer, spr_col),
+            BgMode::Mode5 => self.bg_mode5_dot(screen_x, screen_y, spr_col),
             // BgMode::Mode6 => self.bg_mode6_dot(frame_buffer, spr_col),
             // BgMode::Mode7 => self.bg_mode7_dot(frame_buffer, spr_col),
             _ => 0,
@@ -2339,8 +2341,147 @@ impl Ppu5C7x {
 
     }
 
-    fn bg_mode5_dot(&mut self, frame_buffer: &mut [XRGB8888]) {
+    fn bg_mode5_dot(&mut self, screen_x: usize, screen_y: usize, spr_col: ColorData) -> u16 {
+        const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
+        const BG2_CGRAM_BASE_ADDR: u8 = 0x00;
 
+        let col_win_en = self.col_win_active_signal(screen_x);
+        let (obj_win_main, obj_win_sub) = self.obj_win_active_signals(screen_x);
+        let (bg1_win_main, bg1_win_sub) = self.bg1_win_active_signals(screen_x);
+        let (bg2_win_main, bg2_win_sub) = self.bg2_win_active_signals(screen_x);
+
+        let bg1_tilemap_data = self.bg_tile_idx(
+            screen_x, screen_y,
+            self.bg1_m7_x_offset(),
+            self.bg1_m7_y_offset(),
+            self.bg1_tile_size(),
+        );
+        let bg2_tilemap_data = self.bg_tile_idx(
+            screen_x, screen_y,
+            self.bg2_x_offset(),
+            self.bg2_y_offset(),
+            self.bg2_tile_size(),
+        );
+
+        let spr_main_col = if self.obj_main_enabled() && !obj_win_main {
+            spr_col.clone()
+        } else {
+            self.transparent_color_data()
+        };
+        let spr_sub_col = if self.obj_sub_enabled() && !obj_win_sub {
+            spr_col.clone()
+        } else {
+            self.transparent_color_data()
+        };
+        drop(spr_col); // Obj col should not be used past this point
+
+        let bg1_col = self.bg_col_4bpp(
+            bg1_tilemap_data.tilemap_idx, 
+            bg1_tilemap_data.tile_row, 
+            bg1_tilemap_data.tile_col, 
+            self.bg1_vram_base_addr(), 
+            self.bg1_chr_base_addr(), 
+            BG1_CGRAM_BASE_ADDR,
+        );
+        let bg1_main_col = if self.bg1_main_enabled() && !bg1_win_main {
+            bg1_col.clone()
+        } else {
+            self.transparent_color_data()
+        };
+        let bg1_sub_col = if self.bg1_sub_enabled() && !bg1_win_sub {
+            bg1_col.clone()
+        } else {
+            self.transparent_color_data()
+        };
+        drop(bg1_col); // Bg1 col should not be used past this point
+
+        let bg2_col = self.bg_col_2bpp(
+            bg2_tilemap_data.tilemap_idx, 
+            bg2_tilemap_data.tile_row, 
+            bg2_tilemap_data.tile_col, 
+            self.bg2_vram_base_addr(), 
+            self.bg2_chr_base_addr(), 
+            BG2_CGRAM_BASE_ADDR,
+        );
+        let bg2_main_col = if self.bg2_main_enabled() && !bg2_win_main {
+            bg2_col.clone()
+        } else {
+            self.transparent_color_data()
+        };
+        let bg2_sub_col = if self.bg2_sub_enabled() && !bg2_win_sub {
+            bg2_col.clone()
+        } else {
+            self.transparent_color_data()
+        };
+        drop(bg2_col); // Bg2 col should not be used past this point
+
+        let (main_col, main_layer) = if spr_main_col.priority == 3 && !spr_main_col.transparent {
+            (spr_main_col.raw_color, ColorLayer::Obj)
+        } else if bg1_main_col.priority != 0 && !bg1_main_col.transparent {
+            (bg1_main_col.raw_color, ColorLayer::Bg1)
+        } else if spr_main_col.priority == 2 && !spr_main_col.transparent {
+            (spr_main_col.raw_color, ColorLayer::Obj)
+        } else if bg2_main_col.priority != 0 && !bg2_main_col.transparent {
+            (bg2_main_col.raw_color, ColorLayer::Bg2)
+        } else if spr_main_col.priority == 1 && !spr_main_col.transparent {
+            (spr_main_col.raw_color, ColorLayer::Obj)
+        } else if !bg1_main_col.transparent {
+            (bg1_main_col.raw_color, ColorLayer::Bg1)
+        } else if !spr_main_col.transparent {
+            (spr_main_col.raw_color, ColorLayer::Obj)
+        } else if !bg2_main_col.transparent {
+            (bg2_main_col.raw_color, ColorLayer::Bg2)
+        } else {
+            (self.transparent_color(), ColorLayer::Back) // Main screen color is black if all layers are transparent
+        };
+
+        let cmath_en = match main_layer {
+            ColorLayer::Bg1 => self.bg1_cmath_enabled(),
+            ColorLayer::Bg2 => self.bg2_cmath_enabled(),
+            ColorLayer::Bg3 => self.bg3_cmath_enabled(),
+            ColorLayer::Obj => self.obj_cmath_enabled(),
+            ColorLayer::Back => self.back_cmath_enabled(),
+            _ => unreachable!(), // No other layers considered in Mode 1
+        };
+
+        if !cmath_en {
+            return main_col;
+        }
+
+        let sub_col = if spr_sub_col.priority == 3 && !spr_sub_col.transparent {
+            spr_sub_col.raw_color
+        } else if bg1_sub_col.priority != 0 && !bg1_sub_col.transparent {
+            bg1_sub_col.raw_color
+        } else if spr_sub_col.priority == 2 && !spr_sub_col.transparent {
+            spr_sub_col.raw_color
+        } else if bg2_sub_col.priority != 0 && !bg2_sub_col.transparent {
+            bg2_sub_col.raw_color
+        } else if spr_sub_col.priority == 1 && !spr_sub_col.transparent {
+            spr_sub_col.raw_color
+        } else if !bg1_sub_col.transparent {
+            bg1_sub_col.raw_color
+        } else if !spr_sub_col.transparent {
+            spr_sub_col.raw_color
+        } else if !bg2_sub_col.transparent {
+            bg2_sub_col.raw_color
+        } else {
+            self.fixed_color() // Sub screen color is fixed color if all layers are transparent
+        };
+
+        let main_col = match self.col_win_main_region() {
+            WindowColorRegion::Nowhere => main_col,
+            WindowColorRegion::Outside => if col_win_en { main_col } else { 0 },
+            WindowColorRegion::Inside => if col_win_en { 0 } else { main_col },
+            WindowColorRegion::Everywhere => { 0 }
+        };
+        let sub_col = match self.col_win_main_region() {
+            WindowColorRegion::Nowhere => sub_col,
+            WindowColorRegion::Outside => if col_win_en { sub_col } else { self.fixed_color() },
+            WindowColorRegion::Inside => if col_win_en { self.fixed_color() } else { sub_col },
+            WindowColorRegion::Everywhere => { self.fixed_color() }
+        };
+
+        self.apply_cmath(main_col, sub_col)
     }
 
     fn bg_mode6_dot(&mut self, frame_buffer: &mut [XRGB8888]) {

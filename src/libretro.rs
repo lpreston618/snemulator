@@ -119,7 +119,6 @@ impl SnemulatorCore {
             self.cycle();
         }
 
-        self.snem_cpu.flag_for_vblank_nmi();
         self.snem_ppu.frame_finished = false;
     }
 }
