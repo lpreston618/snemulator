@@ -1,0 +1,1440 @@
+0x00 => {
+    self.pc += 1;
+    self.nop();
+    cycles = 2;
+},
+0x01 => {
+    self.pc += 1;
+    self.tcall();
+    cycles = 8;
+},
+0x02 => {
+    let addr = self.direct_bit();
+    self.pc += 2;
+    self.set1(addr);
+    cycles = 4;
+},
+0x03 => {
+    let (addr1, addr2) = self.direct_bit_relative();
+    self.pc += 3;
+    cycles = 5;
+},
+0x04 => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.ora(addr);
+    cycles = 3;
+},
+0x05 => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.ora(addr);
+    cycles = 4;
+},
+0x06 => {
+    let addr = self.indirect();
+    self.pc += 1;
+    self.ora(addr);
+    cycles = 3;
+},
+0x07 => {
+    let addr = self.x_indirect();
+    self.pc += 2;
+    self.ora(addr);
+    cycles = 6;
+},
+0x08 => {
+    let addr = self.immediate();
+    self.pc += 2;
+    self.ora(addr);
+    cycles = 2;
+},
+0x09 => {
+    let (addr1, addr2) = self.direct_to_direct();
+    self.pc += 3;
+    cycles = 6;
+},
+0x0A => {
+    let addr = self.absolute_bit();
+    self.pc += 3;
+    self.or1(addr);
+    cycles = 5;
+},
+0x0B => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.asl(addr);
+    cycles = 4;
+},
+0x0C => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.asl(addr);
+    cycles = 5;
+},
+0x0D => {
+    self.pc += 1;
+    self.push();
+    cycles = 4;
+},
+0x0E => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.tset1(addr);
+    cycles = 6;
+},
+0x0F => {
+    self.pc += 1;
+    self.brk();
+    cycles = 8;
+},
+0x10 => {
+    let addr = self.relative();
+    self.pc += 2;
+    self.bpl(addr);
+    cycles = 2;
+},
+0x11 => {
+    self.pc += 1;
+    self.tcall();
+    cycles = 8;
+},
+0x12 => {
+    let addr = self.direct_bit();
+    self.pc += 2;
+    self.clr1(addr);
+    cycles = 4;
+},
+0x13 => {
+    let (addr1, addr2) = self.direct_bit_relative();
+    self.pc += 3;
+    cycles = 5;
+},
+0x14 => {
+    let addr = self.x_direct();
+    self.pc += 2;
+    self.ora(addr);
+    cycles = 4;
+},
+0x15 => {
+    let addr = self.x_absolute();
+    self.pc += 3;
+    self.ora(addr);
+    cycles = 5;
+},
+0x16 => {
+    let addr = self.y_absolute();
+    self.pc += 3;
+    self.ora(addr);
+    cycles = 5;
+},
+0x17 => {
+    let addr = self.indirect_y();
+    self.pc += 2;
+    self.ora(addr);
+    cycles = 6;
+},
+0x18 => {
+    let (addr1, addr2) = self.immediate_to_direct();
+    self.pc += 3;
+    cycles = 5;
+},
+0x19 => {
+    let (addr1, addr2) = self.indirect_to_indirect();
+    self.pc += 1;
+    cycles = 5;
+},
+0x1A => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.decw(addr);
+    cycles = 6;
+},
+0x1B => {
+    let addr = self.x_direct();
+    self.pc += 2;
+    self.asl(addr);
+    cycles = 5;
+},
+0x1C => {
+    self.pc += 1;
+    self.asl();
+    cycles = 2;
+},
+0x1D => {
+    self.pc += 1;
+    self.dex();
+    cycles = 2;
+},
+0x1E => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.cpx(addr);
+    cycles = 4;
+},
+0x1F => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.jmp(addr);
+    cycles = 6;
+},
+0x20 => {
+    self.pc += 1;
+    self.clrp();
+    cycles = 2;
+},
+0x21 => {
+    self.pc += 1;
+    self.tcall();
+    cycles = 8;
+},
+0x22 => {
+    let addr = self.direct_bit();
+    self.pc += 2;
+    self.set1(addr);
+    cycles = 4;
+},
+0x23 => {
+    let (addr1, addr2) = self.direct_bit_relative();
+    self.pc += 3;
+    cycles = 5;
+},
+0x24 => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.and(addr);
+    cycles = 3;
+},
+0x25 => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.and(addr);
+    cycles = 4;
+},
+0x26 => {
+    let addr = self.indirect();
+    self.pc += 1;
+    self.and(addr);
+    cycles = 3;
+},
+0x27 => {
+    let addr = self.x_indirect();
+    self.pc += 2;
+    self.and(addr);
+    cycles = 6;
+},
+0x28 => {
+    let addr = self.immediate();
+    self.pc += 2;
+    self.and(addr);
+    cycles = 2;
+},
+0x29 => {
+    let (addr1, addr2) = self.direct_to_direct();
+    self.pc += 3;
+    cycles = 6;
+},
+0x2A => {
+    let addr = self.absolute_bit();
+    self.pc += 3;
+    self.or1(addr);
+    cycles = 5;
+},
+0x2B => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.rol(addr);
+    cycles = 4;
+},
+0x2C => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.rol(addr);
+    cycles = 5;
+},
+0x2D => {
+    self.pc += 1;
+    self.push();
+    cycles = 4;
+},
+0x2E => {
+    let addr = self.relative();
+    self.pc += 2;
+    self.cbne(addr);
+    cycles = 5;
+},
+0x2F => {
+    let addr = self.relative();
+    self.pc += 2;
+    self.bra(addr);
+    cycles = 4;
+},
+0x30 => {
+    let addr = self.relative();
+    self.pc += 2;
+    self.bmi(addr);
+    cycles = 2;
+},
+0x31 => {
+    self.pc += 1;
+    self.tcall();
+    cycles = 8;
+},
+0x32 => {
+    let addr = self.direct_bit();
+    self.pc += 2;
+    self.clr1(addr);
+    cycles = 4;
+},
+0x33 => {
+    let (addr1, addr2) = self.direct_bit_relative();
+    self.pc += 3;
+    cycles = 5;
+},
+0x34 => {
+    let addr = self.x_direct();
+    self.pc += 2;
+    self.and(addr);
+    cycles = 4;
+},
+0x35 => {
+    let addr = self.x_absolute();
+    self.pc += 3;
+    self.and(addr);
+    cycles = 5;
+},
+0x36 => {
+    let addr = self.y_absolute();
+    self.pc += 3;
+    self.and(addr);
+    cycles = 5;
+},
+0x37 => {
+    let addr = self.indirect_y();
+    self.pc += 2;
+    self.and(addr);
+    cycles = 6;
+},
+0x38 => {
+    let (addr1, addr2) = self.immediate_to_direct();
+    self.pc += 3;
+    cycles = 5;
+},
+0x39 => {
+    let (addr1, addr2) = self.indirect_to_indirect();
+    self.pc += 1;
+    cycles = 5;
+},
+0x3A => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.incw(addr);
+    cycles = 6;
+},
+0x3B => {
+    let addr = self.x_direct();
+    self.pc += 2;
+    self.rol(addr);
+    cycles = 5;
+},
+0x3C => {
+    self.pc += 1;
+    self.rol();
+    cycles = 2;
+},
+0x3D => {
+    self.pc += 1;
+    self.inx();
+    cycles = 2;
+},
+0x3E => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.cpx(addr);
+    cycles = 3;
+},
+0x3F => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.call(addr);
+    cycles = 8;
+},
+0x40 => {
+    self.pc += 1;
+    self.setp();
+    cycles = 2;
+},
+0x41 => {
+    self.pc += 1;
+    self.tcall();
+    cycles = 8;
+},
+0x42 => {
+    let addr = self.direct_bit();
+    self.pc += 2;
+    self.set1(addr);
+    cycles = 4;
+},
+0x43 => {
+    let (addr1, addr2) = self.direct_bit_relative();
+    self.pc += 3;
+    cycles = 5;
+},
+0x44 => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.eor(addr);
+    cycles = 3;
+},
+0x45 => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.eor(addr);
+    cycles = 4;
+},
+0x46 => {
+    let addr = self.indirect();
+    self.pc += 1;
+    self.eor(addr);
+    cycles = 3;
+},
+0x47 => {
+    let addr = self.x_indirect();
+    self.pc += 2;
+    self.eor(addr);
+    cycles = 6;
+},
+0x48 => {
+    let addr = self.immediate();
+    self.pc += 2;
+    self.eor(addr);
+    cycles = 2;
+},
+0x49 => {
+    let (addr1, addr2) = self.direct_to_direct();
+    self.pc += 3;
+    cycles = 6;
+},
+0x4A => {
+    let addr = self.absolute_bit();
+    self.pc += 3;
+    self.and1(addr);
+    cycles = 4;
+},
+0x4B => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.lsr(addr);
+    cycles = 4;
+},
+0x4C => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.lsr(addr);
+    cycles = 5;
+},
+0x4D => {
+    self.pc += 1;
+    self.push();
+    cycles = 4;
+},
+0x4E => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.tclr1(addr);
+    cycles = 6;
+},
+0x4F => {
+    self.pc += 1;
+    self.pcall();
+    cycles = 6;
+},
+0x50 => {
+    let addr = self.relative();
+    self.pc += 2;
+    self.bvc(addr);
+    cycles = 2;
+},
+0x51 => {
+    self.pc += 1;
+    self.tcall();
+    cycles = 8;
+},
+0x52 => {
+    let addr = self.direct_bit();
+    self.pc += 2;
+    self.clr1(addr);
+    cycles = 4;
+},
+0x53 => {
+    let (addr1, addr2) = self.direct_bit_relative();
+    self.pc += 3;
+    cycles = 5;
+},
+0x54 => {
+    let addr = self.x_direct();
+    self.pc += 2;
+    self.eor(addr);
+    cycles = 4;
+},
+0x55 => {
+    let addr = self.x_absolute();
+    self.pc += 3;
+    self.eor(addr);
+    cycles = 5;
+},
+0x56 => {
+    let addr = self.y_absolute();
+    self.pc += 3;
+    self.eor(addr);
+    cycles = 5;
+},
+0x57 => {
+    let addr = self.indirect_y();
+    self.pc += 2;
+    self.eor(addr);
+    cycles = 6;
+},
+0x58 => {
+    let (addr1, addr2) = self.immediate_to_direct();
+    self.pc += 3;
+    cycles = 5;
+},
+0x59 => {
+    let (addr1, addr2) = self.indirect_to_indirect();
+    self.pc += 1;
+    cycles = 5;
+},
+0x5A => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.cmpw(addr);
+    cycles = 4;
+},
+0x5B => {
+    let addr = self.x_direct();
+    self.pc += 2;
+    self.lsr(addr);
+    cycles = 5;
+},
+0x5C => {
+    self.pc += 1;
+    self.lsr();
+    cycles = 2;
+},
+0x5D => {
+    self.pc += 1;
+    self.ldx();
+    cycles = 2;
+},
+0x5E => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.cpy(addr);
+    cycles = 4;
+},
+0x5F => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.jmp(addr);
+    cycles = 3;
+},
+0x60 => {
+    self.pc += 1;
+    self.clrc();
+    cycles = 2;
+},
+0x61 => {
+    self.pc += 1;
+    self.tcall();
+    cycles = 8;
+},
+0x62 => {
+    let addr = self.direct_bit();
+    self.pc += 2;
+    self.set1(addr);
+    cycles = 4;
+},
+0x63 => {
+    let (addr1, addr2) = self.direct_bit_relative();
+    self.pc += 3;
+    cycles = 5;
+},
+0x64 => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.cmp(addr);
+    cycles = 3;
+},
+0x65 => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.cmp(addr);
+    cycles = 4;
+},
+0x66 => {
+    let addr = self.indirect();
+    self.pc += 1;
+    self.cmp(addr);
+    cycles = 3;
+},
+0x67 => {
+    let addr = self.x_indirect();
+    self.pc += 2;
+    self.cmp(addr);
+    cycles = 6;
+},
+0x68 => {
+    let addr = self.immediate();
+    self.pc += 2;
+    self.cmp(addr);
+    cycles = 2;
+},
+0x69 => {
+    let (addr1, addr2) = self.direct_to_direct();
+    self.pc += 3;
+    cycles = 6;
+},
+0x6A => {
+    let addr = self.absolute_bit();
+    self.pc += 3;
+    self.and1(addr);
+    cycles = 4;
+},
+0x6B => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.ror(addr);
+    cycles = 4;
+},
+0x6C => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.ror(addr);
+    cycles = 5;
+},
+0x6D => {
+    self.pc += 1;
+    self.push();
+    cycles = 4;
+},
+0x6E => {
+    let addr = self.relative();
+    self.pc += 2;
+    self.dbnz(addr);
+    cycles = 5;
+},
+0x6F => {
+    self.pc += 1;
+    self.ret();
+    cycles = 5;
+},
+0x70 => {
+    let addr = self.relative();
+    self.pc += 2;
+    self.bvs(addr);
+    cycles = 2;
+},
+0x71 => {
+    self.pc += 1;
+    self.tcall();
+    cycles = 8;
+},
+0x72 => {
+    let addr = self.direct_bit();
+    self.pc += 2;
+    self.clr1(addr);
+    cycles = 4;
+},
+0x73 => {
+    let (addr1, addr2) = self.direct_bit_relative();
+    self.pc += 3;
+    cycles = 5;
+},
+0x74 => {
+    let addr = self.x_direct();
+    self.pc += 2;
+    self.cmp(addr);
+    cycles = 4;
+},
+0x75 => {
+    let addr = self.x_absolute();
+    self.pc += 3;
+    self.cmp(addr);
+    cycles = 5;
+},
+0x76 => {
+    let addr = self.y_absolute();
+    self.pc += 3;
+    self.cmp(addr);
+    cycles = 5;
+},
+0x77 => {
+    let addr = self.indirect_y();
+    self.pc += 2;
+    self.cmp(addr);
+    cycles = 6;
+},
+0x78 => {
+    let (addr1, addr2) = self.immediate_to_direct();
+    self.pc += 3;
+    cycles = 5;
+},
+0x79 => {
+    let (addr1, addr2) = self.indirect_to_indirect();
+    self.pc += 1;
+    cycles = 5;
+},
+0x7A => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.addw(addr);
+    cycles = 5;
+},
+0x7B => {
+    let addr = self.x_direct();
+    self.pc += 2;
+    self.ror(addr);
+    cycles = 5;
+},
+0x7C => {
+    self.pc += 1;
+    self.ror();
+    cycles = 2;
+},
+0x7D => {
+    self.pc += 1;
+    self.lda();
+    cycles = 2;
+},
+0x7E => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.cpy(addr);
+    cycles = 3;
+},
+0x7F => {
+    self.pc += 1;
+    self.ret1();
+    cycles = 6;
+},
+0x80 => {
+    self.pc += 1;
+    self.setc();
+    cycles = 2;
+},
+0x81 => {
+    self.pc += 1;
+    self.tcall();
+    cycles = 8;
+},
+0x82 => {
+    let addr = self.direct_bit();
+    self.pc += 2;
+    self.set1(addr);
+    cycles = 4;
+},
+0x83 => {
+    let (addr1, addr2) = self.direct_bit_relative();
+    self.pc += 3;
+    cycles = 5;
+},
+0x84 => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.adc(addr);
+    cycles = 3;
+},
+0x85 => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.adc(addr);
+    cycles = 4;
+},
+0x86 => {
+    let addr = self.indirect();
+    self.pc += 1;
+    self.adc(addr);
+    cycles = 3;
+},
+0x87 => {
+    let addr = self.x_indirect();
+    self.pc += 2;
+    self.adc(addr);
+    cycles = 6;
+},
+0x88 => {
+    let addr = self.immediate();
+    self.pc += 2;
+    self.adc(addr);
+    cycles = 2;
+},
+0x89 => {
+    let (addr1, addr2) = self.direct_to_direct();
+    self.pc += 3;
+    cycles = 6;
+},
+0x8A => {
+    let addr = self.absolute_bit();
+    self.pc += 3;
+    self.eor1(addr);
+    cycles = 5;
+},
+0x8B => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.dec(addr);
+    cycles = 4;
+},
+0x8C => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.dec(addr);
+    cycles = 5;
+},
+0x8D => {
+    let addr = self.immediate();
+    self.pc += 2;
+    self.ldy(addr);
+    cycles = 2;
+},
+0x8E => {
+    self.pc += 1;
+    self.pop();
+    cycles = 4;
+},
+0x8F => {
+    let (addr1, addr2) = self.immediate_to_direct();
+    self.pc += 3;
+    cycles = 5;
+},
+0x90 => {
+    let addr = self.relative();
+    self.pc += 2;
+    self.bcc(addr);
+    cycles = 2;
+},
+0x91 => {
+    self.pc += 1;
+    self.tcall();
+    cycles = 8;
+},
+0x92 => {
+    let addr = self.direct_bit();
+    self.pc += 2;
+    self.clr1(addr);
+    cycles = 4;
+},
+0x93 => {
+    let (addr1, addr2) = self.direct_bit_relative();
+    self.pc += 3;
+    cycles = 5;
+},
+0x94 => {
+    let addr = self.x_direct();
+    self.pc += 2;
+    self.adc(addr);
+    cycles = 4;
+},
+0x95 => {
+    let addr = self.x_absolute();
+    self.pc += 3;
+    self.adc(addr);
+    cycles = 5;
+},
+0x96 => {
+    let addr = self.y_absolute();
+    self.pc += 3;
+    self.adc(addr);
+    cycles = 5;
+},
+0x97 => {
+    let addr = self.indirect_y();
+    self.pc += 2;
+    self.adc(addr);
+    cycles = 6;
+},
+0x98 => {
+    let (addr1, addr2) = self.immediate_to_direct();
+    self.pc += 3;
+    cycles = 5;
+},
+0x99 => {
+    let (addr1, addr2) = self.indirect_to_indirect();
+    self.pc += 1;
+    cycles = 5;
+},
+0x9A => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.subw(addr);
+    cycles = 5;
+},
+0x9B => {
+    let addr = self.x_direct();
+    self.pc += 2;
+    self.dec(addr);
+    cycles = 5;
+},
+0x9C => {
+    self.pc += 1;
+    self.dec();
+    cycles = 2;
+},
+0x9D => {
+    self.pc += 1;
+    self.ldx();
+    cycles = 2;
+},
+0x9E => {
+    self.pc += 1;
+    self.div();
+    cycles = 12;
+},
+0x9F => {
+    self.pc += 1;
+    self.xcn();
+    cycles = 5;
+},
+0xA0 => {
+    self.pc += 1;
+    self.sei();
+    cycles = 3;
+},
+0xA1 => {
+    self.pc += 1;
+    self.tcall();
+    cycles = 8;
+},
+0xA2 => {
+    let addr = self.direct_bit();
+    self.pc += 2;
+    self.set1(addr);
+    cycles = 4;
+},
+0xA3 => {
+    let (addr1, addr2) = self.direct_bit_relative();
+    self.pc += 3;
+    cycles = 5;
+},
+0xA4 => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.sbc(addr);
+    cycles = 3;
+},
+0xA5 => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.sbc(addr);
+    cycles = 4;
+},
+0xA6 => {
+    let addr = self.indirect();
+    self.pc += 1;
+    self.sbc(addr);
+    cycles = 3;
+},
+0xA7 => {
+    let addr = self.x_indirect();
+    self.pc += 2;
+    self.sbc(addr);
+    cycles = 6;
+},
+0xA8 => {
+    let addr = self.immediate();
+    self.pc += 2;
+    self.sbc(addr);
+    cycles = 2;
+},
+0xA9 => {
+    let (addr1, addr2) = self.direct_to_direct();
+    self.pc += 3;
+    cycles = 6;
+},
+0xAA => {
+    let addr = self.absolute_bit();
+    self.pc += 3;
+    self.mov1(addr);
+    cycles = 4;
+},
+0xAB => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.inc(addr);
+    cycles = 4;
+},
+0xAC => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.inc(addr);
+    cycles = 5;
+},
+0xAD => {
+    let addr = self.immediate();
+    self.pc += 2;
+    self.cpy(addr);
+    cycles = 2;
+},
+0xAE => {
+    self.pc += 1;
+    self.pop();
+    cycles = 4;
+},
+0xAF => {
+    let addr = self.indirect_inc();
+    self.pc += 1;
+    self.sta(addr);
+    cycles = 4;
+},
+0xB0 => {
+    let addr = self.relative();
+    self.pc += 2;
+    self.bcs(addr);
+    cycles = 2;
+},
+0xB1 => {
+    self.pc += 1;
+    self.tcall();
+    cycles = 8;
+},
+0xB2 => {
+    let addr = self.direct_bit();
+    self.pc += 2;
+    self.clr1(addr);
+    cycles = 4;
+},
+0xB3 => {
+    let (addr1, addr2) = self.direct_bit_relative();
+    self.pc += 3;
+    cycles = 5;
+},
+0xB4 => {
+    let addr = self.x_direct();
+    self.pc += 2;
+    self.sbc(addr);
+    cycles = 4;
+},
+0xB5 => {
+    let addr = self.x_absolute();
+    self.pc += 3;
+    self.sbc(addr);
+    cycles = 5;
+},
+0xB6 => {
+    let addr = self.y_absolute();
+    self.pc += 3;
+    self.sbc(addr);
+    cycles = 5;
+},
+0xB7 => {
+    let addr = self.indirect_y();
+    self.pc += 2;
+    self.sbc(addr);
+    cycles = 6;
+},
+0xB8 => {
+    let (addr1, addr2) = self.immediate_to_direct();
+    self.pc += 3;
+    cycles = 5;
+},
+0xB9 => {
+    let (addr1, addr2) = self.indirect_to_indirect();
+    self.pc += 1;
+    cycles = 5;
+},
+0xBA => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.ldya(addr);
+    cycles = 5;
+},
+0xBB => {
+    let addr = self.x_direct();
+    self.pc += 2;
+    self.inc(addr);
+    cycles = 5;
+},
+0xBC => {
+    self.pc += 1;
+    self.inc();
+    cycles = 2;
+},
+0xBD => {
+    self.pc += 1;
+    self.stx();
+    cycles = 2;
+},
+0xBE => {
+    self.pc += 1;
+    self.das();
+    cycles = 3;
+},
+0xBF => {
+    let addr = self.indirect_inc();
+    self.pc += 1;
+    self.lda(addr);
+    cycles = 4;
+},
+0xC0 => {
+    self.pc += 1;
+    self.cli();
+    cycles = 3;
+},
+0xC1 => {
+    self.pc += 1;
+    self.tcall();
+    cycles = 8;
+},
+0xC2 => {
+    let addr = self.direct_bit();
+    self.pc += 2;
+    self.set1(addr);
+    cycles = 4;
+},
+0xC3 => {
+    let (addr1, addr2) = self.direct_bit_relative();
+    self.pc += 3;
+    cycles = 5;
+},
+0xC4 => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.sta(addr);
+    cycles = 4;
+},
+0xC5 => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.sta(addr);
+    cycles = 5;
+},
+0xC6 => {
+    let addr = self.indirect();
+    self.pc += 1;
+    self.sta(addr);
+    cycles = 4;
+},
+0xC7 => {
+    let addr = self.x_indirect();
+    self.pc += 2;
+    self.sta(addr);
+    cycles = 7;
+},
+0xC8 => {
+    let addr = self.immediate();
+    self.pc += 2;
+    self.cpx(addr);
+    cycles = 2;
+},
+0xC9 => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.stx(addr);
+    cycles = 5;
+},
+0xCA => {
+    let addr = self.absolute_bit();
+    self.pc += 3;
+    self.mov1(addr);
+    cycles = 6;
+},
+0xCB => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.sty(addr);
+    cycles = 4;
+},
+0xCC => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.sty(addr);
+    cycles = 5;
+},
+0xCD => {
+    let addr = self.immediate();
+    self.pc += 2;
+    self.ldx(addr);
+    cycles = 2;
+},
+0xCE => {
+    self.pc += 1;
+    self.pop();
+    cycles = 4;
+},
+0xCF => {
+    self.pc += 1;
+    self.mul();
+    cycles = 9;
+},
+0xD0 => {
+    let addr = self.relative();
+    self.pc += 2;
+    self.bne(addr);
+    cycles = 2;
+},
+0xD1 => {
+    self.pc += 1;
+    self.tcall();
+    cycles = 8;
+},
+0xD2 => {
+    let addr = self.direct_bit();
+    self.pc += 2;
+    self.clr1(addr);
+    cycles = 4;
+},
+0xD3 => {
+    let (addr1, addr2) = self.direct_bit_relative();
+    self.pc += 3;
+    cycles = 5;
+},
+0xD4 => {
+    let addr = self.x_direct();
+    self.pc += 2;
+    self.sta(addr);
+    cycles = 5;
+},
+0xD5 => {
+    let addr = self.x_absolute();
+    self.pc += 3;
+    self.sta(addr);
+    cycles = 6;
+},
+0xD6 => {
+    let addr = self.y_absolute();
+    self.pc += 3;
+    self.sta(addr);
+    cycles = 6;
+},
+0xD7 => {
+    let addr = self.indirect_y();
+    self.pc += 2;
+    self.sta(addr);
+    cycles = 7;
+},
+0xD8 => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.stx(addr);
+    cycles = 4;
+},
+0xD9 => {
+    let addr = self.y_direct();
+    self.pc += 2;
+    self.stx(addr);
+    cycles = 5;
+},
+0xDA => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.stya(addr);
+    cycles = 5;
+},
+0xDB => {
+    let addr = self.x_direct();
+    self.pc += 2;
+    self.sty(addr);
+    cycles = 5;
+},
+0xDC => {
+    self.pc += 1;
+    self.dey();
+    cycles = 2;
+},
+0xDD => {
+    self.pc += 1;
+    self.lda();
+    cycles = 2;
+},
+0xDE => {
+    let addr = self.x_direct();
+    self.pc += 2;
+    self.cbne(addr);
+    cycles = 6;
+},
+0xDF => {
+    self.pc += 1;
+    self.daa();
+    cycles = 3;
+},
+0xE0 => {
+    self.pc += 1;
+    self.clrv();
+    cycles = 2;
+},
+0xE1 => {
+    self.pc += 1;
+    self.tcall();
+    cycles = 8;
+},
+0xE2 => {
+    let addr = self.direct_bit();
+    self.pc += 2;
+    self.set1(addr);
+    cycles = 4;
+},
+0xE3 => {
+    let (addr1, addr2) = self.direct_bit_relative();
+    self.pc += 3;
+    cycles = 5;
+},
+0xE4 => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.lda(addr);
+    cycles = 3;
+},
+0xE5 => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.lda(addr);
+    cycles = 4;
+},
+0xE6 => {
+    let addr = self.indirect();
+    self.pc += 1;
+    self.lda(addr);
+    cycles = 3;
+},
+0xE7 => {
+    let addr = self.x_indirect();
+    self.pc += 2;
+    self.lda(addr);
+    cycles = 6;
+},
+0xE8 => {
+    let addr = self.immediate();
+    self.pc += 2;
+    self.lda(addr);
+    cycles = 2;
+},
+0xE9 => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.ldx(addr);
+    cycles = 4;
+},
+0xEA => {
+    let addr = self.absolute_bit();
+    self.pc += 3;
+    self.not1(addr);
+    cycles = 5;
+},
+0xEB => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.ldy(addr);
+    cycles = 3;
+},
+0xEC => {
+    let addr = self.absolute();
+    self.pc += 3;
+    self.ldy(addr);
+    cycles = 4;
+},
+0xED => {
+    self.pc += 1;
+    self.notc();
+    cycles = 3;
+},
+0xEE => {
+    self.pc += 1;
+    self.pop();
+    cycles = 4;
+},
+0xEF => {
+    self.pc += 1;
+    self.sleep();
+    cycles = 0;
+},
+0xF0 => {
+    let addr = self.relative();
+    self.pc += 2;
+    self.beq(addr);
+    cycles = 2;
+},
+0xF1 => {
+    self.pc += 1;
+    self.tcall();
+    cycles = 8;
+},
+0xF2 => {
+    let addr = self.direct_bit();
+    self.pc += 2;
+    self.clr1(addr);
+    cycles = 4;
+},
+0xF3 => {
+    let (addr1, addr2) = self.direct_bit_relative();
+    self.pc += 3;
+    cycles = 5;
+},
+0xF4 => {
+    let addr = self.x_direct();
+    self.pc += 2;
+    self.lda(addr);
+    cycles = 4;
+},
+0xF5 => {
+    let addr = self.x_absolute();
+    self.pc += 3;
+    self.lda(addr);
+    cycles = 5;
+},
+0xF6 => {
+    let addr = self.y_absolute();
+    self.pc += 3;
+    self.lda(addr);
+    cycles = 5;
+},
+0xF7 => {
+    let addr = self.indirect_y();
+    self.pc += 2;
+    self.lda(addr);
+    cycles = 6;
+},
+0xF8 => {
+    let addr = self.direct();
+    self.pc += 2;
+    self.ldx(addr);
+    cycles = 3;
+},
+0xF9 => {
+    let addr = self.y_direct();
+    self.pc += 2;
+    self.ldx(addr);
+    cycles = 4;
+},
+0xFA => {
+    let (addr1, addr2) = self.direct_to_direct();
+    self.pc += 3;
+    cycles = 5;
+},
+0xFB => {
+    let addr = self.x_direct();
+    self.pc += 2;
+    self.ldy(addr);
+    cycles = 4;
+},
+0xFC => {
+    self.pc += 1;
+    self.iny();
+    cycles = 2;
+},
+0xFD => {
+    self.pc += 1;
+    self.ldy();
+    cycles = 2;
+},
+0xFE => {
+    let addr = self.relative();
+    self.pc += 2;
+    self.dbnz(addr);
+    cycles = 4;
+},
+0xFF => {
+    self.pc += 1;
+    self.stop();
+    cycles = 0;
+},
