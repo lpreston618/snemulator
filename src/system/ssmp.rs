@@ -25,21 +25,22 @@ struct Spc700 {
     y: u8,
     status: u8,
     branch_taken: bool,
+    read_ipl: bool,
     dir_page: u16,
     aram: [u8; 0x10000],
     time_since_last_clock: usize,
     sdsp_clocks: usize,
 }
 
-// Boot program for the SPC700
-const IPS_ROM: [u8; 64] = [ 
-    0xCD, 0xEF, 0xBD, 0xE8, 0x00, 0xC6, 0x1D, 0xD0, 0xFC, 0x8F, 0xAA, 0xF4, 0x8F, 0xBB, 0xF5, 0x78,
-    0xCC, 0xF4, 0xD0, 0xFB, 0x2F, 0x19, 0xEB, 0xF4, 0xD0, 0xFC, 0x7E, 0xF4, 0xD0, 0x0B, 0xE4, 0xF5,
-    0xCB, 0xF4, 0xD7, 0x00, 0xFC, 0xD0, 0xF3, 0xAB, 0x01, 0x10, 0xEF, 0x7E, 0xF4, 0x10, 0xEB, 0xBA,
-    0xF6, 0xDA, 0x00, 0xBA, 0xF4, 0xC4, 0xF4, 0xDD, 0x5D, 0xD0, 0xDB, 0x1F, 0x00, 0x00, 0xC0, 0xFF,
-];
-
 impl Spc700 {
+    // Boot program for the SPC700
+    const IPL_ROM: [u8; 64] = [ 
+        0xCD, 0xEF, 0xBD, 0xE8, 0x00, 0xC6, 0x1D, 0xD0, 0xFC, 0x8F, 0xAA, 0xF4, 0x8F, 0xBB, 0xF5, 0x78,
+        0xCC, 0xF4, 0xD0, 0xFB, 0x2F, 0x19, 0xEB, 0xF4, 0xD0, 0xFC, 0x7E, 0xF4, 0xD0, 0x0B, 0xE4, 0xF5,
+        0xCB, 0xF4, 0xD7, 0x00, 0xFC, 0xD0, 0xF3, 0xAB, 0x01, 0x10, 0xEF, 0x7E, 0xF4, 0x10, 0xEB, 0xBA,
+        0xF6, 0xDA, 0x00, 0xBA, 0xF4, 0xC4, 0xF4, 0xDD, 0x5D, 0xD0, 0xDB, 0x1F, 0x00, 0x00, 0xC0, 0xFF,
+    ];
+
     fn clock(&mut self, master_clocks_elapsed: usize) {
         self.time_since_last_clock += master_clocks_elapsed * MASTER_CLOCK_TIME_UNITS;
 
@@ -60,7 +61,7 @@ impl Spc700 {
     fn read(&self, address: u16) -> u8 {
         match address {
             (0xF0..=0xFF) => self.read_sound_regs(),
-            (0xFFC0..=0xFFFF) if self.read_ipl => IPL_ROM[(address & 0x3F) as usize],
+            (0xFFC0..=0xFFFF) if self.read_ipl => Spc700::IPL_ROM[(address & 0x3F) as usize],
             _ => self.aram[address as usize],
         }
     }
@@ -1530,25 +1531,23 @@ impl Spc700 {
     }
     fn set_flag(&mut self, flag: Flag) {
         self.status |= flag as u8;
+
+        if flag == Flag::FlagP {
+            self.dir_page = 0x100;
+        }
     }
     fn clear_flag(&mut self, flag: Flag) {
         self.status &= !(flag as u8);
+
+        if flag == Flag::FlagP {
+            self.dir_page = 0;
+        }
     }
     fn set_flag_to_bool(&mut self, flag: Flag, val: bool) {
-        if flag == Flag::FlagP {
-            if val {
-                self.set_flag(flag);
-                self.dir_page = 0x100;
-            } else {
-                self.clear_flag(flag);
-                self.dir_page = 0;
-            }
+        if val {
+            self.set_flag(flag);
         } else {
-            if val {
-                self.set_flag(flag);
-            } else {
-                self.clear_flag(flag);
-            }
+            self.clear_flag(flag);
         }
     }
 
@@ -1655,23 +1654,104 @@ impl Spc700 {
 
 // CPU Instructions
 impl Spc700 {
-    fn adc(&mut self, arg1: u8, arg2: u8) -> u8 {
+    fn adc_base(&mut self, arg1: u8, arg2: u8) -> u8 {
         let result = (arg1 as u16) + (arg2 as u16) + if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
+        let half_result = (arg1 & 0xF) + (arg2 & 0xF);
 
         self.set_flag_to_bool(Flag::FlagC, result & 0xFF00 > 0);
         self.set_flag_to_bool(Flag::FlagZ, result & 0xFF == 0);
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-        self.set_flag_to_bool(Flag::FlagH, result & 0xFF >= 0xA); // This flag used by DAA
+        self.set_flag_to_bool(Flag::FlagH, half_result >= 0xA);
         
         // Set V flag if acc and data are same sign, but result is different sign
         let a = arg1 & 0x80 != 0;
-        let r = (result & 0x80) != 0;
         let d = arg2 & 0x80 != 0;
+        let r = (result & 0x80) != 0;
         self.set_flag_to_bool(Flag::FlagV, !(a^d)&(a^r) ); // Trust, bro
-        (result as u8);
+        
+        result as u8
     }
 
-
+    // ADC
+    // ADDW
+    // AND
+    // AND1
+    // ASL
+    // BBC
+    // BBS
+    // BCC
+    // BCS
+    // BEQ
+    // BMI
+    // BNE
+    // BPL
+    // BRA
+    // BRK
+    // BVC
+    // BVS
+    // CALL
+    // CBNE
+    // CLI
+    // CLR1
+    // CLRC
+    // CLRP
+    // CLRV
+    // CMP
+    // CMPW
+    // CPX
+    // CPY
+    // DAA
+    // DAS
+    // DBNZ
+    // DEC
+    // DECW
+    // DEX
+    // DEY
+    // DIV
+    // EOR
+    // EOR1
+    // INC
+    // INCW
+    // INX
+    // INY
+    // JMP
+    // LDA
+    // LDX
+    // LDY
+    // LDYA
+    // LSR
+    // MOV
+    // MOV1
+    // MUL
+    // NOP
+    // NOT1
+    // NOTC
+    // OR
+    // OR1
+    // ORA
+    // PCALL
+    // POP
+    // PUSH
+    // RET
+    // RET1
+    // ROL
+    // ROR
+    // SBC
+    // SEI
+    // SET1
+    // SETC
+    // SETP
+    // SLEEP
+    // STA
+    // STOP
+    // STX
+    // STY
+    // STYA
+    // SUBW
+    // TCALL
+    // TCLR1
+    // TSET1
+    // XCN
 }
 
 

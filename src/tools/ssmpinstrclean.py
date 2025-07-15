@@ -342,23 +342,30 @@ def into_case(opcode, instr_name, addr_mode, cycles):
     return result
 
 
-if __name__ == "__main__":
-    print("Generating Match-Case Statement...")
+lines = a.split('\n')
 
-    lines = a.split('\n')
-    result = ""
-    for line in lines:
-        split = line.split()
+instrs = set(map(lambda l: l.split()[-1], lines))
 
-        opcode = line[20:24]
-        instr_name = split[-1]
-        addr_mode = split[5][16:-1]
-        cycles = split[3][:-1]
+for instr_name in sorted(list(instrs)): 
+    print(instr_name)
 
-        result += into_case(opcode, instr_name, addr_mode, cycles)
+# if __name__ == "__main__":
+#     print("Generating Match-Case Statement...")
+
+#     lines = a.split('\n')
+#     result = ""
+#     for line in lines:
+#         split = line.split()
+
+#         opcode = line[20:24]
+#         instr_name = split[-1]
+#         addr_mode = split[5][16:-1]
+#         cycles = split[3][:-1]
+
+#         result += into_case(opcode, instr_name, addr_mode, cycles)
 
 
-    with open("spc700_match.txt", "w") as f:
-        f.write(result)
+#     with open("spc700_match.txt", "w") as f:
+#         f.write(result)
 
-    print("Done.")
+#     print("Done.")
