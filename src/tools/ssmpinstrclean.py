@@ -24,7 +24,7 @@ Instruction{opcode: 0x16, cycles:  5, addr_mode: AddressingMode::YAbsolute, bran
 Instruction{opcode: 0x17, cycles:  6, addr_mode: AddressingMode::IndirectY, branching: false},   // ORA
 Instruction{opcode: 0x18, cycles:  5, addr_mode: AddressingMode::ImmediateToDirect, branching: false},   // OR
 Instruction{opcode: 0x19, cycles:  5, addr_mode: AddressingMode::IndirectToIndirect, branching: false},   // OR
-Instruction{opcode: 0x1A, cycles:  6, addr_mode: AddressingMode::Direct, branching: false},   // DECW
+Instruction{opcode: 0x1A, cycles:  6, addr_mode: AddressingMode::DirectWord, branching: false},   // DECW
 Instruction{opcode: 0x1B, cycles:  5, addr_mode: AddressingMode::XDirect, branching: false},   // ASL
 Instruction{opcode: 0x1C, cycles:  2, addr_mode: AddressingMode::Accumulator, branching: false},   // ASL
 Instruction{opcode: 0x1D, cycles:  2, addr_mode: AddressingMode::Implied, branching: false},   // DEX
@@ -56,7 +56,7 @@ Instruction{opcode: 0x36, cycles:  5, addr_mode: AddressingMode::YAbsolute, bran
 Instruction{opcode: 0x37, cycles:  6, addr_mode: AddressingMode::IndirectY, branching: false},   // AND
 Instruction{opcode: 0x38, cycles:  5, addr_mode: AddressingMode::ImmediateToDirect, branching: false},   // AND
 Instruction{opcode: 0x39, cycles:  5, addr_mode: AddressingMode::IndirectToIndirect, branching: false},   // AND
-Instruction{opcode: 0x3A, cycles:  6, addr_mode: AddressingMode::Direct, branching: false},   // INCW
+Instruction{opcode: 0x3A, cycles:  6, addr_mode: AddressingMode::DirectWord, branching: false},   // INCW
 Instruction{opcode: 0x3B, cycles:  5, addr_mode: AddressingMode::XDirect, branching: false},   // ROL
 Instruction{opcode: 0x3C, cycles:  2, addr_mode: AddressingMode::Accumulator, branching: false},   // ROL
 Instruction{opcode: 0x3D, cycles:  2, addr_mode: AddressingMode::Implied, branching: false},   // INX
@@ -88,7 +88,7 @@ Instruction{opcode: 0x56, cycles:  5, addr_mode: AddressingMode::YAbsolute, bran
 Instruction{opcode: 0x57, cycles:  6, addr_mode: AddressingMode::IndirectY, branching: false},   // EOR
 Instruction{opcode: 0x58, cycles:  5, addr_mode: AddressingMode::ImmediateToDirect, branching: false},   // EOR
 Instruction{opcode: 0x59, cycles:  5, addr_mode: AddressingMode::IndirectToIndirect, branching: false},   // EOR
-Instruction{opcode: 0x5A, cycles:  4, addr_mode: AddressingMode::Direct, branching: false},   // CMPW
+Instruction{opcode: 0x5A, cycles:  4, addr_mode: AddressingMode::DirectWord, branching: false},   // CMPW
 Instruction{opcode: 0x5B, cycles:  5, addr_mode: AddressingMode::XDirect, branching: false},   // LSR
 Instruction{opcode: 0x5C, cycles:  2, addr_mode: AddressingMode::Accumulator, branching: false},   // LSR
 Instruction{opcode: 0x5D, cycles:  2, addr_mode: AddressingMode::Implied, branching: false},   // LDX
@@ -120,7 +120,7 @@ Instruction{opcode: 0x76, cycles:  5, addr_mode: AddressingMode::YAbsolute, bran
 Instruction{opcode: 0x77, cycles:  6, addr_mode: AddressingMode::IndirectY, branching: false},   // CMP
 Instruction{opcode: 0x78, cycles:  5, addr_mode: AddressingMode::ImmediateToDirect, branching: false},   // CMP
 Instruction{opcode: 0x79, cycles:  5, addr_mode: AddressingMode::IndirectToIndirect, branching: false},   // CMP
-Instruction{opcode: 0x7A, cycles:  5, addr_mode: AddressingMode::Direct, branching: false},   // ADDW
+Instruction{opcode: 0x7A, cycles:  5, addr_mode: AddressingMode::DirectWord, branching: false},   // ADDW
 Instruction{opcode: 0x7B, cycles:  5, addr_mode: AddressingMode::XDirect, branching: false},   // ROR
 Instruction{opcode: 0x7C, cycles:  2, addr_mode: AddressingMode::Accumulator, branching: false},   // ROR
 Instruction{opcode: 0x7D, cycles:  2, addr_mode: AddressingMode::Implied, branching: false},   // LDA
@@ -152,7 +152,7 @@ Instruction{opcode: 0x96, cycles:  5, addr_mode: AddressingMode::YAbsolute, bran
 Instruction{opcode: 0x97, cycles:  6, addr_mode: AddressingMode::IndirectY, branching: false},   // ADC
 Instruction{opcode: 0x98, cycles:  5, addr_mode: AddressingMode::ImmediateToDirect, branching: false},   // ADC
 Instruction{opcode: 0x99, cycles:  5, addr_mode: AddressingMode::IndirectToIndirect, branching: false},   // ADC
-Instruction{opcode: 0x9A, cycles:  5, addr_mode: AddressingMode::Direct, branching: false},   // SUBW
+Instruction{opcode: 0x9A, cycles:  5, addr_mode: AddressingMode::DirectWord, branching: false},   // SUBW
 Instruction{opcode: 0x9B, cycles:  5, addr_mode: AddressingMode::XDirect, branching: false},   // DEC
 Instruction{opcode: 0x9C, cycles:  2, addr_mode: AddressingMode::Accumulator, branching: false},   // DEC
 Instruction{opcode: 0x9D, cycles:  2, addr_mode: AddressingMode::Implied, branching: false},   // LDX
@@ -184,7 +184,7 @@ Instruction{opcode: 0xB6, cycles:  5, addr_mode: AddressingMode::YAbsolute, bran
 Instruction{opcode: 0xB7, cycles:  6, addr_mode: AddressingMode::IndirectY, branching: false},   // SBC
 Instruction{opcode: 0xB8, cycles:  5, addr_mode: AddressingMode::ImmediateToDirect, branching: false},   // SBC
 Instruction{opcode: 0xB9, cycles:  5, addr_mode: AddressingMode::IndirectToIndirect, branching: false},   // SBC
-Instruction{opcode: 0xBA, cycles:  5, addr_mode: AddressingMode::Direct, branching: false},   // LDYA
+Instruction{opcode: 0xBA, cycles:  5, addr_mode: AddressingMode::DirectWord, branching: false},   // LDYA
 Instruction{opcode: 0xBB, cycles:  5, addr_mode: AddressingMode::XDirect, branching: false},   // INC
 Instruction{opcode: 0xBC, cycles:  2, addr_mode: AddressingMode::Accumulator, branching: false},   // INC
 Instruction{opcode: 0xBD, cycles:  2, addr_mode: AddressingMode::Implied, branching: false},   // STX
@@ -216,7 +216,7 @@ Instruction{opcode: 0xD6, cycles:  6, addr_mode: AddressingMode::YAbsolute, bran
 Instruction{opcode: 0xD7, cycles:  7, addr_mode: AddressingMode::IndirectY, branching: false},   // STA
 Instruction{opcode: 0xD8, cycles:  4, addr_mode: AddressingMode::Direct, branching: false},   // STX
 Instruction{opcode: 0xD9, cycles:  5, addr_mode: AddressingMode::YDirect, branching: false},   // STX
-Instruction{opcode: 0xDA, cycles:  5, addr_mode: AddressingMode::Direct, branching: false},   // STYA
+Instruction{opcode: 0xDA, cycles:  5, addr_mode: AddressingMode::DirectWord, branching: false},   // STYA
 Instruction{opcode: 0xDB, cycles:  5, addr_mode: AddressingMode::XDirect, branching: false},   // STY
 Instruction{opcode: 0xDC, cycles:  2, addr_mode: AddressingMode::Implied, branching: false},   // DEY
 Instruction{opcode: 0xDD, cycles:  2, addr_mode: AddressingMode::Implied, branching: false},   // LDA
@@ -257,6 +257,7 @@ Instruction{opcode: 0xFF, cycles:  0, addr_mode: AddressingMode::Implied, branch
 
 bytes_map = {
     "Direct": 2,
+    "DirectWord": 3,
     "XDirect": 2,
     "YDirect": 2,
     "Indirect": 1,
@@ -281,6 +282,7 @@ bytes_map = {
 
 num_addrs_map = {
     "Direct": 1,
+    "DirectWord": 2,
     "XDirect": 1,
     "YDirect": 1,
     "Indirect": 1,
@@ -342,30 +344,23 @@ def into_case(opcode, instr_name, addr_mode, cycles):
     return result
 
 
-lines = a.split('\n')
+if __name__ == "__main__":
+    print("Generating Match-Case Statement...")
 
-instrs = set(map(lambda l: l.split()[-1], lines))
+    lines = a.split('\n')
+    result = ""
+    for line in lines:
+        split = line.split()
 
-for instr_name in sorted(list(instrs)): 
-    print(instr_name)
+        opcode = line[20:24]
+        instr_name = split[-1]
+        addr_mode = split[5][16:-1]
+        cycles = split[3][:-1]
 
-# if __name__ == "__main__":
-#     print("Generating Match-Case Statement...")
-
-#     lines = a.split('\n')
-#     result = ""
-#     for line in lines:
-#         split = line.split()
-
-#         opcode = line[20:24]
-#         instr_name = split[-1]
-#         addr_mode = split[5][16:-1]
-#         cycles = split[3][:-1]
-
-#         result += into_case(opcode, instr_name, addr_mode, cycles)
+        result += into_case(opcode, instr_name, addr_mode, cycles)
 
 
-#     with open("spc700_match.txt", "w") as f:
-#         f.write(result)
+    with open("spc700_match.txt", "w") as f:
+        f.write(result)
 
-#     print("Done.")
+    print("Done.")

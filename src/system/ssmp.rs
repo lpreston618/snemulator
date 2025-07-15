@@ -73,6 +73,39 @@ impl Spc700 {
         }
     }
 
+    fn read_word(&self, addr_lo: u16, addr_hi: u16) -> u16 {
+        u16::from_le_bytes([
+            self.read(addr_lo),
+            self.read(addr_hi),
+        ]);
+    }
+
+    fn write_word(&mut self, addr_lo: u16, addr_hi: u16, data: u16) {
+        self.write(addr_lo, data as u8);
+        self.write(addr_hi, (data >> 8) as u8);
+    }
+
+    fn pop(&mut self) -> u8 {
+        self.sp += 1;
+        self.read(0x100 | self.sp as u16)
+    }
+
+    fn push(&mut self, data: u8) {
+        self.write(0x100 | self.sp as u16, data);
+    }
+
+    fn pop_word(&mut self) -> u16 {
+        u16::from_le_bytes([
+            self.pop(),
+            self.pop(),
+        ])
+    }
+
+    fn push_word(&mut self, data: u16) {
+        self.push(data as u8);
+        self.push((data >> 8) as u8);
+    }
+
     fn exec_instr(&mut self) {
         let cycles: usize;
 
@@ -86,7 +119,7 @@ impl Spc700 {
             },
             0x01 => {
                 self.pc += 1;
-                self.tcall();
+                self.tcall(0x01);
                 cycles = 8;
             },
             0x02 => {
@@ -177,7 +210,7 @@ impl Spc700 {
             },
             0x11 => {
                 self.pc += 1;
-                self.tcall();
+                self.tcall(0x11);
                 cycles = 8;
             },
             0x12 => {
@@ -226,9 +259,8 @@ impl Spc700 {
                 cycles = 5;
             },
             0x1A => {
-                let addr = self.direct();
-                self.pc += 2;
-                self.decw(addr);
+                let (addr1, addr2) = self.direct_word();
+                self.pc += 3;
                 cycles = 6;
             },
             0x1B => {
@@ -266,7 +298,7 @@ impl Spc700 {
             },
             0x21 => {
                 self.pc += 1;
-                self.tcall();
+                self.tcall(0x21);
                 cycles = 8;
             },
             0x22 => {
@@ -358,7 +390,7 @@ impl Spc700 {
             },
             0x31 => {
                 self.pc += 1;
-                self.tcall();
+                self.tcall(0x31);
                 cycles = 8;
             },
             0x32 => {
@@ -407,9 +439,8 @@ impl Spc700 {
                 cycles = 5;
             },
             0x3A => {
-                let addr = self.direct();
-                self.pc += 2;
-                self.incw(addr);
+                let (addr1, addr2) = self.direct_word();
+                self.pc += 3;
                 cycles = 6;
             },
             0x3B => {
@@ -447,7 +478,7 @@ impl Spc700 {
             },
             0x41 => {
                 self.pc += 1;
-                self.tcall();
+                self.tcall(0x41);
                 cycles = 8;
             },
             0x42 => {
@@ -526,8 +557,9 @@ impl Spc700 {
                 cycles = 6;
             },
             0x4F => {
+                let addr = self.immediate();
                 self.pc += 1;
-                self.pcall();
+                self.pcall(addr);
                 cycles = 6;
             },
             0x50 => {
@@ -538,7 +570,7 @@ impl Spc700 {
             },
             0x51 => {
                 self.pc += 1;
-                self.tcall();
+                self.tcall(0x51);
                 cycles = 8;
             },
             0x52 => {
@@ -587,9 +619,8 @@ impl Spc700 {
                 cycles = 5;
             },
             0x5A => {
-                let addr = self.direct();
-                self.pc += 2;
-                self.cmpw(addr);
+                let (addr1, addr2) = self.direct_word();
+                self.pc += 3;
                 cycles = 4;
             },
             0x5B => {
@@ -627,7 +658,7 @@ impl Spc700 {
             },
             0x61 => {
                 self.pc += 1;
-                self.tcall();
+                self.tcall(0x61);
                 cycles = 8;
             },
             0x62 => {
@@ -718,7 +749,7 @@ impl Spc700 {
             },
             0x71 => {
                 self.pc += 1;
-                self.tcall();
+                self.tcall(0x71);
                 cycles = 8;
             },
             0x72 => {
@@ -767,9 +798,8 @@ impl Spc700 {
                 cycles = 5;
             },
             0x7A => {
-                let addr = self.direct();
-                self.pc += 2;
-                self.addw(addr);
+                let (addr1, addr2) = self.direct_word();
+                self.pc += 3;
                 cycles = 5;
             },
             0x7B => {
@@ -806,7 +836,7 @@ impl Spc700 {
             },
             0x81 => {
                 self.pc += 1;
-                self.tcall();
+                self.tcall(0x81);
                 cycles = 8;
             },
             0x82 => {
@@ -897,7 +927,7 @@ impl Spc700 {
             },
             0x91 => {
                 self.pc += 1;
-                self.tcall();
+                self.tcall(0x91);
                 cycles = 8;
             },
             0x92 => {
@@ -946,9 +976,8 @@ impl Spc700 {
                 cycles = 5;
             },
             0x9A => {
-                let addr = self.direct();
-                self.pc += 2;
-                self.subw(addr);
+                let (addr1, addr2) = self.direct_word();
+                self.pc += 3;
                 cycles = 5;
             },
             0x9B => {
@@ -984,7 +1013,7 @@ impl Spc700 {
             },
             0xA1 => {
                 self.pc += 1;
-                self.tcall();
+                self.tcall(0xA1);
                 cycles = 8;
             },
             0xA2 => {
@@ -1076,7 +1105,7 @@ impl Spc700 {
             },
             0xB1 => {
                 self.pc += 1;
-                self.tcall();
+                self.tcall(0xB1);
                 cycles = 8;
             },
             0xB2 => {
@@ -1125,9 +1154,8 @@ impl Spc700 {
                 cycles = 5;
             },
             0xBA => {
-                let addr = self.direct();
-                self.pc += 2;
-                self.ldya(addr);
+                let (addr1, addr2) = self.direct_word();
+                self.pc += 3;
                 cycles = 5;
             },
             0xBB => {
@@ -1164,7 +1192,7 @@ impl Spc700 {
             },
             0xC1 => {
                 self.pc += 1;
-                self.tcall();
+                self.tcall(0xC1);
                 cycles = 8;
             },
             0xC2 => {
@@ -1256,7 +1284,7 @@ impl Spc700 {
             },
             0xD1 => {
                 self.pc += 1;
-                self.tcall();
+                self.tcall(0xD1);
                 cycles = 8;
             },
             0xD2 => {
@@ -1307,9 +1335,8 @@ impl Spc700 {
                 cycles = 5;
             },
             0xDA => {
-                let addr = self.direct();
-                self.pc += 2;
-                self.stya(addr);
+                let (addr1, addr2) = self.direct_word();
+                self.pc += 3;
                 cycles = 5;
             },
             0xDB => {
@@ -1346,7 +1373,7 @@ impl Spc700 {
             },
             0xE1 => {
                 self.pc += 1;
-                self.tcall();
+                self.tcall(0xE1);
                 cycles = 8;
             },
             0xE2 => {
@@ -1437,7 +1464,7 @@ impl Spc700 {
             },
             0xF1 => {
                 self.pc += 1;
-                self.tcall();
+                self.tcall(0xF1);
                 cycles = 8;
             },
             0xF2 => {
@@ -1523,7 +1550,6 @@ impl Spc700 {
     }
 }
 
-
 // Helper functions.
 impl Spc700 {
     fn is_flag_set(&self, flag: Flag) -> bool {
@@ -1531,17 +1557,9 @@ impl Spc700 {
     }
     fn set_flag(&mut self, flag: Flag) {
         self.status |= flag as u8;
-
-        if flag == Flag::FlagP {
-            self.dir_page = 0x100;
-        }
     }
     fn clear_flag(&mut self, flag: Flag) {
         self.status &= !(flag as u8);
-
-        if flag == Flag::FlagP {
-            self.dir_page = 0;
-        }
     }
     fn set_flag_to_bool(&mut self, flag: Flag, val: bool) {
         if val {
@@ -1557,6 +1575,13 @@ impl Spc700 {
 impl Spc700 {
     fn direct(&self) -> u16 {
         (self.read(self.pc + 1) as u16) | self.dir_page
+    }
+
+    fn direct_word(&self) -> (u16, u16) {
+        let lo_addr = (self.read(self.pc + 1) as u16) | self.dir_page;
+        let hi_addr = (self.read(self.pc + 1) as u16) | self.dir_page;
+
+        (lo_addr, hi_addr)
     }
 
     fn x_direct(&self) -> u16 {
@@ -1672,86 +1697,420 @@ impl Spc700 {
         result as u8
     }
 
-    // ADC
-    // ADDW
-    // AND
-    // AND1
-    // ASL
-    // BBC
-    // BBS
-    // BCC
-    // BCS
-    // BEQ
-    // BMI
-    // BNE
-    // BPL
-    // BRA
-    // BRK
-    // BVC
-    // BVS
-    // CALL
-    // CBNE
-    // CLI
-    // CLR1
-    // CLRC
-    // CLRP
-    // CLRV
-    // CMP
-    // CMPW
-    // CPX
-    // CPY
-    // DAA
-    // DAS
-    // DBNZ
-    // DEC
-    // DECW
-    // DEX
-    // DEY
-    // DIV
-    // EOR
-    // EOR1
-    // INC
-    // INCW
-    // INX
-    // INY
-    // JMP
-    // LDA
-    // LDX
-    // LDY
-    // LDYA
-    // LSR
-    // MOV
-    // MOV1
-    // MUL
-    // NOP
-    // NOT1
-    // NOTC
-    // OR
-    // OR1
-    // ORA
-    // PCALL
-    // POP
-    // PUSH
-    // RET
-    // RET1
-    // ROL
-    // ROR
-    // SBC
-    // SEI
-    // SET1
-    // SETC
-    // SETP
-    // SLEEP
-    // STA
-    // STOP
-    // STX
-    // STY
-    // STYA
-    // SUBW
-    // TCALL
-    // TCLR1
-    // TSET1
-    // XCN
+    fn dex(&mut self) {
+        self.x -= 1;
+
+        self.set_flag_to_bool(Flag::FlagN, self.x & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
+    }
+
+    fn dey(&mut self) {
+        self.y -= 1;
+
+        self.set_flag_to_bool(Flag::FlagN, self.y & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
+    }
+
+    fn div(&mut self) {
+        let ya = ((self.y as u16) << 8) | (self.acc as u16);
+
+        self.set_flag_to_bool(Flag::FlagH, (self.y & 0xF) >= (self.x & 0xF));
+        self.set_flag_to_bool(Flag::FlagV, self.y >= self.x);
+
+        if (self.y as u16) < ((self.x as u16) << 1) {
+            let div_result = ya / self.x as u16;
+            let mod_result = ya % self.x as u16;
+
+            self.acc = div_result as u8;
+            self.y = mod_result as u8;
+        } else {
+            self.acc = 255 - (ya - (self.x << 9)) / (256 - self.x);
+            self.y = self.x + (ya - (self.x << 9)) % (256 - self.x);
+        }
+
+        self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x80 != 0);
+    }
+
+    fn eor_acc(&mut self, address: u16) {
+        let data = self.read(address);
+        let result = self.acc ^ data;
+        
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+    }
+
+    fn eor_mem(&mut self, addr1: u16, addr2: u16) {
+        let arg1 = self.read(addr1);
+        let arg2 = self.read(addr2);
+        let result = arg1 ^ arg2;
+        
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+    }
+
+    fn eor1(&mut self) {
+        let addr = address & 0x1FFF;
+        let data = self.read(addr);
+        let b = 1 << (address >> 13);
+        let result = self.is_flag_set(Flag::FlagC) ^ (data & b != 0);
+
+        self.set_flag_to_bool(Flag::FlagC, result);
+    }
+
+    fn inc(&mut self, address: u16) {
+        let result = self.read(address) + 1;
+
+        self.write(address, result);
+
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+    }
+
+    fn incw(&mut self, addr_lo: u16, addr_hi: u16) {
+        let result = self.read_word(addr_lo, addr_hi) + 1;
+
+        self.write_word(addr_lo, addr_hi, result);
+
+        self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+    }
+
+    fn inx(&mut self) {
+        self.x += 1;
+
+        self.set_flag_to_bool(Flag::FlagN, self.x & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
+    }
+
+    fn iny(&mut self) {
+        self.y += 1;
+
+        self.set_flag_to_bool(Flag::FlagN, self.y & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
+    }
+
+    fn jmp(&mut self, address: u16) {
+        self.pc = address;
+    }
+
+    fn lda(&mut self) {
+        self.acc = self.read(address);
+
+        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.acc == 0 && self.acc == 0);
+    }
+
+    fn ldc(&mut self, address: u16) {
+        let addr = address & 0x1FFF;
+        let data = self.read(addr);
+        let b = 1 << (address >> 13);
+        
+        self.set_flag_to_bool(Flag::FlagC, data & b != 0);
+
+        self.write(addr, result);
+    }
+
+    fn ldx(&mut self, address: u16) {
+        self.x = self.read(address);
+
+        self.set_flag_to_bool(Flag::FlagN, self.x & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.x == 0 && self.acc == 0);
+    }
+
+    fn ldy(&mut self, address: u16) {
+        self.y = self.read(address);
+
+        self.set_flag_to_bool(Flag::FlagN, self.y & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.y == 0 && self.acc == 0);
+    }
+
+    fn ldya(&mut self, addr_lo: u16, addr_hi: u16) {
+        self.y = self.read(addr_hi);
+        self.acc = self.read(addr_lo);
+
+        self.set_flag_to_bool(Flag::FlagN, self.y & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.y == 0 && self.acc == 0);
+    }
+
+    fn lsr_acc(&mut self, address: u16) {
+        let result = self.acc >> 1;
+
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagC, self.acc & 0x01 == 1);
+        
+        self.acc = result;
+    }
+
+    fn lsr_mem(&mut self, address: u16) {
+        let data = self.read(address);
+        let result = data >> 1;
+
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagC, data & 0x01 == 1);
+        
+        self.write(address, result);
+    }
+
+    fn mov(&mut self, src_addr: u16, dst_addr: u16) {
+        let data = self.read(src_addr);
+
+        self.write(dst_addr, data);
+    }
+
+    fn mul(&mut self) {
+        let result = (self.y as u16) * (self.acc as u16);
+
+        self.y = (result >> 8) as u8;
+        self.acc = result as u8;
+
+        self.set_flag_to_bool(Flag::FlagN, self.y & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
+    }
+
+    fn nop(&self) {}
+
+    fn not1(&mut self, address: u16) {
+        let addr = address & 0x1FFF;
+        let data = self.read(addr);
+        let b = 1 << (address >> 13);
+        let result = data ^ b;
+
+        self.write(addr, result);
+    }
+
+    fn notc(&mut self) {
+        self.status ^= Flag::FlagC as u8;
+    }
+
+    fn or1(&mut self, address: u16) {
+        let addr = address & 0x1FFF;
+        let data = self.read(addr);
+        let b = 1 << (address >> 13);
+        let result = self.is_flag_set(Flag::FlagC) || !(data & b != 0);
+
+        self.set_flag_to_bool(Flag::FlagC, result);
+    }
+
+    fn or1_inv(&mut self, address: u16) {
+        let addr = address & 0x1FFF;
+        let data = self.read(addr);
+        let b = 1 << (address >> 13);
+        let result = self.is_flag_set(Flag::FlagC) || (data & b != 0);
+
+        self.set_flag_to_bool(Flag::FlagC, result);
+    }
+
+    fn or_acc(&mut self, address: u16) {
+        let data = self.read(address);
+        let result = self.acc | data;
+        
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+    }
+
+    fn or_mem(&mut self, addr1: u16, addr2: u16) {
+        let arg1 = self.read(addr1);
+        let arg2 = self.read(addr2);
+        let result = arg1 | arg2;
+        
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+    }
+
+    fn pcall(&mut self, address: u16) {
+        let call_addr = 0xFF00 | self.read(address) as u16;
+
+        self.push_word(self.pc);
+
+        self.pc = call_addr;
+    }
+
+    fn pop_acc(&mut self) {
+        self.pop(self.acc);
+    }
+
+    fn pop_x(&mut self) {
+        self.pop(self.x);
+    }
+
+    fn pop_y(&mut self) {
+        self.pop(self.y);
+    }
+
+    fn pop_psw(&mut self) {
+        self.pop(self.status);
+    }
+
+    fn push_acc(&mut self) {
+        self.push(self.acc);
+    }
+
+    fn push_x(&mut self) {
+        self.push(self.x);
+    }
+
+    fn push_y(&mut self) {
+        self.push(self.y);
+    }
+
+    fn push_psw(&mut self) {
+        self.push(self.status);
+    }
+
+    fn ret(&mut self) {
+        self.pc = self.pop_word();
+    }
+
+    fn ret1(&mut self) {
+        self.status = self.pop();
+        self.pc = self.pop_word();
+
+        if self.is_flag_set(Flag::FlagP) {
+            self.dir_page = 0x100;
+        } else {
+            self.dir_page = 0;
+        }
+    }
+
+    fn rol_acc(&mut self, address: u16) {
+        let result = (self.acc << 1) | if self.carry() { 1 } else { 0 };
+
+        self.set_flag_to_bool(Flag::FlagC, self.acc & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        
+        self.acc = result;
+    }
+
+    fn rol_mem(&mut self, address: u16) {
+        let data = self.read(address);
+        let result = (data << 1) | if self.carry() { 1 } else { 0 };
+
+        self.set_flag_to_bool(Flag::FlagC, data & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        
+        self.write(address, result);
+    }
+
+    fn ror_acc(&mut self, address: u16) {
+        let result = (if self.carry() { 1 } else { 0 } << 7) | (self.acc >> 1);
+
+        self.set_flag_to_bool(Flag::FlagC, self.acc & 0x01 == 1);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        
+        self.acc = result;
+    }
+
+    fn ror_mem(&mut self, address: u16) {
+        let data = self.read(address);
+        let result = (if self.carry() { 1 } else { 0 } << 7) | (data >> 1);
+
+        self.set_flag_to_bool(Flag::FlagC, data & 0x01 == 1);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        
+        self.write(address, result);
+    }
+
+    fn sbc(&mut self) {}
+
+    fn sei(&mut self, address: u16) {
+        self.set_flag(Flag::FlagI)
+    }
+
+    fn set1(&mut self, address: u16, opcode: u8) {
+        let data = self.read(address);
+        let b = 1 << (opcode >> 5);
+
+        self.write(address, data | b);
+    }
+
+    fn setc(&mut self) {
+        self.set_flag(Flag::FlagC);
+    }
+
+    fn setp(&mut self) {
+        self.set_flag(Flag::FlagP);
+        self.dir_page = 0x100;
+    }
+
+    fn sleep(&self) {}
+
+    fn sta(&mut self, address: u16) {
+        self.write(address, self.acc);
+    }
+
+    // MOV1 alias
+    fn stc(&mut self, address: u16) {
+        let addr = address & 0x1FFF;
+        let data = self.read(addr);
+        let b = 1 << (address >> 13);
+        let result = if self.is_flag_set(Flag::FlagC) {
+            data | b
+        } else {
+            data & !b
+        };
+
+        self.write(addr, result);
+    }
+
+    fn stop(&self) {}
+
+    fn stx(&mut self, address: u16) {
+        self.write(address, self.y);
+    }
+
+    fn sty(&mut self, address: u16) {
+        self.write(address, self.y);
+    }
+
+    fn stya(&mut self, addr_lo: u16, addr_hi: u16) {
+        self.write(addr_lo, self.acc);
+        self.write(addr_hi, self.y);
+    }
+
+    fn subw(&mut self) {}
+    
+    fn tcall(&mut self, opcode: u8) {
+        // TCALL n        CALL [FFnn]     n1 ;n=0..F  8  Push PC, PC=[FFDE-n*2] ........
+        let n = opcode >> 4;
+        let addr = 0xFFDE - (n << 2);
+        
+        self.push_word(self.pc);
+        self.pc = self.read_word(addr, addr+1);
+    }
+
+    fn tclr1(&mut self, address: u16) {
+        let data = self.read(address);
+        let result = data & self.acc;
+
+        self.write(address, data & !self.acc);
+
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+    }
+
+    fn tset1(&mut self, address: u16) {
+        let data = self.read(address);
+        let result = data & self.acc;
+
+        self.write(address, data | self.acc);
+
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+    }
+
+    fn xcn(&mut self) {
+        self.acc = (self.acc >> 4) | ((self.acc & 0xF) << 4);
+
+        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
+    }
 }
 
 
@@ -2169,7 +2528,7 @@ fn plp(&mut self, _address: u16) {
 // ROL - Rotate Left (Accumulator version)
 fn rol_acc(&mut self, _address: u16) {
     let result = (self.acc << 1) | if cpu.carry() { 1 } else { 0 };
-    self.set_flag_to_bool(Flag::FlagC, cpu.acc >> 7 == 1); // old bit 7 becomes new carry
+    self.set_flag_to_bool(Flag::FlagC, cpu.acc & 0x80 != 0); // old bit 7 becomes new carry
     self.set_flag_to_bool(Flag::FlagZ, result == 0);
     self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
     self.acc = result;
@@ -2179,7 +2538,7 @@ fn rol_acc(&mut self, _address: u16) {
 fn rol_mem(&mut self, address: u16) {
     let data = self.read(address);
     let result = (data << 1) | if self.carry() { 1 } else { 0 };
-    self.set_flag_to_bool(Flag::FlagC, data >> 7 == 1); // old bit 7 becomes new carry
+    self.set_flag_to_bool(Flag::FlagC, data & 0x80 != 0); // old bit 7 becomes new carry
     self.set_flag_to_bool(Flag::FlagZ, result == 0);
     self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
     self.write(address, result);

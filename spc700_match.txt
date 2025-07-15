@@ -5,7 +5,7 @@
 },
 0x01 => {
     self.pc += 1;
-    self.tcall();
+    self.tcall(0x01);
     cycles = 8;
 },
 0x02 => {
@@ -96,7 +96,7 @@
 },
 0x11 => {
     self.pc += 1;
-    self.tcall();
+    self.tcall(0x11);
     cycles = 8;
 },
 0x12 => {
@@ -145,9 +145,8 @@
     cycles = 5;
 },
 0x1A => {
-    let addr = self.direct();
-    self.pc += 2;
-    self.decw(addr);
+    let (addr1, addr2) = self.direct_word();
+    self.pc += 3;
     cycles = 6;
 },
 0x1B => {
@@ -185,7 +184,7 @@
 },
 0x21 => {
     self.pc += 1;
-    self.tcall();
+    self.tcall(0x21);
     cycles = 8;
 },
 0x22 => {
@@ -277,7 +276,7 @@
 },
 0x31 => {
     self.pc += 1;
-    self.tcall();
+    self.tcall(0x31);
     cycles = 8;
 },
 0x32 => {
@@ -326,9 +325,8 @@
     cycles = 5;
 },
 0x3A => {
-    let addr = self.direct();
-    self.pc += 2;
-    self.incw(addr);
+    let (addr1, addr2) = self.direct_word();
+    self.pc += 3;
     cycles = 6;
 },
 0x3B => {
@@ -366,7 +364,7 @@
 },
 0x41 => {
     self.pc += 1;
-    self.tcall();
+    self.tcall(0x41);
     cycles = 8;
 },
 0x42 => {
@@ -457,7 +455,7 @@
 },
 0x51 => {
     self.pc += 1;
-    self.tcall();
+    self.tcall(0x51);
     cycles = 8;
 },
 0x52 => {
@@ -506,9 +504,8 @@
     cycles = 5;
 },
 0x5A => {
-    let addr = self.direct();
-    self.pc += 2;
-    self.cmpw(addr);
+    let (addr1, addr2) = self.direct_word();
+    self.pc += 3;
     cycles = 4;
 },
 0x5B => {
@@ -546,7 +543,7 @@
 },
 0x61 => {
     self.pc += 1;
-    self.tcall();
+    self.tcall(0x61);
     cycles = 8;
 },
 0x62 => {
@@ -637,7 +634,7 @@
 },
 0x71 => {
     self.pc += 1;
-    self.tcall();
+    self.tcall(0x71);
     cycles = 8;
 },
 0x72 => {
@@ -686,9 +683,8 @@
     cycles = 5;
 },
 0x7A => {
-    let addr = self.direct();
-    self.pc += 2;
-    self.addw(addr);
+    let (addr1, addr2) = self.direct_word();
+    self.pc += 3;
     cycles = 5;
 },
 0x7B => {
@@ -725,7 +721,7 @@
 },
 0x81 => {
     self.pc += 1;
-    self.tcall();
+    self.tcall(0x81);
     cycles = 8;
 },
 0x82 => {
@@ -816,7 +812,7 @@
 },
 0x91 => {
     self.pc += 1;
-    self.tcall();
+    self.tcall(0x91);
     cycles = 8;
 },
 0x92 => {
@@ -865,9 +861,8 @@
     cycles = 5;
 },
 0x9A => {
-    let addr = self.direct();
-    self.pc += 2;
-    self.subw(addr);
+    let (addr1, addr2) = self.direct_word();
+    self.pc += 3;
     cycles = 5;
 },
 0x9B => {
@@ -903,7 +898,7 @@
 },
 0xA1 => {
     self.pc += 1;
-    self.tcall();
+    self.tcall(0xA1);
     cycles = 8;
 },
 0xA2 => {
@@ -995,7 +990,7 @@
 },
 0xB1 => {
     self.pc += 1;
-    self.tcall();
+    self.tcall(0xB1);
     cycles = 8;
 },
 0xB2 => {
@@ -1044,9 +1039,8 @@
     cycles = 5;
 },
 0xBA => {
-    let addr = self.direct();
-    self.pc += 2;
-    self.ldya(addr);
+    let (addr1, addr2) = self.direct_word();
+    self.pc += 3;
     cycles = 5;
 },
 0xBB => {
@@ -1083,7 +1077,7 @@
 },
 0xC1 => {
     self.pc += 1;
-    self.tcall();
+    self.tcall(0xC1);
     cycles = 8;
 },
 0xC2 => {
@@ -1175,7 +1169,7 @@
 },
 0xD1 => {
     self.pc += 1;
-    self.tcall();
+    self.tcall(0xD1);
     cycles = 8;
 },
 0xD2 => {
@@ -1226,9 +1220,8 @@
     cycles = 5;
 },
 0xDA => {
-    let addr = self.direct();
-    self.pc += 2;
-    self.stya(addr);
+    let (addr1, addr2) = self.direct_word();
+    self.pc += 3;
     cycles = 5;
 },
 0xDB => {
@@ -1265,7 +1258,7 @@
 },
 0xE1 => {
     self.pc += 1;
-    self.tcall();
+    self.tcall(0xE1);
     cycles = 8;
 },
 0xE2 => {
@@ -1356,7 +1349,7 @@
 },
 0xF1 => {
     self.pc += 1;
-    self.tcall();
+    self.tcall(0xF1);
     cycles = 8;
 },
 0xF2 => {
