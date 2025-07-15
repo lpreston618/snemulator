@@ -1672,119 +1672,333 @@ impl Spc700 {
         result as u8
     }
 
-    // ADC
-    // ADDW
-    // AND
-    // AND1
-    // ASL
-    // BBC
-    // BBS
-    // BCC
-    // BCS
-    // BEQ
-    // BMI
-    // BNE
-    // BPL
-    // BRA
-    // BRK
-    // BVC
-    // BVS
-    // CALL
-    // CBNE
-    // CLI
-    // CLR1
-    // CLRC
-    // CLRP
-    // CLRV
-    // CMP
-    // CMPW
-    // CPX
-    // CPY
-    // DAA
-    // DAS
-    // DBNZ
-    // DEC
-    // DECW
-    // DEX
-    // DEY
-    // DIV
-    // EOR
-    // EOR1
-    // INC
-    // INCW
-    // INX
-    // INY
-    // JMP
-    // LDA
-    // LDX
-    // LDY
-    // LDYA
-    // LSR
-    // MOV
-    // MOV1
-    // MUL
-    // NOP
-    // NOT1
-    // NOTC
-    // OR
-    // OR1
-    // ORA
-    // PCALL
-    // POP
-    // PUSH
-    // RET
-    // RET1
-    // ROL
-    // ROR
-    // SBC
-    // SEI
-    // SET1
-    // SETC
-    // SETP
-    // SLEEP
-    // STA
-    // STOP
-    // STX
-    // STY
-    // STYA
-    // SUBW
-    // TCALL
-    // TCLR1
-    // TSET1
-    // XCN
+    fn adc_16_base(&mut self, arg1: u16, arg2: u16) -> u16 {
+        let result = (arg1 as u32) + (arg2 as u32) + if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
+        let half_result = (arg1 & 0xF) + (arg2 & 0xF); // TODO: change for 16 bit!!!
+
+        // Doesn't set carry???
+        //self.set_flag_to_bool(Flag::FlagC, result & 0xFF0000 > 0);
+        self.set_flag_to_bool(Flag::FlagZ, result & 0xFF == 0);
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagH, half_result >= 0xA);
+        
+        // Set V flag if acc and data are same sign, but result is different sign
+        let a = arg1 & 0x8000 != 0;
+        let d = arg2 & 0x8000 != 0;
+        let r = (result & 0x8000) != 0;
+        self.set_flag_to_bool(Flag::FlagV, !(a^d)&(a^r) ); // Trust, bro
+        
+        result as u8
+    }
+
+    // AND - AND Memory with Accumulator
+    fn and(&mut self, address: u16) {
+        let data = self.read(address);
+
+        let result = self.acc & data;
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.acc = result;
+
+    }
+
+    fn and1(&mut self, address: u16) {
+        let data = self.read(address & 0x1FFF);
+        // Set a single-bit bitmask based on the upper 3 bits of the address.
+        // Disgusting.
+        let b = 1 << (address >> 13);
+        self.set_flag_to_bool(Flag::FlagC, data & b != 0);
+    }
+
+
+    // ASL - Shift Left One Bit (Accumulator version)
+    fn asl_acc(&mut self, _address: u16) {
+        let result = self.acc << 1;
+        self.set_flag_to_bool(Flag::FlagC, (cpu.acc & 0x80) != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.acc = result;
+    }
+
+    // ASL - Shift Left One Bit (Memory version)
+    fn asl_mem(&mut self, address: u16) {
+        let data = self.read(address);
+        let result = data << 1;
+        self.set_flag_to_bool(Flag::FlagC, (data & 0x80) != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.write(address, result);
+    }
+
+    // BBC - Branch if Bit Clear
+    fn bbc(&mut self, data_addr: u16, branch_addr: u16, opcode: u8) {
+        let b = 1 << ( opcode >> 5 );
+        let data = self.read(data_addr);
+        if data & b == 0 {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        } else {
+            self.branch_taken = false;
+        }
+    }
+
+    // BBS - Branch if Bit Set
+    fn bbs(&mut self, data_addr: u16, branch_addr: u16, opcode: u8) {
+        let b = 1 << ( opcode >> 5 );
+        let data = self.read(data_addr);
+        if data & b != 0 {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        } else {
+            self.branch_taken = false;
+        }
+    }
+
+    // BCC - Branch if Carry Clear
+    fn bcc(&mut self, branch_addr: u16) {
+        if !self.is_flag_set(Flag::FlagC) {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        } else {
+            self.branch_taken = false;
+        }
+    }
+
+    // BCS - Branch if Carry Set
+    fn bcs(&mut self, branch_addr: u16) {
+        if self.is_flag_set(Flag::FlagC) {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        } else {
+            self.branch_taken = false;
+        }
+    }
+
+    // BEQ - Branch if EQual
+    fn beq(&mut self, branch_addr: u16) {
+        if self.is_flag_set(Flag::FlagZ) {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        } else {
+            self.branch_taken = false;
+        }
+    }
+
+    // BMI - Branch MInus
+    fn bmi(&mut self, branch_addr: u16) {
+        if self.is_flag_set(Flag::FlagN) {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        } else {
+            self.branch_taken = false;
+        }
+    }
+
+    // BNE - Branch if Not Equal
+    fn bne(&mut self, branch_addr: u16) {
+        if !self.is_flag_set(Flag::FlagZ) {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        } else {
+            self.branch_taken = false;
+        }
+    }
+
+    // BPL - Branch PLus (if positive)
+    fn bpl(&mut self, branch_addr: u16) {
+        if !self.is_flag_set(Flag::FlagN) {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        } else {
+            self.branch_taken = false;
+        }
+    }
+
+
+    // BRA - BRanch Always
+    fn bra(&mut self, branch_addr: u16) {
+        self.pc = branch_addr;
+        self.branch_taken = true;
+    }
+
+    // BRK - Break
+    // TODO: make sure it actually works this way
+    fn brk(&mut self) {
+        self.set_flag(Flag::FlagB);
+    }
+
+    // BVC - Branch if OVerflow Clear
+    fn bpl(&mut self, branch_addr: u16) {
+        if !self.is_flag_set(Flag::FlagV) {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        } else {
+            self.branch_taken = false;
+        }
+    }
+
+    // BVS - Branch if OVerflow Set
+    fn bpl(&mut self, branch_addr: u16) {
+        if self.is_flag_set(Flag::FlagV) {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        } else {
+            self.branch_taken = false;
+        }
+    }
+
+    // CALL - call a subroutine
+    fn call(&mut self, new_addr: u16) {
+        self.push_word(self.pc + 1);
+        self.pc = new_addr;
+    }
+
+    // CBNE - Compare and Branch if Not Equal
+    fn cbne(&mut self, address: u16, branch_addr: u16) {
+        let data = self.read(addr);
+
+        let result = (self.acc as i16) - (self.data as i16);
+
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagC, result >= 0);
+
+        if !self.is_flag_set(Flag::FlagZ) {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        } else {
+            self.branch_taken = false;
+        }
+    }
+
+    // CMP - Compare Memory with Accumulator
+    fn cmp(&mut self, address: u16) {
+        let data = self.read(address);
+
+        let result = (self.acc as i16) - (data as i16);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagC, result >= 0);
+    }
+
+    // CLI - CLear Interrupt flag (called DI in SPC700 documentation)
+    fn cli (&mut self) {
+        self.clear_flag(Flag::FlagI);
+    }
+
+    // CLR1 - clears a single bit in the direct page
+    fn clr1(&mut self, address: u16, opcode: u8) {
+        let data = self.read(address);
+        let b = !( 1 << (opcode >> 5) );
+
+        self.write(address, data & b);
+    }
+
+    // CLRC - clear carry flag
+    fn clrc(&mut self) {
+        self.clear_flag(Flag::FlagC);
+    }
+
+    // CLRP - clear direct page flag
+    fn clrp(&mut self) {
+        self.clear_flag(Flag::FlagP);
+        self.dir_page = 0;
+    }
+
+    // CLRV - clear carry flag
+    fn clrv(&mut self) {
+        self.clear_flag(Flag::FlagV);
+    }
+
+    // CMPW - Compare Word with YA
+    fn cmpw(&mut self, addr_lo: u16, addr_hi: u16)) {
+        let lo = self.read(addr_lo);
+        let hi = self.read(addr_hi);
+        let data = ((hi as u16) << 8) | (lo as u16);
+        let ya = ((self.y as u16) << 8) | (self.acc as u16);
+
+        let result = (ya as i32) - (data as i32);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagC, result >= 0);
+    }
+
+    // CMX - Compare Memory with X
+    fn cmx(&mut self, address: u16) {
+        let data = self.read(address);
+
+        let result = (self.x as i16) - (data as i16);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagC, result >= 0);
+    }
+
+    // CMY - Compare Memory with X
+    fn cmy(&mut self, address: u16) {
+        let data = self.read(address);
+
+        let result = (self.y as i16) - (data as i16);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagC, result >= 0);
+    }
+
+    // DAA - Decimal Adjust Addition
+    fn daa(&mut self) {
+        if self.is_flag_set(Flag::FlagH) {
+            self.acc += 6;
+        }
+    }
+
+    // DAS - Decimal Adjust Subtraction
+    fn daa(&mut self) {
+        if self.is_flag_set(Flag::FlagH) {
+            self.acc -= 6;
+        }
+    }
+
+    // DBNZ - Decrement and Branch if Not Zero (y register)
+    fn dbnz_y(&mut self, branch_addr: u16) {
+        self.y -= 1;
+        if self.y != 0 {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        } else {
+            self.branch_taken = false;
+        }
+    }
+
+    // DBNZ - Decrement and Branch if Not Zero (memory)
+    fn dbnz_mem(&mut self, address: u16, branch_addr: u16) {
+        let data = self.read(address) - 1;
+        self.write(address, data);
+        if data != 0 {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        } else {
+            self.branch_taken = false;
+        }
+    }
+
+    // DEC - decrement (accumulator)
+    fn dec_acc(&mut self) {
+        self.acc -= 1;
+        self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x80 != 0);
+    }
+
+    // DEC - decrement (memory)
+    fn dec_mem(&mut self, address: u16) {
+        let data = self.read(address) - 1;
+        self.write(address, data);
+        self.set_flag_to_bool(Flag::FlagZ, data == 0);
+        self.set_flag_to_bool(Flag::FlagN, data & 0x80 != 0);
+    }
+
+
 }
 
 
-// AND - AND Memory with Accumulator
-fn and(&mut self, address: u16) {
-    let data = self.read(address);
-
-    let result = self.acc & data;
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.acc = result;
-
-}
-// ASL - Shift Left One Bit (Accumulator version)
-fn asl_acc(&mut self, _address: u16) {
-    let result = self.acc << 1;
-    self.set_flag_to_bool(Flag::FlagC, (cpu.acc & 0x80) != 0);
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.acc = result;
-
-
-}
-// ASL - Shift Left One Bit (Memory version)
-fn asl_mem(&mut self, address: u16) {
-    let data = self.read(address);
-    let result = data << 1;
-    self.set_flag_to_bool(Flag::FlagC, (data & 0x80) != 0);
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.write(address, result);
-
-}
 // BCC - Branch on Carry Clear
 fn bcc(&mut self, address: u16) {
     let offset = self.read(address) as i8;
