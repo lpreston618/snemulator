@@ -5,11 +5,12 @@ use dma::{DmaChannel, DmaStatus};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::log::{LogLevel, SnemLogger};
+use crate::log::SnemLogger;
 use crate::system::cartridge::Cartridge;
 use crate::system::ppu::PpuData;
 use crate::system::ssmp::ApuIORegs;
-use crate::tools::{hexdump16_at, hexdump8};
+use crate::utils::util_macros::bool2byte;
+use crate::utils::{dec_low_byte, inc_low_byte, GetBits};
 
 const WRAM_SIZE: usize = 128 * 1024; // 128 KiB
 
@@ -56,8 +57,6 @@ pub enum Flag {
     FlagM = 32, // Accumulator Size (Native mode only; 0: 16-bit, 1: 8-bit)
     FlagV = 64, // Overflow
     FlagN = 128, // Negative
-
-                // FlagB = FlagX, // Break (Emulation mode only, same place as X flag)
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -136,9 +135,6 @@ pub struct Cpu65c816 {
     rom_mirror: usize,
     has_sram: bool,
 
-    debug_nmi: u8,
-    debug_io_ops: usize,
-
     dma_status: DmaStatus,
     dma_channels: Vec<DmaChannel>,
     active_channel_idx: usize,
@@ -148,8 +144,6 @@ pub struct Cpu65c816 {
 
     hv_timer_irq: HVTimerIRQ,
     vblank_nmi_ignore: bool,
-
-    debug_dma_bytes_transfered: Vec<u8>,
 
     logger: Rc<RefCell<SnemLogger>>,
 }
@@ -183,9 +177,6 @@ impl Cpu65c816 {
             rom_mirror: 0,
             has_sram: false,
 
-            debug_nmi: 0xc2, // for testing porpuses
-            debug_io_ops: 0,
-
             dma_status: DmaStatus::Off,
             dma_channels: vec![DmaChannel::default(); 8],
             active_channel_idx: 8,
@@ -195,8 +186,6 @@ impl Cpu65c816 {
 
             hv_timer_irq: HVTimerIRQ::None,
             vblank_nmi_ignore: true,
-
-            debug_dma_bytes_transfered: Vec::new(),
 
             logger,
         }
@@ -240,8 +229,6 @@ impl Cpu65c816 {
     fn read(&mut self, address: u32) -> u8 {
         // println!("Read from: 0x{address:06x}");
 
-        self.debug_io_ops += 1;
-
         let (data, clocks) = match (address.bank(), address.bank_addr()) {
             // Mirror of low RAM
             (0..=0x3F, bank_addr @ 0..=0x1FFF)
@@ -283,8 +270,6 @@ impl Cpu65c816 {
     }
 
     fn write(&mut self, address: u32, data: u8) {
-        self.debug_io_ops += 1;
-
         let clocks = match (address.bank(), address.bank_addr()) {
             // Mirror of low RAM
             (0..=0x3F, bank_addr @ 0..=0x1FFF)
@@ -328,8 +313,6 @@ impl Cpu65c816 {
     }
 
     fn read_mmio_regs(&mut self, mmio_address: u16) -> u8 {
-        // println!("MMIO read ${mmio_address:04X}");
-
         match mmio_address {
             0x2100..=0x213F => self.ppu_data.read(mmio_address as u8),
 
@@ -363,7 +346,7 @@ impl Cpu65c816 {
 
             _ => {
                 // if mmio_address != 0x2180 {
-                // println!(" ==== Attempt to read mmio reg ${mmio_address:04X}");
+                println!(" ==== Attempt to read mmio reg ${mmio_address:04X}");
                 // }
 
                 0
@@ -372,8 +355,6 @@ impl Cpu65c816 {
     }
 
     fn write_mmio_regs(&mut self, mmio_address: u16, data: u8) {
-        // println!("MMIO write ${mmio_address:04X} with 0x{data:02X}");
-
         match mmio_address {
             0x2100..=0x213F => {
                 self.ppu_data.write(mmio_address as u8, data);
@@ -999,55 +980,8 @@ impl Cpu65c816 {
 }
 
 // Helper functions
-macro_rules! bool2byte {
-    ($val:expr) => {
-        if $val {
-            1
-        } else {
-            0
-        }
-    };
-}
-fn inc_low_byte(value: u16) -> u16 {
-    (value & 0xFF00) | ((value + 1) & 0x00FF)
-}
-fn dec_low_byte(value: u16) -> u16 {
-    (value & 0xFF00) | ((value - 1) & 0x00FF)
-}
-
 fn is_mmio_addr(address: u32) -> bool {
     address.bank() & 0x7F < 0x40 && (0x2000 <= address.bank_addr() && address.bank_addr() < 0x6000)
-}
-
-// Computes lhs + rhs + carry and outputs a new BCD digit. Alters the carry variable with the new carry value.
-fn bcd_add_digit(lhs: u8, rhs: u8, carry: &mut bool) -> u8 {
-    let mut result = lhs + rhs + bool2byte!(*carry);
-    *carry = false;
-
-    // If the resulting digit is 10-15, make it wrap back around starting at 0
-    if result >= 10 {
-        result -= 10;
-        *carry = true;
-    }
-
-    result
-}
-
-// Computes lhs - rhs - borrow and outputs a new BCD digit. Alters the borrow variable with the new borrow value.
-fn bcd_sub_digit(lhs: u8, rhs: u8, borrow: &mut bool) -> u8 {
-    let mut rhs = rhs;
-    let mut lhs = lhs;
-
-    rhs += bool2byte!(*borrow);
-    *borrow = false;
-
-    // If result of subtraction would be negative, make it wrap around starting at 9
-    if rhs > lhs {
-        lhs += 10;
-        *borrow = true;
-    }
-
-    lhs - rhs
 }
 
 // Addressing Modes
@@ -1384,33 +1318,32 @@ impl Cpu65c816 {
 impl Cpu65c816 {
     fn adc_m8(&mut self, address: u32) {
         let data = self.read(address);
-        let result: u8;
+        let mut result: u16;
+        let a = self.acc & 0xFF;
+        let d = data as u16;
+        let c = bool2byte!(self.is_flag_set(Flag::FlagC));
 
-        // Decimal Mode
         if self.is_flag_set(Flag::FlagD) {
-            // One's place, ten's place
-            let o_place: u8;
-            let t_place: u8;
+            result = (a & 0x0F) + (d & 0x0F) + c;
 
-            let mut carry = self.is_flag_set(Flag::FlagC);
+            if result >= 0xA { result += 0x6; }
 
-            o_place = bcd_add_digit(self.get_acc_lo() & 0x0F, data & 0x0F, &mut carry);
-            t_place = bcd_add_digit(self.get_acc_lo() >> 4, data >> 4, &mut carry);
-
-            result = (t_place << 4) | o_place;
-
-            self.set_flag_to_bool(Flag::FlagC, carry);
+            let c = if result > 0xF { 0x10 } else { 0 };
+            result = (a & 0xF0) + (d & 0xF0) + c + (result & 0xF);
         } else {
-            result = self.get_acc_lo() + data + bool2byte!(self.is_flag_set(Flag::FlagC));
+            result = a + d + c;
+        };
+        
+        self.set_flag_to_bool(
+            Flag::FlagV, !(a ^ d) & (d ^ result) & 0x80 != 0);
 
-            self.set_flag_to_bool(Flag::FlagC, result < self.get_acc_lo());
-            self.set_flag_to_bool(
-                Flag::FlagV,
-                !(self.get_acc_lo() ^ data) & (data ^ result) & 0x80 != 0,
-            );
-        }
+        if self.is_flag_set(Flag::FlagD) && result >= 0xA0 { result += 0x60; }
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagC, result > 0xFF);
+
+        let result = result as u8;
+
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
 
         self.set_acc_lo(result);
@@ -1418,45 +1351,44 @@ impl Cpu65c816 {
 
     fn adc_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let data = self.read16(address_lo, address_hi);
-        let result: u16;
+        let mut result: u32;
+        let a = self.acc as u32;
+        let d = data as u32;
+        let c = bool2byte!(self.is_flag_set(Flag::FlagC));
 
-        // Decimal Mode
         if self.is_flag_set(Flag::FlagD) {
-            // One's place, ten's place
-            let o_place: u16;
-            let t_place: u16;
-            let h_place: u16;
-            let th_place: u16;
+            result = (a & 0x000F) + (d & 0x000F) + c;
 
-            let mut carry = self.is_flag_set(Flag::FlagC);
+            if result >= 0xA { result += 6; }
 
-            o_place =
-                bcd_add_digit(self.get_acc_lo() & 0x0F, (data & 0x0F) as u8, &mut carry) as u16;
-            t_place = bcd_add_digit(self.get_acc_lo() >> 4, (data as u8) >> 4, &mut carry) as u16;
-            h_place = bcd_add_digit(
-                self.get_acc_hi() & 0x0F,
-                ((data >> 8) & 0x0F) as u8,
-                &mut carry,
-            ) as u16;
-            th_place = bcd_add_digit(self.get_acc_hi() >> 4, (data >> 12) as u8, &mut carry) as u16;
+            let c = if result > 0xF { 0x10 } else { 0 };
+            result = (a & 0x00F0) + (d & 0x00F0) + c + (result & 0xF);
 
-            result = (th_place << 12) | (h_place << 8) | (t_place << 4) | o_place;
+            if result >= 0xA0 { result += 0x60; }
 
-            self.set_flag_to_bool(Flag::FlagC, carry);
+            let c = if result > 0xFF { 0x100 } else { 0 };
+            result = (a & 0x0F00) + (d & 0x0F00) + c + (result & 0xFF);
+
+            if result >= 0xA00 { result += 0x600; }
+
+            let c = if result > 0xFFF { 0x1000 } else { 0 };
+            result = (a & 0xF000) + (d & 0xF000) + c + (result & 0xFFF);
         } else {
-            let temp =
-                (self.acc as i32) + (data as i32) + bool2byte!(self.is_flag_set(Flag::FlagC));
-
-            result = temp as u16;
-
-            self.set_flag_to_bool(Flag::FlagC, result < self.acc);
-            self.set_flag_to_bool(
-                Flag::FlagV,
-                !(self.acc ^ data) & (data ^ result) & 0x8000 != 0,
-            );
+            result = a + d + c;
         }
+        
+        self.set_flag_to_bool(
+            Flag::FlagV,
+            !(self.acc ^ data) & (data ^ (result as u16)) & 0x8000 != 0,
+        );
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
+        if self.is_flag_set(Flag::FlagD) && result >= 0xA000 { result += 0x6000; }
+
+        self.set_flag_to_bool(Flag::FlagC, result > 0xFFFF);
+
+        let result = result as u16;
+
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
 
         self.acc = result;
@@ -2348,85 +2280,80 @@ impl Cpu65c816 {
 
     fn sbc_m8(&mut self, address: u32) {
         let data = self.read(address);
-        let ones_comp = !data;
-        let result;
+        let comp = !data;
+        let mut result: u16;
+        let a = self.acc & 0xFF;
+        let d = comp as u16;
+        let c = bool2byte!(self.is_flag_set(Flag::FlagC));
 
         if self.is_flag_set(Flag::FlagD) {
-            // One's place, ten's place
-            let o_place: u8;
-            let t_place: u8;
-            let mut borrow = !self.is_flag_set(Flag::FlagC);
+            result = (a & 0x0F) + (d & 0x0F) + c;
 
-            o_place = bcd_sub_digit(self.get_acc_lo() & 0x0F, data & 0x0F, &mut borrow);
-            t_place = bcd_sub_digit(
-                (self.get_acc_lo() >> 4) & 0x0F,
-                (data >> 4) & 0x0F,
-                &mut borrow,
-            );
+            if result <= 0x0F { result -= 0x06; }
 
-            result = (t_place << 4) | o_place;
-
-            self.set_flag_to_bool(Flag::FlagC, !borrow);
+            let c = if result >= 0x10 { 0x10 } else { 0 };
+            result = (a & 0xF0) + (d & 0xF0) + c + (result & 0xF);
         } else {
-            result = self.get_acc_lo() + ones_comp + bool2byte!(self.is_flag_set(Flag::FlagC));
-
-            self.set_flag_to_bool(Flag::FlagC, self.get_acc_lo() >= data);
+            result = a + d + c;
         }
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(
             Flag::FlagV,
-            !(self.get_acc_lo() ^ ones_comp) & (ones_comp ^ result) & 0x80 != 0,
+            !(a ^ d) & (d ^ result) & 0x80 != 0,
         );
+
+        if self.is_flag_set(Flag::FlagD) && result <= 0xFF { result -= 0x60; }
+
+        self.set_flag_to_bool(Flag::FlagC, result > 0xFF);
+
+        let result = result as u8;
+
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
 
         self.set_acc_lo(result);
     }
     fn sbc_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let data = self.read16(address_lo, address_hi);
-        let ones_comp = !data;
-        let result;
+        let comp = !data;
+        let mut result: u32;
+        let a = self.acc as u32;
+        let d = comp as u32;
+        let c = bool2byte!(self.is_flag_set(Flag::FlagC));
 
         if self.is_flag_set(Flag::FlagD) {
-            // One's place, ten's place, hundred's place, thousand's place
-            let o_place: u16;
-            let t_place: u16;
-            let h_place: u16;
-            let th_place: u16;
-            let mut borrow = !self.is_flag_set(Flag::FlagC);
+            result = (a & 0x000F) + (d & 0x000F) + c;
 
-            o_place =
-                bcd_sub_digit(self.get_acc_lo() & 0x0F, (data & 0x0F) as u8, &mut borrow) as u16;
-            t_place = bcd_sub_digit(
-                (self.get_acc_lo() >> 4) & 0x0F,
-                ((data >> 4) & 0x0F) as u8,
-                &mut borrow,
-            ) as u16;
-            h_place = bcd_sub_digit(
-                self.get_acc_hi() & 0x0F,
-                ((data >> 8) & 0x0F) as u8,
-                &mut borrow,
-            ) as u16;
-            th_place = bcd_sub_digit(
-                (self.get_acc_hi() >> 4) & 0x0F,
-                ((data >> 12) & 0x0F) as u8,
-                &mut borrow,
-            ) as u16;
+            if result <= 0xF { result -= 6; }
 
-            result = (th_place << 12) | (h_place << 8) | (t_place << 4) | o_place;
+            let c = if result >= 0x10 { 0x10 } else { 0 };
+            result = (a & 0x00F0) + (d & 0x00F0) + c + (result & 0xF);
 
-            self.set_flag_to_bool(Flag::FlagC, !borrow);
+            if result <= 0xFF { result -= 0x60; }
+
+            let c = if result >= 0x100 { 0x100 } else { 0 };
+            result = (a & 0x0F00) + (d & 0x0F00) + c + (result & 0xFF);
+
+            if result <= 0xFFF { result -= 0x600; }
+
+            let c = if result >= 0x1000 { 0x1000 } else { 0 };
+            result = (a & 0xF000) + (d & 0xF000) + c + (result & 0xFFF);
         } else {
-            result = self.acc + ones_comp + bool2byte!(self.is_flag_set(Flag::FlagC));
-
-            self.set_flag_to_bool(Flag::FlagC, self.acc >= data);
+            result = a + d + c;
         }
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
         self.set_flag_to_bool(
             Flag::FlagV,
-            !(self.acc ^ ones_comp) & (ones_comp ^ result) & 0x8000 != 0,
+            !(a ^ d) & (d ^ result) & 0x8000 != 0,
         );
+
+        if self.is_flag_set(Flag::FlagD) && result <= 0xFFFF { result -= 0x6000; }
+
+        self.set_flag_to_bool(Flag::FlagC, result > 0xFFFF);
+
+        let result = result as u16;
+
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
 
         self.acc = result;
@@ -2788,8 +2715,6 @@ impl Cpu65c816 {
     }
 
     fn exec_instr(&mut self) {
-        self.debug_io_ops = 0;
-
         let opcode = self.read_prg();
         let extra_clocks: usize;
 

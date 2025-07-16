@@ -1,37 +1,31 @@
 use std::cell::RefCell;
-use std::ffi::{c_char, CStr};
+use std::ffi::CStr;
 use std::rc::Rc;
-use std::thread::sleep;
 use std::time;
 
 use crate::log::{LogLevel, SnemLogger};
 use crate::system::cartridge::Cartridge;
-use crate::system::ppu::{self, Ppu5C7x, PpuData};
-use crate::system::ssmp::{ApuIORegs, Spc700};
+use crate::system::scpu;
+use crate::system::ppu;
+use crate::system::ssmp;
 
-use libretro_rs::c_utf8::{c_utf8, CUtf8};
-use libretro_rs::ffi::retro_log_level;
+use libretro_rs::c_utf8::c_utf8;
 use libretro_rs::retro::av::{
-    GameGeometry, Message, PixelFormat, SoftwareRenderEnabled, SystemAVInfo,
+    GameGeometry, Message, SoftwareRenderEnabled, SystemAVInfo,
 };
 use libretro_rs::retro::env::GetAvInfo;
 use libretro_rs::retro::error::CoreError;
 use libretro_rs::retro::game::GameInfo;
-use libretro_rs::retro::log::{LogInterface, Logger, PlatformLogger};
-use libretro_rs::retro::video::FrameBuffer;
 use libretro_rs::retro::{LoadGameExtraArgs, SystemInfo};
 use libretro_rs::{ext, libretro_core};
 
 use libretro_rs::retro::{
     self,
     pixel::format::{ActiveFormat, XRGB8888},
-    video::ArrayFrameBuffer,
     Callbacks, InputsPolled,
 };
 
 use retro::framebuf::ResizableFrameBuffer;
-
-use crate::system::scpu::Cpu65c816;
 
 const SNES_FRAME_WIDTH: usize = 512;
 const SNES_FRAME_HEIGHT: usize = 448;
@@ -46,9 +40,9 @@ struct SnemulatorCore {
     rendering_mode: SoftwareRenderEnabled,
     audio_buffer: [i16; AUDIO_BUFFER_SAMPLES * 2],
 
-    snem_cpu: Cpu65c816,
-    snem_ppu: Ppu5C7x,
-    snem_apu: Spc700,
+    snem_cpu: scpu::Cpu65c816,
+    snem_ppu: ppu::Ppu5C7x,
+    snem_apu: ssmp::Spc700,
 
     last_frame: time::Instant,
     start: time::Instant,
@@ -158,11 +152,16 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         let pixel_format = args.env.set_pixel_format_xrgb8888(args.pixel_format)?;
         let rendering_mode = args.rendering_mode;
 
-        let ppu_data = Rc::new(PpuData::new());
-        let apuio_regs = Rc::new(ApuIORegs::new());
-        let snem_cpu = Cpu65c816::new(ppu_data.clone(), apuio_regs.clone(), logger.clone());
-        let snem_ppu = Ppu5C7x::new(ppu_data.clone(), logger.clone());
-        let snem_apu = Spc700::new(apuio_regs.clone());
+        let ppu_data = Rc::new( ppu::PpuData::new() );
+        let apuio_regs = Rc::new( ssmp::ApuIORegs::new() );
+        let snem_cpu = scpu::Cpu65c816::new(
+            ppu_data.clone(),
+            apuio_regs.clone(),
+            logger.clone());
+        let snem_ppu = ppu::Ppu5C7x::new(
+            ppu_data.clone(),
+            logger.clone());
+        let snem_apu = ssmp::Spc700::new(apuio_regs.clone());
 
         let core = SnemulatorCore {
             logger,
