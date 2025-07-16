@@ -30,6 +30,7 @@ struct Spc700 {
     aram: [u8; 0x10000],
     time_since_last_clock: usize,
     sdsp_clocks: usize,
+    spc_clocks_until_instr: usize,
 }
 
 impl Spc700 {
@@ -51,7 +52,11 @@ impl Spc700 {
 
             // Spc700 clocks every 3 S-DSP cycles
             if self.sdsp_clocks == 0 {
-                self.exec_instr();
+                if self.spc_clocks_until_instr == 0 {
+                    self.exec_instr();
+                }
+                
+                self.spc_clocks_until_instr -= 1;
             }
 
             self.time_since_last_clock -= SDSP_CLOCK_TIME_UNITS;
@@ -68,21 +73,29 @@ impl Spc700 {
 
     fn write(&mut self, address: u16, data: u8) {
         match address {
-            (0xF0..=0xFF) => self.write_sound_regs(),
+            (0xF0..=0xFF) => self.write_sound_regs(address, data),
             _ => self.aram[address as usize] = data,
         }
+    }
+
+    fn read_sound_regs(&self) -> u8 {
+        0
+    }
+
+    fn write_sound_regs(&mut self, address: u16, data: u8) {
+
     }
 
     fn read_word(&self, addr_lo: u16, addr_hi: u16) -> u16 {
         u16::from_le_bytes([
             self.read(addr_lo),
             self.read(addr_hi),
-        ]);
+        ])
     }
 
-    fn write_word(&mut self, addr_lo: u16, addr_hi: u16, data: u16) {
-        self.write(addr_lo, data as u8);
-        self.write(addr_hi, (data >> 8) as u8);
+    fn write_word(&mut self, addr_lo: u16, addr_hi: u16, word: u16) {
+        self.write(addr_lo, word as u8);
+        self.write(addr_hi, (word >> 8) as u8);
     }
 
     fn pop(&mut self) -> u8 {
@@ -101,15 +114,17 @@ impl Spc700 {
         ])
     }
 
-    fn push_word(&mut self, data: u16) {
-        self.push(data as u8);
-        self.push((data >> 8) as u8);
+    fn push_word(&mut self, word: u16) {
+        self.push(word as u8);
+        self.push((word >> 8) as u8);
     }
 
     fn exec_instr(&mut self) {
         let cycles: usize;
 
         let opcode = self.read(self.pc);
+        
+        self.branch_taken = false;
 
         match opcode {
             0x00 => {
@@ -119,57 +134,59 @@ impl Spc700 {
             },
             0x01 => {
                 self.pc += 1;
-                self.tcall(0x01);
+                self.tcall(opcode);
                 cycles = 8;
             },
             0x02 => {
-                let addr = self.direct_bit();
+                let addr = self.direct();
                 self.pc += 2;
-                self.set1(addr);
+                self.set1(addr, opcode);
                 cycles = 4;
             },
             0x03 => {
-                let (addr1, addr2) = self.direct_bit_relative();
+                let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
+                self.bbs(addr1, addr2, opcode);
                 cycles = 5;
             },
             0x04 => {
                 let addr = self.direct();
                 self.pc += 2;
-                self.ora(addr);
+                self.or_acc(addr);
                 cycles = 3;
             },
             0x05 => {
                 let addr = self.absolute();
                 self.pc += 3;
-                self.ora(addr);
+                self.or_acc(addr);
                 cycles = 4;
             },
             0x06 => {
                 let addr = self.indirect();
                 self.pc += 1;
-                self.ora(addr);
+                self.or_acc(addr);
                 cycles = 3;
             },
             0x07 => {
                 let addr = self.x_indirect();
                 self.pc += 2;
-                self.ora(addr);
+                self.or_acc(addr);
                 cycles = 6;
             },
             0x08 => {
                 let addr = self.immediate();
                 self.pc += 2;
-                self.ora(addr);
+                self.or_acc(addr);
                 cycles = 2;
             },
             0x09 => {
                 let (addr1, addr2) = self.direct_to_direct();
                 self.pc += 3;
+                self.or_mem(addr1, addr2);
                 cycles = 6;
             },
             0x0A => {
-                let addr = self.absolute_bit();
+                let addr = self.absolute();
                 self.pc += 3;
                 self.or1(addr);
                 cycles = 5;
@@ -177,18 +194,18 @@ impl Spc700 {
             0x0B => {
                 let addr = self.direct();
                 self.pc += 2;
-                self.asl(addr);
+                self.asl_mem(addr);
                 cycles = 4;
             },
             0x0C => {
                 let addr = self.absolute();
                 self.pc += 3;
-                self.asl(addr);
+                self.asl_mem(addr);
                 cycles = 5;
             },
             0x0D => {
                 self.pc += 1;
-                self.push();
+                self.push_psw();
                 cycles = 4;
             },
             0x0E => {
@@ -210,68 +227,72 @@ impl Spc700 {
             },
             0x11 => {
                 self.pc += 1;
-                self.tcall(0x11);
+                self.tcall(opcode);
                 cycles = 8;
             },
             0x12 => {
-                let addr = self.direct_bit();
+                let addr = self.direct();
                 self.pc += 2;
-                self.clr1(addr);
+                self.clr1(addr, opcode);
                 cycles = 4;
             },
             0x13 => {
-                let (addr1, addr2) = self.direct_bit_relative();
+                let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
+                self.bbc(addr1, addr2, opcode);
                 cycles = 5;
             },
             0x14 => {
                 let addr = self.x_direct();
                 self.pc += 2;
-                self.ora(addr);
+                self.or_acc(addr);
                 cycles = 4;
             },
             0x15 => {
                 let addr = self.x_absolute();
                 self.pc += 3;
-                self.ora(addr);
+                self.or_acc(addr);
                 cycles = 5;
             },
             0x16 => {
                 let addr = self.y_absolute();
                 self.pc += 3;
-                self.ora(addr);
+                self.or_acc(addr);
                 cycles = 5;
             },
             0x17 => {
                 let addr = self.indirect_y();
                 self.pc += 2;
-                self.ora(addr);
+                self.or_acc(addr);
                 cycles = 6;
             },
             0x18 => {
                 let (addr1, addr2) = self.immediate_to_direct();
                 self.pc += 3;
+                self.or_mem(addr1, addr2);
                 cycles = 5;
             },
             0x19 => {
                 let (addr1, addr2) = self.indirect_to_indirect();
                 self.pc += 1;
+                self.or_mem(addr1, addr2);
                 cycles = 5;
             },
             0x1A => {
                 let (addr1, addr2) = self.direct_word();
-                self.pc += 3;
+                self.pc += 2;
+                self.decw(addr1, addr2);
                 cycles = 6;
             },
             0x1B => {
                 let addr = self.x_direct();
                 self.pc += 2;
-                self.asl(addr);
+                self.asl_mem(addr);
                 cycles = 5;
             },
             0x1C => {
                 self.pc += 1;
-                self.asl();
+                self.asl_acc();
                 cycles = 2;
             },
             0x1D => {
@@ -282,11 +303,11 @@ impl Spc700 {
             0x1E => {
                 let addr = self.absolute();
                 self.pc += 3;
-                self.cpx(addr);
+                self.cmx(addr);
                 cycles = 4;
             },
             0x1F => {
-                let addr = self.absolute();
+                let addr = self.absolute_x_indirect();
                 self.pc += 3;
                 self.jmp(addr);
                 cycles = 6;
@@ -298,57 +319,59 @@ impl Spc700 {
             },
             0x21 => {
                 self.pc += 1;
-                self.tcall(0x21);
+                self.tcall(opcode);
                 cycles = 8;
             },
             0x22 => {
-                let addr = self.direct_bit();
+                let addr = self.direct();
                 self.pc += 2;
-                self.set1(addr);
+                self.set1(addr, opcode);
                 cycles = 4;
             },
             0x23 => {
-                let (addr1, addr2) = self.direct_bit_relative();
+                let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
+                self.bbs(addr1, addr2, opcode);
                 cycles = 5;
             },
             0x24 => {
                 let addr = self.direct();
                 self.pc += 2;
-                self.and(addr);
+                self.and_acc(addr);
                 cycles = 3;
             },
             0x25 => {
                 let addr = self.absolute();
                 self.pc += 3;
-                self.and(addr);
+                self.and_acc(addr);
                 cycles = 4;
             },
             0x26 => {
                 let addr = self.indirect();
                 self.pc += 1;
-                self.and(addr);
+                self.and_acc(addr);
                 cycles = 3;
             },
             0x27 => {
                 let addr = self.x_indirect();
                 self.pc += 2;
-                self.and(addr);
+                self.and_acc(addr);
                 cycles = 6;
             },
             0x28 => {
                 let addr = self.immediate();
                 self.pc += 2;
-                self.and(addr);
+                self.and_acc(addr);
                 cycles = 2;
             },
             0x29 => {
                 let (addr1, addr2) = self.direct_to_direct();
                 self.pc += 3;
+                self.and_mem(addr1, addr2);
                 cycles = 6;
             },
             0x2A => {
-                let addr = self.absolute_bit();
+                let addr = self.absolute();
                 self.pc += 3;
                 self.or1(addr);
                 cycles = 5;
@@ -356,24 +379,24 @@ impl Spc700 {
             0x2B => {
                 let addr = self.direct();
                 self.pc += 2;
-                self.rol(addr);
+                self.rol_mem(addr);
                 cycles = 4;
             },
             0x2C => {
                 let addr = self.absolute();
                 self.pc += 3;
-                self.rol(addr);
+                self.rol_mem(addr);
                 cycles = 5;
             },
             0x2D => {
                 self.pc += 1;
-                self.push();
+                self.push_acc();
                 cycles = 4;
             },
             0x2E => {
-                let addr = self.relative();
-                self.pc += 2;
-                self.cbne(addr);
+                let (addr1, addr2) = self.direct_relative();
+                self.pc += 3;
+                self.cbne(addr1, addr2);
                 cycles = 5;
             },
             0x2F => {
@@ -390,68 +413,72 @@ impl Spc700 {
             },
             0x31 => {
                 self.pc += 1;
-                self.tcall(0x31);
+                self.tcall(opcode);
                 cycles = 8;
             },
             0x32 => {
-                let addr = self.direct_bit();
+                let addr = self.direct();
                 self.pc += 2;
-                self.clr1(addr);
+                self.clr1(addr, opcode);
                 cycles = 4;
             },
             0x33 => {
-                let (addr1, addr2) = self.direct_bit_relative();
+                let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
+                self.bbc(addr1, addr2, opcode);
                 cycles = 5;
             },
             0x34 => {
                 let addr = self.x_direct();
                 self.pc += 2;
-                self.and(addr);
+                self.and_acc(addr);
                 cycles = 4;
             },
             0x35 => {
                 let addr = self.x_absolute();
                 self.pc += 3;
-                self.and(addr);
+                self.and_acc(addr);
                 cycles = 5;
             },
             0x36 => {
                 let addr = self.y_absolute();
                 self.pc += 3;
-                self.and(addr);
+                self.and_acc(addr);
                 cycles = 5;
             },
             0x37 => {
                 let addr = self.indirect_y();
                 self.pc += 2;
-                self.and(addr);
+                self.and_acc(addr);
                 cycles = 6;
             },
             0x38 => {
                 let (addr1, addr2) = self.immediate_to_direct();
                 self.pc += 3;
+                self.and_mem(addr1, addr2);
                 cycles = 5;
             },
             0x39 => {
                 let (addr1, addr2) = self.indirect_to_indirect();
                 self.pc += 1;
+                self.and_mem(addr1, addr2);
                 cycles = 5;
             },
             0x3A => {
                 let (addr1, addr2) = self.direct_word();
-                self.pc += 3;
+                self.pc += 2;
+                self.incw(addr1, addr2);
                 cycles = 6;
             },
             0x3B => {
                 let addr = self.x_direct();
                 self.pc += 2;
-                self.rol(addr);
+                self.rol_mem(addr);
                 cycles = 5;
             },
             0x3C => {
                 self.pc += 1;
-                self.rol();
+                self.rol_acc();
                 cycles = 2;
             },
             0x3D => {
@@ -462,7 +489,7 @@ impl Spc700 {
             0x3E => {
                 let addr = self.direct();
                 self.pc += 2;
-                self.cpx(addr);
+                self.cmx(addr);
                 cycles = 3;
             },
             0x3F => {
@@ -478,57 +505,59 @@ impl Spc700 {
             },
             0x41 => {
                 self.pc += 1;
-                self.tcall(0x41);
+                self.tcall(opcode);
                 cycles = 8;
             },
             0x42 => {
-                let addr = self.direct_bit();
+                let addr = self.direct();
                 self.pc += 2;
-                self.set1(addr);
+                self.set1(addr, opcode);
                 cycles = 4;
             },
             0x43 => {
-                let (addr1, addr2) = self.direct_bit_relative();
+                let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
+                self.bbs(addr1, addr2, opcode);
                 cycles = 5;
-            },
+            }
             0x44 => {
                 let addr = self.direct();
                 self.pc += 2;
-                self.eor(addr);
+                self.eor_acc(addr);
                 cycles = 3;
             },
             0x45 => {
                 let addr = self.absolute();
                 self.pc += 3;
-                self.eor(addr);
+                self.eor_acc(addr);
                 cycles = 4;
             },
             0x46 => {
                 let addr = self.indirect();
                 self.pc += 1;
-                self.eor(addr);
+                self.eor_acc(addr);
                 cycles = 3;
             },
             0x47 => {
                 let addr = self.x_indirect();
                 self.pc += 2;
-                self.eor(addr);
+                self.eor_acc(addr);
                 cycles = 6;
             },
             0x48 => {
                 let addr = self.immediate();
                 self.pc += 2;
-                self.eor(addr);
+                self.eor_acc(addr);
                 cycles = 2;
             },
             0x49 => {
                 let (addr1, addr2) = self.direct_to_direct();
                 self.pc += 3;
+                self.eor_mem(addr1, addr2);
                 cycles = 6;
             },
             0x4A => {
-                let addr = self.absolute_bit();
+                let addr = self.absolute();
                 self.pc += 3;
                 self.and1(addr);
                 cycles = 4;
@@ -536,18 +565,18 @@ impl Spc700 {
             0x4B => {
                 let addr = self.direct();
                 self.pc += 2;
-                self.lsr(addr);
+                self.lsr_mem(addr);
                 cycles = 4;
             },
             0x4C => {
                 let addr = self.absolute();
                 self.pc += 3;
-                self.lsr(addr);
+                self.lsr_mem(addr);
                 cycles = 5;
             },
             0x4D => {
                 self.pc += 1;
-                self.push();
+                self.push_x();
                 cycles = 4;
             },
             0x4E => {
@@ -570,79 +599,83 @@ impl Spc700 {
             },
             0x51 => {
                 self.pc += 1;
-                self.tcall(0x51);
+                self.tcall(opcode);
                 cycles = 8;
             },
             0x52 => {
-                let addr = self.direct_bit();
+                let addr = self.direct();
                 self.pc += 2;
-                self.clr1(addr);
+                self.clr1(addr, opcode);
                 cycles = 4;
             },
             0x53 => {
-                let (addr1, addr2) = self.direct_bit_relative();
+                let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
+                self.bbc(addr1, addr2, opcode);
                 cycles = 5;
             },
             0x54 => {
                 let addr = self.x_direct();
                 self.pc += 2;
-                self.eor(addr);
+                self.eor_acc(addr);
                 cycles = 4;
             },
             0x55 => {
                 let addr = self.x_absolute();
                 self.pc += 3;
-                self.eor(addr);
+                self.eor_acc(addr);
                 cycles = 5;
             },
             0x56 => {
                 let addr = self.y_absolute();
                 self.pc += 3;
-                self.eor(addr);
+                self.eor_acc(addr);
                 cycles = 5;
             },
             0x57 => {
                 let addr = self.indirect_y();
                 self.pc += 2;
-                self.eor(addr);
+                self.eor_acc(addr);
                 cycles = 6;
             },
             0x58 => {
                 let (addr1, addr2) = self.immediate_to_direct();
                 self.pc += 3;
+                self.eor_mem(addr1, addr2);
                 cycles = 5;
             },
             0x59 => {
                 let (addr1, addr2) = self.indirect_to_indirect();
                 self.pc += 1;
+                self.eor_mem(addr1, addr2);
                 cycles = 5;
             },
             0x5A => {
                 let (addr1, addr2) = self.direct_word();
-                self.pc += 3;
+                self.pc += 2;
+                self.cmpw(addr1, addr2);
                 cycles = 4;
             },
             0x5B => {
                 let addr = self.x_direct();
                 self.pc += 2;
-                self.lsr(addr);
+                self.lsr_mem(addr);
                 cycles = 5;
             },
             0x5C => {
                 self.pc += 1;
-                self.lsr();
+                self.lsr_acc();
                 cycles = 2;
             },
             0x5D => {
                 self.pc += 1;
-                self.ldx();
+                self.tax();
                 cycles = 2;
             },
             0x5E => {
                 let addr = self.absolute();
                 self.pc += 3;
-                self.cpy(addr);
+                self.cmy(addr);
                 cycles = 4;
             },
             0x5F => {
@@ -658,57 +691,59 @@ impl Spc700 {
             },
             0x61 => {
                 self.pc += 1;
-                self.tcall(0x61);
+                self.tcall(opcode);
                 cycles = 8;
             },
             0x62 => {
-                let addr = self.direct_bit();
+                let addr = self.direct();
                 self.pc += 2;
-                self.set1(addr);
+                self.set1(addr, opcode);
                 cycles = 4;
             },
             0x63 => {
-                let (addr1, addr2) = self.direct_bit_relative();
+                let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
+                self.bbs(addr1, addr2, opcode);
                 cycles = 5;
             },
             0x64 => {
                 let addr = self.direct();
                 self.pc += 2;
-                self.cmp(addr);
+                self.cmp_acc(addr);
                 cycles = 3;
             },
             0x65 => {
                 let addr = self.absolute();
                 self.pc += 3;
-                self.cmp(addr);
+                self.cmp_acc(addr);
                 cycles = 4;
             },
             0x66 => {
                 let addr = self.indirect();
                 self.pc += 1;
-                self.cmp(addr);
+                self.cmp_acc(addr);
                 cycles = 3;
             },
             0x67 => {
                 let addr = self.x_indirect();
                 self.pc += 2;
-                self.cmp(addr);
+                self.cmp_acc(addr);
                 cycles = 6;
             },
             0x68 => {
                 let addr = self.immediate();
                 self.pc += 2;
-                self.cmp(addr);
+                self.cmp_acc(addr);
                 cycles = 2;
             },
             0x69 => {
                 let (addr1, addr2) = self.direct_to_direct();
                 self.pc += 3;
+                self.cmp_mem(addr1, addr2);
                 cycles = 6;
             },
             0x6A => {
-                let addr = self.absolute_bit();
+                let addr = self.absolute();
                 self.pc += 3;
                 self.and1(addr);
                 cycles = 4;
@@ -716,24 +751,24 @@ impl Spc700 {
             0x6B => {
                 let addr = self.direct();
                 self.pc += 2;
-                self.ror(addr);
+                self.ror_mem(addr);
                 cycles = 4;
             },
             0x6C => {
                 let addr = self.absolute();
                 self.pc += 3;
-                self.ror(addr);
+                self.ror_mem(addr);
                 cycles = 5;
             },
             0x6D => {
                 self.pc += 1;
-                self.push();
+                self.push_y();
                 cycles = 4;
             },
             0x6E => {
-                let addr = self.relative();
-                self.pc += 2;
-                self.dbnz(addr);
+                let (addr1, addr2) = self.direct_relative();
+                self.pc += 3;
+                self.dbnz_mem(addr1, addr2);
                 cycles = 5;
             },
             0x6F => {
@@ -749,79 +784,83 @@ impl Spc700 {
             },
             0x71 => {
                 self.pc += 1;
-                self.tcall(0x71);
+                self.tcall(opcode);
                 cycles = 8;
             },
             0x72 => {
-                let addr = self.direct_bit();
+                let addr = self.direct();
                 self.pc += 2;
-                self.clr1(addr);
+                self.clr1(addr, opcode);
                 cycles = 4;
             },
             0x73 => {
-                let (addr1, addr2) = self.direct_bit_relative();
+                let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
+                self.bbc(addr1, addr2, opcode);
                 cycles = 5;
             },
             0x74 => {
                 let addr = self.x_direct();
                 self.pc += 2;
-                self.cmp(addr);
+                self.cmp_acc(addr);
                 cycles = 4;
             },
             0x75 => {
                 let addr = self.x_absolute();
                 self.pc += 3;
-                self.cmp(addr);
+                self.cmp_acc(addr);
                 cycles = 5;
             },
             0x76 => {
                 let addr = self.y_absolute();
                 self.pc += 3;
-                self.cmp(addr);
+                self.cmp_acc(addr);
                 cycles = 5;
             },
             0x77 => {
                 let addr = self.indirect_y();
                 self.pc += 2;
-                self.cmp(addr);
+                self.cmp_acc(addr);
                 cycles = 6;
             },
             0x78 => {
                 let (addr1, addr2) = self.immediate_to_direct();
                 self.pc += 3;
+                self.cmp_mem(addr1, addr2);
                 cycles = 5;
             },
             0x79 => {
                 let (addr1, addr2) = self.indirect_to_indirect();
                 self.pc += 1;
+                self.cmp_mem(addr1, addr2);
                 cycles = 5;
             },
             0x7A => {
                 let (addr1, addr2) = self.direct_word();
-                self.pc += 3;
+                self.pc += 2;
+                self.addw(addr1, addr2);
                 cycles = 5;
             },
             0x7B => {
                 let addr = self.x_direct();
                 self.pc += 2;
-                self.ror(addr);
+                self.ror_mem(addr);
                 cycles = 5;
             },
             0x7C => {
                 self.pc += 1;
-                self.ror();
+                self.ror_acc();
                 cycles = 2;
             },
             0x7D => {
                 self.pc += 1;
-                self.lda();
+                self.txa();
                 cycles = 2;
             },
             0x7E => {
                 let addr = self.direct();
                 self.pc += 2;
-                self.cpy(addr);
+                self.cmy(addr);
                 cycles = 3;
             },
             0x7F => {
@@ -836,57 +875,59 @@ impl Spc700 {
             },
             0x81 => {
                 self.pc += 1;
-                self.tcall(0x81);
+                self.tcall(opcode);
                 cycles = 8;
             },
             0x82 => {
-                let addr = self.direct_bit();
+                let addr = self.direct();
                 self.pc += 2;
-                self.set1(addr);
+                self.set1(addr, opcode);
                 cycles = 4;
             },
             0x83 => {
-                let (addr1, addr2) = self.direct_bit_relative();
+                let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
+                self.bbs(addr1, addr2, opcode);
                 cycles = 5;
             },
             0x84 => {
                 let addr = self.direct();
                 self.pc += 2;
-                self.adc(addr);
+                self.adc_acc(addr);
                 cycles = 3;
             },
             0x85 => {
                 let addr = self.absolute();
                 self.pc += 3;
-                self.adc(addr);
+                self.adc_acc(addr);
                 cycles = 4;
             },
             0x86 => {
                 let addr = self.indirect();
                 self.pc += 1;
-                self.adc(addr);
+                self.adc_acc(addr);
                 cycles = 3;
             },
             0x87 => {
                 let addr = self.x_indirect();
                 self.pc += 2;
-                self.adc(addr);
+                self.adc_acc(addr);
                 cycles = 6;
             },
             0x88 => {
                 let addr = self.immediate();
                 self.pc += 2;
-                self.adc(addr);
+                self.adc_acc(addr);
                 cycles = 2;
             },
             0x89 => {
                 let (addr1, addr2) = self.direct_to_direct();
                 self.pc += 3;
+                self.adc_mem(addr1, addr2);
                 cycles = 6;
             },
             0x8A => {
-                let addr = self.absolute_bit();
+                let addr = self.absolute();
                 self.pc += 3;
                 self.eor1(addr);
                 cycles = 5;
@@ -894,13 +935,13 @@ impl Spc700 {
             0x8B => {
                 let addr = self.direct();
                 self.pc += 2;
-                self.dec(addr);
+                self.dec_mem(addr);
                 cycles = 4;
             },
             0x8C => {
                 let addr = self.absolute();
                 self.pc += 3;
-                self.dec(addr);
+                self.dec_mem(addr);
                 cycles = 5;
             },
             0x8D => {
@@ -911,12 +952,13 @@ impl Spc700 {
             },
             0x8E => {
                 self.pc += 1;
-                self.pop();
+                self.pop_psw();
                 cycles = 4;
             },
             0x8F => {
                 let (addr1, addr2) = self.immediate_to_direct();
                 self.pc += 3;
+                self.mov(addr1, addr2);
                 cycles = 5;
             },
             0x90 => {
@@ -927,73 +969,77 @@ impl Spc700 {
             },
             0x91 => {
                 self.pc += 1;
-                self.tcall(0x91);
+                self.tcall(opcode);
                 cycles = 8;
             },
             0x92 => {
-                let addr = self.direct_bit();
+                let addr = self.direct();
                 self.pc += 2;
-                self.clr1(addr);
+                self.clr1(addr, opcode);
                 cycles = 4;
             },
             0x93 => {
-                let (addr1, addr2) = self.direct_bit_relative();
+                let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
+                self.bbc(addr1, addr2, opcode);
                 cycles = 5;
             },
             0x94 => {
                 let addr = self.x_direct();
                 self.pc += 2;
-                self.adc(addr);
+                self.adc_acc(addr);
                 cycles = 4;
             },
             0x95 => {
                 let addr = self.x_absolute();
                 self.pc += 3;
-                self.adc(addr);
+                self.adc_acc(addr);
                 cycles = 5;
             },
             0x96 => {
                 let addr = self.y_absolute();
                 self.pc += 3;
-                self.adc(addr);
+                self.adc_acc(addr);
                 cycles = 5;
             },
             0x97 => {
                 let addr = self.indirect_y();
                 self.pc += 2;
-                self.adc(addr);
+                self.adc_acc(addr);
                 cycles = 6;
             },
             0x98 => {
                 let (addr1, addr2) = self.immediate_to_direct();
                 self.pc += 3;
+                self.adc_mem(addr1, addr2);
                 cycles = 5;
             },
             0x99 => {
                 let (addr1, addr2) = self.indirect_to_indirect();
                 self.pc += 1;
+                self.adc_mem(addr1, addr2);
                 cycles = 5;
             },
             0x9A => {
                 let (addr1, addr2) = self.direct_word();
-                self.pc += 3;
+                self.pc += 2;
+                self.subw(addr1, addr2);
                 cycles = 5;
             },
             0x9B => {
                 let addr = self.x_direct();
                 self.pc += 2;
-                self.dec(addr);
+                self.dec_mem(addr);
                 cycles = 5;
             },
             0x9C => {
                 self.pc += 1;
-                self.dec();
+                self.dec_acc();
                 cycles = 2;
             },
             0x9D => {
                 self.pc += 1;
-                self.ldx();
+                self.tsx();
                 cycles = 2;
             },
             0x9E => {
@@ -1013,82 +1059,84 @@ impl Spc700 {
             },
             0xA1 => {
                 self.pc += 1;
-                self.tcall(0xA1);
+                self.tcall(opcode);
                 cycles = 8;
             },
             0xA2 => {
-                let addr = self.direct_bit();
+                let addr = self.direct();
                 self.pc += 2;
-                self.set1(addr);
+                self.set1(addr, opcode);
                 cycles = 4;
             },
             0xA3 => {
-                let (addr1, addr2) = self.direct_bit_relative();
+                let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
+                self.bbs(addr1, addr2, opcode);
                 cycles = 5;
-            },
+            }
             0xA4 => {
                 let addr = self.direct();
                 self.pc += 2;
-                self.sbc(addr);
+                self.sbc_acc(addr);
                 cycles = 3;
             },
             0xA5 => {
                 let addr = self.absolute();
                 self.pc += 3;
-                self.sbc(addr);
+                self.sbc_acc(addr);
                 cycles = 4;
             },
             0xA6 => {
                 let addr = self.indirect();
                 self.pc += 1;
-                self.sbc(addr);
+                self.sbc_acc(addr);
                 cycles = 3;
             },
             0xA7 => {
                 let addr = self.x_indirect();
                 self.pc += 2;
-                self.sbc(addr);
+                self.sbc_acc(addr);
                 cycles = 6;
             },
             0xA8 => {
                 let addr = self.immediate();
                 self.pc += 2;
-                self.sbc(addr);
+                self.sbc_acc(addr);
                 cycles = 2;
             },
             0xA9 => {
                 let (addr1, addr2) = self.direct_to_direct();
                 self.pc += 3;
+                self.sbc_mem(addr1, addr2);
                 cycles = 6;
             },
             0xAA => {
-                let addr = self.absolute_bit();
+                let addr = self.absolute();
                 self.pc += 3;
-                self.mov1(addr);
+                self.ldc(addr);
                 cycles = 4;
             },
             0xAB => {
                 let addr = self.direct();
                 self.pc += 2;
-                self.inc(addr);
+                self.inc_mem(addr);
                 cycles = 4;
             },
             0xAC => {
                 let addr = self.absolute();
                 self.pc += 3;
-                self.inc(addr);
+                self.inc_mem(addr);
                 cycles = 5;
             },
             0xAD => {
                 let addr = self.immediate();
                 self.pc += 2;
-                self.cpy(addr);
+                self.cmy(addr);
                 cycles = 2;
             },
             0xAE => {
                 self.pc += 1;
-                self.pop();
+                self.pop_acc();
                 cycles = 4;
             },
             0xAF => {
@@ -1105,73 +1153,77 @@ impl Spc700 {
             },
             0xB1 => {
                 self.pc += 1;
-                self.tcall(0xB1);
+                self.tcall(opcode);
                 cycles = 8;
             },
             0xB2 => {
-                let addr = self.direct_bit();
+                let addr = self.direct();
                 self.pc += 2;
-                self.clr1(addr);
+                self.clr1(addr, opcode);
                 cycles = 4;
             },
             0xB3 => {
-                let (addr1, addr2) = self.direct_bit_relative();
+                let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
+                self.bbc(addr1, addr2, opcode);
                 cycles = 5;
             },
             0xB4 => {
                 let addr = self.x_direct();
                 self.pc += 2;
-                self.sbc(addr);
+                self.sbc_acc(addr);
                 cycles = 4;
             },
             0xB5 => {
                 let addr = self.x_absolute();
                 self.pc += 3;
-                self.sbc(addr);
+                self.sbc_acc(addr);
                 cycles = 5;
             },
             0xB6 => {
                 let addr = self.y_absolute();
                 self.pc += 3;
-                self.sbc(addr);
+                self.sbc_acc(addr);
                 cycles = 5;
             },
             0xB7 => {
                 let addr = self.indirect_y();
                 self.pc += 2;
-                self.sbc(addr);
+                self.sbc_acc(addr);
                 cycles = 6;
             },
             0xB8 => {
                 let (addr1, addr2) = self.immediate_to_direct();
                 self.pc += 3;
+                self.sbc_mem(addr1, addr2);
                 cycles = 5;
             },
             0xB9 => {
                 let (addr1, addr2) = self.indirect_to_indirect();
                 self.pc += 1;
+                self.sbc_mem(addr1, addr2);
                 cycles = 5;
             },
             0xBA => {
                 let (addr1, addr2) = self.direct_word();
-                self.pc += 3;
+                self.pc += 2;
+                self.ldya(addr1, addr2);
                 cycles = 5;
             },
             0xBB => {
                 let addr = self.x_direct();
                 self.pc += 2;
-                self.inc(addr);
+                self.inc_mem(addr);
                 cycles = 5;
             },
             0xBC => {
                 self.pc += 1;
-                self.inc();
+                self.inc_acc();
                 cycles = 2;
             },
             0xBD => {
                 self.pc += 1;
-                self.stx();
+                self.txs();
                 cycles = 2;
             },
             0xBE => {
@@ -1192,20 +1244,21 @@ impl Spc700 {
             },
             0xC1 => {
                 self.pc += 1;
-                self.tcall(0xC1);
+                self.tcall(opcode);
                 cycles = 8;
             },
             0xC2 => {
-                let addr = self.direct_bit();
+                let addr = self.direct();
                 self.pc += 2;
-                self.set1(addr);
+                self.set1(addr, opcode);
                 cycles = 4;
             },
             0xC3 => {
-                let (addr1, addr2) = self.direct_bit_relative();
+                let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
+                self.bbs(addr1, addr2, opcode);
                 cycles = 5;
-            },
+            }
             0xC4 => {
                 let addr = self.direct();
                 self.pc += 2;
@@ -1233,7 +1286,7 @@ impl Spc700 {
             0xC8 => {
                 let addr = self.immediate();
                 self.pc += 2;
-                self.cpx(addr);
+                self.cmx(addr);
                 cycles = 2;
             },
             0xC9 => {
@@ -1243,9 +1296,9 @@ impl Spc700 {
                 cycles = 5;
             },
             0xCA => {
-                let addr = self.absolute_bit();
+                let addr = self.absolute();
                 self.pc += 3;
-                self.mov1(addr);
+                self.stc(addr);
                 cycles = 6;
             },
             0xCB => {
@@ -1268,7 +1321,7 @@ impl Spc700 {
             },
             0xCE => {
                 self.pc += 1;
-                self.pop();
+                self.pop_x();
                 cycles = 4;
             },
             0xCF => {
@@ -1284,18 +1337,19 @@ impl Spc700 {
             },
             0xD1 => {
                 self.pc += 1;
-                self.tcall(0xD1);
+                self.tcall(opcode);
                 cycles = 8;
             },
             0xD2 => {
-                let addr = self.direct_bit();
+                let addr = self.direct();
                 self.pc += 2;
-                self.clr1(addr);
+                self.clr1(addr, opcode);
                 cycles = 4;
             },
             0xD3 => {
-                let (addr1, addr2) = self.direct_bit_relative();
+                let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
+                self.bbc(addr1, addr2, opcode);
                 cycles = 5;
             },
             0xD4 => {
@@ -1336,7 +1390,8 @@ impl Spc700 {
             },
             0xDA => {
                 let (addr1, addr2) = self.direct_word();
-                self.pc += 3;
+                self.pc += 2;
+                self.stya(addr1, addr2);
                 cycles = 5;
             },
             0xDB => {
@@ -1352,13 +1407,13 @@ impl Spc700 {
             },
             0xDD => {
                 self.pc += 1;
-                self.lda();
+                self.tya();
                 cycles = 2;
             },
             0xDE => {
-                let addr = self.x_direct();
-                self.pc += 2;
-                self.cbne(addr);
+                let (addr1, addr2) = self.x_direct_relative();
+                self.pc += 3;
+                self.cbne(addr1, addr2);
                 cycles = 6;
             },
             0xDF => {
@@ -1373,18 +1428,19 @@ impl Spc700 {
             },
             0xE1 => {
                 self.pc += 1;
-                self.tcall(0xE1);
+                self.tcall(opcode);
                 cycles = 8;
             },
             0xE2 => {
-                let addr = self.direct_bit();
+                let addr = self.direct();
                 self.pc += 2;
-                self.set1(addr);
+                self.set1(addr, opcode);
                 cycles = 4;
             },
             0xE3 => {
-                let (addr1, addr2) = self.direct_bit_relative();
+                let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
+                self.bbs(addr1, addr2, opcode);
                 cycles = 5;
             },
             0xE4 => {
@@ -1424,7 +1480,7 @@ impl Spc700 {
                 cycles = 4;
             },
             0xEA => {
-                let addr = self.absolute_bit();
+                let addr = self.absolute();
                 self.pc += 3;
                 self.not1(addr);
                 cycles = 5;
@@ -1448,13 +1504,13 @@ impl Spc700 {
             },
             0xEE => {
                 self.pc += 1;
-                self.pop();
+                self.pop_y();
                 cycles = 4;
             },
             0xEF => {
                 self.pc += 1;
                 self.sleep();
-                cycles = 0;
+                cycles = 3;
             },
             0xF0 => {
                 let addr = self.relative();
@@ -1464,18 +1520,19 @@ impl Spc700 {
             },
             0xF1 => {
                 self.pc += 1;
-                self.tcall(0xF1);
+                self.tcall(opcode);
                 cycles = 8;
             },
             0xF2 => {
-                let addr = self.direct_bit();
+                let addr = self.direct();
                 self.pc += 2;
-                self.clr1(addr);
+                self.clr1(addr, opcode);
                 cycles = 4;
             },
             0xF3 => {
-                let (addr1, addr2) = self.direct_bit_relative();
+                let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
+                self.bbc(addr1, addr2, opcode);
                 cycles = 5;
             },
             0xF4 => {
@@ -1517,6 +1574,7 @@ impl Spc700 {
             0xFA => {
                 let (addr1, addr2) = self.direct_to_direct();
                 self.pc += 3;
+                self.mov(addr1, addr2);
                 cycles = 5;
             },
             0xFB => {
@@ -1532,20 +1590,26 @@ impl Spc700 {
             },
             0xFD => {
                 self.pc += 1;
-                self.ldy();
+                self.tay();
                 cycles = 2;
             },
             0xFE => {
                 let addr = self.relative();
                 self.pc += 2;
-                self.dbnz(addr);
+                self.dbnz_y(addr);
                 cycles = 4;
             },
             0xFF => {
                 self.pc += 1;
                 self.stop();
-                cycles = 0;
+                cycles = 3;
             },
+        }
+    
+        self.spc_clocks_until_instr += cycles;
+
+        if self.branch_taken {
+            self.spc_clocks_until_instr += 2;
         }
     }
 }
@@ -1578,8 +1642,9 @@ impl Spc700 {
     }
 
     fn direct_word(&self) -> (u16, u16) {
-        let lo_addr = (self.read(self.pc + 1) as u16) | self.dir_page;
-        let hi_addr = (self.read(self.pc + 1) as u16) | self.dir_page;
+        let tmp = self.read(self.pc + 1);
+        let lo_addr = tmp as u16 | self.dir_page;
+        let hi_addr = (tmp + 1) as u16 | self.dir_page;
 
         (lo_addr, hi_addr)
     }
@@ -1624,19 +1689,11 @@ impl Spc700 {
         (src_addr, dst_addr)
     }
 
-    fn direct_bit(&self) -> u16 {
-        self.direct()
-    }
-
-    fn direct_bit_relative(&self) -> (u16, u16) {
+    fn direct_relative(&self) -> (u16, u16) {
         let data_addr = self.direct();
         let rel_addr = self.pc + (self.read(self.pc + 2)) as u16;
 
         (data_addr, rel_addr)
-    }
-
-    fn absolute_bit(&self) -> u16 {
-        self.absolute()
     }
 
     fn absolute(&self) -> u16 {
@@ -1660,6 +1717,13 @@ impl Spc700 {
         self.absolute() + (self.y as u16)
     }
 
+    fn x_direct_relative(&self) -> (u16, u16) {
+        let data_addr = self.x_direct();
+        let branch_addr = self.pc + (self.read(self.pc + 2) as u16);
+
+        (data_addr, branch_addr)
+    }
+
     fn x_indirect(&self) -> u16 {
         self.read(self.x_direct()) as u16
     }
@@ -1672,6 +1736,13 @@ impl Spc700 {
         self.pc + (self.read(self.pc + 1) as u16)
     }
 
+    fn immediate_relative(&self) -> (u16, u16) {
+        let data_addr = self.pc + 1;
+        let branch_addr = self.pc + (self.read(self.pc + 2) as u16);
+
+        (data_addr, branch_addr)
+    }
+
     fn immediate(&self) -> u16 {
         self.pc + 1
     }
@@ -1679,14 +1750,32 @@ impl Spc700 {
 
 // CPU Instructions
 impl Spc700 {
+    fn add_16_base(&mut self, arg1: u16, arg2: u16) -> u16 {
+        let result = (arg1 as u32) + (arg2 as u32) + if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
+        let half_result = (arg1 & 0xFFF) + (arg2 & 0xFFF);
+
+        self.set_flag_to_bool(Flag::FlagC, result > 0xFFFF);
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagH, half_result >= 0xFFF);
+        self.set_flag_to_bool(Flag::FlagZ, result & 0xFF == 0);
+        
+        // Set V flag if acc and data are same sign, but result is different sign
+        let a = arg1 & 0x8000 != 0;
+        let d = arg2 & 0x8000 != 0;
+        let r = (result & 0x8000) != 0;
+        self.set_flag_to_bool(Flag::FlagV, !(a^d)&(a^r) ); // Trust, bro
+        
+        result as u16
+    }
+
     fn adc_base(&mut self, arg1: u8, arg2: u8) -> u8 {
         let result = (arg1 as u16) + (arg2 as u16) + if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
         let half_result = (arg1 & 0xF) + (arg2 & 0xF);
 
-        self.set_flag_to_bool(Flag::FlagC, result & 0xFF00 > 0);
-        self.set_flag_to_bool(Flag::FlagZ, result & 0xFF == 0);
+        self.set_flag_to_bool(Flag::FlagC, result > 0xFF);
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagH, half_result >= 0xA);
+        self.set_flag_to_bool(Flag::FlagZ, result & 0xFF == 0);
         
         // Set V flag if acc and data are same sign, but result is different sign
         let a = arg1 & 0x80 != 0;
@@ -1695,6 +1784,338 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagV, !(a^d)&(a^r) ); // Trust, bro
         
         result as u8
+    }
+
+    fn adc_acc(&mut self, address: u16) {
+        let data = self.read(address);
+        self.acc = self.adc_base(self.acc, data);
+    }
+
+    fn adc_mem(&mut self, addr1: u16, addr2: u16) {
+        let arg1 = self.read(addr1);
+        let arg2 = self.read(addr2);
+
+        let result = self.adc_base(arg1, arg2);
+
+        self.write(addr1, result);
+    }
+
+    fn addw(&mut self, addr1: u16, addr2: u16) {
+        let data = self.read_word(addr1, addr2);
+        let ya = ((self.y as u16) << 8) | (self.acc as u16);
+        let result = self.add_16_base(ya, data);
+
+        self.y = (result >> 8) as u8;
+        self.acc = result as u8;
+    }
+
+    // AND - AND Memory with Accumulator
+    fn and_acc(&mut self, address: u16) {
+        let data = self.read(address);
+
+        let result = self.acc & data;
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.acc = result;
+    }
+
+    fn and_mem(&mut self, addr1: u16, addr2: u16) {
+        let arg1 = self.read(addr1);
+        let arg2 = self.read(addr2);
+
+        let result = arg1 & arg2;
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        
+        self.write(addr1, result);
+    }
+
+    fn and1(&mut self, address: u16) {
+        let data = self.read(address & 0x1FFF);
+        // Set a single-bit bitmask based on the upper 3 bits of the address.
+        // Disgusting.
+        let b = 1 << (address >> 13);
+        self.set_flag_to_bool(Flag::FlagC, data & b != 0);
+    }
+
+
+    // ASL - Shift Left One Bit (Accumulator version)
+    fn asl_acc(&mut self) {
+        let result = self.acc << 1;
+
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagC, (self.acc & 0x80) != 0);
+
+        self.acc = result;
+    }
+
+    // ASL - Shift Left One Bit (Memory version)
+    fn asl_mem(&mut self, address: u16) {
+        let data = self.read(address);
+        let result = data << 1;
+
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagC, (data & 0x80) != 0);
+
+        self.write(address, result);
+    }
+
+    // BBC - Branch if Bit Clear
+    fn bbc(&mut self, data_addr: u16, branch_addr: u16, opcode: u8) {
+        let b = 1 << ( opcode >> 5 );
+        let data = self.read(data_addr);
+        if data & b == 0 {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        }
+    }
+
+    // BBS - Branch if Bit Set
+    fn bbs(&mut self, data_addr: u16, branch_addr: u16, opcode: u8) {
+        let b = 1 << ( opcode >> 5 );
+        let data = self.read(data_addr);
+        if data & b != 0 {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        }
+    }
+
+    // BCC - Branch if Carry Clear
+    fn bcc(&mut self, branch_addr: u16) {
+        if !self.is_flag_set(Flag::FlagC) {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        }
+    }
+
+    // BCS - Branch if Carry Set
+    fn bcs(&mut self, branch_addr: u16) {
+        if self.is_flag_set(Flag::FlagC) {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        }
+    }
+
+    // BEQ - Branch if EQual
+    fn beq(&mut self, branch_addr: u16) {
+        if self.is_flag_set(Flag::FlagZ) {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        }
+    }
+
+    // BMI - Branch MInus
+    fn bmi(&mut self, branch_addr: u16) {
+        if self.is_flag_set(Flag::FlagN) {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        }
+    }
+
+    // BNE - Branch if Not Equal
+    fn bne(&mut self, branch_addr: u16) {
+        if !self.is_flag_set(Flag::FlagZ) {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        }
+    }
+
+    // BPL - Branch PLus (if positive)
+    fn bpl(&mut self, branch_addr: u16) {
+        if !self.is_flag_set(Flag::FlagN) {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        }
+    }
+
+
+    // BRA - BRanch Always
+    fn bra(&mut self, branch_addr: u16) {
+        self.pc = branch_addr;
+        self.branch_taken = true;
+    }
+
+    // BRK - Break
+    // TODO: make sure it actually works this way
+    fn brk(&mut self) {
+        self.set_flag(Flag::FlagB);
+    }
+
+    // BVC - Branch if OVerflow Clear
+    fn bvc(&mut self, branch_addr: u16) {
+        if !self.is_flag_set(Flag::FlagV) {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        }
+    }
+
+    // BVS - Branch if OVerflow Set
+    fn bvs(&mut self, branch_addr: u16) {
+        if self.is_flag_set(Flag::FlagV) {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        }
+    }
+
+    // CALL - call a subroutine
+    fn call(&mut self, new_addr: u16) {
+        self.push_word(self.pc + 1);
+        self.pc = new_addr;
+    }
+
+    // CBNE - Compare and Branch if Not Equal
+    fn cbne(&mut self, address: u16, branch_addr: u16) {
+        self.cmp_acc(address);
+        self.bne(branch_addr);
+
+        if !self.is_flag_set(Flag::FlagZ) {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        }
+    }
+
+    // CMP - Compare Memory with Accumulator
+    fn cmp_acc(&mut self, address: u16) {
+        let data = self.read(address);
+
+        let result = (self.acc as i16) - (data as i16);
+
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagC, result >= 0);
+    }
+
+    fn cmp_mem(&mut self, addr1: u16, addr2: u16) {
+        let arg1 = self.read(addr1);
+        let arg2 = self.read(addr2);
+
+        let result = (arg2 as i16) - (arg1 as i16);
+
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagC, result >= 0);
+    }
+
+    // CLI - CLear Interrupt flag (called DI in SPC700 documentation)
+    fn cli (&mut self) {
+        self.clear_flag(Flag::FlagI);
+    }
+
+    // CLR1 - clears a single bit in the direct page
+    fn clr1(&mut self, address: u16, opcode: u8) {
+        let data = self.read(address);
+        let b = !( 1 << (opcode >> 5) );
+
+        self.write(address, data & b);
+    }
+
+    // CLRC - clear carry flag
+    fn clrc(&mut self) {
+        self.clear_flag(Flag::FlagC);
+    }
+
+    // CLRP - clear direct page flag
+    fn clrp(&mut self) {
+        self.clear_flag(Flag::FlagP);
+        self.dir_page = 0;
+    }
+
+    // CLRV - clear carry flag
+    fn clrv(&mut self) {
+        self.clear_flag(Flag::FlagV);
+    }
+
+    // CMPW - Compare Word with YA
+    fn cmpw(&mut self, addr_lo: u16, addr_hi: u16) {
+        let lo = self.read(addr_lo);
+        let hi = self.read(addr_hi);
+        let data = ((hi as u16) << 8) | (lo as u16);
+        let ya = ((self.y as u16) << 8) | (self.acc as u16);
+
+        let result = (ya as i32) - (data as i32);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagC, result >= 0);
+    }
+
+    // CMX - Compare Memory with X
+    fn cmx(&mut self, address: u16) {
+        let data = self.read(address);
+
+        let result = (self.x as i16) - (data as i16);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagC, result >= 0);
+    }
+
+    // CMY - Compare Memory with X
+    fn cmy(&mut self, address: u16) {
+        let data = self.read(address);
+
+        let result = (self.y as i16) - (data as i16);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagC, result >= 0);
+    }
+
+    // DAA - Decimal Adjust Addition
+    fn daa(&mut self) {
+        if self.is_flag_set(Flag::FlagH) {
+            self.acc += 6;
+        }
+    }
+
+    // DAS - Decimal Adjust Subtraction
+    fn das(&mut self) {
+        if self.is_flag_set(Flag::FlagH) {
+            self.acc -= 6;
+        }
+    }
+
+    // DBNZ - Decrement and Branch if Not Zero (y register)
+    fn dbnz_y(&mut self, branch_addr: u16) {
+        self.y -= 1;
+        if self.y != 0 {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        }
+    }
+
+    // DBNZ - Decrement and Branch if Not Zero (memory)
+    fn dbnz_mem(&mut self, address: u16, branch_addr: u16) {
+        let data = self.read(address) - 1;
+        self.write(address, data);
+        if data != 0 {
+            self.pc = branch_addr;
+            self.branch_taken = true;
+        }
+    }
+
+    // DEC - decrement (accumulator)
+    fn dec_acc(&mut self) {
+        self.acc -= 1;
+        self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x80 != 0);
+    }
+
+    // DEC - decrement (memory)
+    fn dec_mem(&mut self, address: u16) {
+        let data = self.read(address) - 1;
+        self.write(address, data);
+        self.set_flag_to_bool(Flag::FlagZ, data == 0);
+        self.set_flag_to_bool(Flag::FlagN, data & 0x80 != 0);
+    }
+    
+    fn decw(&mut self, addr1: u16, addr2: u16) {
+        let data = self.read_word(addr1, addr2);
+        let result = data - 1;
+
+        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+
+        self.write_word(addr1, addr2, result);
     }
 
     fn dex(&mut self) {
@@ -1724,8 +2145,8 @@ impl Spc700 {
             self.acc = div_result as u8;
             self.y = mod_result as u8;
         } else {
-            self.acc = 255 - (ya - (self.x << 9)) / (256 - self.x);
-            self.y = self.x + (ya - (self.x << 9)) % (256 - self.x);
+            self.acc = (255 - (ya - ((self.x as u16) << 9)) / (256 - (self.x as u16))) as u8;
+            self.y = ((self.x as u16) + (ya - ((self.x as u16) << 9)) % (256 - (self.x as u16))) as u8;
         }
 
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
@@ -1749,7 +2170,7 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
-    fn eor1(&mut self) {
+    fn eor1(&mut self, address: u16) {
         let addr = address & 0x1FFF;
         let data = self.read(addr);
         let b = 1 << (address >> 13);
@@ -1758,7 +2179,14 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagC, result);
     }
 
-    fn inc(&mut self, address: u16) {
+    fn inc_acc(&mut self) {
+        self.acc += 1;
+
+        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
+    }
+
+    fn inc_mem(&mut self, address: u16) {
         let result = self.read(address) + 1;
 
         self.write(address, result);
@@ -1794,7 +2222,7 @@ impl Spc700 {
         self.pc = address;
     }
 
-    fn lda(&mut self) {
+    fn lda(&mut self, address: u16) {
         self.acc = self.read(address);
 
         self.set_flag_to_bool(Flag::FlagN, self.acc & 0x80 != 0);
@@ -1807,8 +2235,6 @@ impl Spc700 {
         let b = 1 << (address >> 13);
         
         self.set_flag_to_bool(Flag::FlagC, data & b != 0);
-
-        self.write(addr, result);
     }
 
     fn ldx(&mut self, address: u16) {
@@ -1833,7 +2259,7 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0 && self.acc == 0);
     }
 
-    fn lsr_acc(&mut self, address: u16) {
+    fn lsr_acc(&mut self) {
         let result = self.acc >> 1;
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
@@ -1929,19 +2355,25 @@ impl Spc700 {
     }
 
     fn pop_acc(&mut self) {
-        self.pop(self.acc);
+        self.acc = self.pop();
     }
 
     fn pop_x(&mut self) {
-        self.pop(self.x);
+        self.x = self.pop();
     }
 
     fn pop_y(&mut self) {
-        self.pop(self.y);
+        self.y = self.pop();
     }
 
     fn pop_psw(&mut self) {
-        self.pop(self.status);
+        self.status = self.pop();
+
+        if self.is_flag_set(Flag::FlagP) {
+            self.dir_page = 0x100;
+        } else {
+            self.dir_page = 0;
+        }
     }
 
     fn push_acc(&mut self) {
@@ -1975,51 +2407,65 @@ impl Spc700 {
         }
     }
 
-    fn rol_acc(&mut self, address: u16) {
-        let result = (self.acc << 1) | if self.carry() { 1 } else { 0 };
+    fn rol_acc(&mut self) {
+        let result = (self.acc << 1) | if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
 
-        self.set_flag_to_bool(Flag::FlagC, self.acc & 0x80 != 0);
-        self.set_flag_to_bool(Flag::FlagZ, result == 0);
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagC, self.acc & 0x80 != 0);
         
         self.acc = result;
     }
 
     fn rol_mem(&mut self, address: u16) {
         let data = self.read(address);
-        let result = (data << 1) | if self.carry() { 1 } else { 0 };
+        let result = (data << 1) | if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
 
-        self.set_flag_to_bool(Flag::FlagC, data & 0x80 != 0);
-        self.set_flag_to_bool(Flag::FlagZ, result == 0);
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagC, data & 0x80 != 0);
         
         self.write(address, result);
     }
 
-    fn ror_acc(&mut self, address: u16) {
-        let result = (if self.carry() { 1 } else { 0 } << 7) | (self.acc >> 1);
+    fn ror_acc(&mut self) {
+        let result = (if self.is_flag_set(Flag::FlagC) { 0x80 } else { 0 }) | (self.acc >> 1);
 
-        self.set_flag_to_bool(Flag::FlagC, self.acc & 0x01 == 1);
-        self.set_flag_to_bool(Flag::FlagZ, result == 0);
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagC, self.acc & 0x01 == 1);
         
         self.acc = result;
     }
 
     fn ror_mem(&mut self, address: u16) {
         let data = self.read(address);
-        let result = (if self.carry() { 1 } else { 0 } << 7) | (data >> 1);
+        let result = (if self.is_flag_set(Flag::FlagC) { 0x80 } else { 0 }) | (data >> 1);
 
-        self.set_flag_to_bool(Flag::FlagC, data & 0x01 == 1);
-        self.set_flag_to_bool(Flag::FlagZ, result == 0);
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagC, data & 0x01 == 1);
         
         self.write(address, result);
     }
 
-    fn sbc(&mut self) {}
+    fn sbc_acc(&mut self, address: u16) {
+        let data = self.read(address);
+        let comp = (-1 * (data as i8)) as u8;
+        self.acc = self.adc_base(self.acc, comp);
+    }
 
-    fn sei(&mut self, address: u16) {
+    fn sbc_mem(&mut self, addr1: u16, addr2: u16) {
+        let arg1 = self.read(addr1);
+        let arg2 = self.read(addr2);
+        let comp1 = (-1 * (arg1 as i8)) as u8;
+        let comp2 = (-1 * (arg2 as i8)) as u8;
+        let result = self.adc_base(comp1, comp2);
+
+        self.write(addr1, arg1);
+    }
+
+    fn sei(&mut self) {
         self.set_flag(Flag::FlagI)
     }
 
@@ -2074,11 +2520,33 @@ impl Spc700 {
         self.write(addr_hi, self.y);
     }
 
-    fn subw(&mut self) {}
-    
+    fn subw(&mut self, addr1: u16, addr2: u16) {
+        let data = self.read_word(addr1, addr2);
+        let comp = (-1 * (data as i16)) as u16;
+        let ya = ((self.y as u16) << 8) | (self.acc as u16);
+        let result = self.add_16_base(ya, comp);
+
+        self.y = (result >> 8) as u8;
+        self.acc = result as u8;
+    }
+
+    fn tax(&mut self) {
+        self.x = self.acc;
+
+        self.set_flag_to_bool(Flag::FlagN, self.x & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
+    }
+
+    fn tay(&mut self) {
+        self.y = self.acc;
+
+        self.set_flag_to_bool(Flag::FlagN, self.y & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
+    }
+
     fn tcall(&mut self, opcode: u8) {
         // TCALL n        CALL [FFnn]     n1 ;n=0..F  8  Push PC, PC=[FFDE-n*2] ........
-        let n = opcode >> 4;
+        let n = (opcode >> 4) as u16;
         let addr = 0xFFDE - (n << 2);
         
         self.push_word(self.pc);
@@ -2105,717 +2573,35 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
+    fn tsx(&mut self) {
+        self.x = self.sp;
+
+        self.set_flag_to_bool(Flag::FlagN, self.x & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
+    }
+
+    fn txa(&mut self) {
+        self.acc = self.x;
+
+        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
+    }
+
+    fn txs(&mut self) {
+        self.sp = self.x;
+    }
+
+    fn tya(&mut self) {
+        self.acc = self.y;
+
+        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
+    }
+
     fn xcn(&mut self) {
         self.acc = (self.acc >> 4) | ((self.acc & 0xF) << 4);
 
         self.set_flag_to_bool(Flag::FlagN, self.acc & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
-}
-
-
-// AND - AND Memory with Accumulator
-fn and(&mut self, address: u16) {
-    let data = self.read(address);
-
-    let result = self.acc & data;
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.acc = result;
-
-}
-// ASL - Shift Left One Bit (Accumulator version)
-fn asl_acc(&mut self, _address: u16) {
-    let result = self.acc << 1;
-    self.set_flag_to_bool(Flag::FlagC, (cpu.acc & 0x80) != 0);
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.acc = result;
-
-
-}
-// ASL - Shift Left One Bit (Memory version)
-fn asl_mem(&mut self, address: u16) {
-    let data = self.read(address);
-    let result = data << 1;
-    self.set_flag_to_bool(Flag::FlagC, (data & 0x80) != 0);
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.write(address, result);
-
-}
-// BCC - Branch on Carry Clear
-fn bcc(&mut self, address: u16) {
-    let offset = self.read(address) as i8;
-
-    if !self.carry() {
-        let prev_pc = self.get_pc();
-        self.set_pc((cpu.get_pc() as i32 + offset as i32) as u16);
-        
-        let is_same_page = prev_pc & 0xFF00 == self.get_pc() & 0xFF00;
-
-        if is_same_page {
-            return 1;
-        } else {
-            return 2;
-        }
-    }
-
-}
-// BCS - Branch on Carry Set
-fn bcs(&mut self, address: u16) {
-    let offset = self.read(address) as i8;
-
-    if self.carry() {
-        let prev_pc = self.get_pc();
-        self.set_pc((cpu.get_pc() as i32 + offset as i32) as u16);
-        
-        let is_same_page = prev_pc & 0xFF00 == self.get_pc() & 0xFF00;
-
-        if is_same_page {
-            return 1;
-        } else {
-            return 2;
-        }
-    }
-
-
-}
-// BEQ - Branch on Equal (Zero flag set)
-fn beq(&mut self, address: u16) {
-    let offset = self.read(address) as i8;
-
-    if self.zero() {
-        let prev_pc = self.get_pc();
-        self.set_pc((cpu.get_pc() as i32 + offset as i32) as u16);
-        
-        let is_same_page = prev_pc & 0xFF00 == self.get_pc() & 0xFF00;
-
-        if is_same_page {
-            return 1;
-        } else {
-            return 2;
-        }
-    }
-    
-
-}
-// BIT - Test Bits in Memory with Accumulator
-fn bit(&mut self, address: u16) {
-    let data = self.read(address);
-
-    self.set_flag_to_bool(Flag::FlagN, data & 0x80 != 0);
-    self.set_flag_to_bool(Flag::FlagV, data & 0x40 != 0);
-    self.set_flag_to_bool(Flag::FlagZ, data & cpu.acc == 0);
-
-}
-// BMI - Branch on Result Minus (Negative flag set)
-fn bmi(&mut self, address: u16) {
-    let offset = self.read(address) as i8;
-
-    if self.negative() {
-        let prev_pc = self.get_pc();
-        self.set_pc((cpu.get_pc() as i32 + offset as i32) as u16);
-        
-        let is_same_page = prev_pc & 0xFF00 == self.get_pc() & 0xFF00;
-
-        if is_same_page {
-            return 1;
-        } else {
-            return 2;
-        }
-    }
-
-}
-// BNE - Branch on Not Equal (Zero flag NOT set)
-fn bne(&mut self, address: u16) {
-    let offset = self.read(address) as i8;
-
-    if !self.zero() {
-        let prev_pc = self.get_pc();
-        self.set_pc((cpu.get_pc() as i32 + offset as i32) as u16);
-        
-        let is_same_page = prev_pc & 0xFF00 == self.get_pc() & 0xFF00;
-
-        if is_same_page {
-            return 1;
-        } else {
-            return 2;
-        }
-    }
-
-}
-// BPL - Branch on Result Plus (Negative flag NOT set)
-fn bpl(&mut self, address: u16) {
-    let offset = self.read(address) as i8;
-
-    if !self.negative() {
-        let prev_pc = self.get_pc();
-        self.set_pc((cpu.get_pc() as i32 + offset as i32) as u16);
-        
-        let is_same_page = prev_pc & 0xFF00 == self.get_pc() & 0xFF00;
-
-        if is_same_page {
-            return 1;
-        } else {
-            return 2;
-        }
-    }
-
-}
-// BRK - Force Break (Initiate interrupt)
-fn brk(&mut self, _address: u16) {
-    self.irq();
-
-}
-// BVC - Branch on Overflow clear
-fn bvc(&mut self, address: u16) {
-    let offset = self.read(address) as i8;
-
-    if !self.overflow() {
-        let prev_pc = self.get_pc();
-        self.set_pc((cpu.get_pc() as i32 + offset as i32) as u16);
-        
-        let is_same_page = prev_pc & 0xFF00 == self.get_pc() & 0xFF00;
-
-        if is_same_page {
-            return 1;
-        } else {
-            return 2;
-        }
-    }
-
-}
-// BVS - Branch on Overflow set
-fn bvs(&mut self, address: u16) {
-    let offset = self.read(address) as i8;
-
-    if self.overflow() {
-        let prev_pc = self.get_pc();
-        self.set_pc((cpu.get_pc() as i32 + offset as i32) as u16);
-        
-        let is_same_page = prev_pc & 0xFF00 == self.get_pc() & 0xFF00;
-
-        if is_same_page {
-            return 1;
-        } else {
-            return 2;
-        }
-    }
-
-}
-// CLC - Clear Carry Flag
-fn clc(&mut self, _address: u16) {
-    self.set_flag_to_bool(Flag::FlagC, false);
-
-}
-// CLD - Clear Decimal Mode
-fn cld(&mut self, _address: u16) {
-    self.set_decimal(false);
-
-}
-// CLI - Clear Interrupt Disable Bit
-fn cli(&mut self, _address: u16) {
-    self.set_flag_to_bool(Flag::FlagI, false);
-
-}
-// CLV - Clear Overflow Flag
-fn clv(&mut self, _address: u16) {
-    self.set_flag_to_bool(Flag::FlagV, false);
-
-}
-// CMP - Compare Memory with Accumulator
-fn cmp(&mut self, address: u16) {
-    let data = self.read(address);
-
-    let result = (self.acc as i16) - (data as i16);
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.set_flag_to_bool(Flag::FlagC, result >= 0);
-
-}
-// CPX - Compare Memory and Index X
-fn cpx(&mut self, address: u16) {
-    let data = self.read(address);
-
-    let result = (self.x as i16) - (data as i16);
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.set_flag_to_bool(Flag::FlagC, result >= 0);
-
-}
-// CPY - Compare Memory and Index Y
-fn cpy(&mut self, address: u16) {
-    let data = self.read(address);
-
-    let result = (self.y as i16) - (data as i16);
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.set_flag_to_bool(Flag::FlagC, result >= 0);
-
-}
-// DEC - Decrement Memory
-fn dec(&mut self, address: u16) {
-    let data = self.read(address);
-
-    let result = data.wrapping_sub(1);
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.write(address, result);
-
-}
-// DEX - Decrement X Register
-fn dex(&mut self, _address: u16) {
-    let result = self.x.wrapping_sub(1);
-    
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.x = result;
-
-}
-// DEY - Decrement Y Register
-fn dey(&mut self, _address: u16) {
-    let result = self.y.wrapping_sub(1);
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.y = result;
-
-}
-// EOR - Exclusive OR
-fn eor(&mut self, address: u16) {
-    let data = self.read(address);
-
-    let result = self.acc ^ data;
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.acc = result;
-
-}
-// INC - Increment Memory
-fn inc(&mut self, address: u16) {
-    let data = self.read(address);
-
-    // NOTE: The nesdev page on MMC1 (mapper 1) notes that the inc instr writes to
-    // memory twice. Once before the increment (with the unchanged data), and once after.
-    // This may be a source of error with mapper 1, as we aren't doing that rn.
-
-    let result = data.wrapping_add(1);
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.write(address, result);
-
-}
-// INX - Increment X Register
-fn inx(&mut self, _address: u16) {
-    let result = self.x.wrapping_add(1);
-
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.x = result;
-
-}
-// INY - Increment Y Register
-fn iny(&mut self, _address: u16) {
-    let result = self.y.wrapping_add(1);
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.y = result;
-
-}
-// JMP - Jump
-fn jmp(&mut self, address: u16) {
-    self.set_pc(address);
-
-}
-// JSR - Jump to Subroutine
-fn jsr(&mut self, address: u16) {
-    let return_point = self.get_pc().wrapping_sub(1); // Return point is pc - 1
-    let hi = (return_point >> 8) as u8;
-    let lo = return_point as u8;
-
-    self.push_to_stack(hi);
-    self.push_to_stack(lo);
-    self.set_pc(address);
-
-
-}
-// LDA - Load Accumulator
-fn lda(&mut self, address: u16) {
-    let data = self.read(address);
-
-    self.set_flag_to_bool(Flag::FlagZ, data == 0);
-    self.set_flag_to_bool(Flag::FlagN, data & 0x80 != 0);
-    self.acc = data;
-
-}
-// LDX - Load X Register
-fn ldx(&mut self, address: u16) {
-    let data = self.read(address);
-
-    self.set_flag_to_bool(Flag::FlagZ, data == 0);
-    self.set_flag_to_bool(Flag::FlagN, data & 0x80 != 0);
-    self.x = data;
-
-}
-// LDY - Load Y Register
-fn ldy(&mut self, address: u16) {
-    let data = self.read(address);
-
-    self.set_flag_to_bool(Flag::FlagZ, data == 0);
-    self.set_flag_to_bool(Flag::FlagN, data & 0x80 != 0);
-    self.y = data;
-
-}
-// LSR - Logical Shift Right (Accumulator version)
-fn lsr_acc(&mut self, _address: u16) {
-    let result = self.acc >> 1;
-    self.set_flag_to_bool(Flag::FlagC, cpu.acc & 0x01 == 1);
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, false); // result will always have bit 7 == 0
-    self.acc = result;
-
-}
-// LSR - Logical Shift Right (Memory version)
-fn lsr_mem(&mut self, address: u16) {
-    let data = self.read(address);
-    let result = data >> 1;
-    self.set_flag_to_bool(Flag::FlagC, data & 0x01 == 1);
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, false); // result will always have bit 7 == 0
-    self.write(address, result);
-
-}
-// NOP - No Operation
-fn nop(_: &mut self.502, _address: u16) { 0 }
-// ORA - Logical Inclusive OR
-fn ora(&mut self, address: u16) {
-    let data = self.read(address);
-
-    let result = self.acc | data;
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.acc = result;
-
-}
-// PHA - Push Accumulator
-fn pha(&mut self, _address: u16) {
-    self.push_to_stack(cpu.acc);
-
-}
-// PHP - Push Processor Status
-fn php(&mut self, _address: u16) {
-    // Bit 5 (unused flag) is always set to 1 when status pushed to stack
-    // Bit 4 (break flag) is set when push to stk caused by php or brk
-    self.push_to_stack(cpu.get_status() | 0x30);
-
-}
-// PLA - Pull Accumulator
-fn pla(&mut self, _address: u16) {
-    let result = self.pop_from_stack();
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.acc = result;
-
-}
-// PLP - Pull Processor Status
-fn plp(&mut self, _address: u16) {
-    // Bit 5 is ignored when pulling into processor status
-    // Bit 4 is cleared
-    let data = self.pop_from_stack() & 0xCF;
-    self.set_status(data | (cpu.get_status() & 0x20));
-
-}
-// ROL - Rotate Left (Accumulator version)
-fn rol_acc(&mut self, _address: u16) {
-    let result = (self.acc << 1) | if cpu.carry() { 1 } else { 0 };
-    self.set_flag_to_bool(Flag::FlagC, cpu.acc & 0x80 != 0); // old bit 7 becomes new carry
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.acc = result;
-
-}
-// ROL - Rotate Left (Memory version)
-fn rol_mem(&mut self, address: u16) {
-    let data = self.read(address);
-    let result = (data << 1) | if self.carry() { 1 } else { 0 };
-    self.set_flag_to_bool(Flag::FlagC, data & 0x80 != 0); // old bit 7 becomes new carry
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.write(address, result);
-
-}
-// ROR - Rotate Right (Accumulator version)
-fn ror_acc(&mut self, _address: u16) {
-    let result = (if self.carry() { 1 } else { 0 } << 7) | (cpu.acc >> 1);
-    self.set_flag_to_bool(Flag::FlagC, cpu.acc & 0x01 == 1); // old bit 0 becomes new carry
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.acc = result;
-
-}
-// ROR - Rotate Right (Memory version)
-fn ror_mem(&mut self, address: u16) {
-    let data = self.read(address);
-    let result = (if self.carry() { 1 } else { 0 } << 7) | (data >> 1);
-    self.set_flag_to_bool(Flag::FlagC, data & 0x01 == 1); // old bit 0 becomes new carry
-    self.set_flag_to_bool(Flag::FlagZ, result == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    self.write(address, result);
-
-}
-// RTI - Return from Interrupt
-fn rti(&mut self, _address: u16) {
-    // Restore processer status (Bit 5 ignored, bit 4 cleared)
-    let prev_status = self.pop_from_stack() & 0xCF;
-    self.set_status(prev_status | (cpu.get_status() & 0x20));
-    // Return to previous PC
-    let lo = self.pop_from_stack() as u16;
-    let hi = self.pop_from_stack() as u16;
-    self.set_pc((hi << 8) | lo);
-
-
-}
-// RTS - Return from Subroutine
-fn rts(&mut self, _address: u16) {
-    let lo = self.pop_from_stack() as u16;
-    let hi = self.pop_from_stack() as u16;
-    let new_pc = (hi << 8) | lo;
-    self.set_pc(new_pc.wrapping_add(1));
-
-}
-// SBC - Subtract with Carry
-//  Note: instr 0xEB (illegal opcode) executes the same as 0xE9, which is legal.
-//        0xEB is differentiated in the table only by the name "USBC" for "Undocumented SBC"
-fn sbc(&mut self, address: u16) {
-    let data = self.read(address);
-    // Add with carry: A + M + C
-    // Sub with carry: A - M - (1 - C) == A + (-M - 1) + C
-    let twos_comp = (data as i8).overflowing_mul(-1).0.wrapping_sub(1) as u8;
-    // let twos_comp = (data as i8 * -1).wrapping_sub(1) as u8; // errors
-    // let (twos_comp, _) = data.overflowing_neg();       // wrong behavior
-
-    // ADC w/ two's compliment instead of original data
-    let result = (twos_comp as u16) + (self.acc as u16) + (cpu.carry() as u16);
-    self.set_flag_to_bool(Flag::FlagC, result & 0xFF00 > 0);
-    self.set_flag_to_bool(Flag::FlagZ, result & 0xFF == 0);
-    self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
-    
-    // Set V flag if acc and data are same sign, but result is different sign
-    let a = self.acc & 0x80 != 0;
-    let r = (result & 0x80) != 0;
-    let d = twos_comp & 0x80 != 0;
-    self.set_flag_to_bool(Flag::FlagV,  !(a^d)&(a^r) ); // Trust, bro
-
-    self.acc = result as u8;
-
-
-}
-// SEC - Set Carry Flag
-fn sec(&mut self, _address: u16) {
-    self.set_flag_to_bool(Flag::FlagC, true);
-
-}
-// SED - Set Decimal Flag
-fn sed(&mut self, _address: u16) {
-    self.set_decimal(true);
-
-}
-// SEI - Set Interrupt Disable
-fn sei(&mut self, _address: u16) {
-    self.set_flag_to_bool(Flag::FlagI, true);
-
-}
-// STA - Store Accumulator
-fn sta(&mut self, address: u16) {
-    self.write(address, cpu.acc);
-
-}
-// STX - Store X Register
-fn stx(&mut self, address: u16) {
-    self.write(address, cpu.x);
-
-}
-// STY - Store Y Register
-fn sty(&mut self, address: u16) {
-    self.write(address, cpu.y);
-
-}
-// TAX - Transfer Accumulator to X
-fn tax(&mut self, _address: u16) {
-    self.x = cpu.acc;
-    self.set_flag_to_bool(Flag::FlagZ, cpu.x == 0);
-    self.set_flag_to_bool(Flag::FlagN, cpu.x & 0x80 != 0);
-
-}
-// TAY - Transfer Accumulator to Y
-fn tay(&mut self, _address: u16) {
-    self.y = cpu.acc;
-    self.set_flag_to_bool(Flag::FlagZ, cpu.y == 0);
-    self.set_flag_to_bool(Flag::FlagN, cpu.y & 0x80 != 0);
-
-}
-// TSX - Transfer Stack Pointer to X
-fn tsx(&mut self, _address: u16) {
-    self.x = cpu.get_sp();
-    self.set_flag_to_bool(Flag::FlagZ, cpu.x == 0);
-    self.set_flag_to_bool(Flag::FlagN, cpu.x & 0x80 != 0);
-
-}
-// TXA - Transfer X to Accumulator
-fn txa(&mut self, _address: u16) {
-    self.acc = cpu.x;
-    self.set_flag_to_bool(Flag::FlagZ, cpu.acc == 0);
-    self.set_flag_to_bool(Flag::FlagN, cpu.acc & 0x80 != 0);
-
-}
-// TXS - Transfer X to Stack Pointer
-fn txs(&mut self, _address: u16) {
-    self.set_sp(cpu.x);
-
-}
-// TYA - Transfer Y to Accumulator
-fn tya(&mut self, _address: u16) {
-    self.acc = cpu.y;
-    self.set_flag_to_bool(Flag::FlagZ, cpu.acc == 0);
-    self.set_flag_to_bool(Flag::FlagN, cpu.acc & 0x80 != 0);
-
-}
-
-
-/// ======== ILLEGAL OPCODES ========
-
-// INVALID OPCODE - An unimplemented opcode not recognized by the self.
-//                  Placeholder for all unimplemented illegal opcodes.
-fn xxx(_: &mut self.502, _address: u16) { 0 }
-
-
-// LAX - Load Accumulator and X Register
-fn lax(&mut self, address: u16) {
-    let data = self.read(address);
-
-    self.set_flag_to_bool(Flag::FlagZ, data == 0);
-    self.set_flag_to_bool(Flag::FlagN, data & 0x80 != 0);
-    self.acc = data;
-    self.x = data;
-
-}
-
-// SAX - Store Accumulator & X Register (bitwise acc & x)
-fn sax(&mut self, address: u16) {
-    let result = self.acc & cpu.x;
-    self.write(address, result);
-
-
-}
-
-// Doing these illegal opcodes using other opcode functions may result in ppu
-// registers being incorrectly incremented. definitely something to be aware of.
-
-// DCP - Decrement Memory and Compare with Accumulator
-fn dcp(&mut self, address: u16) -> usize {
-    dec(self. address);
-    cmp(self. address);
-    0
-}
-
-// ISC - Increment Memory and Subtract with Carry
-fn isc(&mut self, address: u16) -> usize {
-    inc(self. address);    
-    sbc(self. address);
-    0
-}
-
-// SLO - Arithmetic Shift Left then Logical Inclusive OR
-fn slo(&mut self, address: u16) -> usize {
-    asl_mem(self. address);
-    ora(self. address);
-    0
-}
-
-// RLA - Rotate Left then Logical AND with Accumulator
-fn rla(&mut self, address: u16) -> usize {
-    rol_mem(self. address);
-    and(self. address);
-    0
-}
-
-// SRE - Logical Shift Right then "Exclusive OR" Memory with Accumulator
-fn sre(&mut self, address: u16) -> usize {
-    lsr_mem(self. address);
-    eor(self. address);
-    0
-}
-
-// RRA - Rotate Right and Add Memory to Accumulator
-fn rra(&mut self, address: u16) -> usize {
-    ror_mem(self. address);
-    adc(self. address);
-    0
-}
-
-// ANC - Bitwise AND Memory with Accumulator then Move Negative Flag to Carry Flag
-fn anc(&mut self, address: u16) -> usize {
-    and(self. address);
-
-    self.status.set_carry(cpu.status.negative());
-
-    0
-}
-
-// ASR - Bitwise AND Memory with Accumulator then Logical Shift Right
-fn asr(&mut self, address: u16) -> usize {
-    and(self. address);
-    lsr_acc(self. address);
-    0
-}
-
-// ARR - Bitwise AND Memory with Accumulator then Rotate Right
-fn arr(&mut self, address: u16) -> usize {
-    and(self. address);
-    ror_acc(self. address);
-    0
-}
-
-// LXA - Load Accumulator and Index Register X From Memory
-fn lxa(&mut self, address: u16) -> usize {
-    // const RAND_CONST: u8 = 0xEE; // This instruction is highly unstable, and
-                                 // this constant may take on a value of 00, FF, 
-                                 // EE, etc. depending on the state of the
-                                 // device (like temperature)   
-
-    // let result = (self.get_acc() | RAND_CONST) & cpu.get_x_reg();
-    // self.status.set_zero(result == 0);
-    // self.status.set_negative(result & 0x80 != 0);
-    // self.set_acc(result);
-
-    0
-}
-
-// SHY - Store Index Register Y Bitwise AND Value
-fn shy(&mut self, address: u16) -> usize {
-    let data = (address.wrapping_sub(self.get_x_reg() as u16) >> 8) as u8; // undo shift from x offset
-
-    let result = self.get_y_reg() & data.wrapping_add(1);
-
-    self.write(address, result);
-
-    0
-}
-
-// SHX - Store Index Register X Bitwise AND Value
-fn shx(&mut self, address: u16) -> usize {
-    let data = (address.wrapping_sub(self.get_y_reg() as u16) >> 8) as u8; // undo shift from x offset
-
-    let result = self.get_x_reg() & data.wrapping_add(1);
-
-    self.write(address, result);
-
-    0
-}
-
-
-/// Adds two 8-bit integers and returns the result
-fn add_with_carry(arg1: u8, arg2: u8, cin: bool) -> (u8, bool) {
-    let result = (arg1 as u16) + (arg2 as u16) + if cin { 1 } else { 0 };
-    (result as u8, result > 255)
 }
