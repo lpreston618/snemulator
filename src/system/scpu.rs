@@ -49,13 +49,13 @@ enum HVTimerIRQ {
 }
 
 pub enum Flag {
-    FlagC = 1,  // Carry
-    FlagZ = 2,  // Zero
-    FlagI = 4,  // IRQ Disable
-    FlagD = 8,  // Decimal Mode
-    FlagX = 16, // X Register Size (Native mode only; 0: 16-bit, 1: 8-bit)
-    FlagM = 32, // Accumulator Size (Native mode only; 0: 16-bit, 1: 8-bit)
-    FlagV = 64, // Overflow
+    FlagC = 1,   // Carry
+    FlagZ = 2,   // Zero
+    FlagI = 4,   // IRQ Disable
+    FlagD = 8,   // Decimal Mode
+    FlagX = 16,  // X Register Size (Native mode only; 0: 16-bit, 1: 8-bit)
+    FlagM = 32,  // Accumulator Size (Native mode only; 0: 16-bit, 1: 8-bit)
+    FlagV = 64,  // Overflow
     FlagN = 128, // Negative
 }
 
@@ -151,7 +151,11 @@ pub struct Cpu65c816 {
 // SNES System Functionality
 impl Cpu65c816 {
     // Creates a new, uninitialized 65c816 CPU
-    pub fn new(ppu_data: Rc<PpuData>, apuio_regs: Rc<ApuIORegs>, logger: Rc<RefCell<SnemLogger>>) -> Self {
+    pub fn new(
+        ppu_data: Rc<PpuData>,
+        apuio_regs: Rc<ApuIORegs>,
+        logger: Rc<RefCell<SnemLogger>>,
+    ) -> Self {
         Self {
             acc: 0,
             x: 0,
@@ -180,7 +184,7 @@ impl Cpu65c816 {
             dma_status: DmaStatus::Off,
             dma_channels: vec![DmaChannel::default(); 8],
             active_channel_idx: 8,
-            
+
             ppu_data,
             apuio_regs,
 
@@ -231,12 +235,11 @@ impl Cpu65c816 {
 
         let (data, clocks) = match (address.bank(), address.bank_addr()) {
             // Mirror of low RAM
-            (0..=0x3F, bank_addr @ 0..=0x1FFF)
-            | (0x80..=0xBF, bank_addr @ 0..=0x1FFF) => {
+            (0..=0x3F, bank_addr @ 0..=0x1FFF) | (0x80..=0xBF, bank_addr @ 0..=0x1FFF) => {
                 let mirrored_addr = bank_addr & 0x1FFF;
 
                 (self.wram[mirrored_addr as usize], Cpu65c816::ONE_CYCLE_SLOW)
-            },
+            }
 
             // WRAM
             (0x7E..=0x7F, _) => {
@@ -252,12 +255,10 @@ impl Cpu65c816 {
             }
 
             // Anywhere else in the addressable space (dependent on mapping mode)
-            _ => {
-                match self.mapping_mode {
-                    MappingMode::LoROM => self.read_lorom(address),
-                    MappingMode::HiROM => self.read_hirom(address),
-                    MappingMode::ExHiROM => self.read_exhirom(address),
-                }
+            _ => match self.mapping_mode {
+                MappingMode::LoROM => self.read_lorom(address),
+                MappingMode::HiROM => self.read_hirom(address),
+                MappingMode::ExHiROM => self.read_exhirom(address),
             },
         };
 
@@ -272,13 +273,12 @@ impl Cpu65c816 {
     fn write(&mut self, address: u32, data: u8) {
         let clocks = match (address.bank(), address.bank_addr()) {
             // Mirror of low RAM
-            (0..=0x3F, bank_addr @ 0..=0x1FFF)
-            | (0x80..=0xBF, bank_addr @ 0..=0x1FFF) => {
+            (0..=0x3F, bank_addr @ 0..=0x1FFF) | (0x80..=0xBF, bank_addr @ 0..=0x1FFF) => {
                 let mirrored_addr = bank_addr & 0x1FFF;
                 self.wram[mirrored_addr as usize] = data;
 
                 Cpu65c816::ONE_CYCLE_SLOW
-            },
+            }
 
             // WRAM
             (0x7E..=0x7F, _) => {
@@ -297,12 +297,10 @@ impl Cpu65c816 {
             }
 
             // Anywhere else in the addressable space (dependent on mapping mode)
-            _ => {
-                match self.mapping_mode {
-                    MappingMode::LoROM => self.write_lorom(address, data),
-                    MappingMode::HiROM => self.write_hirom(address, data),
-                    MappingMode::ExHiROM => self.write_exhirom(address, data),
-                }
+            _ => match self.mapping_mode {
+                MappingMode::LoROM => self.write_lorom(address, data),
+                MappingMode::HiROM => self.write_hirom(address, data),
+                MappingMode::ExHiROM => self.write_exhirom(address, data),
             },
         };
 
@@ -316,15 +314,39 @@ impl Cpu65c816 {
         match mmio_address {
             0x2100..=0x213F => self.ppu_data.read(mmio_address as u8),
 
-            0x2140 => self.apuio_regs.apuio0.get(),
-            0x2141 => self.apuio_regs.apuio1.get(),
-            0x2142 => self.apuio_regs.apuio2.get(),
-            0x2143 => self.apuio_regs.apuio3.get(),
+            0x2140 => {
+                let data = self.apuio_regs.apuio0.get();
+                println!("SCPU: read 0x{data:02X} from APUIO0");
+                data
+            }
+            0x2141 => {
+                let data = self.apuio_regs.apuio1.get();
+                println!("SCPU: read 0x{data:02X} from APUIO1");
+                data
+            }
+            0x2142 => {
+                let data = self.apuio_regs.apuio2.get();
+                println!("SCPU: read 0x{data:02X} from APUIO2");
+                data
+            }
+            0x2143 => {
+                let data = self.apuio_regs.apuio3.get();
+                println!("SCPU: read 0x{data:02X} from APUIO3");
+                data
+            }
+            // 0x2140 => self.apuio_regs.apuio0.get(),
+            // 0x2141 => self.apuio_regs.apuio1.get(),
+            // 0x2142 => self.apuio_regs.apuio2.get(),
+            // 0x2143 => self.apuio_regs.apuio3.get(),
 
             // NOTE: This read is only for cpu debugging purposes, and
             // will be removed later.
             0x4210 => {
-                let vblank_nmi_bit = if self.ppu_data.cpu_vblank_nmi() { 0x80 } else { 0 };
+                let vblank_nmi_bit = if self.ppu_data.cpu_vblank_nmi() {
+                    0x80
+                } else {
+                    0
+                };
                 let cpu_version_bits = 0;
 
                 self.ppu_data.clear_cpu_vblank_nmi();
@@ -332,7 +354,7 @@ impl Cpu65c816 {
                 // println!("read 0x{:02X} from vblanknmi", vblank_nmi_bit);
 
                 vblank_nmi_bit | cpu_version_bits
-            },
+            }
 
             0x4212 => {
                 let vblank_bit = if self.ppu_data.in_vblank() { 0x80 } else { 0 };
@@ -360,11 +382,30 @@ impl Cpu65c816 {
                 self.ppu_data.write(mmio_address as u8, data);
             }
 
-            0x2140 => { self.apuio_regs.cpuio0.set(data) }
-            0x2141 => { self.apuio_regs.cpuio1.set(data) }
-            0x2142 => { self.apuio_regs.cpuio2.set(data) }
-            0x2143 => { self.apuio_regs.cpuio3.set(data) }
-
+            0x2140 => {
+                self.apuio_regs.apuio0.set(data);
+                println!("SCPU: wrote 0x{data:02X} to APUIO0");
+                data
+            }
+            0x2141 => {
+                self.apuio_regs.apuio1.set(data);
+                println!("SCPU: wrote 0x{data:02X} to APUIO1");
+                data
+            }
+            0x2142 => {
+                self.apuio_regs.apuio2.set(data);
+                println!("SCPU: wrote 0x{data:02X} to APUIO2");
+                data
+            }
+            0x2143 => {
+                self.apuio_regs.apuio3.set(data);
+                println!("SCPU: wrote 0x{data:02X} to APUIO3");
+                data
+            }
+            // 0x2140 => { self.apuio_regs.cpuio0.set(data) }
+            // 0x2141 => { self.apuio_regs.cpuio1.set(data) }
+            // 0x2142 => { self.apuio_regs.cpuio2.set(data) }
+            // 0x2143 => { self.apuio_regs.cpuio3.set(data) }
             0x4200 => {
                 self.vblank_nmi_ignore = (data & 0x80) == 0;
                 self.hv_timer_irq = match (data >> 4) & 3 {
@@ -375,7 +416,10 @@ impl Cpu65c816 {
                     _ => unreachable!(),
                 };
 
-                println!("Vblank NMI ignore set to {} and H/V Timer IRQ to {:?}", self.vblank_nmi_ignore, self.hv_timer_irq);
+                println!(
+                    "Vblank NMI ignore set to {} and H/V Timer IRQ to {:?}",
+                    self.vblank_nmi_ignore, self.hv_timer_irq
+                );
             }
 
             0x420B => {
@@ -1326,18 +1370,21 @@ impl Cpu65c816 {
         if self.is_flag_set(Flag::FlagD) {
             result = (a & 0x0F) + (d & 0x0F) + c;
 
-            if result >= 0xA { result += 0x6; }
+            if result >= 0xA {
+                result += 0x6;
+            }
 
             let c = if result > 0xF { 0x10 } else { 0 };
             result = (a & 0xF0) + (d & 0xF0) + c + (result & 0xF);
         } else {
             result = a + d + c;
         };
-        
-        self.set_flag_to_bool(
-            Flag::FlagV, !(a ^ d) & (d ^ result) & 0x80 != 0);
 
-        if self.is_flag_set(Flag::FlagD) && result >= 0xA0 { result += 0x60; }
+        self.set_flag_to_bool(Flag::FlagV, !(a ^ d) & (d ^ result) & 0x80 != 0);
+
+        if self.is_flag_set(Flag::FlagD) && result >= 0xA0 {
+            result += 0x60;
+        }
 
         self.set_flag_to_bool(Flag::FlagC, result > 0xFF);
 
@@ -1359,30 +1406,38 @@ impl Cpu65c816 {
         if self.is_flag_set(Flag::FlagD) {
             result = (a & 0x000F) + (d & 0x000F) + c;
 
-            if result >= 0xA { result += 6; }
+            if result >= 0xA {
+                result += 6;
+            }
 
             let c = if result > 0xF { 0x10 } else { 0 };
             result = (a & 0x00F0) + (d & 0x00F0) + c + (result & 0xF);
 
-            if result >= 0xA0 { result += 0x60; }
+            if result >= 0xA0 {
+                result += 0x60;
+            }
 
             let c = if result > 0xFF { 0x100 } else { 0 };
             result = (a & 0x0F00) + (d & 0x0F00) + c + (result & 0xFF);
 
-            if result >= 0xA00 { result += 0x600; }
+            if result >= 0xA00 {
+                result += 0x600;
+            }
 
             let c = if result > 0xFFF { 0x1000 } else { 0 };
             result = (a & 0xF000) + (d & 0xF000) + c + (result & 0xFFF);
         } else {
             result = a + d + c;
         }
-        
+
         self.set_flag_to_bool(
             Flag::FlagV,
             !(self.acc ^ data) & (data ^ (result as u16)) & 0x8000 != 0,
         );
 
-        if self.is_flag_set(Flag::FlagD) && result >= 0xA000 { result += 0x6000; }
+        if self.is_flag_set(Flag::FlagD) && result >= 0xA000 {
+            result += 0x6000;
+        }
 
         self.set_flag_to_bool(Flag::FlagC, result > 0xFFFF);
 
@@ -2289,7 +2344,9 @@ impl Cpu65c816 {
         if self.is_flag_set(Flag::FlagD) {
             result = (a & 0x0F) + (d & 0x0F) + c;
 
-            if result <= 0x0F { result -= 0x06; }
+            if result <= 0x0F {
+                result -= 0x06;
+            }
 
             let c = if result >= 0x10 { 0x10 } else { 0 };
             result = (a & 0xF0) + (d & 0xF0) + c + (result & 0xF);
@@ -2297,12 +2354,11 @@ impl Cpu65c816 {
             result = a + d + c;
         }
 
-        self.set_flag_to_bool(
-            Flag::FlagV,
-            !(a ^ d) & (d ^ result) & 0x80 != 0,
-        );
+        self.set_flag_to_bool(Flag::FlagV, !(a ^ d) & (d ^ result) & 0x80 != 0);
 
-        if self.is_flag_set(Flag::FlagD) && result <= 0xFF { result -= 0x60; }
+        if self.is_flag_set(Flag::FlagD) && result <= 0xFF {
+            result -= 0x60;
+        }
 
         self.set_flag_to_bool(Flag::FlagC, result > 0xFF);
 
@@ -2324,17 +2380,23 @@ impl Cpu65c816 {
         if self.is_flag_set(Flag::FlagD) {
             result = (a & 0x000F) + (d & 0x000F) + c;
 
-            if result <= 0xF { result -= 6; }
+            if result <= 0xF {
+                result -= 6;
+            }
 
             let c = if result >= 0x10 { 0x10 } else { 0 };
             result = (a & 0x00F0) + (d & 0x00F0) + c + (result & 0xF);
 
-            if result <= 0xFF { result -= 0x60; }
+            if result <= 0xFF {
+                result -= 0x60;
+            }
 
             let c = if result >= 0x100 { 0x100 } else { 0 };
             result = (a & 0x0F00) + (d & 0x0F00) + c + (result & 0xFF);
 
-            if result <= 0xFFF { result -= 0x600; }
+            if result <= 0xFFF {
+                result -= 0x600;
+            }
 
             let c = if result >= 0x1000 { 0x1000 } else { 0 };
             result = (a & 0xF000) + (d & 0xF000) + c + (result & 0xFFF);
@@ -2342,12 +2404,11 @@ impl Cpu65c816 {
             result = a + d + c;
         }
 
-        self.set_flag_to_bool(
-            Flag::FlagV,
-            !(a ^ d) & (d ^ result) & 0x8000 != 0,
-        );
+        self.set_flag_to_bool(Flag::FlagV, !(a ^ d) & (d ^ result) & 0x8000 != 0);
 
-        if self.is_flag_set(Flag::FlagD) && result <= 0xFFFF { result -= 0x6000; }
+        if self.is_flag_set(Flag::FlagD) && result <= 0xFFFF {
+            result -= 0x6000;
+        }
 
         self.set_flag_to_bool(Flag::FlagC, result > 0xFFFF);
 
