@@ -23,7 +23,7 @@ const SCANLINE_END_DOT: u16 = 340;
 
 const VRAM_SIZE: usize = 32 * 1024;  // 64 KiB (32 Ki-Word)
 const CGRAM_SIZE: usize = 256;       // 512 Bytes (256 Words)
-const OAM_SIZE: usize = 544;
+const OAM_SIZE: usize = 544;         // 544 Bytes
 
 #[derive(Clone, Copy, Default, Debug)]
 enum ObjectSizeSelect {

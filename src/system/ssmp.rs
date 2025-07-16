@@ -201,10 +201,18 @@ impl Spc700 {
         match address & 0xF {
             0x2 => self.sdsp_addr,
             0x3 => 0, // self.sdsp.read_regs(self.sdsp_addr),
-            0x4 => self.apuio_regs.cpuio0.get(),
-            0x5 => self.apuio_regs.cpuio1.get(),
-            0x6 => self.apuio_regs.cpuio2.get(),
-            0x7 => self.apuio_regs.cpuio3.get(),
+            0x4 => { 
+                println!("[Spc700] Read 0x{:02X} from cpuio0", self.apuio_regs.cpuio0.get());
+                self.apuio_regs.cpuio0.get() },
+            0x5 => { 
+                println!("[Spc700] Read 0x{:02X} from cpuio1", self.apuio_regs.cpuio1.get());
+                self.apuio_regs.cpuio1.get() },
+            0x6 => { 
+                println!("[Spc700] Read 0x{:02X} from cpuio2", self.apuio_regs.cpuio2.get());
+                self.apuio_regs.cpuio2.get() },
+            0x7 => { 
+                println!("[Spc700] Read 0x{:02X} from cpuio3", self.apuio_regs.cpuio3.get());
+                self.apuio_regs.cpuio3.get() },
             0x8 => self.aram[0xFF08],
             0x9 => self.aram[0xFF09],
             0xA => self.timer0_target,
@@ -271,10 +279,18 @@ impl Spc700 {
                     // self.sdsp.write_regs(self.sdsp_addr, data);
                 }
             }
-            0x4 => { self.apuio_regs.apuio0.set(data); }
-            0x5 => { self.apuio_regs.apuio1.set(data); }
-            0x6 => { self.apuio_regs.apuio2.set(data); }
-            0x7 => { self.apuio_regs.apuio3.set(data); }
+            0x4 => { 
+                println!("[Spc700] wrote 0x{:02X} to apuio0", data);
+                self.apuio_regs.apuio0.set(data); }
+            0x5 => { 
+                println!("[Spc700] wrote 0x{:02X} to apuio1", data);
+                self.apuio_regs.apuio1.set(data); }
+            0x6 => { 
+                println!("[Spc700] wrote 0x{:02X} to apuio2", data);
+                self.apuio_regs.apuio2.set(data); }
+            0x7 => { 
+                println!("[Spc700] wrote 0x{:02X} to apuio3", data);
+                self.apuio_regs.apuio3.set(data); }
             0x8 => { self.aram[0xFF08] = data; }
             0x9 => { self.aram[0xFF09] = data; }
             0xA => { self.timer0_target = data; }
