@@ -8,6 +8,7 @@ use std::rc::Rc;
 use crate::log::{LogLevel, SnemLogger};
 use crate::system::cartridge::Cartridge;
 use crate::system::ppu::PpuData;
+use crate::system::ssmp::ApuIORegs;
 use crate::tools::{hexdump16_at, hexdump8};
 
 const WRAM_SIZE: usize = 128 * 1024; // 128 KiB
@@ -128,7 +129,7 @@ pub struct Cpu65c816 {
     page_crossed: bool,
     stopped: bool,
     awaiting_interrupt: bool,
-    sys_clocks_until_clock: u8,
+    sys_clocks_until_clock: usize,
 
     wram: [u8; WRAM_SIZE],
     rom: Vec<u8>,
@@ -143,6 +144,7 @@ pub struct Cpu65c816 {
     active_channel_idx: usize,
 
     ppu_data: Rc<PpuData>,
+    apuio_regs: Rc<ApuIORegs>,
 
     hv_timer_irq: HVTimerIRQ,
     vblank_nmi_ignore: bool,
@@ -155,7 +157,7 @@ pub struct Cpu65c816 {
 // SNES System Functionality
 impl Cpu65c816 {
     // Creates a new, uninitialized 65c816 CPU
-    pub fn new(ppu_data: Rc<PpuData>, logger: Rc<RefCell<SnemLogger>>) -> Self {
+    pub fn new(ppu_data: Rc<PpuData>, apuio_regs: Rc<ApuIORegs>, logger: Rc<RefCell<SnemLogger>>) -> Self {
         Self {
             acc: 0,
             x: 0,
@@ -188,7 +190,8 @@ impl Cpu65c816 {
             dma_channels: vec![DmaChannel::default(); 8],
             active_channel_idx: 8,
             
-            ppu_data: ppu_data,
+            ppu_data,
+            apuio_regs,
 
             hv_timer_irq: HVTimerIRQ::None,
             vblank_nmi_ignore: true,
@@ -224,14 +227,14 @@ impl Cpu65c816 {
 
 // Internal Helper Functions / Bus Behavior
 impl Cpu65c816 {
-    const ONE_CYCLE: u8 = 6;
-    const ONE_CYCLE_SLOW: u8 = 8;
-    const TWO_CYCLE: u8 = 12;
-    const THREE_CYCLE: u8 = 18;
-    const FOUR_CYCLE: u8 = 24;
+    const ONE_CYCLE: usize = 6;
+    const ONE_CYCLE_SLOW: usize = 8;
+    const TWO_CYCLE: usize = 12;
+    const THREE_CYCLE: usize = 18;
+    const FOUR_CYCLE: usize = 24;
 
-    fn add_clocks(&mut self, clocks: u8) {
-        self.sys_clocks_until_clock += clocks as u8;
+    fn add_clocks(&mut self, clocks: usize) {
+        self.sys_clocks_until_clock += clocks;
     }
 
     fn read(&mut self, address: u32) -> u8 {
@@ -330,6 +333,11 @@ impl Cpu65c816 {
         match mmio_address {
             0x2100..=0x213F => self.ppu_data.read(mmio_address as u8),
 
+            0x2140 => self.apuio_regs.apuio0.get(),
+            0x2141 => self.apuio_regs.apuio1.get(),
+            0x2142 => self.apuio_regs.apuio2.get(),
+            0x2143 => self.apuio_regs.apuio3.get(),
+
             // NOTE: This read is only for cpu debugging purposes, and
             // will be removed later.
             0x4210 => {
@@ -355,7 +363,7 @@ impl Cpu65c816 {
 
             _ => {
                 // if mmio_address != 0x2180 {
-                println!(" ==== Attempt to read mmio reg ${mmio_address:04X}");
+                // println!(" ==== Attempt to read mmio reg ${mmio_address:04X}");
                 // }
 
                 0
@@ -370,6 +378,11 @@ impl Cpu65c816 {
             0x2100..=0x213F => {
                 self.ppu_data.write(mmio_address as u8, data);
             }
+
+            0x2140 => { self.apuio_regs.cpuio0.set(data) }
+            0x2141 => { self.apuio_regs.cpuio1.set(data) }
+            0x2142 => { self.apuio_regs.cpuio2.set(data) }
+            0x2143 => { self.apuio_regs.cpuio3.set(data) }
 
             0x4200 => {
                 self.vblank_nmi_ignore = (data & 0x80) == 0;
@@ -531,7 +544,7 @@ impl Cpu65c816 {
 
     /// Read from ROM (or SRAM) in LoROM mapping mode
     /// Memory map diagram here: https://snes.nesdev.org/wiki/Memory_map#LoROM
-    fn read_lorom(&mut self, address: u32) -> (u8, u8) {
+    fn read_lorom(&mut self, address: u32) -> (u8, usize) {
         if 0xF0 <= (address.bank() | 0x80) && address.bank_addr() <= 0x7FFF && self.has_sram {
             todo!("Read SRAM");
         }
@@ -561,7 +574,7 @@ impl Cpu65c816 {
 
     /// Write to SRAM (ROM writes are ignored but still take cycles)
     /// Memory map diagram here: https://snes.nesdev.org/wiki/Memory_map#LoROM
-    fn write_lorom(&mut self, address: u32, data: u8) -> u8 {
+    fn write_lorom(&mut self, address: u32, data: u8) -> usize {
         if 0xF0 <= (address.bank() | 0x80) && address.bank_addr() <= 0x7FFF && self.has_sram {
             todo!("Write SRAM");
         }
@@ -578,9 +591,9 @@ impl Cpu65c816 {
         clocks
     }
 
-    fn read_hirom(&mut self, address: u32) -> (u8, u8) {
+    fn read_hirom(&mut self, address: u32) -> (u8, usize) {
         let data: u8;
-        let clocks: u8;
+        let clocks: usize;
 
         match (address.bank(), address.bank_addr()) {
             // Normal ROM read (banks C0-FF are in linear order in HiROM).
@@ -633,8 +646,8 @@ impl Cpu65c816 {
         (data, clocks)
     }
 
-    fn write_hirom(&mut self, address: u32, data: u8) -> u8 {
-        let clocks: u8;
+    fn write_hirom(&mut self, address: u32, data: u8) -> usize {
+        let clocks: usize;
 
         match (address.bank(), address.bank_addr()) {
             // Normal ROM read (banks C0-FF are in linear order in HiROM).
@@ -680,9 +693,9 @@ impl Cpu65c816 {
         clocks
     }
 
-    fn read_exhirom(&mut self, address: u32) -> (u8, u8) {
+    fn read_exhirom(&mut self, address: u32) -> (u8, usize) {
         let data: u8;
-        let clocks: u8;
+        let clocks: usize;
 
         match (address.bank(), address.bank_addr()) {
             // Lower half of ROM (stored in the upper part of memory, hence ExHiROM).
@@ -750,8 +763,8 @@ impl Cpu65c816 {
         (data, clocks)
     }
 
-    fn write_exhirom(&mut self, address: u32, data: u8) -> u8 {
-        let clocks: u8;
+    fn write_exhirom(&mut self, address: u32, data: u8) -> usize {
+        let clocks: usize;
 
         match (address.bank(), address.bank_addr()) {
             // Lower half of ROM (stored in the upper part of memory, hence ExHiROM).
@@ -2678,10 +2691,10 @@ impl Cpu65c816 {
 
 // Cycle Functionality
 impl Cpu65c816 {
-    pub fn remove_clocks(&mut self, clocks: u8) {
+    pub fn remove_clocks(&mut self, clocks: usize) {
         self.sys_clocks_until_clock -= clocks;
     }
-    pub fn sys_clocks_left(&self) -> u8 {
+    pub fn sys_clocks_left(&self) -> usize {
         self.sys_clocks_until_clock
     }
 
@@ -2778,7 +2791,7 @@ impl Cpu65c816 {
         self.debug_io_ops = 0;
 
         let opcode = self.read_prg();
-        let extra_clocks: u8;
+        let extra_clocks: usize;
 
         // println!("Opcode 0x{opcode:02X} from PC ${:04X}", self.pc);
 

@@ -3,6 +3,8 @@ use std::{cell::Cell, rc::Rc};
 
 use libretro_rs::retro::pixel::format::XRGB8888;
 
+use crate::utils::GetBits;
+
 use crate::log::SnemLogger;
 use crate::tools::hexdump16_at;
 
@@ -15,17 +17,6 @@ const HBLANK_END_DOT: u16 = VISIBLE_SCANLINE_START_DOT as u16;
 const HBLANK_START_DOT: u16 = 278;
 const HBLANK_DISABLE_SCANLINE: u16 = VBLANK_START_SCANLINE-1;
 const SCANLINE_END_DOT: u16 = 340;
-
-
-trait GetBits {
-    fn get_bit(self, bit: Self) -> Self;
-    fn bit_en(self, bit: Self) -> bool;
-}
-
-impl GetBits for u8 {
-    fn get_bit(self, bit: Self) -> Self { (self >> bit) & 1 }
-    fn bit_en(self, bit: Self) -> bool { (self >> bit) & 1 != 0 }
-}
 
 trait SetBytes {
     fn set_hi(&self, data: u8);
@@ -103,13 +94,6 @@ enum TileSize {
     Size8x8,
     Size16x16,
 }
-
-// #[derive(Clone, Copy, Default, Debug)]
-// enum BgPriority {
-//     #[default]
-//     High,
-//     Low,
-// }
 
 #[derive(Clone, Copy, Default, Debug)]
 enum BgMode {
@@ -1597,7 +1581,7 @@ pub struct Ppu5C7x {
 
     dot: u16,
     scanline: u16,
-    pub sys_clocks_until_clock: u8,
+    sys_clocks_until_clock: usize,
     frame: usize,
 
     scanline_sprites: Vec<OAMSprite>,
@@ -1623,8 +1607,8 @@ impl Ppu5C7x {
         }
     }
 
-    pub fn remove_clocks(&mut self, clocks: u8) { self.sys_clocks_until_clock -= clocks; }
-    pub fn sys_clocks_left(&self) -> u8 { self.sys_clocks_until_clock }
+    pub fn remove_clocks(&mut self, clocks: usize) { self.sys_clocks_until_clock -= clocks; }
+    pub fn sys_clocks_left(&self) -> usize { self.sys_clocks_until_clock }
 
     pub fn clock(&mut self, frame_buffer: &mut [XRGB8888]) {
         self.sys_clocks_until_clock = 0;

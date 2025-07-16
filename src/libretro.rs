@@ -7,6 +7,7 @@ use std::time;
 use crate::log::{LogLevel, SnemLogger};
 use crate::system::cartridge::Cartridge;
 use crate::system::ppu::{self, Ppu5C7x, PpuData};
+use crate::system::ssmp::{ApuIORegs, Spc700};
 
 use libretro_rs::c_utf8::{c_utf8, CUtf8};
 use libretro_rs::ffi::retro_log_level;
@@ -47,6 +48,7 @@ struct SnemulatorCore {
 
     snem_cpu: Cpu65c816,
     snem_ppu: Ppu5C7x,
+    snem_apu: Spc700,
 
     last_frame: time::Instant,
     start: time::Instant,
@@ -104,9 +106,11 @@ impl SnemulatorCore {
         if ppu_clocks < cpu_clocks {
             self.snem_cpu.remove_clocks(ppu_clocks);
             self.snem_ppu.clock(&mut self.frame_buffer);
+            self.snem_apu.clock(ppu_clocks);
         } else {
             self.snem_ppu.remove_clocks(cpu_clocks);
             self.snem_cpu.clock();
+            self.snem_apu.clock(cpu_clocks);
         }
     }
 
@@ -155,8 +159,10 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         let rendering_mode = args.rendering_mode;
 
         let ppu_data = Rc::new(PpuData::new());
-        let snem_cpu = Cpu65c816::new(ppu_data.clone(), logger.clone());
+        let apuio_regs = Rc::new(ApuIORegs::new());
+        let snem_cpu = Cpu65c816::new(ppu_data.clone(), apuio_regs.clone(), logger.clone());
         let snem_ppu = Ppu5C7x::new(ppu_data.clone(), logger.clone());
+        let snem_apu = Spc700::new(apuio_regs.clone());
 
         let core = SnemulatorCore {
             logger,
@@ -167,6 +173,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
 
             snem_cpu,
             snem_ppu,
+            snem_apu,
 
             last_frame: time::Instant::now(),
             start: time::Instant::now(),

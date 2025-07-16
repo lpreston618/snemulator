@@ -1,3 +1,7 @@
+use std::{cell::Cell, rc::Rc};
+
+use crate::utils::GetBits;
+
 // Master Clock runs at 21.4773 MHz, and S-DSP internally clocks at 3.072 MHz
 // The ratio of S-DSP Clock Period / Master Clock Period = (1/21477300 Hz) / (1/3072000 Hz)
 // = 0.143034739 is approximated closely by 97/678 = 0.143067846608
@@ -17,20 +21,92 @@ pub enum Flag {
     FlagN = 128, // Negative
 }
 
-struct Spc700 {
+pub struct ApuIORegs {
+    // APU -> CPU regs
+    pub apuio0: Cell<u8>,
+    pub apuio1: Cell<u8>,
+    pub apuio2: Cell<u8>,
+    pub apuio3: Cell<u8>,
+
+    // CPU -> APU regs
+    pub cpuio0: Cell<u8>,
+    pub cpuio1: Cell<u8>,
+    pub cpuio2: Cell<u8>,
+    pub cpuio3: Cell<u8>,
+}
+
+impl ApuIORegs {
+    pub fn new() -> ApuIORegs {
+        ApuIORegs {
+            apuio0: Cell::new(0),
+            apuio1: Cell::new(0),
+            apuio2: Cell::new(0),
+            apuio3: Cell::new(0),
+            cpuio0: Cell::new(0),
+            cpuio1: Cell::new(0),
+            cpuio2: Cell::new(0),
+            cpuio3: Cell::new(0),
+        }
+    }
+}
+
+pub struct Spc700 {
     pc: u16,
     sp: u8,
     acc: u8,
     x: u8,
     y: u8,
     status: u8,
+
     branch_taken: bool,
-    read_ipl: bool,
+
     dir_page: u16,
-    aram: [u8; 0x10000],
+
+    aram: Vec<u8>,
+
     time_since_last_clock: usize,
     sdsp_clocks: usize,
     spc_clocks_until_instr: usize,
+
+    apuio_regs: Rc<ApuIORegs>,
+
+    // $F1    I.CC .210
+    //        | ||  |||
+    //        | ||  ||+- Enable timer 0
+    //        | ||  |+-- Enable timer 1
+    //        | ||  +--- Enable timer 2
+    //        | |+------ Clear CPUIO read ports 0 & 1
+    //        | +------- Clear CPUIO read ports 2 & 3
+    //        +--------- IPL ROM enable
+    timer0_en: bool,
+    timer1_en: bool,
+    timer2_en: bool,
+    ipl_read: bool,
+
+    // $F2    RAAA AAAA
+    //        |||| ||||
+    //        |+++-++++- S-DSP register address
+    //        +--------- Read only flag
+    sdsp_read_only: bool,
+    sdsp_addr: u8,
+
+    // $FA..=$FC    TTTT TTTT
+    //              |||| ||||
+    //              ++++-++++- Timer target
+    timer0_target: u8,
+    timer1_target: u8,
+    timer2_target: u8,
+
+    // $FD..=$FF    0000 CCCC
+    //                   ||||
+    //                   ++++- Timer counter
+    timer0_counter: u8,
+    timer1_counter: u8,
+    timer2_counter: u8,
+
+    timer0_internal_counter: u8,
+    timer1_internal_counter: u8,
+    timer2_internal_counter: u8,
 }
 
 impl Spc700 {
@@ -42,7 +118,50 @@ impl Spc700 {
         0xF6, 0xDA, 0x00, 0xBA, 0xF4, 0xC4, 0xF4, 0xDD, 0x5D, 0xD0, 0xDB, 0x1F, 0x00, 0x00, 0xC0, 0xFF,
     ];
 
-    fn clock(&mut self, master_clocks_elapsed: usize) {
+    pub fn new(apuio_regs: Rc<ApuIORegs>) -> Spc700 {
+        Spc700 {
+            pc: 0xFFC0,
+            sp: 0,
+            acc: 0,
+            x: 0,
+            y: 0,
+            status: 0,
+            branch_taken: false,
+            dir_page: 0,
+
+            aram: vec![0; 0x10000],
+
+            time_since_last_clock: 0,
+            sdsp_clocks: 0,
+            spc_clocks_until_instr: 0,
+
+            apuio_regs,
+
+            timer0_en: false,
+            timer1_en: false,
+            timer2_en: false,
+            ipl_read: true,
+            sdsp_read_only: false,
+            sdsp_addr: 0,
+            timer0_target: 0,
+            timer1_target: 0,
+            timer2_target: 0,
+            timer0_counter: 0,
+            timer1_counter: 0,
+            timer2_counter: 0,
+            timer0_internal_counter: 0,
+            timer1_internal_counter: 0,
+            timer2_internal_counter: 0,
+        }
+    }
+
+    fn reset(&mut self) {
+        self.timer0_en = false;
+        self.timer1_en = false;
+        self.timer2_en = false;
+    }
+
+    pub fn clock(&mut self, master_clocks_elapsed: usize) {
         self.time_since_last_clock += master_clocks_elapsed * MASTER_CLOCK_TIME_UNITS;
 
         while self.time_since_last_clock > SDSP_CLOCK_TIME_UNITS {
@@ -63,10 +182,10 @@ impl Spc700 {
         }
     }
 
-    fn read(&self, address: u16) -> u8 {
+    fn read(&mut self, address: u16) -> u8 {
         match address {
-            (0xF0..=0xFF) => self.read_sound_regs(),
-            (0xFFC0..=0xFFFF) if self.read_ipl => Spc700::IPL_ROM[(address & 0x3F) as usize],
+            (0x00F0..=0x00FF) => self.read_sound_regs(address),
+            (0xFFC0..=0xFFFF) if self.ipl_read => Spc700::IPL_ROM[(address & 0x3F) as usize],
             _ => self.aram[address as usize],
         }
     }
@@ -78,15 +197,97 @@ impl Spc700 {
         }
     }
 
-    fn read_sound_regs(&self) -> u8 {
-        0
+    fn read_sound_regs(&mut self, address: u16) -> u8 {
+        match address & 0xF {
+            0x2 => self.sdsp_addr,
+            0x3 => 0, // self.sdsp.read_regs(self.sdsp_addr),
+            0x4 => self.apuio_regs.cpuio0.get(),
+            0x5 => self.apuio_regs.cpuio1.get(),
+            0x6 => self.apuio_regs.cpuio2.get(),
+            0x7 => self.apuio_regs.cpuio3.get(),
+            0x8 => self.aram[0xFF08],
+            0x9 => self.aram[0xFF09],
+            0xA => self.timer0_target,
+            0xB => self.timer1_target,
+            0xC => self.timer2_target,
+            0xD => {
+                let data = self.timer0_counter;
+                self.timer0_counter = 0;
+                data
+            },
+            0xE => {
+                let data = self.timer1_counter;
+                self.timer1_counter = 0;
+                data
+            },
+            0xF => {
+                let data = self.timer2_counter;
+                self.timer2_counter = 0;
+                data
+            },
+            _ => 0,
+        }
     }
 
     fn write_sound_regs(&mut self, address: u16, data: u8) {
+        match address & 0xF {
+            0x1 => {
+                if !self.timer0_en && data.bit_en(0) {
+                    self.timer0_counter = 0;
+                    self.timer0_internal_counter = 0;
+                }
 
+                if !self.timer1_en && data.bit_en(1) {
+                    self.timer1_counter = 0;
+                    self.timer1_internal_counter = 0;
+                }
+
+                if !self.timer2_en && data.bit_en(2) {
+                    self.timer2_counter = 0;
+                    self.timer2_internal_counter = 0;
+                }
+
+                self.timer0_en = data.bit_en(0);
+                self.timer1_en = data.bit_en(1);
+                self.timer2_en = data.bit_en(2);
+                self.ipl_read = data.bit_en(7);
+
+                if data.bit_en(4) {
+                    self.apuio_regs.cpuio0.set(0);
+                    self.apuio_regs.cpuio1.set(0);
+                }
+
+                if data.bit_en(5) {
+                    self.apuio_regs.cpuio2.set(0);
+                    self.apuio_regs.cpuio3.set(0);
+                }
+            }
+            0x2 => {
+                self.sdsp_read_only = data.bit_en(7);
+                self.sdsp_addr = data & 0x7F;
+            }
+            0x3 => {
+                if !self.sdsp_read_only {
+                    // self.sdsp.write_regs(self.sdsp_addr, data);
+                }
+            }
+            0x4 => { self.apuio_regs.apuio0.set(data); }
+            0x5 => { self.apuio_regs.apuio1.set(data); }
+            0x6 => { self.apuio_regs.apuio2.set(data); }
+            0x7 => { self.apuio_regs.apuio3.set(data); }
+            0x8 => { self.aram[0xFF08] = data; }
+            0x9 => { self.aram[0xFF09] = data; }
+            0xA => { self.timer0_target = data; }
+            0xB => { self.timer1_target = data; }
+            0xC => { self.timer2_target = data; }
+            0xD => { self.timer0_counter = data; }
+            0xE => { self.timer1_counter = data; }
+            0xF => { self.timer2_counter = data; }
+            _ => {}
+        }
     }
 
-    fn read_word(&self, addr_lo: u16, addr_hi: u16) -> u16 {
+    fn read_word(&mut self, addr_lo: u16, addr_hi: u16) -> u16 {
         u16::from_le_bytes([
             self.read(addr_lo),
             self.read(addr_hi),
@@ -1637,11 +1838,11 @@ impl Spc700 {
 
 // Addressing Modes
 impl Spc700 {
-    fn direct(&self) -> u16 {
+    fn direct(&mut self) -> u16 {
         (self.read(self.pc + 1) as u16) | self.dir_page
     }
 
-    fn direct_word(&self) -> (u16, u16) {
+    fn direct_word(&mut self) -> (u16, u16) {
         let tmp = self.read(self.pc + 1);
         let lo_addr = tmp as u16 | self.dir_page;
         let hi_addr = (tmp + 1) as u16 | self.dir_page;
@@ -1649,15 +1850,15 @@ impl Spc700 {
         (lo_addr, hi_addr)
     }
 
-    fn x_direct(&self) -> u16 {
+    fn x_direct(&mut self) -> u16 {
         ((self.read(self.pc + 1) + self.x) as u16) | self.dir_page
     }
 
-    fn y_direct(&self) -> u16 {
+    fn y_direct(&mut self) -> u16 {
         ((self.read(self.pc + 1) + self.y) as u16) | self.dir_page
     }
 
-    fn indirect(&self) -> u16 {
+    fn indirect(&mut self) -> u16 {
         (self.x as u16) | self.dir_page
     }
 
@@ -1668,82 +1869,88 @@ impl Spc700 {
         addr
     }
 
-    fn direct_to_direct(&self) -> (u16, u16) {
+    fn direct_to_direct(&mut self) -> (u16, u16) {
         let src_addr = (self.read(self.pc + 2) as u16) | self.dir_page;
         let dst_addr = (self.read(self.pc + 1) as u16) | self.dir_page;
 
         (src_addr, dst_addr)
     }
 
-    fn indirect_to_indirect(&self) -> (u16, u16) {
+    fn indirect_to_indirect(&mut self) -> (u16, u16) {
         let src_addr = (self.y as u16) | self.dir_page;
         let dst_addr = (self.x as u16) | self.dir_page;
 
         (src_addr, dst_addr)
     }
 
-    fn immediate_to_direct(&self) -> (u16, u16) {
+    fn immediate_to_direct(&mut self) -> (u16, u16) {
         let src_addr = ((self.pc + 2) as u16) | self.dir_page;
         let dst_addr = (self.read(self.pc + 1) as u16) | self.dir_page;
 
         (src_addr, dst_addr)
     }
 
-    fn direct_relative(&self) -> (u16, u16) {
+    fn direct_relative(&mut self) -> (u16, u16) {
         let data_addr = self.direct();
-        let rel_addr = self.pc + (self.read(self.pc + 2)) as u16;
+        let offset = self.read(self.pc + 2);
+        let branch_addr = ((self.pc as i32) + ((offset as i8) as i32)) as u16;
 
-        (data_addr, rel_addr)
+        (data_addr, branch_addr)
     }
 
-    fn absolute(&self) -> u16 {
+    fn absolute(&mut self) -> u16 {
         u16::from_le_bytes([
             self.read(self.pc + 1),
             self.read(self.pc + 2),
         ])
     }
 
-    fn absolute_x_indirect(&self) -> u16 {
+    fn absolute_x_indirect(&mut self) -> u16 {
         let ptr_addr = self.x_direct();
 
         self.read(ptr_addr) as u16
     }
 
-    fn x_absolute(&self) -> u16 {
+    fn x_absolute(&mut self) -> u16 {
         self.absolute() + (self.x as u16)
     }
 
-    fn y_absolute(&self) -> u16 {
+    fn y_absolute(&mut self) -> u16 {
         self.absolute() + (self.y as u16)
     }
 
-    fn x_direct_relative(&self) -> (u16, u16) {
+    fn x_direct_relative(&mut self) -> (u16, u16) {
         let data_addr = self.x_direct();
-        let branch_addr = self.pc + (self.read(self.pc + 2) as u16);
+        let offset = self.read(self.pc + 2);
+        let branch_addr = ((self.pc as i32) + ((offset as i8) as i32)) as u16;
 
         (data_addr, branch_addr)
     }
 
-    fn x_indirect(&self) -> u16 {
-        self.read(self.x_direct()) as u16
+    fn x_indirect(&mut self) -> u16 {
+        let temp = self.x_direct();
+        self.read(temp) as u16
     }
 
-    fn indirect_y(&self) -> u16 {
+    fn indirect_y(&mut self) -> u16 {
         self.indirect() + (self.y as u16)
     }
 
-    fn relative(&self) -> u16 {
-        self.pc + (self.read(self.pc + 1) as u16)
+    fn relative(&mut self) -> u16 {
+        let offset = self.read(self.pc + 1);
+
+        ((self.pc as i32) + ((offset as i8) as i32)) as u16
     }
 
-    fn immediate_relative(&self) -> (u16, u16) {
+    fn immediate_relative(&mut self) -> (u16, u16) {
         let data_addr = self.pc + 1;
-        let branch_addr = self.pc + (self.read(self.pc + 2) as u16);
+        let offset = self.read(self.pc + 2);
+        let branch_addr = ((self.pc as i32) + ((offset as i8) as i32)) as u16;
 
         (data_addr, branch_addr)
     }
 
-    fn immediate(&self) -> u16 {
+    fn immediate(&mut self) -> u16 {
         self.pc + 1
     }
 }
