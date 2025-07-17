@@ -314,30 +314,10 @@ impl Cpu65c816 {
         match mmio_address {
             0x2100..=0x213F => self.ppu_data.read(mmio_address as u8),
 
-            0x2140 => {
-                let data = self.apuio_regs.apuio0.get();
-                // println!("SCPU: read 0x{data:02X} from APUIO0");
-                data
-            }
-            0x2141 => {
-                let data = self.apuio_regs.apuio1.get();
-                // println!("SCPU: read 0x{data:02X} from APUIO1");
-                data
-            }
-            0x2142 => {
-                let data = self.apuio_regs.apuio2.get();
-                // println!("SCPU: read 0x{data:02X} from APUIO2");
-                data
-            }
-            0x2143 => {
-                let data = self.apuio_regs.apuio3.get();
-                // println!("SCPU: read 0x{data:02X} from APUIO3");
-                data
-            }
-            // 0x2140 => self.apuio_regs.apuio0.get(),
-            // 0x2141 => self.apuio_regs.apuio1.get(),
-            // 0x2142 => self.apuio_regs.apuio2.get(),
-            // 0x2143 => self.apuio_regs.apuio3.get(),
+            0x2140 => self.apuio_regs.apuio0.get(),
+            0x2141 => self.apuio_regs.apuio1.get(),
+            0x2142 => self.apuio_regs.apuio2.get(),
+            0x2143 => self.apuio_regs.apuio3.get(),
 
             // NOTE: This read is only for cpu debugging purposes, and
             // will be removed later.
@@ -381,27 +361,10 @@ impl Cpu65c816 {
             0x2100..=0x213F => {
                 self.ppu_data.write(mmio_address as u8, data);
             }
-
-            0x2140 => {
-                self.apuio_regs.cpuio0.set(data);
-                // println!("SCPU: wrote 0x{data:02X} to CPUIO0");
-            }
-            0x2141 => {
-                self.apuio_regs.cpuio1.set(data);
-                // println!("SCPU: wrote 0x{data:02X} to CPUIO1");
-            }
-            0x2142 => {
-                self.apuio_regs.cpuio2.set(data);
-                // println!("SCPU: wrote 0x{data:02X} to CPUIO2");
-            }
-            0x2143 => {
-                self.apuio_regs.cpuio3.set(data);
-                // println!("SCPU: wrote 0x{data:02X} to CPUIO3");
-            }
-            // 0x2140 => { self.apuio_regs.cpuio0.set(data) }
-            // 0x2141 => { self.apuio_regs.cpuio1.set(data) }
-            // 0x2142 => { self.apuio_regs.cpuio2.set(data) }
-            // 0x2143 => { self.apuio_regs.cpuio3.set(data) }
+            0x2140 => { self.apuio_regs.cpuio0.set(data) }
+            0x2141 => { self.apuio_regs.cpuio1.set(data) }
+            0x2142 => { self.apuio_regs.cpuio2.set(data) }
+            0x2143 => { self.apuio_regs.cpuio3.set(data) }
             0x4200 => {
                 self.vblank_nmi_ignore = (data & 0x80) == 0;
                 self.hv_timer_irq = match (data >> 4) & 3 {

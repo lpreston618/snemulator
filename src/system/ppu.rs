@@ -3,11 +3,11 @@ mod utils;
 use std::cell::RefCell;
 use std::{cell::Cell, rc::Rc};
 
-use libretro_rs::retro::pixel::format::XRGB8888;
+use libretro_rs::retro::pixel::format::ORGB1555;
 
 use crate::utils::GetBits;
 
-use crate::system::ppu::utils::{SetCellBytes, Togglable, ToggleState};
+use crate::system::ppu::utils::{xbgr1555_xrgb1555_conv, SetCellBytes, Togglable, ToggleState};
 
 use crate::log::SnemLogger;
 
@@ -1286,7 +1286,9 @@ impl PpuData {
                     let addr = self.cgram_addr.get();
                     let new_col = ((data as u16) << 8) | self.cgram_latch.get() as u16;
 
-                    self.cgram[addr as usize].set(new_col);
+                    let xrgb1555_col = xbgr1555_xrgb1555_conv(new_col);
+
+                    self.cgram[addr as usize].set(xrgb1555_col);
 
                     self.cgram_addr.set(addr + 1);
 
@@ -1601,10 +1603,13 @@ impl PpuData {
             }
 
             0x3B => {
+                let xrgb1555_col = self.cgram[self.cgram_addr.get() as usize].get();
+                let data = xbgr1555_xrgb1555_conv(xrgb1555_col);
+
                 if self.cgram_toggle.toggle() {
-                    self.cgram[self.cgram_addr.get() as usize].get() as u8
+                    data as u8
                 } else {
-                    (self.cgram[self.cgram_addr.get() as usize].get() >> 8) as u8 // HIGH BIT IS PPU2 OPEN BUS
+                    (data >> 8) as u8
                 }
             }
 
@@ -1767,7 +1772,7 @@ impl Ppu5C7x {
     pub fn remove_clocks(&mut self, clocks: usize) { self.sys_clocks_until_clock -= clocks; }
     pub fn sys_clocks_left(&self) -> usize { self.sys_clocks_until_clock }
 
-    pub fn clock(&mut self, frame_buffer: &mut [XRGB8888]) {
+    pub fn clock(&mut self, frame_buffer: &mut [ORGB1555]) {
         self.sys_clocks_until_clock = 0;
 
         if !self.in_fblank() && !self.in_hblank() && !self.in_vblank() && self.scanline != 0 {
@@ -1935,13 +1940,13 @@ struct TilePosData {
 }
 
 /// Converts a u16 of the form (.bbb bbgg gggr rrrr) into an XRGB8888 color
-fn cgram_raw_color_to_xrgb(word: u16) -> XRGB8888 {
-    let r = ((word & 0x1F) as u32) << 19;
-    let g = ((word & 0x3E0) as u32) << 6;
-    let b = ((word & 0x7C00) as u32) >> 7;
+// fn cgram_raw_color_to_xrgb(word: u16) -> ORGB1555 {
+//     let r = ((word & 0x1F) as u32) << 19;
+//     let g = ((word & 0x3E0) as u32) << 6;
+//     let b = ((word & 0x7C00) as u32) >> 7;
 
-    XRGB8888::new_with_raw_value( 0xFF000000 | r | g | b )
-}
+//     XRGB8888::new_with_raw_value( 0xFF000000 | r | g | b )
+// }
 
 impl Ppu5C7x {
     fn screen_x(&self) -> usize { self.dot as usize - VISIBLE_SCANLINE_START_DOT }
@@ -1955,7 +1960,7 @@ impl Ppu5C7x {
         }
     }
 
-    fn dot(&mut self, frame_buffer: &mut [XRGB8888]) {
+    fn dot(&mut self, frame_buffer: &mut [ORGB1555]) {
         let screen_x = self.screen_x();
         let screen_y = self.screen_y();
 
@@ -1974,7 +1979,7 @@ impl Ppu5C7x {
             _ => 0,
         };
 
-        frame_buffer[screen_y * 256 + screen_x] = cgram_raw_color_to_xrgb(dot_col);
+        frame_buffer[screen_y * 256 + screen_x] = ORGB1555::new_with_raw_value(dot_col);
     }
 
     /// Gets the color of the first visible sprite on the screen.
@@ -2470,15 +2475,15 @@ impl Ppu5C7x {
         self.apply_cmath(main_col, sub_col)
     }
 
-    fn bg_mode2_dot(&mut self, frame_buffer: &mut [XRGB8888]) {
+    fn bg_mode2_dot(&mut self, frame_buffer: &mut [ORGB1555]) {
 
     }
 
-    fn bg_mode3_dot(&mut self, frame_buffer: &mut [XRGB8888]) {
+    fn bg_mode3_dot(&mut self, frame_buffer: &mut [ORGB1555]) {
 
     }
 
-    fn bg_mode4_dot(&mut self, frame_buffer: &mut [XRGB8888]) {
+    fn bg_mode4_dot(&mut self, frame_buffer: &mut [ORGB1555]) {
 
     }
 
@@ -2625,11 +2630,11 @@ impl Ppu5C7x {
         self.apply_cmath(main_col, sub_col)
     }
 
-    fn bg_mode6_dot(&mut self, frame_buffer: &mut [XRGB8888]) {
+    fn bg_mode6_dot(&mut self, frame_buffer: &mut [ORGB1555]) {
 
     }
 
-    fn bg_mode7_dot(&mut self, frame_buffer: &mut [XRGB8888]) {
+    fn bg_mode7_dot(&mut self, frame_buffer: &mut [ORGB1555]) {
 
     }
 

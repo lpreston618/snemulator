@@ -117,6 +117,8 @@ pub struct Spc700 {
     slow_timer_clocks: u8,
 
     total_clocks: usize,
+
+    debug_bool: bool,
 }
 
 impl Spc700 {
@@ -166,6 +168,8 @@ impl Spc700 {
 
             slow_timer_clocks: 0,
             total_clocks: 0,
+
+            debug_bool: false,
         }
     }
 
@@ -181,6 +185,7 @@ impl Spc700 {
         while self.time_since_last_clock > SDSP_CLOCK_TIME_UNITS {
             self.time_since_last_clock -= SDSP_CLOCK_TIME_UNITS;
 
+            // Once every ~3.072 MHz
             // self.sdsp.clock();
 
             self.sdsp_clocks += 1;
@@ -273,34 +278,10 @@ impl Spc700 {
         match address & 0xF {
             0x2 => self.sdsp_addr,
             0x3 => 0, // self.sdsp.read_regs(self.sdsp_addr),
-            0x4 => {
-                println!(
-                    "[Spc700] Read 0x{:02X} from cpuio0",
-                    self.apuio_regs.cpuio0.get()
-                );
-                self.apuio_regs.cpuio0.get()
-            }
-            0x5 => {
-                println!(
-                    "[Spc700] Read 0x{:02X} from cpuio1",
-                    self.apuio_regs.cpuio1.get()
-                );
-                self.apuio_regs.cpuio1.get()
-            }
-            0x6 => {
-                println!(
-                    "[Spc700] Read 0x{:02X} from cpuio2",
-                    self.apuio_regs.cpuio2.get()
-                );
-                self.apuio_regs.cpuio2.get()
-            }
-            0x7 => {
-                println!(
-                    "[Spc700] Read 0x{:02X} from cpuio3",
-                    self.apuio_regs.cpuio3.get()
-                );
-                self.apuio_regs.cpuio3.get()
-            }
+            0x4 => self.apuio_regs.cpuio0.get(),
+            0x5 => self.apuio_regs.cpuio1.get(),
+            0x6 => self.apuio_regs.cpuio2.get(),
+            0x7 => self.apuio_regs.cpuio3.get(),
             0x8 => self.aram[0xFF08],
             0x9 => self.aram[0xFF09],
             0xA => self.timer0_target,
@@ -367,18 +348,10 @@ impl Spc700 {
                     // self.sdsp.write_regs(self.sdsp_addr, data);
                 }
             }
-            0x4 => { 
-                // println!("[Spc700] wrote 0x{:02X} to apuio0", data);
-                self.apuio_regs.apuio0.set(data); }
-            0x5 => { 
-                // println!("[Spc700] wrote 0x{:02X} to apuio1", data);
-                self.apuio_regs.apuio1.set(data); }
-            0x6 => { 
-                // println!("[Spc700] wrote 0x{:02X} to apuio2", data);
-                self.apuio_regs.apuio2.set(data); }
-            0x7 => { 
-                // println!("[Spc700] wrote 0x{:02X} to apuio3", data);
-                self.apuio_regs.apuio3.set(data); }
+            0x4 => { self.apuio_regs.apuio0.set(data); }
+            0x5 => { self.apuio_regs.apuio1.set(data); }
+            0x6 => { self.apuio_regs.apuio2.set(data); }
+            0x7 => { self.apuio_regs.apuio3.set(data); }
             0x8 => { self.aram[0xFF08] = data; }
             0x9 => { self.aram[0xFF09] = data; }
             0xA => { self.timer0_target = data; }
@@ -417,14 +390,19 @@ impl Spc700 {
     }
 
     fn push_word(&mut self, word: u16) {
-        self.push(word as u8);
         self.push((word >> 8) as u8);
+        self.push(word as u8);
     }
 
     fn exec_instr(&mut self) {
         let cycles: usize;
 
-        let opcode = self.read(self.pc);
+        if !self.debug_bool && self.pc < 0xFFC0 {
+            println!("S-CPU to Spc700 Handshake Finished on Spc700 Clock {}.", self.total_clocks);
+            self.debug_bool = true;
+        }
+
+        let opcode = self.read_prg();
 
         self.branch_taken = false;
 
@@ -550,8 +528,8 @@ impl Spc700 {
                 cycles = 5;
             }
             0x19 => {
-                let (addr1, addr2) = self.indirect_to_indirect();
-                self.or_mem(addr1, addr2);
+                let (src_addr, dst_addr) = self.indirect_to_indirect();
+                self.or_mem(src_addr, dst_addr);
                 cycles = 5;
             }
             0x1A => {
@@ -704,8 +682,8 @@ impl Spc700 {
                 cycles = 5;
             }
             0x39 => {
-                let (addr1, addr2) = self.indirect_to_indirect();
-                self.and_mem(addr1, addr2);
+                let (src_addr, dst_addr) = self.indirect_to_indirect();
+                self.and_mem(src_addr, dst_addr);
                 cycles = 5;
             }
             0x3A => {
@@ -858,8 +836,8 @@ impl Spc700 {
                 cycles = 5;
             }
             0x59 => {
-                let (addr1, addr2) = self.indirect_to_indirect();
-                self.eor_mem(addr1, addr2);
+                let (src_addr, dst_addr) = self.indirect_to_indirect();
+                self.eor_mem(src_addr, dst_addr);
                 cycles = 5;
             }
             0x5A => {
@@ -1011,8 +989,8 @@ impl Spc700 {
                 cycles = 5;
             }
             0x79 => {
-                let (addr1, addr2) = self.indirect_to_indirect();
-                self.cmp_mem(addr1, addr2);
+                let (src_addr, dst_addr) = self.indirect_to_indirect();
+                self.cmp_mem(src_addr, dst_addr);
                 cycles = 5;
             }
             0x7A => {
@@ -1164,8 +1142,8 @@ impl Spc700 {
                 cycles = 5;
             }
             0x99 => {
-                let (addr1, addr2) = self.indirect_to_indirect();
-                self.adc_mem(addr1, addr2);
+                let (src_addr, dst_addr) = self.indirect_to_indirect();
+                self.adc_mem(src_addr, dst_addr);
                 cycles = 5;
             }
             0x9A => {
@@ -1316,8 +1294,8 @@ impl Spc700 {
                 cycles = 5;
             }
             0xB9 => {
-                let (addr1, addr2) = self.indirect_to_indirect();
-                self.sbc_mem(addr1, addr2);
+                let (src_addr, dst_addr) = self.indirect_to_indirect();
+                self.sbc_mem(src_addr, dst_addr);
                 cycles = 5;
             }
             0xBA => {

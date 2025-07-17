@@ -21,7 +21,8 @@ use libretro_rs::{ext, libretro_core};
 
 use libretro_rs::retro::{
     self,
-    pixel::format::{ActiveFormat, XRGB8888},
+    pixel::format::ActiveFormat,
+    pixel::format::ORGB1555,
     Callbacks, InputsPolled,
 };
 
@@ -35,8 +36,8 @@ const AUDIO_BUFFER_SAMPLES: usize = AUDIO_FREQ / 60;
 
 struct SnemulatorCore {
     logger: Rc<RefCell<SnemLogger>>,
-    frame_buffer: ResizableFrameBuffer<XRGB8888, FRAME_BUF_SIZE>,
-    pixel_format: ActiveFormat<XRGB8888>,
+    frame_buffer: ResizableFrameBuffer<ORGB1555, FRAME_BUF_SIZE>,
+    pixel_format: ActiveFormat<ORGB1555>,
     rendering_mode: SoftwareRenderEnabled,
     audio_buffer: [i16; AUDIO_BUFFER_SAMPLES * 2],
 
@@ -149,7 +150,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         frame_buffer
             .resize(SNES_FRAME_WIDTH as u16 / 2, SNES_FRAME_HEIGHT as u16 / 2)
             .unwrap();
-        let pixel_format = args.env.set_pixel_format_xrgb8888(args.pixel_format)?;
+        let pixel_format = args.env.set_pixel_format_0rgb1555(args.pixel_format)?;
         let rendering_mode = args.rendering_mode;
 
         let ppu_data = Rc::new( ppu::PpuData::new() );
