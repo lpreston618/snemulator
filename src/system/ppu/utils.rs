@@ -47,8 +47,8 @@ impl Togglable for Cell<ToggleState> {
     fn set_hi(&self) { self.set(ToggleState::HiByte); }
 }
 
-/// Swaps bits 0..=4 and 10..=14 of the u16. This effectively converts 0RGB1555
-/// colors to 0BGR1555 colors and vice versa.
-pub(super) fn xbgr1555_xrgb1555_conv(col: u16) -> u16 {
+/// Swaps bits 0..=4 and 10..=14 of the u16. This effectively converts 0RGB0555
+/// colors to 0BGR0555 colors and vice versa.
+pub(super) fn xbgr0555_xrgb0555_conv(col: u16) -> u16 {
     ((col & 0x1F) << 10) | (col & 0x03E0) | ((col & 0x7C00) >> 10)
 }

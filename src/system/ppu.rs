@@ -1,15 +1,14 @@
 mod utils;
 
-use std::cell::RefCell;
-use std::{cell::Cell, rc::Rc};
+use utils::{xbgr0555_xrgb0555_conv, SetCellBytes, Togglable, ToggleState};
+
+use crate::utils::GetBits;
+use crate::log::SnemLogger;
 
 use libretro_rs::retro::pixel::format::ORGB1555;
 
-use crate::utils::GetBits;
-
-use crate::system::ppu::utils::{xbgr1555_xrgb1555_conv, SetCellBytes, Togglable, ToggleState};
-
-use crate::log::SnemLogger;
+use std::cell::RefCell;
+use std::{cell::Cell, rc::Rc};
 
 const VBLANK_START_SCANLINE: u16 = 225;
 const VBLANK_END_SCANLINE_NTSC: u16 = 261;
@@ -1286,9 +1285,9 @@ impl PpuData {
                     let addr = self.cgram_addr.get();
                     let new_col = ((data as u16) << 8) | self.cgram_latch.get() as u16;
 
-                    let xrgb1555_col = xbgr1555_xrgb1555_conv(new_col);
+                    let xrgb0555_col = xbgr0555_xrgb0555_conv(new_col);
 
-                    self.cgram[addr as usize].set(xrgb1555_col);
+                    self.cgram[addr as usize].set(xrgb0555_col);
 
                     self.cgram_addr.set(addr + 1);
 
@@ -1603,8 +1602,9 @@ impl PpuData {
             }
 
             0x3B => {
-                let xrgb1555_col = self.cgram[self.cgram_addr.get() as usize].get();
-                let data = xbgr1555_xrgb1555_conv(xrgb1555_col);
+                let xrgb0555_col = self.cgram[self.cgram_addr.get() as usize].get();
+                
+                let data = xbgr0555_xrgb0555_conv(xrgb0555_col);
 
                 if self.cgram_toggle.toggle() {
                     data as u8

@@ -1,5 +1,5 @@
-pub mod cartridge;
+pub(crate) mod cartridge;
 
-pub mod ppu;
-pub mod scpu;
-pub mod ssmp;
+pub(crate) mod ppu;
+pub(crate) mod scpu;
+pub(crate) mod ssmp;

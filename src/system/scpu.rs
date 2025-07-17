@@ -1,9 +1,8 @@
 mod dma;
+mod utils;
 
 use dma::{DmaChannel, DmaStatus};
-
-use std::cell::RefCell;
-use std::rc::Rc;
+use utils::{CpuAddress, is_mmio_addr};
 
 use crate::log::SnemLogger;
 use crate::system::cartridge::Cartridge;
@@ -11,6 +10,9 @@ use crate::system::ppu::PpuData;
 use crate::system::ssmp::ApuIORegs;
 use crate::utils::util_macros::bool2byte;
 use crate::utils::{dec_low_byte, inc_low_byte, GetBits};
+
+use std::cell::RefCell;
+use std::rc::Rc;
 
 const WRAM_SIZE: usize = 128 * 1024; // 128 KiB
 
@@ -65,48 +67,6 @@ pub enum CpuInterrupt {
     NMI,
     Reset,
     Abort,
-}
-
-trait CpuAddress {
-    fn bank(self) -> u8;
-    fn bank_addr(self) -> u16;
-    fn page(self) -> u8;
-    fn page_addr(self) -> u8;
-    fn with_bank(self, bank: u8) -> Self;
-    fn with_bank_addr(self, bank_addr: u16) -> Self;
-    fn with_page(self, page: u8) -> Self;
-    fn with_page_addr(self, page_addr: u8) -> Self;
-    fn from_parts(bank: u8, page: u8, page_addr: u8) -> Self;
-}
-
-impl CpuAddress for u32 {
-    fn bank(self) -> u8 {
-        (self >> 16) as u8
-    }
-    fn bank_addr(self) -> u16 {
-        self as u16
-    }
-    fn page(self) -> u8 {
-        (self >> 8) as u8
-    }
-    fn page_addr(self) -> u8 {
-        self as u8
-    }
-    fn with_bank(self, bank: u8) -> Self {
-        ((bank as u32) << 16) | (self & 0x00FFFF)
-    }
-    fn with_bank_addr(self, bank_addr: u16) -> Self {
-        (self & 0xFF0000) | (bank_addr as u32)
-    }
-    fn with_page(self, page: u8) -> Self {
-        ((page as u32) << 8) | (self & 0xFF00FF)
-    }
-    fn with_page_addr(self, page_addr: u8) -> Self {
-        (self & 0xFFFF00) | (page_addr as u32)
-    }
-    fn from_parts(bank: u8, page: u8, page_addr: u8) -> Self {
-        ((bank as u32) << 16) | ((page as u32) << 8) | (page_addr as u32)
-    }
 }
 
 pub struct Cpu65c816 {
@@ -920,16 +880,8 @@ impl Cpu65c816 {
         }
 
         self.pc = self.read16(vector_lo, vector_hi);
-
-        // temporary debug tool!
-        // println!("Interrupt");
         self.add_clocks(Cpu65c816::ONE_CYCLE);
     }
-}
-
-// Helper functions
-fn is_mmio_addr(address: u32) -> bool {
-    address.bank() & 0x7F < 0x40 && (0x2000 <= address.bank_addr() && address.bank_addr() < 0x6000)
 }
 
 // Addressing Modes
@@ -2621,18 +2573,13 @@ impl Cpu65c816 {
         dma_channel.byte_count -= 1;
 
         if dma_channel.byte_count == 0 {
-            println!(
-                "Finished DMA of {} bytes thru channel {}",
-                dma_channel.bytes_written, self.active_channel_idx
-            );
-
             dma_channel.active = false;
             dma_channel.bytes_written = 0;
 
             self.dma_status = DmaStatus::Off;
 
             // Go to next active DMA channel
-            for i in self.active_channel_idx + 1..8 {
+            for i in self.active_channel_idx+1..8 {
                 if self.dma_channels[i].active {
                     self.active_channel_idx = i;
                     self.dma_status = DmaStatus::DMA;

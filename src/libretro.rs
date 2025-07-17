@@ -93,7 +93,9 @@ impl SnemulatorCore {
         inputs_polled
     }
 
-    /// Clocks the PPU or the CPU, depending on which one is supposed to be clocked next.
+    /// Clocks the PPU or the CPU a single time, depending on which one is
+    /// supposed to be clocked next. Also clocks the APU as many times as 
+    /// necessary for it to catch up.
     fn cycle(&mut self) {
         let ppu_clocks = self.snem_ppu.sys_clocks_left();
         let cpu_clocks = self.snem_cpu.sys_clocks_left();
@@ -109,6 +111,8 @@ impl SnemulatorCore {
         }
     }
 
+    /// Clocks all components of the SNES until the PPU reports that the frame 
+    /// is finished.
     fn cycle_frame(&mut self) {
         // if self.frame_count == 30 {
         //     self.snem_cpu.trigger_interrupt(crate::system::scpu::CpuInterrupt::NMI);
@@ -232,11 +236,8 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         ))
     }
 
-    fn run(
-        &mut self,
-        env: &mut impl retro::env::Run,
-        callbacks: &mut impl Callbacks,
-        ) -> InputsPolled {
+    fn run(&mut self, env: &mut impl retro::env::Run,
+        callbacks: &mut impl Callbacks) -> InputsPolled {
 
         let inputs_polled = self.update_input(callbacks);
 
@@ -245,7 +246,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         self.render_audio(callbacks);
         self.render_video(callbacks);
 
-        // println!("FPS: {}", 1.0 / self.last_frame.elapsed().as_secs_f32());
+        println!("FPS: {}", 1.0 / self.last_frame.elapsed().as_secs_f32());
 
         self.last_frame = time::Instant::now();
         self.frame_count += 1;
