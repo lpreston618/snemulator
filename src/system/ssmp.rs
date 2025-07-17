@@ -216,14 +216,17 @@ impl Spc700 {
     fn clock_slow_timers(&mut self) {
         if self.timer0_en {
             self.timer0_internal_counter += 1;
+
             if self.timer0_internal_counter == self.timer0_target {
                 self.timer0_counter += 1;
                 self.timer0_counter &= 0x0F;
                 self.timer0_internal_counter = 0;
             }
         }
+
         if self.timer1_en {
             self.timer1_internal_counter += 1;
+            
             if self.timer1_internal_counter == self.timer1_target {
                 self.timer1_counter += 1;
                 self.timer1_counter &= 0x0F;
@@ -235,6 +238,7 @@ impl Spc700 {
     fn clock_fast_timer(&mut self) {
         if self.timer2_en {
             self.timer2_internal_counter += 1;
+            
             if self.timer2_internal_counter == self.timer2_target {
                 self.timer2_counter += 1;
                 self.timer2_counter &= 0x0F;
