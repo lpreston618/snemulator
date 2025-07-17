@@ -113,12 +113,6 @@ impl SnemulatorCore {
         //     self.snem_cpu.trigger_interrupt(crate::system::scpu::CpuInterrupt::NMI);
         // }
 
-        for _ in 0..100000 {
-            self.cycle();
-        }
-
-        std::process::exit(0);
-
         while !self.snem_ppu.frame_finished {
             self.cycle();
         }
