@@ -2500,18 +2500,19 @@ impl Cpu65c816 {
     pub fn clock(&mut self) {
         self.sys_clocks_until_clock = 0;
 
-        if self.ppu_data.cpu_vblank_nmi() {
-            if !self.vblank_nmi_ignore {
-                self.trigger_interrupt(CpuInterrupt::NMI);
-                self.ppu_data.clear_cpu_vblank_nmi(); // ?
+        if !self.vblank_nmi_ignore && self.ppu_data.cpu_vblank_nmi.get() {
+            self.trigger_interrupt(CpuInterrupt::NMI);
+            self.ppu_data.cpu_vblank_nmi.set(false);
+        } else if self.ppu_data.hv_timer_irq.get() {
+            self.trigger_interrupt(CpuInterrupt::IRQ);
+            self.ppu_data.hv_timer_irq.set(false);
+        } else {
+            match self.dma_status {
+                DmaStatus::Off => self.exec_instr(),
+                DmaStatus::DMA => self.do_dma(),
+                DmaStatus::HDMA => self.do_hdma(),
+                DmaStatus::LayeredHDMA => self.do_hdma(),
             }
-        }
-
-        match self.dma_status {
-            DmaStatus::Off => self.exec_instr(),
-            DmaStatus::DMA => self.do_dma(),
-            DmaStatus::HDMA => self.do_hdma(),
-            DmaStatus::LayeredHDMA => self.do_hdma(),
         }
     }
 
