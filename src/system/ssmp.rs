@@ -1,4 +1,4 @@
-use std::{cell::Cell, os::windows::process, rc::Rc};
+use std::{cell::Cell, rc::Rc};
 
 use crate::utils::GetBits;
 
@@ -610,7 +610,7 @@ impl Spc700 {
             }
             0x2A => {
                 let (addr, bit) = self.absolute_bit();
-                self.or1(addr, bit);
+                self.or1_inv(addr, bit);
                 cycles = 5;
             }
             0x2B => {
@@ -1764,13 +1764,6 @@ impl Spc700 {
         ((self.pc as i32) + ((offset as i8) as i32)) as u16
     }
 
-    fn immediate_relative(&mut self) -> (u16, u16) {
-        let data_addr = self.immediate();
-        let branch_addr = self.relative();
-
-        (data_addr, branch_addr)
-    }
-
     fn immediate(&mut self) -> u16 {
         let addr = self.pc;
         self.pc += 1;
@@ -2202,7 +2195,7 @@ impl Spc700 {
         self.write(addr1, result);
     }
 
-    fn eor1(&mut self, address: u16, bit: u8) {;
+    fn eor1(&mut self, address: u16, bit: u8) {
         let data = self.read(address);
         let result = self.is_flag_set(Flag::FlagC) ^ (data.bit_en(bit));
 
@@ -2343,14 +2336,14 @@ impl Spc700 {
 
     fn or1(&mut self, address: u16, bit: u8) {
         let data = self.read(address);
-        let result = self.is_flag_set(Flag::FlagC) || !(data.bit_en(bit));
+        let result = self.is_flag_set(Flag::FlagC) || data.bit_en(bit);
 
         self.set_flag_to_bool(Flag::FlagC, result);
     }
 
     fn or1_inv(&mut self, address: u16, bit: u8) {
         let data = self.read(address);
-        let result = self.is_flag_set(Flag::FlagC) || (data.bit_en(bit));
+        let result = self.is_flag_set(Flag::FlagC) || !data.bit_en(bit);
 
         self.set_flag_to_bool(Flag::FlagC, result);
     }

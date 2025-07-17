@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub(super) trait CpuAddress {
     fn bank(self) -> u8;
     fn bank_addr(self) -> u16;

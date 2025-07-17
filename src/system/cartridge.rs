@@ -93,9 +93,9 @@ impl Cartridge {
     /// Returns the address of the header in cartridge ROM
     fn find_header(cart_rom: &Vec<u8>) -> Result<usize, String> {
         // Positions of the start of the header for different memory mappings
-        const LoROM_POS: usize = 0x007FC0;
-        const HiROM_POS: usize = 0x00FFC0;
-        const ExHiROM_POS: usize = 0x40FFC0;
+        const LOROM_POS: usize = 0x007FC0;
+        const HIROM_POS: usize = 0x00FFC0;
+        const EXHIROM_POS: usize = 0x40FFC0;
 
         const CHECKSUM_OFFSET: usize = 0x1E;
         const COMPLEMENT_OFFSET: usize = 0x1C;
@@ -110,36 +110,36 @@ impl Cartridge {
         let read_rom = |addr: usize| { cart_rom[addr & rom_mirror] };
 
         let maybe_checksum = u16::from_le_bytes([
-            read_rom(LoROM_POS + CHECKSUM_OFFSET + 0),
-            read_rom(LoROM_POS + CHECKSUM_OFFSET + 1),
+            read_rom(LOROM_POS + CHECKSUM_OFFSET + 0),
+            read_rom(LOROM_POS + CHECKSUM_OFFSET + 1),
         ]);
         let maybe_complement = u16::from_le_bytes([
-            read_rom(LoROM_POS + COMPLEMENT_OFFSET + 0),
-            read_rom(LoROM_POS + COMPLEMENT_OFFSET + 1),
+            read_rom(LOROM_POS + COMPLEMENT_OFFSET + 0),
+            read_rom(LOROM_POS + COMPLEMENT_OFFSET + 1),
         ]);
         if (checksum == maybe_checksum) && (complement == maybe_complement) {
             rom_mapping_mode = Some(MappingMode::LoROM);
         }
 
         let maybe_checksum = u16::from_le_bytes([
-            read_rom(HiROM_POS + CHECKSUM_OFFSET + 0),
-            read_rom(HiROM_POS + CHECKSUM_OFFSET + 1),
+            read_rom(HIROM_POS + CHECKSUM_OFFSET + 0),
+            read_rom(HIROM_POS + CHECKSUM_OFFSET + 1),
         ]);
         let maybe_complement = u16::from_le_bytes([
-            read_rom(HiROM_POS + COMPLEMENT_OFFSET + 0),
-            read_rom(HiROM_POS + COMPLEMENT_OFFSET + 1),
+            read_rom(HIROM_POS + COMPLEMENT_OFFSET + 0),
+            read_rom(HIROM_POS + COMPLEMENT_OFFSET + 1),
         ]);
         if (checksum == maybe_checksum) && (complement == maybe_complement) && rom_mapping_mode.is_none() {
             rom_mapping_mode = Some(MappingMode::HiROM);
         }
 
         let maybe_checksum = u16::from_le_bytes([
-            read_rom(ExHiROM_POS + CHECKSUM_OFFSET + 0),
-            read_rom(ExHiROM_POS + CHECKSUM_OFFSET + 1),
+            read_rom(EXHIROM_POS + CHECKSUM_OFFSET + 0),
+            read_rom(EXHIROM_POS + CHECKSUM_OFFSET + 1),
         ]);
         let maybe_complement = u16::from_le_bytes([
-            read_rom(ExHiROM_POS + COMPLEMENT_OFFSET + 0),
-            read_rom(ExHiROM_POS + COMPLEMENT_OFFSET + 1),
+            read_rom(EXHIROM_POS + COMPLEMENT_OFFSET + 0),
+            read_rom(EXHIROM_POS + COMPLEMENT_OFFSET + 1),
         ]);
         if (checksum == maybe_checksum) && (complement == maybe_complement) && rom_mapping_mode.is_none() {
             rom_mapping_mode = Some(MappingMode::ExHiROM);
@@ -152,9 +152,9 @@ impl Cartridge {
         let rom_mapping_mode = rom_mapping_mode.unwrap();
 
         let header_pos = match rom_mapping_mode {
-            MappingMode::LoROM => LoROM_POS,
-            MappingMode::HiROM => HiROM_POS,
-            MappingMode::ExHiROM => ExHiROM_POS,
+            MappingMode::LoROM => LOROM_POS,
+            MappingMode::HiROM => HIROM_POS,
+            MappingMode::ExHiROM => EXHIROM_POS,
         };
         let expected_self_ident = match rom_mapping_mode {
             MappingMode::LoROM => 0,

@@ -4,12 +4,12 @@ mod utils;
 use dma::{DmaChannel, DmaStatus};
 use utils::{CpuAddress, is_mmio_addr};
 
-use crate::log::SnemLogger;
+use crate::log::{LogLevel, SnemLogger};
 use crate::system::cartridge::{MappingMode, Cartridge};
-use crate::system::ppu::PpuData;
+use crate::system::ppu::{self, PpuData};
 use crate::system::ssmp::ApuIORegs;
 use crate::utils::util_macros::bool2byte;
-use crate::utils::{dec_low_byte, inc_low_byte, GetBits};
+use crate::utils::{dec_low_byte, inc_low_byte, GetBits, GetBytes, SetBytes};
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -26,20 +26,6 @@ enum CpuMode {
 enum RegSize {
     Byte,
     TwoBytes,
-}
-
-#[derive(Debug)]
-enum MemSel {
-    FastROM,
-    SlowROM,
-}
-
-#[derive(Debug)]
-enum HVTimerIRQ {
-    None,   // Ignore H/V Timers
-    HTimer, // IRQ when H counter == HTIME
-    VTimer, // IRQ when V counter == VTIME and H counter == 0
-    Both,   // IRQ when V counter == VTIME and H counter == HTIME
 }
 
 pub enum Flag {
@@ -75,7 +61,7 @@ pub struct Cpu65c816 {
 
     mode: CpuMode,
     mapping_mode: MappingMode,
-    mem_sel: MemSel,
+    fast_rom_en: bool,
     branch_taken: bool,
     page_crossed: bool,
     stopped: bool,
@@ -94,7 +80,6 @@ pub struct Cpu65c816 {
     ppu_data: Rc<PpuData>,
     apuio_regs: Rc<ApuIORegs>,
 
-    hv_timer_irq: HVTimerIRQ,
     vblank_nmi_ignore: bool,
 
     logger: Rc<RefCell<SnemLogger>>,
@@ -107,8 +92,8 @@ impl Cpu65c816 {
         ppu_data: Rc<PpuData>,
         apuio_regs: Rc<ApuIORegs>,
         logger: Rc<RefCell<SnemLogger>>,
-    ) -> Self {
-        Self {
+    ) -> Cpu65c816 {
+        Cpu65c816 {
             acc: 0,
             x: 0,
             y: 0,
@@ -121,7 +106,7 @@ impl Cpu65c816 {
 
             mode: CpuMode::Emulation,
             mapping_mode: MappingMode::LoROM,
-            mem_sel: MemSel::SlowROM,
+            fast_rom_en: false,
             branch_taken: false,
             page_crossed: false,
             stopped: false,
@@ -140,7 +125,6 @@ impl Cpu65c816 {
             ppu_data,
             apuio_regs,
 
-            hv_timer_irq: HVTimerIRQ::None,
             vblank_nmi_ignore: true,
 
             logger,
@@ -176,7 +160,7 @@ impl Cpu65c816 {
     const ONE_CYCLE_SLOW: usize = 8;
     const TWO_CYCLE: usize = 12;
     const THREE_CYCLE: usize = 18;
-    const FOUR_CYCLE: usize = 24;
+    // const FOUR_CYCLE: usize = 24;
 
     fn add_clocks(&mut self, clocks: usize) {
         self.sys_clocks_until_clock += clocks;
@@ -319,17 +303,19 @@ impl Cpu65c816 {
             0x2143 => { self.apuio_regs.cpuio3.set(data) }
             0x4200 => {
                 self.vblank_nmi_ignore = (data & 0x80) == 0;
-                self.hv_timer_irq = match (data >> 4) & 3 {
-                    0 => HVTimerIRQ::None,
-                    1 => HVTimerIRQ::HTimer,
-                    2 => HVTimerIRQ::VTimer,
-                    3 => HVTimerIRQ::Both,
-                    _ => unreachable!(),
-                };
+                self.ppu_data.hv_timer_irq_mode.set(
+                    match (data >> 4) & 3 {
+                        0 => ppu::HVTimerIRQ::None,
+                        1 => ppu::HVTimerIRQ::HTimer,
+                        2 => ppu::HVTimerIRQ::VTimer,
+                        3 => ppu::HVTimerIRQ::Both,
+                        _ => unreachable!(),
+                    }
+                );
 
                 println!(
                     "Vblank NMI ignore set to {} and H/V Timer IRQ to {:?}",
-                    self.vblank_nmi_ignore, self.hv_timer_irq
+                    self.vblank_nmi_ignore, self.ppu_data.hv_timer_irq_mode
                 );
             }
 
@@ -497,9 +483,10 @@ impl Cpu65c816 {
         let data = self.rom[mapped_addr];
 
         let clocks = if address.bank() >= 0x80 {
-            match self.mem_sel {
-                MemSel::FastROM => Cpu65c816::ONE_CYCLE,
-                MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
+            if self.fast_rom_en {
+                Cpu65c816::ONE_CYCLE
+            } else {
+                Cpu65c816::ONE_CYCLE_SLOW
             }
         } else {
             Cpu65c816::ONE_CYCLE_SLOW
@@ -516,9 +503,10 @@ impl Cpu65c816 {
         }
 
         let clocks = if address.bank() >= 0x80 {
-            match self.mem_sel {
-                MemSel::FastROM => Cpu65c816::ONE_CYCLE,
-                MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
+            if self.fast_rom_en {
+                Cpu65c816::ONE_CYCLE
+            } else {
+                Cpu65c816::ONE_CYCLE_SLOW
             }
         } else {
             Cpu65c816::ONE_CYCLE_SLOW
@@ -531,7 +519,8 @@ impl Cpu65c816 {
         if (address.bank() & 0x7F) < 0x80 && 0x6000 <= address.bank_addr()
             && address.bank_addr() <= 0x7FFF && self.has_sram {
 
-            let sram_addr = (address - 0x6000) & 0xFFFF;
+            let _sram_addr = (address - 0x6000) & 0xFFFF;
+
             todo!("Read SRAM");
         }
 
@@ -543,9 +532,10 @@ impl Cpu65c816 {
         let data = self.rom[mapped_addr];
 
         let clocks = if address.bank() >= 0x80 {
-            match self.mem_sel {
-                MemSel::FastROM => Cpu65c816::ONE_CYCLE,
-                MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
+            if self.fast_rom_en {
+                Cpu65c816::ONE_CYCLE
+            } else {
+                Cpu65c816::ONE_CYCLE_SLOW
             }
         } else {
             Cpu65c816::ONE_CYCLE_SLOW
@@ -558,14 +548,17 @@ impl Cpu65c816 {
         if (address.bank() & 0x7F) < 0x80 && 0x6000 <= address.bank_addr()
             && address.bank_addr() <= 0x7FFF && self.has_sram {
 
-            let sram_addr = (address - 0x6000) & 0xFFFF;
+            let _sram_addr = (address - 0x6000) & 0xFFFF;
+            let _data = data;
+
             todo!("Read SRAM");
         }
 
         let clocks = if address.bank() >= 0x80 {
-            match self.mem_sel {
-                MemSel::FastROM => Cpu65c816::ONE_CYCLE,
-                MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
+            if self.fast_rom_en {
+                Cpu65c816::ONE_CYCLE
+            } else {
+                Cpu65c816::ONE_CYCLE_SLOW
             }
         } else {
             Cpu65c816::ONE_CYCLE_SLOW
@@ -575,131 +568,140 @@ impl Cpu65c816 {
     }
 
     fn read_exhirom(&mut self, address: u32) -> (u8, usize) {
-        let data: u8;
-        let clocks: usize;
+        // let data: u8;
+        // let clocks: usize;
 
-        match (address.bank(), address.bank_addr()) {
-            // Lower half of ROM (stored in the upper part of memory, hence ExHiROM).
-            // Fast ROM region.
-            (bank @ 0xC0..=0xFF, bank_addr) => {
-                data = self.rom[(address as usize) & self.rom_mirror];
-                clocks = match self.mem_sel {
-                    MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
-                    MemSel::FastROM => Cpu65c816::ONE_CYCLE,
-                };
-            }
-            // Upper half of ROM (stored lower in memory: bank 0x40 directly follows bank 0xFF).
-            // Slow ROM region.
-            (bank @ 0x40..=0x7D, bank_addr) => {
-                let addr = (address as usize + 0x40000) & self.rom_mirror;
-                data = self.rom[addr];
-                clocks = Cpu65c816::ONE_CYCLE_SLOW;
-            }
-            // Very last bit of ROM - and of course, it's the lowest in memory.
-            // Only fills the upper half of banks 3E and 3F.
-            (bank @ 0x3E..=0x3F, bank_addr @ 0x8000..=0xFFFF) => {
-                let addr = (address as usize + 0x80000) & self.rom_mirror;
-                data = self.rom[addr];
-                clocks = Cpu65c816::ONE_CYCLE_SLOW;
-            }
-            // Mirror of ROM banks 0xC0-0xFF.
-            // Fast ROM region.
-            (bank @ 0x80..=0xBF, bank_addr @ 0x8000..=0xFFFF) => {
-                let addr = (bank as usize + 0x40) << 8 | bank_addr as usize;
-                data = self.rom[addr & self.rom_mirror];
+        // match (address.bank(), address.bank_addr()) {
+        //     // Lower half of ROM (stored in the upper part of memory, hence ExHiROM).
+        //     // Fast ROM region.
+        //     (bank @ 0xC0..=0xFF, bank_addr) => {
+        //         data = self.rom[(address as usize) & self.rom_mirror];
+        //         clocks = if self.fast_rom_en {
+        //             Cpu65c816::ONE_CYCLE_SLOW
+        //         } else {
+        //             Cpu65c816::ONE_CYCLE
+        //         };
+        //     }
+        //     // Upper half of ROM (stored lower in memory: bank 0x40 directly follows bank 0xFF).
+        //     // Slow ROM region.
+        //     (bank @ 0x40..=0x7D, bank_addr) => {
+        //         let addr = (address as usize + 0x40000) & self.rom_mirror;
+        //         data = self.rom[addr];
+        //         clocks = Cpu65c816::ONE_CYCLE_SLOW;
+        //     }
+        //     // Very last bit of ROM - and of course, it's the lowest in memory.
+        //     // Only fills the upper half of banks 3E and 3F.
+        //     (bank @ 0x3E..=0x3F, bank_addr @ 0x8000..=0xFFFF) => {
+        //         let addr = (address as usize + 0x80000) & self.rom_mirror;
+        //         data = self.rom[addr];
+        //         clocks = Cpu65c816::ONE_CYCLE_SLOW;
+        //     }
+        //     // Mirror of ROM banks 0xC0-0xFF.
+        //     // Fast ROM region.
+        //     (bank @ 0x80..=0xBF, bank_addr @ 0x8000..=0xFFFF) => {
+        //         let addr = (bank as usize + 0x40) << 8 | bank_addr as usize;
+        //         data = self.rom[addr & self.rom_mirror];
 
-                clocks = match self.mem_sel {
-                    MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
-                    MemSel::FastROM => Cpu65c816::ONE_CYCLE,
-                };
-            }
-            // Mirror of ROM banks 0x40-0x7D
-            (bank @ 0x00..=0x3D, bank_addr @ 0x8000..=0xFFFF) => {
-                let addr = (bank as usize + 0x40) << 8 | bank_addr as usize;
-                data = self.rom[addr & self.rom_mirror];
+        //         clocks = if self.fast_rom_en {
+        //             Cpu65c816::ONE_CYCLE_SLOW
+        //         } else {
+        //             Cpu65c816::ONE_CYCLE
+        //         };
+        //     }
+        //     // Mirror of ROM banks 0x40-0x7D
+        //     (bank @ 0x00..=0x3D, bank_addr @ 0x8000..=0xFFFF) => {
+        //         let addr = (bank as usize + 0x40) << 8 | bank_addr as usize;
+        //         data = self.rom[addr & self.rom_mirror];
 
-                clocks = match self.mem_sel {
-                    MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
-                    MemSel::FastROM => Cpu65c816::ONE_CYCLE,
-                };
-            }
-            // LoRAM mirrors
-            (bank @ 0x00..=0x3F, bank_addr @ 0x0000..=0x1FFF)
-            | (bank @ 0x80..=0xBF, bank_addr @ 0x0000..=0x1FFF) => {
-                data = self.wram[bank_addr as usize];
-                clocks = Cpu65c816::ONE_CYCLE_SLOW;
-            }
-            // Save RAM
-            (bank @ 0x80..=0xBF, bank_addr @ 0x6000..=0x7FFF) => {
-                data = 0;
-                clocks = 0;
-                // TODO: implement SRAM
-            }
-            _ => {
-                data = 0;
-                clocks = 0;
-            }
-        }
+        //         clocks = if self.fast_rom_en {
+        //             Cpu65c816::ONE_CYCLE_SLOW
+        //         } else {
+        //             Cpu65c816::ONE_CYCLE
+        //         };
+        //     }
+        //     // LoRAM mirrors
+        //     (bank @ 0x00..=0x3F, bank_addr @ 0x0000..=0x1FFF)
+        //     | (bank @ 0x80..=0xBF, bank_addr @ 0x0000..=0x1FFF) => {
+        //         data = self.wram[bank_addr as usize];
+        //         clocks = Cpu65c816::ONE_CYCLE_SLOW;
+        //     }
+        //     // Save RAM
+        //     (bank @ 0x80..=0xBF, bank_addr @ 0x6000..=0x7FFF) => {
+        //         data = 0;
+        //         clocks = 0;
+        //         // TODO: implement SRAM
+        //     }
+        //     _ => {
+        //         data = 0;
+        //         clocks = 0;
+        //     }
+        // }
 
-        (data, clocks)
+        // (data, clocks)
+        (0, Cpu65c816::ONE_CYCLE_SLOW)
     }
 
-    fn write_exhirom(&mut self, address: u32, data: u8) -> usize {
-        let clocks: usize;
+    fn write_exhirom(&mut self, _address: u32, _data: u8) -> usize {
+        // let clocks: usize;
 
-        match (address.bank(), address.bank_addr()) {
-            // Lower half of ROM (stored in the upper part of memory, hence ExHiROM).
-            // Fast ROM region.
-            (bank @ 0xC0..=0xFF, bank_addr) => {
-                clocks = match self.mem_sel {
-                    MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
-                    MemSel::FastROM => Cpu65c816::ONE_CYCLE,
-                };
-            }
-            // Upper half of ROM (stored lower in memory: bank 0x40 directly follows bank 0xFF).
-            // Slow ROM region.
-            (bank @ 0x40..=0x7D, bank_addr) => {
-                clocks = Cpu65c816::ONE_CYCLE_SLOW;
-            }
-            // Very last bit of ROM - and of course, it's the lowest in memory.
-            // Only fills the upper half of banks 3E and 3F.
-            (bank @ 0x3E..=0x3F, bank_addr @ 0x8000..=0xFFFF) => {
-                clocks = Cpu65c816::ONE_CYCLE_SLOW;
-            }
-            // Mirror of ROM banks 0xC0-0xFF.
-            // Fast ROM region.
-            (bank @ 0x80..=0xBF, bank_addr @ 0x8000..=0xFFFF) => {
-                clocks = match self.mem_sel {
-                    MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
-                    MemSel::FastROM => Cpu65c816::ONE_CYCLE,
-                };
-            }
-            // Mirror of ROM banks 0x40-0x7D
-            (bank @ 0x00..=0x3D, bank_addr @ 0x8000..=0xFFFF) => {
-                clocks = match self.mem_sel {
-                    MemSel::SlowROM => Cpu65c816::ONE_CYCLE_SLOW,
-                    MemSel::FastROM => Cpu65c816::ONE_CYCLE,
-                };
-            }
-            // LoRAM mirrors
-            (bank @ 0x00..=0x3F, bank_addr @ 0x0000..=0x1FFF)
-            | (bank @ 0x80..=0xBF, bank_addr @ 0x0000..=0x1FFF) => {
-                self.wram[bank_addr as usize] = data;
-                clocks = Cpu65c816::ONE_CYCLE_SLOW;
-            }
-            // Save RAM
-            (bank @ 0x80..=0xBF, bank_addr @ 0x6000..=0x7FFF) => {
-                if self.has_sram {
-                    todo!("implement SRAM");
-                }
-                clocks = 0;
-            }
-            _ => {
-                clocks = 0;
-            }
-        }
+        // match (address.bank(), address.bank_addr()) {
+        //     // Lower half of ROM (stored in the upper part of memory, hence ExHiROM).
+        //     // Fast ROM region.
+        //     (bank @ 0xC0..=0xFF, bank_addr) => {
+        //         clocks = if self.fast_rom_en {
+        //             Cpu65c816::ONE_CYCLE_SLOW
+        //         } else {
+        //             Cpu65c816::ONE_CYCLE
+        //         };
+        //     }
+        //     // Upper half of ROM (stored lower in memory: bank 0x40 directly follows bank 0xFF).
+        //     // Slow ROM region.
+        //     (bank @ 0x40..=0x7D, bank_addr) => {
+        //         clocks = Cpu65c816::ONE_CYCLE_SLOW;
+        //     }
+        //     // Very last bit of ROM - and of course, it's the lowest in memory.
+        //     // Only fills the upper half of banks 3E and 3F.
+        //     (bank @ 0x3E..=0x3F, bank_addr @ 0x8000..=0xFFFF) => {
+        //         clocks = Cpu65c816::ONE_CYCLE_SLOW;
+        //     }
+        //     // Mirror of ROM banks 0xC0-0xFF.
+        //     // Fast ROM region.
+        //     (bank @ 0x80..=0xBF, bank_addr @ 0x8000..=0xFFFF) => {
+        //         clocks = if self.fast_rom_en {
+        //             Cpu65c816::ONE_CYCLE_SLOW
+        //         } else {
+        //             Cpu65c816::ONE_CYCLE
+        //         };
+        //     }
+        //     // Mirror of ROM banks 0x40-0x7D
+        //     (bank @ 0x00..=0x3D, bank_addr @ 0x8000..=0xFFFF) => {
+        //         clocks = if self.fast_rom_en {
+        //             Cpu65c816::ONE_CYCLE_SLOW
+        //         } else {
+        //             Cpu65c816::ONE_CYCLE
+        //         };
+        //     }
+        //     // LoRAM mirrors
+        //     (bank @ 0x00..=0x3F, bank_addr @ 0x0000..=0x1FFF)
+        //     | (bank @ 0x80..=0xBF, bank_addr @ 0x0000..=0x1FFF) => {
+        //         self.wram[bank_addr as usize] = data;
+        //         clocks = Cpu65c816::ONE_CYCLE_SLOW;
+        //     }
+        //     // Save RAM
+        //     (bank @ 0x80..=0xBF, bank_addr @ 0x6000..=0x7FFF) => {
+        //         if self.has_sram {
+        //             todo!("implement SRAM");
+        //         }
+        //         clocks = 0;
+        //     }
+        //     _ => {
+        //         clocks = 0;
+        //     }
+        // }
 
-        clocks
+        // clocks
+
+        Cpu65c816::ONE_CYCLE_SLOW
     }
 
     fn read_prg(&mut self) -> u8 {
@@ -760,45 +762,6 @@ impl Cpu65c816 {
         } else {
             self.clear_flag(flag);
         }
-    }
-
-    fn get_acc_hi(&self) -> u8 {
-        (self.acc >> 8) as u8
-    }
-    fn get_acc_lo(&self) -> u8 {
-        self.acc as u8
-    }
-    fn set_acc_hi(&mut self, val: u8) {
-        self.acc = ((val as u16) << 8) | (self.acc & 0x00FF);
-    }
-    fn set_acc_lo(&mut self, val: u8) {
-        self.acc = (self.acc & 0xFF00) | val as u16;
-    }
-
-    fn get_x_hi(&self) -> u8 {
-        (self.x >> 8) as u8
-    }
-    fn get_x_lo(&self) -> u8 {
-        self.x as u8
-    }
-    fn set_x_hi(&mut self, val: u8) {
-        self.x = ((val as u16) << 8) | (self.x & 0x00FF);
-    }
-    fn set_x_lo(&mut self, val: u8) {
-        self.x = (self.x & 0xFF00) | val as u16;
-    }
-
-    fn get_y_hi(&self) -> u8 {
-        (self.y >> 8) as u8
-    }
-    fn get_y_lo(&self) -> u8 {
-        self.y as u8
-    }
-    fn set_y_hi(&mut self, val: u8) {
-        self.y = ((val as u16) << 8) | (self.y & 0x00FF);
-    }
-    fn set_y_lo(&mut self, val: u8) {
-        self.y = (self.y & 0xFF00) | val as u16;
     }
 
     fn acc_size(&self) -> RegSize {
@@ -997,7 +960,7 @@ impl Cpu65c816 {
                 let addr = self.direct8();
 
                 if self.direct_page & 0xFF == 0 {
-                    addr.with_page_addr(addr.page_addr() + self.get_x_lo())
+                    addr.with_page_addr(addr.page_addr() + self.x.get_lo())
                 } else {
                     (addr + self.x as u32).with_bank(0)
                 }
@@ -1017,7 +980,7 @@ impl Cpu65c816 {
                 let addr = self.direct8();
 
                 if self.direct_page & 0xFF == 0 {
-                    addr.with_page_addr(addr.page_addr() + self.get_y_lo())
+                    addr.with_page_addr(addr.page_addr() + self.y.get_lo())
                 } else {
                     (addr + self.y as u32).with_bank(0)
                 }
@@ -1241,7 +1204,7 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
 
-        self.set_acc_lo(result);
+        self.acc.set_lo(result);
     }
 
     fn adc_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
@@ -1298,12 +1261,12 @@ impl Cpu65c816 {
     }
 
     fn and_m8(&mut self, address: u32) {
-        let result = self.get_acc_lo() & self.read(address);
+        let result = self.acc.get_lo() & self.read(address);
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
 
-        self.set_acc_lo(result);
+        self.acc.set_lo(result);
     }
 
     fn and_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
@@ -1316,12 +1279,12 @@ impl Cpu65c816 {
     }
 
     fn asl_acc_m8(&mut self) {
-        self.set_flag_to_bool(Flag::FlagC, self.get_acc_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagC, self.acc.get_lo() & 0x80 != 0);
 
-        self.set_acc_lo(self.get_acc_lo() << 1);
+        self.acc.set_lo(self.acc.get_lo() << 1);
 
-        self.set_flag_to_bool(Flag::FlagN, self.get_acc_lo() & 0x80 != 0);
-        self.set_flag_to_bool(Flag::FlagZ, self.get_acc_lo() == 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
 
     fn asl_acc_m16(&mut self) {
@@ -1380,7 +1343,7 @@ impl Cpu65c816 {
 
     fn bit_m8(&mut self, address: u32) {
         let data = self.read(address);
-        let result = self.get_acc_lo() & data;
+        let result = self.acc.get_lo() & data;
 
         self.set_flag_to_bool(Flag::FlagN, data & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagV, data & 0x40 != 0);
@@ -1396,7 +1359,7 @@ impl Cpu65c816 {
     }
     fn bit_imm_m8(&mut self, address: u32) {
         let data = self.read(address);
-        let result = self.get_acc_lo() & data;
+        let result = self.acc.get_lo() & data;
 
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
@@ -1489,9 +1452,9 @@ impl Cpu65c816 {
 
     fn cmp_m8(&mut self, address: u32) {
         let data = self.read(address);
-        let result = self.get_acc_lo() - data;
+        let result = self.acc.get_lo() - data;
 
-        self.set_flag_to_bool(Flag::FlagC, self.get_acc_lo() >= data);
+        self.set_flag_to_bool(Flag::FlagC, self.acc.get_lo() >= data);
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
@@ -1534,9 +1497,9 @@ impl Cpu65c816 {
 
     fn cpx_x8(&mut self, address: u32) {
         let data = self.read(address);
-        let result = self.get_x_lo() - data;
+        let result = self.x.get_lo() - data;
 
-        self.set_flag_to_bool(Flag::FlagC, self.get_x_lo() >= data);
+        self.set_flag_to_bool(Flag::FlagC, self.x.get_lo() >= data);
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
@@ -1551,9 +1514,9 @@ impl Cpu65c816 {
 
     fn cpy_x8(&mut self, address: u32) {
         let data = self.read(address);
-        let result = self.get_y_lo() - data;
+        let result = self.y.get_lo() - data;
 
-        self.set_flag_to_bool(Flag::FlagC, self.get_y_lo() >= data);
+        self.set_flag_to_bool(Flag::FlagC, self.y.get_lo() >= data);
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
@@ -1622,12 +1585,12 @@ impl Cpu65c816 {
     }
 
     fn eor_m8(&mut self, address: u32) {
-        let result = self.get_acc_lo() ^ self.read(address);
+        let result = self.acc.get_lo() ^ self.read(address);
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
 
-        self.set_acc_lo(result);
+        self.acc.set_lo(result);
     }
     fn eor_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let result = self.acc ^ self.read16(address_lo, address_hi);
@@ -1723,10 +1686,10 @@ impl Cpu65c816 {
 
     fn lda_m8(&mut self, address: u32) {
         let data = self.read(address);
-        self.set_acc_lo(data);
+        self.acc.set_lo(data);
 
         self.set_flag_to_bool(Flag::FlagN, self.acc & 0x80 != 0);
-        self.set_flag_to_bool(Flag::FlagZ, self.get_acc_lo() == 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
     fn lda_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         self.acc = self.read16(address_lo, address_hi);
@@ -1750,7 +1713,7 @@ impl Cpu65c816 {
 
     fn ldy_x8(&mut self, address: u32) {
         let data = self.read(address);
-        self.set_y_lo(data);
+        self.y.set_lo(data);
 
         self.set_flag_to_bool(Flag::FlagN, self.y & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
@@ -1766,9 +1729,9 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagC, self.acc & 1 != 0);
         self.clear_flag(Flag::FlagN); // 0 shifted into high bit, result always positive
 
-        self.set_acc_lo(self.get_acc_lo() >> 1);
+        self.acc.set_lo(self.acc.get_lo() >> 1);
 
-        self.set_flag_to_bool(Flag::FlagZ, self.get_acc_lo() == 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
     fn lsr_acc_m16(&mut self) {
         self.set_flag_to_bool(Flag::FlagC, self.acc & 1 != 0);
@@ -1850,12 +1813,12 @@ impl Cpu65c816 {
     fn nop_all(&mut self) {}
 
     fn ora_m8(&mut self, address: u32) {
-        let result = self.get_acc_lo() | self.read(address);
+        let result = self.acc.get_lo() | self.read(address);
 
         self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
 
-        self.set_acc_lo(result);
+        self.acc.set_lo(result);
     }
     fn ora_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let result = self.acc | self.read16(address_lo, address_hi);
@@ -1896,13 +1859,13 @@ impl Cpu65c816 {
     // }
 
     fn pha_m8(&mut self) {
-        self.push8_n(self.get_acc_lo());
+        self.push8_n(self.acc.get_lo());
     }
     fn pha_m16(&mut self) {
         self.push16_n(self.acc);
     }
     fn pha_e(&mut self) {
-        self.push8_e(self.get_acc_lo());
+        self.push8_e(self.acc.get_lo());
     }
 
     fn phb_n(&mut self) {
@@ -1934,31 +1897,31 @@ impl Cpu65c816 {
     }
 
     fn phx_x8(&mut self) {
-        self.push8_n(self.get_x_lo());
+        self.push8_n(self.x.get_lo());
     }
     fn phx_x16(&mut self) {
         self.push16_n(self.x);
     }
     fn phx_e(&mut self) {
-        self.push8_e(self.get_x_lo());
+        self.push8_e(self.x.get_lo());
     }
 
     fn phy_x8(&mut self) {
-        self.push8_n(self.get_y_lo());
+        self.push8_n(self.y.get_lo());
     }
     fn phy_x16(&mut self) {
         self.push16_n(self.y);
     }
     fn phy_e(&mut self) {
-        self.push8_e(self.get_y_lo());
+        self.push8_e(self.y.get_lo());
     }
 
     fn pla_m8(&mut self) {
         let data = self.pop8_n();
-        self.set_acc_lo(data);
+        self.acc.set_lo(data);
 
-        self.set_flag_to_bool(Flag::FlagN, self.get_acc_lo() & 0x80 != 0);
-        self.set_flag_to_bool(Flag::FlagZ, self.get_acc_lo() == 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
     fn pla_m16(&mut self) {
         self.acc = self.pop16_n();
@@ -1968,7 +1931,7 @@ impl Cpu65c816 {
     }
     fn pla_e(&mut self) {
         let data = self.pop8_e();
-        self.set_acc_lo(data);
+        self.acc.set_lo(data);
 
         self.set_flag_to_bool(Flag::FlagN, self.acc & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
@@ -2012,10 +1975,10 @@ impl Cpu65c816 {
 
     fn plx_x8(&mut self) {
         let data = self.pop8_n();
-        self.set_x_lo(data);
+        self.x.set_lo(data);
 
-        self.set_flag_to_bool(Flag::FlagN, self.get_x_lo() & 0x80 != 0);
-        self.set_flag_to_bool(Flag::FlagZ, self.get_x_lo() == 0);
+        self.set_flag_to_bool(Flag::FlagN, self.x.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.x.get_lo() == 0);
     }
     fn plx_x16(&mut self) {
         self.x = self.pop16_n();
@@ -2025,7 +1988,7 @@ impl Cpu65c816 {
     }
     fn plx_e(&mut self) {
         let data = self.pop8_e();
-        self.set_x_lo(data);
+        self.x.set_lo(data);
 
         self.set_flag_to_bool(Flag::FlagN, self.x & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
@@ -2033,7 +1996,7 @@ impl Cpu65c816 {
 
     fn ply_x8(&mut self) {
         let data = self.pop8_n();
-        self.set_y_lo(data);
+        self.y.set_lo(data);
 
         self.set_flag_to_bool(Flag::FlagN, self.y & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
@@ -2046,7 +2009,7 @@ impl Cpu65c816 {
     }
     fn ply_e(&mut self) {
         let data = self.pop8_e();
-        self.set_y_lo(data);
+        self.y.set_lo(data);
 
         self.set_flag_to_bool(Flag::FlagN, self.y & 0x80 != 0);
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
@@ -2065,11 +2028,11 @@ impl Cpu65c816 {
         let c = self.is_flag_set(Flag::FlagC);
         self.set_flag_to_bool(Flag::FlagC, self.acc & 0x80 != 0);
 
-        self.set_acc_lo(self.get_acc_lo() << 1);
+        self.acc.set_lo(self.acc.get_lo() << 1);
         self.acc |= bool2byte!(c);
 
-        self.set_flag_to_bool(Flag::FlagN, self.get_acc_lo() & 0x80 != 0);
-        self.set_flag_to_bool(Flag::FlagZ, self.get_acc_lo() == 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
     fn rol_acc_m16(&mut self) {
         let c = self.is_flag_set(Flag::FlagC);
@@ -2113,8 +2076,8 @@ impl Cpu65c816 {
         self.acc >>= 1;
         self.acc |= bool2byte!(c) << 7;
 
-        self.set_flag_to_bool(Flag::FlagN, self.get_acc_lo() & 0x80 != 0);
-        self.set_flag_to_bool(Flag::FlagZ, self.get_acc_lo() == 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
     fn ror_acc_m16(&mut self) {
         let c = self.is_flag_set(Flag::FlagC);
@@ -2215,7 +2178,7 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
 
-        self.set_acc_lo(result);
+        self.acc.set_lo(result);
     }
     fn sbc_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let data = self.read16(address_lo, address_hi);
@@ -2285,15 +2248,15 @@ impl Cpu65c816 {
 
         match self.idx_size() {
             RegSize::Byte => {
-                self.set_x_hi(0);
-                self.set_y_hi(0);
+                self.x.set_hi(0);
+                self.y.set_hi(0);
             }
             _ => {}
         }
     }
 
     fn sta_m8(&mut self, address: u32) {
-        self.write(address, self.get_acc_lo());
+        self.write(address, self.acc.get_lo());
     }
     fn sta_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         self.write16(address_lo, address_hi, self.acc)
@@ -2304,14 +2267,14 @@ impl Cpu65c816 {
     }
 
     fn stx_x8(&mut self, address: u32) {
-        self.write(address, self.get_x_lo());
+        self.write(address, self.x.get_lo());
     }
     fn stx_x16(&mut self, (address_lo, address_hi): (u32, u32)) {
         self.write16(address_lo, address_hi, self.x)
     }
 
     fn sty_x8(&mut self, address: u32) {
-        self.write(address, self.get_y_lo());
+        self.write(address, self.y.get_lo());
     }
     fn sty_x16(&mut self, (address_lo, address_hi): (u32, u32)) {
         self.write16(address_lo, address_hi, self.y)
@@ -2325,10 +2288,10 @@ impl Cpu65c816 {
     }
 
     fn tax_x8(&mut self) {
-        self.set_x_lo(self.get_acc_lo());
+        self.x.set_lo(self.acc.get_lo());
 
-        self.set_flag_to_bool(Flag::FlagN, self.get_x_lo() & 0x80 != 0);
-        self.set_flag_to_bool(Flag::FlagZ, self.get_x_lo() == 0);
+        self.set_flag_to_bool(Flag::FlagN, self.x.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.x.get_lo() == 0);
     }
     fn tax_x16(&mut self) {
         self.x = self.acc;
@@ -2338,10 +2301,10 @@ impl Cpu65c816 {
     }
 
     fn tay_x8(&mut self) {
-        self.set_y_lo(self.get_acc_lo());
+        self.y.set_lo(self.acc.get_lo());
 
-        self.set_flag_to_bool(Flag::FlagN, self.get_y_lo() & 0x80 != 0);
-        self.set_flag_to_bool(Flag::FlagZ, self.get_y_lo() == 0);
+        self.set_flag_to_bool(Flag::FlagN, self.y.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.y.get_lo() == 0);
     }
     fn tay_x16(&mut self) {
         self.y = self.acc;
@@ -2373,9 +2336,9 @@ impl Cpu65c816 {
 
     fn trb_m8(&mut self, address: u32) {
         let data = self.read(address);
-        let result = data & self.get_acc_lo();
+        let result = data & self.acc.get_lo();
 
-        self.write(address, data & (!self.get_acc_lo()));
+        self.write(address, data & (!self.acc.get_lo()));
 
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
@@ -2390,9 +2353,9 @@ impl Cpu65c816 {
 
     fn tsb_m8(&mut self, address: u32) {
         let data = self.read(address);
-        let result = data & self.get_acc_lo();
+        let result = data & self.acc.get_lo();
 
-        self.write(address, data | self.get_acc_lo());
+        self.write(address, data | self.acc.get_lo());
 
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
@@ -2406,11 +2369,11 @@ impl Cpu65c816 {
     }
 
     fn tsc_m8(&mut self) {
-        self.set_acc_lo(self.stk_ptr as u8);
+        self.acc.set_lo(self.stk_ptr as u8);
 
-        self.set_flag_to_bool(Flag::FlagN, self.get_acc_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo() & 0x80 != 0);
         // self.clear_flag(Flag::FlagN); // the value transfered is always positive
-        self.set_flag_to_bool(Flag::FlagZ, self.get_acc_lo() == 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
     fn tsc_m16(&mut self) {
         self.acc = self.stk_ptr;
@@ -2419,10 +2382,10 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
     fn tsc_e(&mut self) {
-        self.set_acc_lo(self.stk_ptr as u8);
+        self.acc.set_lo(self.stk_ptr as u8);
 
-        self.set_flag_to_bool(Flag::FlagN, self.get_acc_lo() & 0x80 != 0);
-        self.set_flag_to_bool(Flag::FlagZ, self.get_acc_lo() == 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
         // self.clear_flag(Flag::FlagN); // the value transfered is always positive
         // self.clear_flag(Flag::FlagZ); // the value transfered is always non-zero
     }
@@ -2441,10 +2404,10 @@ impl Cpu65c816 {
     }
 
     fn txa_m8(&mut self) {
-        self.set_acc_lo(self.get_x_lo());
+        self.acc.set_lo(self.x.get_lo());
 
-        self.set_flag_to_bool(Flag::FlagN, self.get_acc_lo() & 0x80 != 0);
-        self.set_flag_to_bool(Flag::FlagZ, self.get_acc_lo() == 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
     fn txa_m16(&mut self) {
         self.acc = self.x;
@@ -2457,14 +2420,14 @@ impl Cpu65c816 {
         self.stk_ptr = self.x;
     }
     fn txs_e(&mut self) {
-        self.stk_ptr = 0x100 | self.get_x_lo() as u16;
+        self.stk_ptr = 0x100 | self.x.get_lo() as u16;
     }
 
     fn txy_x8(&mut self) {
-        self.set_y_lo(self.get_x_lo());
+        self.y.set_lo(self.x.get_lo());
 
-        self.set_flag_to_bool(Flag::FlagN, self.get_y_lo() & 0x80 != 0);
-        self.set_flag_to_bool(Flag::FlagZ, self.get_y_lo() == 0);
+        self.set_flag_to_bool(Flag::FlagN, self.y.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.y.get_lo() == 0);
     }
     fn txy_x16(&mut self) {
         self.y = self.x;
@@ -2474,10 +2437,10 @@ impl Cpu65c816 {
     }
 
     fn tya_m8(&mut self) {
-        self.set_acc_lo(self.get_y_lo());
+        self.acc.set_lo(self.y.get_lo());
 
-        self.set_flag_to_bool(Flag::FlagN, self.get_acc_lo() & 0x80 != 0);
-        self.set_flag_to_bool(Flag::FlagZ, self.get_acc_lo() == 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
     fn tya_m16(&mut self) {
         self.acc = self.y;
@@ -2487,10 +2450,10 @@ impl Cpu65c816 {
     }
 
     fn tyx_x8(&mut self) {
-        self.set_x_lo(self.get_y_lo());
+        self.x.set_lo(self.y.get_lo());
 
-        self.set_flag_to_bool(Flag::FlagN, self.get_x_lo() & 0x80 != 0);
-        self.set_flag_to_bool(Flag::FlagZ, self.get_x_lo() == 0);
+        self.set_flag_to_bool(Flag::FlagN, self.x.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.x.get_lo() == 0);
     }
     fn tyx_x16(&mut self) {
         self.x = self.y;
@@ -2511,8 +2474,8 @@ impl Cpu65c816 {
         self.acc = self.acc.swap_bytes();
 
         // Flags are always based on the low byte of the acc for this instr
-        self.set_flag_to_bool(Flag::FlagN, self.get_acc_lo() & 0x80 != 0);
-        self.set_flag_to_bool(Flag::FlagZ, self.get_acc_lo() == 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
 
     fn xce_all(&mut self) {

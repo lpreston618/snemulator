@@ -1,7 +1,6 @@
 use libretro_rs::{c_utf8::CUtf8, ffi::retro_log_level, retro::log::{LogInterface, PlatformLogger}};
 
-
-
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 pub enum LogLevel {
     Info,

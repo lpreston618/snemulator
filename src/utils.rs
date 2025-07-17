@@ -1,6 +1,25 @@
+#![allow(dead_code)]
+
+use std::cell::Cell;
+
 pub(crate) trait GetBits {
     fn get_bit(self, bit: Self) -> Self;
     fn bit_en(self, bit: Self) -> bool;
+}
+
+pub(crate) trait GetBytes {
+    fn get_hi(self) -> u8;
+    fn get_lo(self) -> u8;
+}
+
+pub(crate) trait SetBytes {
+    fn set_hi(&mut self, hi: u8);
+    fn set_lo(&mut self, lo: u8);
+}
+
+pub(crate) trait SetCellBytes {
+    fn set_hi(&self, hi: u8);
+    fn set_lo(&self, lo: u8);
 }
 
 impl GetBits for u8 {
@@ -11,6 +30,25 @@ impl GetBits for u8 {
 impl GetBits for u16 {
     fn get_bit(self, bit: Self) -> Self { (self >> bit) & 1 }
     fn bit_en(self, bit: Self) -> bool { (self >> bit) & 1 != 0 }
+}
+
+impl GetBytes for u16 {
+    fn get_hi(self) -> u8 { (self >> 8) as u8 }
+    fn get_lo(self) -> u8 { self as u8 }
+}
+
+impl SetBytes for u16 {
+    fn set_hi(&mut self, hi: u8) { *self = ((hi as u16) << 8) | (*self & 0xFF); }
+    fn set_lo(&mut self, lo: u8) { *self = (*self & 0xFF00) | (lo as u16); }
+}
+
+impl SetCellBytes for Cell<u16> {
+    fn set_hi(&self, data: u8) {
+        self.set((self.get() & 0x00FF) | ((data as u16) << 8));
+    }
+    fn set_lo(&self, data: u8) {
+        self.set((self.get() & 0xFF00) | (data as u16));
+    }
 }
 
 pub(crate) fn inc_low_byte(value: u16) -> u16 {

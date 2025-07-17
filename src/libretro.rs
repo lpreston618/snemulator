@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::ffi::CStr;
 use std::rc::Rc;
-use std::time;
 
 use crate::log::{LogLevel, SnemLogger};
 use crate::system::cartridge::Cartridge;
@@ -48,7 +47,7 @@ struct SnemulatorCore {
     frame_count: u64,
 
     #[cfg(feature = "warn-perf")]
-    last_frame: time::Instant,
+    last_frame: std::time::Instant,
     #[cfg(feature = "warn-perf")]
     prev_fps: Vec<f32>,
 }
@@ -140,12 +139,12 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         )
     }
 
-    fn init(env: &mut impl retro::env::Init) -> Self::Init {}
+    fn init(_env: &mut impl retro::env::Init) -> Self::Init {}
 
     fn load_without_content<E: retro::env::LoadGame>(
         args: LoadGameExtraArgs<'a, '_, E, Self::Init>,
     ) -> Result<Self, retro::error::CoreError> {
-        let mut logger = Rc::new(RefCell::new(
+        let logger = Rc::new(RefCell::new(
             SnemLogger::new(args.env.get_log_interface()?)
         ));
 
@@ -185,7 +184,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
             frame_count: 0,
 
             #[cfg(feature = "warn-perf")]
-            last_frame: time::Instant::now(),
+            last_frame: std::time::Instant::now(),
             #[cfg(feature = "warn-perf")]
             prev_fps: Vec::new(),
         };
@@ -235,14 +234,14 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         Ok(core)
     }
 
-    fn get_system_av_info(&self, env: &mut impl GetAvInfo) -> SystemAVInfo {
+    fn get_system_av_info(&self, _env: &mut impl GetAvInfo) -> SystemAVInfo {
         SystemAVInfo::default_timings(GameGeometry::fixed(
             SNES_FRAME_WIDTH as u16,
             SNES_FRAME_HEIGHT as u16,
         ))
     }
 
-    fn run(&mut self, env: &mut impl retro::env::Run,
+    fn run(&mut self, _env: &mut impl retro::env::Run,
         callbacks: &mut impl Callbacks) -> InputsPolled {
 
         let inputs_polled = self.update_input(callbacks);
@@ -273,7 +272,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
                 }
             }
 
-            self.last_frame = time::Instant::now();
+            self.last_frame = std::time::Instant::now();
         }
 
         self.frame_count += 1;
@@ -281,12 +280,12 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         inputs_polled
     }
 
-    fn reset(&mut self, env: &mut impl retro::env::Reset) {
+    fn reset(&mut self, _env: &mut impl retro::env::Reset) {
         self.logger.borrow_mut().log(LogLevel::Info, "core reset");
         todo!("Reset Core");
     }
 
-    fn unload_game(mut self, env: &mut impl retro::env::UnloadGame) -> Self::Init {
+    fn unload_game(self, _env: &mut impl retro::env::UnloadGame) -> Self::Init {
         self.logger.borrow_mut().log(LogLevel::Info, "unloading game");
     }
 

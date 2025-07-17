@@ -1,19 +1,5 @@
 use std::cell::Cell;
 
-pub(super) trait SetCellBytes {
-    fn set_hi(&self, data: u8);
-    fn set_lo(&self, data: u8);
-}
-
-impl SetCellBytes for Cell<u16> {
-    fn set_hi(&self, data: u8) {
-        self.set((self.get() & 0x00FF) | ((data as u16) << 8));
-    }
-    fn set_lo(&self, data: u8) {
-        self.set((self.get() & 0xFF00) | (data as u16));
-    }
-}
-
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub(super) enum ToggleState {
     #[default]

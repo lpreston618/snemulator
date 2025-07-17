@@ -1,8 +1,8 @@
 mod utils;
 
-use utils::{xbgr0555_xrgb0555_conv, SetCellBytes, Togglable, ToggleState};
+use utils::{xbgr0555_xrgb0555_conv, Togglable, ToggleState};
 
-use crate::utils::GetBits;
+use crate::utils::{GetBits, SetCellBytes};
 use crate::log::SnemLogger;
 
 use libretro_rs::retro::pixel::format::ORGB1555;
@@ -24,9 +24,16 @@ const VRAM_SIZE: usize = 32 * 1024;  // 64 KiB (32 Ki-Word)
 const CGRAM_SIZE: usize = 256;       // 512 Bytes (256 Words)
 const OAM_SIZE: usize = 544;         // 544 Bytes
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Debug)]
+pub enum HVTimerIRQ {
+    None,   // Ignore H/V Timers
+    HTimer, // IRQ when H counter == HTIME
+    VTimer, // IRQ when V counter == VTIME and H counter == 0
+    Both,   // IRQ when V counter == VTIME and H counter == HTIME
+}
+
+#[derive(Clone, Copy, Debug)]
 enum ObjectSizeSelect {
-    #[default]
     Size8x8_16x16,
     Size8x8_32x32,
     Size8x8_64x64,
@@ -47,16 +54,14 @@ enum ObjectSize {
     Size32x64,
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Debug)]
 enum TileSize {
-    #[default]
     Size8x8,
     Size16x16,
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Debug)]
 enum BgMode {
-    #[default]
     Mode0,
     Mode1,
     Mode2,
@@ -67,72 +72,63 @@ enum BgMode {
     Mode7
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Debug)]
 enum TilemapCount {
-    #[default]
     One,
     Two,
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Debug)]
 enum VramIncMode {
     LowByte,
-    #[default]
     HighByte
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Debug)]
 enum AddressRemapping {
-    #[default]
     None,
     ColDepth2,
     ColDepth4,
     ColDepth8,
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Debug)]
 enum IncrSize {
-    #[default]
     Bytes2,
     Bytes64,
     Bytes256,
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Debug)]
 enum M7FillMode {
-    #[default]
     Transparent,
     Character,
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Debug)]
 enum WindowLogic {
-    #[default]
     Or,
     And,
     Xor,
     Xnor,
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Debug)]
 enum WindowColorRegion {
-    #[default]
     Nowhere,
     Outside,
     Inside,
     Everywhere,
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Debug)]
 enum DirectColorMode {
-    #[default]
     Palette,
     Direct,
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Debug)]
 enum CMathOperator {
-    #[default]
     Add,
     Subtract,
 }
@@ -299,12 +295,6 @@ pub(crate) struct PpuData {
     //       - VRAM word address High (H)
     vram_addr: Cell<u16>,
 
-    // $2118    LLLL LLLL
-    // $2119    HHHH HHHH    Write x2 Only
-    //       - VRAM data Low (L)
-    //       - VRAM data High (H), Increments VMADD after write according to VMAIN setting.
-    vram_data: Cell<u16>,
-
     // $211A    RF.. ..YX    W8
     //       - Mode 7 tilemap repeat (R)
     //       - Mode 7 non-repeat fill (F)
@@ -459,7 +449,7 @@ pub(crate) struct PpuData {
     col_win_main_region: Cell<WindowColorRegion>,
     col_win_sub_region: Cell<WindowColorRegion>,
     sub_color_fixed: Cell<bool>,
-    direct_col_mode: Cell<DirectColorMode>,
+    use_direct_col: Cell<bool>,
 
     // $2131    MHBO 4321    Write Only
     //       - Color math add/subtract (M)
@@ -544,18 +534,21 @@ pub(crate) struct PpuData {
     video_type: Cell<VideoType>,
     ppu2_version: Cell<u8>,
 
-    // PPU Memory
     oam: Vec<Cell<u8>>, // 544 Bytes of OAM
     vram: Vec<Cell<u16>>, // 64 KiB of VRAM
     cgram: Vec<Cell<u16>>,
 
-    // PPU State
     in_vblank: Cell<bool>,
     in_hblank: Cell<bool>,
+
     h_counter: Cell<u16>,
     v_counter: Cell<u16>,
-
-    cpu_vblank_nmi: Cell<bool>,
+    h_counter_target: Cell<u16>,
+    v_counter_target: Cell<u16>,
+    
+    pub hv_timer_irq_mode: Cell<HVTimerIRQ>,
+    pub hv_timer_irq: Cell<bool>,
+    pub cpu_vblank_nmi: Cell<bool>,
 }
 
 impl PpuData {
@@ -564,7 +557,7 @@ impl PpuData {
             in_fblank: Cell::new(false),
             screen_brightness: Cell::new(0),
 
-            obj_sprite_size: Cell::new(ObjectSizeSelect::default()),
+            obj_sprite_size: Cell::new(ObjectSizeSelect::Size8x8_16x16),
             name_secondary_select: Cell::new(0),
             name_base_addr: Cell::new(0),
 
@@ -575,12 +568,12 @@ impl PpuData {
 
             oam_data_latch: Cell::new(0),
 
-            bg4_char_size: Cell::new(TileSize::default()),
-            bg3_char_size: Cell::new(TileSize::default()),
-            bg2_char_size: Cell::new(TileSize::default()),
-            bg1_char_size: Cell::new(TileSize::default()),
+            bg4_char_size: Cell::new(TileSize::Size8x8),
+            bg3_char_size: Cell::new(TileSize::Size8x8),
+            bg2_char_size: Cell::new(TileSize::Size8x8),
+            bg1_char_size: Cell::new(TileSize::Size8x8),
             bg3_mode1_priority: Cell::new(false),
-            bg_mode: Cell::new(BgMode::default()),
+            bg_mode: Cell::new(BgMode::Mode0),
 
             mosaic_size: Cell::new(0),
             bg4_mosaic: Cell::new(false),
@@ -589,20 +582,20 @@ impl PpuData {
             bg1_mosaic: Cell::new(false),
 
             bg1_vram_addr: Cell::new(0),
-            bg1_tilemap_count_y: Cell::new(TilemapCount::default()),
-            bg1_tilemap_count_x: Cell::new(TilemapCount::default()),
+            bg1_tilemap_count_y: Cell::new(TilemapCount::One),
+            bg1_tilemap_count_x: Cell::new(TilemapCount::One),
 
             bg2_vram_addr: Cell::new(0),
-            bg2_tilemap_count_y: Cell::new(TilemapCount::default()),
-            bg2_tilemap_count_x: Cell::new(TilemapCount::default()),
+            bg2_tilemap_count_y: Cell::new(TilemapCount::One),
+            bg2_tilemap_count_x: Cell::new(TilemapCount::One),
 
             bg3_vram_addr: Cell::new(0),
-            bg3_tilemap_count_y: Cell::new(TilemapCount::default()),
-            bg3_tilemap_count_x: Cell::new(TilemapCount::default()),
+            bg3_tilemap_count_y: Cell::new(TilemapCount::One),
+            bg3_tilemap_count_x: Cell::new(TilemapCount::One),
 
             bg4_vram_addr: Cell::new(0),
-            bg4_tilemap_count_y: Cell::new(TilemapCount::default()),
-            bg4_tilemap_count_x: Cell::new(TilemapCount::default()),
+            bg4_tilemap_count_y: Cell::new(TilemapCount::One),
+            bg4_tilemap_count_x: Cell::new(TilemapCount::One),
 
             bg2_chr_base_addr: Cell::new(0),
             bg1_chr_base_addr: Cell::new(0),
@@ -631,16 +624,14 @@ impl PpuData {
 
             bg4_y_offset: Cell::new(0),
 
-            vram_addr_inc_mode: Cell::new(VramIncMode::default()),
-            addr_remap_mode: Cell::new(AddressRemapping::default()),
-            addr_inc_size: Cell::new(IncrSize::default()),
+            vram_addr_inc_mode: Cell::new(VramIncMode::HighByte),
+            addr_remap_mode: Cell::new(AddressRemapping::None),
+            addr_inc_size: Cell::new(IncrSize::Bytes2),
 
             vram_addr: Cell::new(0),
 
-            vram_data: Cell::new(0),
-
             m7_tilemap_repeat: Cell::new(false),
-            m7_fill_mode: Cell::new(M7FillMode::default()),
+            m7_fill_mode: Cell::new(M7FillMode::Transparent),
             m7_flip_bg_y: Cell::new(false),
             m7_flip_bg_x: Cell::new(false),
 
@@ -700,13 +691,13 @@ impl PpuData {
 
             w2_right_pos: Cell::new(0),
 
-            bg4_win_logic: Cell::new(WindowLogic::default()),
-            bg3_win_logic: Cell::new(WindowLogic::default()),
-            bg2_win_logic: Cell::new(WindowLogic::default()),
-            bg1_win_logic: Cell::new(WindowLogic::default()),
+            bg4_win_logic: Cell::new(WindowLogic::Or),
+            bg3_win_logic: Cell::new(WindowLogic::Or),
+            bg2_win_logic: Cell::new(WindowLogic::Or),
+            bg1_win_logic: Cell::new(WindowLogic::Or),
 
-            obj_win_logic: Cell::new(WindowLogic::default()),
-            col_win_logic: Cell::new(WindowLogic::default()),
+            obj_win_logic: Cell::new(WindowLogic::Or),
+            col_win_logic: Cell::new(WindowLogic::Or),
 
             obj_main_enabled: Cell::new(false),
             bg4_main_enabled: Cell::new(false),
@@ -732,12 +723,12 @@ impl PpuData {
             bg2_win_sub_enabled: Cell::new(false),
             bg1_win_sub_enabled: Cell::new(false),
 
-            col_win_main_region: Cell::new(WindowColorRegion::default()),
-            col_win_sub_region: Cell::new(WindowColorRegion::default()),
+            col_win_main_region: Cell::new(WindowColorRegion::Nowhere),
+            col_win_sub_region: Cell::new(WindowColorRegion::Nowhere),
             sub_color_fixed: Cell::new(false),
-            direct_col_mode: Cell::new(DirectColorMode::default()),
+            use_direct_col: Cell::new(false),
 
-            cmath_operator: Cell::new(CMathOperator::default()),
+            cmath_operator: Cell::new(CMathOperator::Add),
             cmath_half: Cell::new(false),
             back_cmath_enabled: Cell::new(false),
             obj_cmath_enabled: Cell::new(false),
@@ -781,10 +772,15 @@ impl PpuData {
 
             in_vblank: Cell::new(false),
             in_hblank: Cell::new(false),
+            
             h_counter: Cell::new(0),
-            v_counter: Cell::new(0),
+            v_counter: Cell::new(0),            
+            h_counter_target: Cell::new(0),
+            v_counter_target: Cell::new(0),
+            hv_timer_irq_mode: Cell::new(HVTimerIRQ::None),
 
             cpu_vblank_nmi: Cell::new(false),
+            hv_timer_irq: Cell::new(false),
         }
     }
 }
@@ -1478,9 +1474,7 @@ impl PpuData {
                     }
                 );
                 self.sub_color_fixed.set(data.bit_en(1));
-                self.direct_col_mode.set(
-                    if data.bit_en(0) { DirectColorMode::Palette } else { DirectColorMode::Direct }
-                );
+                self.use_direct_col.set(data.bit_en(0));
             }
 
             0x31 => {
@@ -1615,17 +1609,17 @@ impl PpuData {
 
             0x3C => {
                 if self.h_counter_toggle.toggle() {
-                    self.h_counter_latch.get() as u8
-                } else {
                     (self.h_counter_latch.get() >> 8) as u8 // HIGH 7 BITS ARE PPU2 OPEN BUS
+                } else {
+                    self.h_counter_latch.get() as u8
                 }
             }
 
             0x3D => {
                 if self.v_counter_toggle.toggle() {
-                    self.v_counter_latch.get() as u8
-                } else {
                     (self.v_counter_latch.get() >> 8) as u8 // HIGH 7 BITS ARE PPU2 OPEN BUS
+                } else {
+                    self.v_counter_latch.get() as u8
                 }
             }
 
@@ -1830,6 +1824,44 @@ impl Ppu5C7x {
             }
             _ => {}
         }
+
+        self.update_hv_timers();
+    }
+
+    fn update_hv_timers(&self) {
+        self.registers.h_counter.set(self.dot);
+        self.registers.v_counter.set(self.scanline);
+
+        match self.registers.hv_timer_irq_mode.get() {
+            HVTimerIRQ::None => {}
+            HVTimerIRQ::HTimer => {
+                let h_timer = self.registers.h_counter.get();
+                let h_target = self.registers.h_counter_target.get();
+
+                if h_timer == h_target {
+                    self.registers.hv_timer_irq.set(true);
+                }
+            }
+            HVTimerIRQ::VTimer => {
+                let v_timer = self.registers.v_counter.get();
+                let v_target = self.registers.v_counter_target.get();
+                let h_timer = self.registers.h_counter.get();
+
+                if v_timer == v_target && h_timer == 0 {
+                    self.registers.hv_timer_irq.set(true);
+                }
+            }
+            HVTimerIRQ::Both => {
+                let v_timer = self.registers.v_counter.get();
+                let v_target = self.registers.v_counter_target.get();
+                let h_timer = self.registers.h_counter.get();
+                let h_target = self.registers.h_counter_target.get();
+
+                if v_timer == v_target && h_timer == h_target {
+                    self.registers.hv_timer_irq.set(true);
+                }
+            }
+        }
     }
 
     /// Finds all possible sprites that could be rendered on the current scanline
@@ -2016,9 +2048,9 @@ impl Ppu5C7x {
                 let tile_idx = tile_y*spr_width_tiles + tile_x;
 
                 let obj_table_base_addr = if sprite.use_second_obj_table {
-                    ((self.name_base_addr() as u16) << 13) + ((self.name_secondary_select() as u16) << 12)
+                    self.name_base_addr() + ((self.name_secondary_select() as u16) << 12)
                 } else {
-                    (self.name_base_addr() as u16) << 13
+                    self.name_base_addr()
                 };
 
                 let spr_tile_base_addr = obj_table_base_addr | ((sprite.tile_idx as u16) << 4);
@@ -2476,17 +2508,17 @@ impl Ppu5C7x {
         self.apply_cmath(main_col, sub_col)
     }
 
-    fn bg_mode2_dot(&mut self, frame_buffer: &mut [ORGB1555]) {
+    // fn bg_mode2_dot(&mut self, frame_buffer: &mut [ORGB1555]) {
 
-    }
+    // }
 
-    fn bg_mode3_dot(&mut self, frame_buffer: &mut [ORGB1555]) {
+    // fn bg_mode3_dot(&mut self, frame_buffer: &mut [ORGB1555]) {
 
-    }
+    // }
 
-    fn bg_mode4_dot(&mut self, frame_buffer: &mut [ORGB1555]) {
+    // fn bg_mode4_dot(&mut self, frame_buffer: &mut [ORGB1555]) {
 
-    }
+    // }
 
     fn bg_mode5_dot(&mut self, screen_x: usize, screen_y: usize, spr_col: ColorData) -> u16 {
         const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
@@ -2631,13 +2663,13 @@ impl Ppu5C7x {
         self.apply_cmath(main_col, sub_col)
     }
 
-    fn bg_mode6_dot(&mut self, frame_buffer: &mut [ORGB1555]) {
+    // fn bg_mode6_dot(&mut self, frame_buffer: &mut [ORGB1555]) {
 
-    }
+    // }
 
-    fn bg_mode7_dot(&mut self, frame_buffer: &mut [ORGB1555]) {
+    // fn bg_mode7_dot(&mut self, frame_buffer: &mut [ORGB1555]) {
 
-    }
+    // }
 
     fn bg_tile_idx(&self, screen_x: usize, screen_y: usize, 
         scroll_x: u16, scroll_y: u16, tile_size: TileSize) -> TilePosData {
@@ -2681,8 +2713,8 @@ impl Ppu5C7x {
             let tile_chr_idx = tile_data & 0x3FF;
             let tile_pal = ((tile_data >> 10) & 7) as u8;
             let tile_priority = ((tile_data >> 13) & 1) as u8;
-            let flip_x = (tile_data & 0x4000) != 0; // TODO: implement h/v flipping
-            let flip_y = (tile_data & 0x8000) != 0;
+            // let flip_x = (tile_data & 0x4000) != 0; // TODO: implement h/v flipping
+            // let flip_y = (tile_data & 0x8000) != 0;
 
             let tile_chr_addr = bg_chr_base_addr + (tile_chr_idx << 3) + tile_row as u16;
 
@@ -2718,8 +2750,8 @@ impl Ppu5C7x {
             let tile_chr_idx = tile_data & 0x3FF;
             let tile_pal = ((tile_data >> 10) & 7) as u8;
             let tile_priority = ((tile_data >> 13) & 1) as u8;
-            let flip_x = (tile_data & 0x4000) != 0; // TODO: implement h/v flipping
-            let flip_y = (tile_data & 0x8000) != 0;
+            // let flip_x = (tile_data & 0x4000) != 0; // TODO: implement h/v flipping
+            // let flip_y = (tile_data & 0x8000) != 0;
 
             let tile_chr_addr = bg_chr_base_addr + (tile_chr_idx << 4) + (tile_row << 1) as u16;
 
@@ -2779,16 +2811,6 @@ impl Ppu5C7x {
 
 // Getters & Setters for registers
 impl Ppu5C7x {
-    fn bg1_vram_base_addr(&self) -> u16 { (self.registers.bg1_vram_addr.get() as u16) << 10 }
-    fn bg2_vram_base_addr(&self) -> u16 { (self.registers.bg2_vram_addr.get() as u16) << 10 }
-    fn bg3_vram_base_addr(&self) -> u16 { (self.registers.bg3_vram_addr.get() as u16) << 10 }
-    fn bg4_vram_base_addr(&self) -> u16 { (self.registers.bg4_vram_addr.get() as u16) << 10 }
-
-    fn bg1_chr_base_addr(&self) -> u16 { (self.registers.bg1_chr_base_addr.get() as u16) << 12 }    
-    fn bg2_chr_base_addr(&self) -> u16 { (self.registers.bg2_chr_base_addr.get() as u16) << 12 }
-    fn bg3_chr_base_addr(&self) -> u16 { (self.registers.bg3_chr_base_addr.get() as u16) << 12 }
-    fn bg4_chr_base_addr(&self) -> u16 { (self.registers.bg4_chr_base_addr.get() as u16) << 12 }
-
     fn win_active_signal(&self, screen_x: usize, layer_w1_en: bool, layer_w2_en: bool,
         layer_w1_inv: bool, layer_w2_inv: bool, win_logic: WindowLogic) -> bool {
 
@@ -2928,35 +2950,33 @@ impl Ppu5C7x {
         win_en
     }
 
-    fn screen_brightness(&self) -> u8 { self.registers.screen_brightness.get() }
-    fn obj_sprite_size(&self) -> ObjectSizeSelect { self.registers.obj_sprite_size.get() }
-    fn name_secondary_select(&self) -> u8 { self.registers.name_secondary_select.get() }
-    fn name_base_addr(&self) -> u8 { self.registers.name_base_addr.get() }
-    fn oam_addr(&self) -> u16 { self.registers.oam_addr.get() }
-    fn priority_rotation(&self) -> bool { self.registers.priority_rotation.get() }
-    fn oam_data_latch(&self) -> u8 { self.registers.oam_data_latch.get() }
+    fn bg1_vram_base_addr(&self) -> u16 { (self.registers.bg1_vram_addr.get() as u16) << 10 }
+    fn bg2_vram_base_addr(&self) -> u16 { (self.registers.bg2_vram_addr.get() as u16) << 10 }
+    fn bg3_vram_base_addr(&self) -> u16 { (self.registers.bg3_vram_addr.get() as u16) << 10 }
+    fn bg4_vram_base_addr(&self) -> u16 { (self.registers.bg4_vram_addr.get() as u16) << 10 }
+
+    fn bg1_chr_base_addr(&self) -> u16 { (self.registers.bg1_chr_base_addr.get() as u16) << 12 }    
+    fn bg2_chr_base_addr(&self) -> u16 { (self.registers.bg2_chr_base_addr.get() as u16) << 12 }
+    fn bg3_chr_base_addr(&self) -> u16 { (self.registers.bg3_chr_base_addr.get() as u16) << 12 }
+    fn bg4_chr_base_addr(&self) -> u16 { (self.registers.bg4_chr_base_addr.get() as u16) << 12 }
+
+    fn in_fblank(&self) -> bool { self.registers.in_fblank.get() }
+    fn in_hblank(&self) -> bool { self.registers.in_hblank.get() }
+    fn in_vblank(&self) -> bool { self.registers.in_vblank.get() }
+    
     fn bg4_tile_size(&self) -> TileSize { self.registers.bg4_char_size.get() }
     fn bg3_tile_size(&self) -> TileSize { self.registers.bg3_char_size.get() }
     fn bg2_tile_size(&self) -> TileSize { self.registers.bg2_char_size.get() }
     fn bg1_tile_size(&self) -> TileSize { self.registers.bg1_char_size.get() }
-    fn bg3_mode1_priority(&self) -> bool { self.registers.bg3_mode1_priority.get() }
+    fn obj_sprite_size(&self) -> ObjectSizeSelect { self.registers.obj_sprite_size.get() }
+
     fn bg_mode(&self) -> BgMode { self.registers.bg_mode.get() }
-    fn mosaic_size(&self) -> u8 { self.registers.mosaic_size.get() }
-    fn bg4_mosaic(&self) -> bool { self.registers.bg4_mosaic.get() }
-    fn bg3_mosaic(&self) -> bool { self.registers.bg3_mosaic.get() }
-    fn bg2_mosaic(&self) -> bool { self.registers.bg2_mosaic.get() }
-    fn bg1_mosaic(&self) -> bool { self.registers.bg1_mosaic.get() }
-    fn bg1_tilemap_count_y(&self) -> TilemapCount { self.registers.bg1_tilemap_count_y.get() }
-    fn bg1_tilemap_count_x(&self) -> TilemapCount { self.registers.bg1_tilemap_count_x.get() }
-    fn bg2_tilemap_count_y(&self) -> TilemapCount { self.registers.bg2_tilemap_count_y.get() }
-    fn bg2_tilemap_count_x(&self) -> TilemapCount { self.registers.bg2_tilemap_count_x.get() }
-    fn bg3_tilemap_count_y(&self) -> TilemapCount { self.registers.bg3_tilemap_count_y.get() }
-    fn bg3_tilemap_count_x(&self) -> TilemapCount { self.registers.bg3_tilemap_count_x.get() }
-    fn bg4_tilemap_count_y(&self) -> TilemapCount { self.registers.bg4_tilemap_count_y.get() }
-    fn bg4_tilemap_count_x(&self) -> TilemapCount { self.registers.bg4_tilemap_count_x.get() }
-    fn m7_latch(&self) -> u8 { self.registers.m7_latch.get() }
-    fn bg_offset_latch(&self) -> u8 { self.registers.bg_offset_latch.get() }
-    fn bg_offset_x_latch(&self) -> u8 { self.registers.bg_offset_x_latch.get() }
+    fn fixed_color(&self) -> u16 { self.registers.fixed_color.get() }
+    fn bg3_mode1_priority(&self) -> bool { self.registers.bg3_mode1_priority.get() }
+
+    fn name_base_addr(&self) -> u16 { (self.registers.name_base_addr.get() as u16) << 13 }
+    fn name_secondary_select(&self) -> u8 { self.registers.name_secondary_select.get() }
+    
     fn bg1_m7_x_offset(&self) -> u16 { self.registers.bg1_m7_x_offset.get() }
     fn bg1_m7_y_offset(&self) -> u16 { self.registers.bg1_m7_y_offset.get() }
     fn bg2_x_offset(&self) -> u16 { self.registers.bg2_x_offset.get() }
@@ -2965,25 +2985,47 @@ impl Ppu5C7x {
     fn bg3_y_offset(&self) -> u16 { self.registers.bg3_y_offset.get() }
     fn bg4_x_offset(&self) -> u16 { self.registers.bg4_x_offset.get() }
     fn bg4_y_offset(&self) -> u16 { self.registers.bg4_y_offset.get() }
-    fn vram_addr_inc_mode(&self) -> VramIncMode { self.registers.vram_addr_inc_mode.get() }
-    fn addr_remap_mode(&self) -> AddressRemapping { self.registers.addr_remap_mode.get() }
-    fn addr_inc_size(&self) -> IncrSize { self.registers.addr_inc_size.get() }
-    fn vram_addr(&self) -> u16 { self.registers.vram_addr.get() }
-    fn vram_data(&self) -> u16 { self.registers.vram_data.get() }
-    fn m7_tilemap_repeat(&self) -> bool { self.registers.m7_tilemap_repeat.get() }
-    fn m7_fill_mode(&self) -> M7FillMode { self.registers.m7_fill_mode.get() }
-    fn m7_flip_bg_y(&self) -> bool { self.registers.m7_flip_bg_y.get() }
-    fn m7_flip_bg_x(&self) -> bool { self.registers.m7_flip_bg_x.get() }
-    fn m7_matrix_a(&self) -> u16 { self.registers.m7_matrix_a.get() }
-    fn m7_matrix_b(&self) -> u16 { self.registers.m7_matrix_b.get() }
-    fn m7_matrix_c(&self) -> u16 { self.registers.m7_matrix_c.get() }
-    fn m7_matrix_d(&self) -> u16 { self.registers.m7_matrix_d.get() }
-    fn m7_center_x(&self) -> u16 { self.registers.m7_center_x.get() }
-    fn m7_center_y(&self) -> u16 { self.registers.m7_center_y.get() }
-    fn cgram_toggle(&self) -> ToggleState { self.registers.cgram_toggle.get() }
-    fn cgram_addr(&self) -> u8 { self.registers.cgram_addr.get() }
-    fn cgram_latch(&self) -> u8 { self.registers.cgram_latch.get() }
-    fn cgram_data(&self) -> u16 { self.registers.cgram_data.get() }
+
+    // fn screen_brightness(&self) -> u8 { self.registers.screen_brightness.get() }
+    // fn oam_addr(&self) -> u16 { self.registers.oam_addr.get() }
+    // fn priority_rotation(&self) -> bool { self.registers.priority_rotation.get() }
+    // fn oam_data_latch(&self) -> u8 { self.registers.oam_data_latch.get() }
+    // fn bg_mode(&self) -> BgMode { self.registers.bg_mode.get() }
+    // fn mosaic_size(&self) -> u8 { self.registers.mosaic_size.get() }
+    // fn bg4_mosaic(&self) -> bool { self.registers.bg4_mosaic.get() }
+    // fn bg3_mosaic(&self) -> bool { self.registers.bg3_mosaic.get() }
+    // fn bg2_mosaic(&self) -> bool { self.registers.bg2_mosaic.get() }
+    // fn bg1_mosaic(&self) -> bool { self.registers.bg1_mosaic.get() }
+    // fn bg1_tilemap_count_y(&self) -> TilemapCount { self.registers.bg1_tilemap_count_y.get() }
+    // fn bg1_tilemap_count_x(&self) -> TilemapCount { self.registers.bg1_tilemap_count_x.get() }
+    // fn bg2_tilemap_count_y(&self) -> TilemapCount { self.registers.bg2_tilemap_count_y.get() }
+    // fn bg2_tilemap_count_x(&self) -> TilemapCount { self.registers.bg2_tilemap_count_x.get() }
+    // fn bg3_tilemap_count_y(&self) -> TilemapCount { self.registers.bg3_tilemap_count_y.get() }
+    // fn bg3_tilemap_count_x(&self) -> TilemapCount { self.registers.bg3_tilemap_count_x.get() }
+    // fn bg4_tilemap_count_y(&self) -> TilemapCount { self.registers.bg4_tilemap_count_y.get() }
+    // fn bg4_tilemap_count_x(&self) -> TilemapCount { self.registers.bg4_tilemap_count_x.get() }
+    // fn m7_latch(&self) -> u8 { self.registers.m7_latch.get() }
+    // fn bg_offset_latch(&self) -> u8 { self.registers.bg_offset_latch.get() }
+    // fn bg_offset_x_latch(&self) -> u8 { self.registers.bg_offset_x_latch.get() }
+    // fn vram_addr_inc_mode(&self) -> VramIncMode { self.registers.vram_addr_inc_mode.get() }
+    // fn addr_remap_mode(&self) -> AddressRemapping { self.registers.addr_remap_mode.get() }
+    // fn addr_inc_size(&self) -> IncrSize { self.registers.addr_inc_size.get() }
+    // fn vram_addr(&self) -> u16 { self.registers.vram_addr.get() }
+    // fn vram_data(&self) -> u16 { self.registers.vram_data.get() }
+    // fn m7_tilemap_repeat(&self) -> bool { self.registers.m7_tilemap_repeat.get() }
+    // fn m7_fill_mode(&self) -> M7FillMode { self.registers.m7_fill_mode.get() }
+    // fn m7_flip_bg_y(&self) -> bool { self.registers.m7_flip_bg_y.get() }
+    // fn m7_flip_bg_x(&self) -> bool { self.registers.m7_flip_bg_x.get() }
+    // fn m7_matrix_a(&self) -> u16 { self.registers.m7_matrix_a.get() }
+    // fn m7_matrix_b(&self) -> u16 { self.registers.m7_matrix_b.get() }
+    // fn m7_matrix_c(&self) -> u16 { self.registers.m7_matrix_c.get() }
+    // fn m7_matrix_d(&self) -> u16 { self.registers.m7_matrix_d.get() }
+    // fn m7_center_x(&self) -> u16 { self.registers.m7_center_x.get() }
+    // fn m7_center_y(&self) -> u16 { self.registers.m7_center_y.get() }
+    // fn cgram_toggle(&self) -> ToggleState { self.registers.cgram_toggle.get() }
+    // fn cgram_addr(&self) -> u8 { self.registers.cgram_addr.get() }
+
+
     fn bg2_w2_enabled(&self) -> bool { self.registers.bg2_w2_enabled.get() }
     fn bg2_w2_inverted(&self) -> bool { self.registers.bg2_w2_inverted.get() }
     fn bg2_w1_enabled(&self) -> bool { self.registers.bg2_w1_enabled.get() }
@@ -3041,7 +3083,6 @@ impl Ppu5C7x {
     fn col_win_main_region(&self) -> WindowColorRegion { self.registers.col_win_main_region.get() }
     fn col_win_sub_region(&self) -> WindowColorRegion { self.registers.col_win_sub_region.get() }
     fn sub_color_fixed(&self) -> bool { self.registers.sub_color_fixed.get() }
-    fn direct_col_mode(&self) -> DirectColorMode { self.registers.direct_col_mode.get() }
     fn cmath_operator(&self) -> CMathOperator { self.registers.cmath_operator.get() }
     fn cmath_half(&self) -> bool { self.registers.cmath_half.get() }
     fn back_cmath_enabled(&self) -> bool { self.registers.back_cmath_enabled.get() }
@@ -3050,32 +3091,12 @@ impl Ppu5C7x {
     fn bg3_cmath_enabled(&self) -> bool { self.registers.bg3_cmath_enabled.get() }
     fn bg2_cmath_enabled(&self) -> bool { self.registers.bg2_cmath_enabled.get() }
     fn bg1_cmath_enabled(&self) -> bool { self.registers.bg1_cmath_enabled.get() }
-    fn fixed_color(&self) -> u16 { self.registers.fixed_color.get() }
-    fn _external_sync(&self) -> bool { self.registers._external_sync.get() }
-    fn ext_bg_enabled(&self) -> bool { self.registers.ext_bg_enabled.get() }
-    fn hi_res_enabled(&self) -> bool { self.registers.hi_res_enabled.get() }
-    fn overscan_enabled(&self) -> bool { self.registers.overscan_enabled.get() }
-    fn obj_interlace_enabled(&self) -> bool { self.registers.obj_interlace_enabled.get() }
-    fn screen_interlace_enabled(&self) -> bool { self.registers.screen_interlace_enabled.get() }
-    fn multiply_result(&self) -> u32 { self.registers.multiply_result.get() }
-    fn vram_latch(&self) -> u16 { self.registers.vram_latch.get() }
-    fn h_counter_toggle(&self) -> ToggleState { self.registers.h_counter_toggle.get() }
-    fn h_counter_latch(&self) -> u16 { self.registers.h_counter_latch.get() }
-    fn v_counter_toggle(&self) -> ToggleState { self.registers.v_counter_toggle.get() }
-    fn v_counter_latch(&self) -> u16 { self.registers.v_counter_latch.get() }
-    fn sprite_overflow(&self) -> bool { self.registers.sprite_overflow.get() }
-    fn sprite_tile_overflow(&self) -> bool { self.registers.sprite_tile_overflow.get() }
-    fn master_slave_state(&self) -> MasterSlave { self.registers.master_slave_state.get() }
-    fn ppu1_version(&self) -> u8 { self.registers.ppu1_version.get() }
-    fn interlace_field(&self) -> bool { self.registers.interlace_field.get() }
-    fn counter_toggle(&self) -> ToggleState { self.registers.counter_toggle.get() }
-    fn video_type(&self) -> VideoType { self.registers.video_type.get() }
-    fn ppu2_version(&self) -> u8 { self.registers.ppu2_version.get() }
-    fn in_vblank(&self) -> bool { self.registers.in_vblank.get() }
-    fn in_hblank(&self) -> bool { self.registers.in_hblank.get() }
-    fn in_fblank(&self) -> bool { self.registers.in_fblank.get() }
-    fn h_counter(&self) -> u16 { self.registers.h_counter.get() }
-    fn v_counter(&self) -> u16 { self.registers.v_counter.get() }
+
+    // fn ext_bg_enabled(&self) -> bool { self.registers.ext_bg_enabled.get() }
+    // fn hi_res_enabled(&self) -> bool { self.registers.hi_res_enabled.get() }
+    // fn overscan_enabled(&self) -> bool { self.registers.overscan_enabled.get() }
+    // fn obj_interlace_enabled(&self) -> bool { self.registers.obj_interlace_enabled.get() }
+    // fn screen_interlace_enabled(&self) -> bool { self.registers.screen_interlace_enabled.get() }
 
     fn vram_read(&self, address: u16) -> u16 { self.registers.vram[(address & 0x7FFF) as usize].get() }
 }
