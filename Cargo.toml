@@ -12,6 +12,12 @@ libretro-rs = { path = "./libretro/libretro-rs" }
 serde_json = "1.0.134"
 rand="*"
 
+[features]
+warn-perf = []
+no-video = []
+no-audio = []
+test-env = ["warn-perf", "no-video", "no-audio"]
+
 [profile.dev]
 overflow-checks = false
 debug = 2

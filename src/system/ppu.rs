@@ -75,7 +75,7 @@ enum TilemapCount {
 }
 
 #[derive(Clone, Copy, Default, Debug)]
-pub enum VramIncMode {
+enum VramIncMode {
     LowByte,
     #[default]
     HighByte
@@ -91,7 +91,7 @@ enum AddressRemapping {
 }
 
 #[derive(Clone, Copy, Default, Debug)]
-pub enum IncrSize {
+enum IncrSize {
     #[default]
     Bytes2,
     Bytes64,
@@ -151,7 +151,7 @@ enum VideoType {
     Pal,
 }
 
-pub struct PpuData {
+pub(crate) struct PpuData {
     // $2100    F... BBBB    Write only
     //       - Forced blanking (F)
     //       - Screen brightness (B)
@@ -1772,6 +1772,7 @@ impl Ppu5C7x {
     pub fn remove_clocks(&mut self, clocks: usize) { self.sys_clocks_until_clock -= clocks; }
     pub fn sys_clocks_left(&self) -> usize { self.sys_clocks_until_clock }
 
+    /// Clocks the PPU until the next dot is complete
     pub fn clock(&mut self, frame_buffer: &mut [ORGB1555]) {
         self.sys_clocks_until_clock = 0;
 

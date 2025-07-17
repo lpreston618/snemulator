@@ -45,9 +45,12 @@ struct SnemulatorCore {
     snem_ppu: ppu::Ppu5C7x,
     snem_apu: ssmp::Spc700,
 
-    last_frame: time::Instant,
-    start: time::Instant,
     frame_count: u64,
+
+    #[cfg(feature = "warn-perf")]
+    last_frame: time::Instant,
+    #[cfg(feature = "warn-perf")]
+    prev_fps: Vec<f32>,
 }
 
 fn screen_message(env: &mut impl retro::env::Run, message: &str, frames: u32) {
@@ -179,9 +182,12 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
             snem_ppu,
             snem_apu,
 
-            last_frame: time::Instant::now(),
-            start: time::Instant::now(),
             frame_count: 0,
+
+            #[cfg(feature = "warn-perf")]
+            last_frame: time::Instant::now(),
+            #[cfg(feature = "warn-perf")]
+            prev_fps: Vec::new(),
         };
 
         Ok(core)
@@ -243,12 +249,33 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
 
         self.cycle_frame();
 
+        #[cfg(not(feature = "no-audio"))]
         self.render_audio(callbacks);
+        #[cfg(not(feature = "no-video"))]
         self.render_video(callbacks);
 
-        println!("FPS: {}", 1.0 / self.last_frame.elapsed().as_secs_f32());
+        #[cfg(feature = "warn-perf")]
+        {
+            const MIN_AVG_FPS: f32 = 45.0;
 
-        self.last_frame = time::Instant::now();
+            let fps = 1.0 / self.last_frame.elapsed().as_secs_f32();
+
+            self.prev_fps.push(fps);
+            
+            if self.prev_fps.len() > 120 {
+                let avg_fps = self.prev_fps.drain(0..60).sum::<f32>() / 60.0;
+
+                if avg_fps < MIN_AVG_FPS {
+                    self.logger.borrow_mut().log(
+                        LogLevel::Warn,
+                        format!("Poor performance detected. Avg FPS: {:.04}", avg_fps).as_str()
+                    );
+                }
+            }
+
+            self.last_frame = time::Instant::now();
+        }
+
         self.frame_count += 1;
 
         inputs_polled

@@ -5,7 +5,7 @@ use dma::{DmaChannel, DmaStatus};
 use utils::{CpuAddress, is_mmio_addr};
 
 use crate::log::SnemLogger;
-use crate::system::cartridge::Cartridge;
+use crate::system::cartridge::{MappingMode, Cartridge};
 use crate::system::ppu::PpuData;
 use crate::system::ssmp::ApuIORegs;
 use crate::utils::util_macros::bool2byte;
@@ -15,14 +15,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 const WRAM_SIZE: usize = 128 * 1024; // 128 KiB
-
-#[derive(Debug, Clone, Copy, Default)]
-pub enum MappingMode {
-    #[default]
-    LoROM,
-    HiROM,
-    ExHiROM,
-}
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum CpuMode {

@@ -1,15 +1,21 @@
 use std::{io::Read, path::Path};
 
-use crate::system::scpu::{self, MappingMode};
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) enum MappingMode {
+    #[default]
+    LoROM,
+    HiROM,
+    ExHiROM,
+}
 
 #[derive(Default)]
-pub struct Cartridge {
+pub(crate) struct Cartridge {
     cart_rom: Option<Vec<u8>>,
 
     title: [u8; 0x15],
 
     fast_rom: bool,
-    mapping_mode: scpu::MappingMode,
+    mapping_mode: MappingMode,
 
     extra_ram: bool,
     battery: bool,
@@ -60,9 +66,9 @@ impl Cartridge {
         self.title.copy_from_slice(&bytes[..0x15]);
         self.fast_rom = (bytes[0x15] & 0x10) > 0;
         self.mapping_mode = match bytes[0x15] & 0x0F {
-            0 => scpu::MappingMode::LoROM,
-            1 => scpu::MappingMode::HiROM,
-            5 => scpu::MappingMode::ExHiROM,
+            0 => MappingMode::LoROM,
+            1 => MappingMode::HiROM,
+            5 => MappingMode::ExHiROM,
             _ => {
                 panic!("unimplemented mapping mode");
             }
@@ -188,7 +194,7 @@ impl Cartridge {
 
 // Public Access
 impl Cartridge {
-    pub fn mapping_mode(&self) -> scpu::MappingMode {
+    pub fn mapping_mode(&self) -> MappingMode {
         self.mapping_mode
     }
 

@@ -1,0 +1,2 @@
+[alias]
+build-perf = "build --features warn-perf"
