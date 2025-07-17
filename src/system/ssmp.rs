@@ -9,6 +9,12 @@ use crate::utils::GetBits;
 const MASTER_CLOCK_TIME_UNITS: usize = 97;
 const SDSP_CLOCK_TIME_UNITS: usize = 678;
 
+// TIMER2 runs at 64kHz, which translates to one tick per every 96 DSP clocks.
+// Timers 0 and 1 each run at 1/8th that speed (8kHz), so we keep a secondary
+// counter that rolls over every 8 ticks of the fast TIMER2.
+const FAST_TIMER_DSP_CLOCKS: usize = 96;
+const SLOW_TIMER_TICKS_MAX: u8 = 8;
+
 #[derive(PartialEq)]
 pub enum Flag {
     FlagC = 1,   // Carry
@@ -107,15 +113,18 @@ pub struct Spc700 {
     timer0_internal_counter: u8,
     timer1_internal_counter: u8,
     timer2_internal_counter: u8,
+
+    slow_timer_clocks: u8,
 }
 
 impl Spc700 {
     // Boot program for the SPC700
-    const IPL_ROM: [u8; 64] = [ 
-        0xCD, 0xEF, 0xBD, 0xE8, 0x00, 0xC6, 0x1D, 0xD0, 0xFC, 0x8F, 0xAA, 0xF4, 0x8F, 0xBB, 0xF5, 0x78,
-        0xCC, 0xF4, 0xD0, 0xFB, 0x2F, 0x19, 0xEB, 0xF4, 0xD0, 0xFC, 0x7E, 0xF4, 0xD0, 0x0B, 0xE4, 0xF5,
-        0xCB, 0xF4, 0xD7, 0x00, 0xFC, 0xD0, 0xF3, 0xAB, 0x01, 0x10, 0xEF, 0x7E, 0xF4, 0x10, 0xEB, 0xBA,
-        0xF6, 0xDA, 0x00, 0xBA, 0xF4, 0xC4, 0xF4, 0xDD, 0x5D, 0xD0, 0xDB, 0x1F, 0x00, 0x00, 0xC0, 0xFF,
+    const IPL_ROM: [u8; 64] = [
+        0xCD, 0xEF, 0xBD, 0xE8, 0x00, 0xC6, 0x1D, 0xD0, 0xFC, 0x8F, 0xAA, 0xF4, 0x8F, 0xBB, 0xF5,
+        0x78, 0xCC, 0xF4, 0xD0, 0xFB, 0x2F, 0x19, 0xEB, 0xF4, 0xD0, 0xFC, 0x7E, 0xF4, 0xD0, 0x0B,
+        0xE4, 0xF5, 0xCB, 0xF4, 0xD7, 0x00, 0xFC, 0xD0, 0xF3, 0xAB, 0x01, 0x10, 0xEF, 0x7E, 0xF4,
+        0x10, 0xEB, 0xBA, 0xF6, 0xDA, 0x00, 0xBA, 0xF4, 0xC4, 0xF4, 0xDD, 0x5D, 0xD0, 0xDB, 0x1F,
+        0x00, 0x00, 0xC0, 0xFF,
     ];
 
     pub fn new(apuio_regs: Rc<ApuIORegs>) -> Spc700 {
@@ -152,6 +161,7 @@ impl Spc700 {
             timer0_internal_counter: 0,
             timer1_internal_counter: 0,
             timer2_internal_counter: 0,
+            slow_timer_clocks: 0,
         }
     }
 
@@ -166,19 +176,62 @@ impl Spc700 {
 
         while self.time_since_last_clock > SDSP_CLOCK_TIME_UNITS {
             // self.sdsp.clock();
-            
-            self.sdsp_clocks = (self.sdsp_clocks + 1) % 3;
+
+            self.sdsp_clocks += 1;
 
             // Spc700 clocks every 3 S-DSP cycles
-            if self.sdsp_clocks == 0 {
+            if self.sdsp_clocks % 3 == 0 {
                 if self.spc_clocks_until_instr == 0 {
                     self.exec_instr();
                 }
-                
+
                 self.spc_clocks_until_instr -= 1;
             }
 
             self.time_since_last_clock -= SDSP_CLOCK_TIME_UNITS;
+
+            if self.sdsp_clocks == FAST_TIMER_DSP_CLOCKS {
+                self.clock_fast_timer();
+
+                self.sdsp_clocks = 0;
+                self.slow_timer_clocks += 1;
+
+                if self.slow_timer_clocks == SLOW_TIMER_TICKS_MAX {
+                    self.clock_slow_timers();
+
+                    self.slow_timer_clocks = 0;
+                }
+            }
+        }
+    }
+
+    fn clock_slow_timers(&mut self) {
+        if self.timer0_en {
+            self.timer0_internal_counter += 1;
+            if self.timer0_internal_counter == self.timer0_target {
+                self.timer0_counter += 1;
+                self.timer0_counter &= 0x0F;
+                self.timer0_internal_counter = 0;
+            }
+        }
+        if self.timer1_en {
+            self.timer1_internal_counter += 1;
+            if self.timer1_internal_counter == self.timer1_target {
+                self.timer1_counter += 1;
+                self.timer1_counter &= 0x0F;
+                self.timer1_internal_counter = 0;
+            }
+        }
+    }
+
+    fn clock_fast_timer(&mut self) {
+        if self.timer2_en {
+            self.timer2_internal_counter += 1;
+            if self.timer2_internal_counter == self.timer2_target {
+                self.timer2_counter += 1;
+                self.timer2_counter &= 0x0F;
+                self.timer2_internal_counter = 0;
+            }
         }
     }
 
@@ -201,18 +254,34 @@ impl Spc700 {
         match address & 0xF {
             0x2 => self.sdsp_addr,
             0x3 => 0, // self.sdsp.read_regs(self.sdsp_addr),
-            0x4 => { 
-                println!("[Spc700] Read 0x{:02X} from cpuio0", self.apuio_regs.cpuio0.get());
-                self.apuio_regs.cpuio0.get() },
-            0x5 => { 
-                println!("[Spc700] Read 0x{:02X} from cpuio1", self.apuio_regs.cpuio1.get());
-                self.apuio_regs.cpuio1.get() },
-            0x6 => { 
-                println!("[Spc700] Read 0x{:02X} from cpuio2", self.apuio_regs.cpuio2.get());
-                self.apuio_regs.cpuio2.get() },
-            0x7 => { 
-                println!("[Spc700] Read 0x{:02X} from cpuio3", self.apuio_regs.cpuio3.get());
-                self.apuio_regs.cpuio3.get() },
+            0x4 => {
+                println!(
+                    "[Spc700] Read 0x{:02X} from cpuio0",
+                    self.apuio_regs.cpuio0.get()
+                );
+                self.apuio_regs.cpuio0.get()
+            }
+            0x5 => {
+                println!(
+                    "[Spc700] Read 0x{:02X} from cpuio1",
+                    self.apuio_regs.cpuio1.get()
+                );
+                self.apuio_regs.cpuio1.get()
+            }
+            0x6 => {
+                println!(
+                    "[Spc700] Read 0x{:02X} from cpuio2",
+                    self.apuio_regs.cpuio2.get()
+                );
+                self.apuio_regs.cpuio2.get()
+            }
+            0x7 => {
+                println!(
+                    "[Spc700] Read 0x{:02X} from cpuio3",
+                    self.apuio_regs.cpuio3.get()
+                );
+                self.apuio_regs.cpuio3.get()
+            }
             0x8 => self.aram[0xFF08],
             0x9 => self.aram[0xFF09],
             0xA => self.timer0_target,
@@ -222,17 +291,17 @@ impl Spc700 {
                 let data = self.timer0_counter;
                 self.timer0_counter = 0;
                 data
-            },
+            }
             0xE => {
                 let data = self.timer1_counter;
                 self.timer1_counter = 0;
                 data
-            },
+            }
             0xF => {
                 let data = self.timer2_counter;
                 self.timer2_counter = 0;
                 data
-            },
+            }
             _ => 0,
         }
     }
@@ -279,35 +348,52 @@ impl Spc700 {
                     // self.sdsp.write_regs(self.sdsp_addr, data);
                 }
             }
-            0x4 => { 
+            0x4 => {
                 println!("[Spc700] wrote 0x{:02X} to apuio0", data);
-                self.apuio_regs.apuio0.set(data); }
-            0x5 => { 
+                self.apuio_regs.apuio0.set(data);
+            }
+            0x5 => {
                 println!("[Spc700] wrote 0x{:02X} to apuio1", data);
-                self.apuio_regs.apuio1.set(data); }
-            0x6 => { 
+                self.apuio_regs.apuio1.set(data);
+            }
+            0x6 => {
                 println!("[Spc700] wrote 0x{:02X} to apuio2", data);
-                self.apuio_regs.apuio2.set(data); }
-            0x7 => { 
+                self.apuio_regs.apuio2.set(data);
+            }
+            0x7 => {
                 println!("[Spc700] wrote 0x{:02X} to apuio3", data);
-                self.apuio_regs.apuio3.set(data); }
-            0x8 => { self.aram[0xFF08] = data; }
-            0x9 => { self.aram[0xFF09] = data; }
-            0xA => { self.timer0_target = data; }
-            0xB => { self.timer1_target = data; }
-            0xC => { self.timer2_target = data; }
-            0xD => { self.timer0_counter = data; }
-            0xE => { self.timer1_counter = data; }
-            0xF => { self.timer2_counter = data; }
+                self.apuio_regs.apuio3.set(data);
+            }
+            0x8 => {
+                self.aram[0xFF08] = data;
+            }
+            0x9 => {
+                self.aram[0xFF09] = data;
+            }
+            0xA => {
+                self.timer0_target = data;
+            }
+            0xB => {
+                self.timer1_target = data;
+            }
+            0xC => {
+                self.timer2_target = data;
+            }
+            0xD => {
+                self.timer0_counter = data;
+            }
+            0xE => {
+                self.timer1_counter = data;
+            }
+            0xF => {
+                self.timer2_counter = data;
+            }
             _ => {}
         }
     }
 
     fn read_word(&mut self, addr_lo: u16, addr_hi: u16) -> u16 {
-        u16::from_le_bytes([
-            self.read(addr_lo),
-            self.read(addr_hi),
-        ])
+        u16::from_le_bytes([self.read(addr_lo), self.read(addr_hi)])
     }
 
     fn write_word(&mut self, addr_lo: u16, addr_hi: u16, word: u16) {
@@ -325,10 +411,7 @@ impl Spc700 {
     }
 
     fn pop_word(&mut self) -> u16 {
-        u16::from_le_bytes([
-            self.pop(),
-            self.pop(),
-        ])
+        u16::from_le_bytes([self.pop(), self.pop()])
     }
 
     fn push_word(&mut self, word: u16) {
@@ -340,7 +423,7 @@ impl Spc700 {
         let cycles: usize;
 
         let opcode = self.read(self.pc);
-        
+
         self.branch_taken = false;
 
         match opcode {
@@ -348,389 +431,389 @@ impl Spc700 {
                 self.pc += 1;
                 self.nop();
                 cycles = 2;
-            },
+            }
             0x01 => {
                 self.pc += 1;
                 self.tcall(opcode);
                 cycles = 8;
-            },
+            }
             0x02 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.set1(addr, opcode);
                 cycles = 4;
-            },
+            }
             0x03 => {
                 let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
                 self.bbs(addr1, addr2, opcode);
                 cycles = 5;
-            },
+            }
             0x04 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.or_acc(addr);
                 cycles = 3;
-            },
+            }
             0x05 => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.or_acc(addr);
                 cycles = 4;
-            },
+            }
             0x06 => {
                 let addr = self.indirect();
                 self.pc += 1;
                 self.or_acc(addr);
                 cycles = 3;
-            },
+            }
             0x07 => {
                 let addr = self.x_indirect();
                 self.pc += 2;
                 self.or_acc(addr);
                 cycles = 6;
-            },
+            }
             0x08 => {
                 let addr = self.immediate();
                 self.pc += 2;
                 self.or_acc(addr);
                 cycles = 2;
-            },
+            }
             0x09 => {
                 let (addr1, addr2) = self.direct_to_direct();
                 self.pc += 3;
                 self.or_mem(addr1, addr2);
                 cycles = 6;
-            },
+            }
             0x0A => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.or1(addr);
                 cycles = 5;
-            },
+            }
             0x0B => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.asl_mem(addr);
                 cycles = 4;
-            },
+            }
             0x0C => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.asl_mem(addr);
                 cycles = 5;
-            },
+            }
             0x0D => {
                 self.pc += 1;
                 self.push_psw();
                 cycles = 4;
-            },
+            }
             0x0E => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.tset1(addr);
                 cycles = 6;
-            },
+            }
             0x0F => {
                 self.pc += 1;
                 self.brk();
                 cycles = 8;
-            },
+            }
             0x10 => {
                 let addr = self.relative();
                 self.pc += 2;
                 self.bpl(addr);
                 cycles = 2;
-            },
+            }
             0x11 => {
                 self.pc += 1;
                 self.tcall(opcode);
                 cycles = 8;
-            },
+            }
             0x12 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.clr1(addr, opcode);
                 cycles = 4;
-            },
+            }
             0x13 => {
                 let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
                 self.bbc(addr1, addr2, opcode);
                 cycles = 5;
-            },
+            }
             0x14 => {
                 let addr = self.x_direct();
                 self.pc += 2;
                 self.or_acc(addr);
                 cycles = 4;
-            },
+            }
             0x15 => {
                 let addr = self.x_absolute();
                 self.pc += 3;
                 self.or_acc(addr);
                 cycles = 5;
-            },
+            }
             0x16 => {
                 let addr = self.y_absolute();
                 self.pc += 3;
                 self.or_acc(addr);
                 cycles = 5;
-            },
+            }
             0x17 => {
                 let addr = self.indirect_y();
                 self.pc += 2;
                 self.or_acc(addr);
                 cycles = 6;
-            },
+            }
             0x18 => {
                 let (addr1, addr2) = self.immediate_to_direct();
                 self.pc += 3;
                 self.or_mem(addr1, addr2);
                 cycles = 5;
-            },
+            }
             0x19 => {
                 let (addr1, addr2) = self.indirect_to_indirect();
                 self.pc += 1;
                 self.or_mem(addr1, addr2);
                 cycles = 5;
-            },
+            }
             0x1A => {
                 let (addr1, addr2) = self.direct_word();
                 self.pc += 2;
                 self.decw(addr1, addr2);
                 cycles = 6;
-            },
+            }
             0x1B => {
                 let addr = self.x_direct();
                 self.pc += 2;
                 self.asl_mem(addr);
                 cycles = 5;
-            },
+            }
             0x1C => {
                 self.pc += 1;
                 self.asl_acc();
                 cycles = 2;
-            },
+            }
             0x1D => {
                 self.pc += 1;
                 self.dex();
                 cycles = 2;
-            },
+            }
             0x1E => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.cmx(addr);
                 cycles = 4;
-            },
+            }
             0x1F => {
                 let addr = self.absolute_x_indirect();
                 self.pc += 3;
                 self.jmp(addr);
                 cycles = 6;
-            },
+            }
             0x20 => {
                 self.pc += 1;
                 self.clrp();
                 cycles = 2;
-            },
+            }
             0x21 => {
                 self.pc += 1;
                 self.tcall(opcode);
                 cycles = 8;
-            },
+            }
             0x22 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.set1(addr, opcode);
                 cycles = 4;
-            },
+            }
             0x23 => {
                 let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
                 self.bbs(addr1, addr2, opcode);
                 cycles = 5;
-            },
+            }
             0x24 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.and_acc(addr);
                 cycles = 3;
-            },
+            }
             0x25 => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.and_acc(addr);
                 cycles = 4;
-            },
+            }
             0x26 => {
                 let addr = self.indirect();
                 self.pc += 1;
                 self.and_acc(addr);
                 cycles = 3;
-            },
+            }
             0x27 => {
                 let addr = self.x_indirect();
                 self.pc += 2;
                 self.and_acc(addr);
                 cycles = 6;
-            },
+            }
             0x28 => {
                 let addr = self.immediate();
                 self.pc += 2;
                 self.and_acc(addr);
                 cycles = 2;
-            },
+            }
             0x29 => {
                 let (addr1, addr2) = self.direct_to_direct();
                 self.pc += 3;
                 self.and_mem(addr1, addr2);
                 cycles = 6;
-            },
+            }
             0x2A => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.or1(addr);
                 cycles = 5;
-            },
+            }
             0x2B => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.rol_mem(addr);
                 cycles = 4;
-            },
+            }
             0x2C => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.rol_mem(addr);
                 cycles = 5;
-            },
+            }
             0x2D => {
                 self.pc += 1;
                 self.push_acc();
                 cycles = 4;
-            },
+            }
             0x2E => {
                 let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
                 self.cbne(addr1, addr2);
                 cycles = 5;
-            },
+            }
             0x2F => {
                 let addr = self.relative();
                 self.pc += 2;
                 self.bra(addr);
                 cycles = 4;
-            },
+            }
             0x30 => {
                 let addr = self.relative();
                 self.pc += 2;
                 self.bmi(addr);
                 cycles = 2;
-            },
+            }
             0x31 => {
                 self.pc += 1;
                 self.tcall(opcode);
                 cycles = 8;
-            },
+            }
             0x32 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.clr1(addr, opcode);
                 cycles = 4;
-            },
+            }
             0x33 => {
                 let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
                 self.bbc(addr1, addr2, opcode);
                 cycles = 5;
-            },
+            }
             0x34 => {
                 let addr = self.x_direct();
                 self.pc += 2;
                 self.and_acc(addr);
                 cycles = 4;
-            },
+            }
             0x35 => {
                 let addr = self.x_absolute();
                 self.pc += 3;
                 self.and_acc(addr);
                 cycles = 5;
-            },
+            }
             0x36 => {
                 let addr = self.y_absolute();
                 self.pc += 3;
                 self.and_acc(addr);
                 cycles = 5;
-            },
+            }
             0x37 => {
                 let addr = self.indirect_y();
                 self.pc += 2;
                 self.and_acc(addr);
                 cycles = 6;
-            },
+            }
             0x38 => {
                 let (addr1, addr2) = self.immediate_to_direct();
                 self.pc += 3;
                 self.and_mem(addr1, addr2);
                 cycles = 5;
-            },
+            }
             0x39 => {
                 let (addr1, addr2) = self.indirect_to_indirect();
                 self.pc += 1;
                 self.and_mem(addr1, addr2);
                 cycles = 5;
-            },
+            }
             0x3A => {
                 let (addr1, addr2) = self.direct_word();
                 self.pc += 2;
                 self.incw(addr1, addr2);
                 cycles = 6;
-            },
+            }
             0x3B => {
                 let addr = self.x_direct();
                 self.pc += 2;
                 self.rol_mem(addr);
                 cycles = 5;
-            },
+            }
             0x3C => {
                 self.pc += 1;
                 self.rol_acc();
                 cycles = 2;
-            },
+            }
             0x3D => {
                 self.pc += 1;
                 self.inx();
                 cycles = 2;
-            },
+            }
             0x3E => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.cmx(addr);
                 cycles = 3;
-            },
+            }
             0x3F => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.call(addr);
                 cycles = 8;
-            },
+            }
             0x40 => {
                 self.pc += 1;
                 self.setp();
                 cycles = 2;
-            },
+            }
             0x41 => {
                 self.pc += 1;
                 self.tcall(opcode);
                 cycles = 8;
-            },
+            }
             0x42 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.set1(addr, opcode);
                 cycles = 4;
-            },
+            }
             0x43 => {
                 let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
@@ -742,549 +825,549 @@ impl Spc700 {
                 self.pc += 2;
                 self.eor_acc(addr);
                 cycles = 3;
-            },
+            }
             0x45 => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.eor_acc(addr);
                 cycles = 4;
-            },
+            }
             0x46 => {
                 let addr = self.indirect();
                 self.pc += 1;
                 self.eor_acc(addr);
                 cycles = 3;
-            },
+            }
             0x47 => {
                 let addr = self.x_indirect();
                 self.pc += 2;
                 self.eor_acc(addr);
                 cycles = 6;
-            },
+            }
             0x48 => {
                 let addr = self.immediate();
                 self.pc += 2;
                 self.eor_acc(addr);
                 cycles = 2;
-            },
+            }
             0x49 => {
                 let (addr1, addr2) = self.direct_to_direct();
                 self.pc += 3;
                 self.eor_mem(addr1, addr2);
                 cycles = 6;
-            },
+            }
             0x4A => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.and1(addr);
                 cycles = 4;
-            },
+            }
             0x4B => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.lsr_mem(addr);
                 cycles = 4;
-            },
+            }
             0x4C => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.lsr_mem(addr);
                 cycles = 5;
-            },
+            }
             0x4D => {
                 self.pc += 1;
                 self.push_x();
                 cycles = 4;
-            },
+            }
             0x4E => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.tclr1(addr);
                 cycles = 6;
-            },
+            }
             0x4F => {
                 let addr = self.immediate();
                 self.pc += 1;
                 self.pcall(addr);
                 cycles = 6;
-            },
+            }
             0x50 => {
                 let addr = self.relative();
                 self.pc += 2;
                 self.bvc(addr);
                 cycles = 2;
-            },
+            }
             0x51 => {
                 self.pc += 1;
                 self.tcall(opcode);
                 cycles = 8;
-            },
+            }
             0x52 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.clr1(addr, opcode);
                 cycles = 4;
-            },
+            }
             0x53 => {
                 let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
                 self.bbc(addr1, addr2, opcode);
                 cycles = 5;
-            },
+            }
             0x54 => {
                 let addr = self.x_direct();
                 self.pc += 2;
                 self.eor_acc(addr);
                 cycles = 4;
-            },
+            }
             0x55 => {
                 let addr = self.x_absolute();
                 self.pc += 3;
                 self.eor_acc(addr);
                 cycles = 5;
-            },
+            }
             0x56 => {
                 let addr = self.y_absolute();
                 self.pc += 3;
                 self.eor_acc(addr);
                 cycles = 5;
-            },
+            }
             0x57 => {
                 let addr = self.indirect_y();
                 self.pc += 2;
                 self.eor_acc(addr);
                 cycles = 6;
-            },
+            }
             0x58 => {
                 let (addr1, addr2) = self.immediate_to_direct();
                 self.pc += 3;
                 self.eor_mem(addr1, addr2);
                 cycles = 5;
-            },
+            }
             0x59 => {
                 let (addr1, addr2) = self.indirect_to_indirect();
                 self.pc += 1;
                 self.eor_mem(addr1, addr2);
                 cycles = 5;
-            },
+            }
             0x5A => {
                 let (addr1, addr2) = self.direct_word();
                 self.pc += 2;
                 self.cmpw(addr1, addr2);
                 cycles = 4;
-            },
+            }
             0x5B => {
                 let addr = self.x_direct();
                 self.pc += 2;
                 self.lsr_mem(addr);
                 cycles = 5;
-            },
+            }
             0x5C => {
                 self.pc += 1;
                 self.lsr_acc();
                 cycles = 2;
-            },
+            }
             0x5D => {
                 self.pc += 1;
                 self.tax();
                 cycles = 2;
-            },
+            }
             0x5E => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.cmy(addr);
                 cycles = 4;
-            },
+            }
             0x5F => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.jmp(addr);
                 cycles = 3;
-            },
+            }
             0x60 => {
                 self.pc += 1;
                 self.clrc();
                 cycles = 2;
-            },
+            }
             0x61 => {
                 self.pc += 1;
                 self.tcall(opcode);
                 cycles = 8;
-            },
+            }
             0x62 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.set1(addr, opcode);
                 cycles = 4;
-            },
+            }
             0x63 => {
                 let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
                 self.bbs(addr1, addr2, opcode);
                 cycles = 5;
-            },
+            }
             0x64 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.cmp_acc(addr);
                 cycles = 3;
-            },
+            }
             0x65 => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.cmp_acc(addr);
                 cycles = 4;
-            },
+            }
             0x66 => {
                 let addr = self.indirect();
                 self.pc += 1;
                 self.cmp_acc(addr);
                 cycles = 3;
-            },
+            }
             0x67 => {
                 let addr = self.x_indirect();
                 self.pc += 2;
                 self.cmp_acc(addr);
                 cycles = 6;
-            },
+            }
             0x68 => {
                 let addr = self.immediate();
                 self.pc += 2;
                 self.cmp_acc(addr);
                 cycles = 2;
-            },
+            }
             0x69 => {
                 let (addr1, addr2) = self.direct_to_direct();
                 self.pc += 3;
                 self.cmp_mem(addr1, addr2);
                 cycles = 6;
-            },
+            }
             0x6A => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.and1(addr);
                 cycles = 4;
-            },
+            }
             0x6B => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.ror_mem(addr);
                 cycles = 4;
-            },
+            }
             0x6C => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.ror_mem(addr);
                 cycles = 5;
-            },
+            }
             0x6D => {
                 self.pc += 1;
                 self.push_y();
                 cycles = 4;
-            },
+            }
             0x6E => {
                 let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
                 self.dbnz_mem(addr1, addr2);
                 cycles = 5;
-            },
+            }
             0x6F => {
                 self.pc += 1;
                 self.ret();
                 cycles = 5;
-            },
+            }
             0x70 => {
                 let addr = self.relative();
                 self.pc += 2;
                 self.bvs(addr);
                 cycles = 2;
-            },
+            }
             0x71 => {
                 self.pc += 1;
                 self.tcall(opcode);
                 cycles = 8;
-            },
+            }
             0x72 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.clr1(addr, opcode);
                 cycles = 4;
-            },
+            }
             0x73 => {
                 let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
                 self.bbc(addr1, addr2, opcode);
                 cycles = 5;
-            },
+            }
             0x74 => {
                 let addr = self.x_direct();
                 self.pc += 2;
                 self.cmp_acc(addr);
                 cycles = 4;
-            },
+            }
             0x75 => {
                 let addr = self.x_absolute();
                 self.pc += 3;
                 self.cmp_acc(addr);
                 cycles = 5;
-            },
+            }
             0x76 => {
                 let addr = self.y_absolute();
                 self.pc += 3;
                 self.cmp_acc(addr);
                 cycles = 5;
-            },
+            }
             0x77 => {
                 let addr = self.indirect_y();
                 self.pc += 2;
                 self.cmp_acc(addr);
                 cycles = 6;
-            },
+            }
             0x78 => {
                 let (addr1, addr2) = self.immediate_to_direct();
                 self.pc += 3;
                 self.cmp_mem(addr1, addr2);
                 cycles = 5;
-            },
+            }
             0x79 => {
                 let (addr1, addr2) = self.indirect_to_indirect();
                 self.pc += 1;
                 self.cmp_mem(addr1, addr2);
                 cycles = 5;
-            },
+            }
             0x7A => {
                 let (addr1, addr2) = self.direct_word();
                 self.pc += 2;
                 self.addw(addr1, addr2);
                 cycles = 5;
-            },
+            }
             0x7B => {
                 let addr = self.x_direct();
                 self.pc += 2;
                 self.ror_mem(addr);
                 cycles = 5;
-            },
+            }
             0x7C => {
                 self.pc += 1;
                 self.ror_acc();
                 cycles = 2;
-            },
+            }
             0x7D => {
                 self.pc += 1;
                 self.txa();
                 cycles = 2;
-            },
+            }
             0x7E => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.cmy(addr);
                 cycles = 3;
-            },
+            }
             0x7F => {
                 self.pc += 1;
                 self.ret1();
                 cycles = 6;
-            },
+            }
             0x80 => {
                 self.pc += 1;
                 self.setc();
                 cycles = 2;
-            },
+            }
             0x81 => {
                 self.pc += 1;
                 self.tcall(opcode);
                 cycles = 8;
-            },
+            }
             0x82 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.set1(addr, opcode);
                 cycles = 4;
-            },
+            }
             0x83 => {
                 let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
                 self.bbs(addr1, addr2, opcode);
                 cycles = 5;
-            },
+            }
             0x84 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.adc_acc(addr);
                 cycles = 3;
-            },
+            }
             0x85 => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.adc_acc(addr);
                 cycles = 4;
-            },
+            }
             0x86 => {
                 let addr = self.indirect();
                 self.pc += 1;
                 self.adc_acc(addr);
                 cycles = 3;
-            },
+            }
             0x87 => {
                 let addr = self.x_indirect();
                 self.pc += 2;
                 self.adc_acc(addr);
                 cycles = 6;
-            },
+            }
             0x88 => {
                 let addr = self.immediate();
                 self.pc += 2;
                 self.adc_acc(addr);
                 cycles = 2;
-            },
+            }
             0x89 => {
                 let (addr1, addr2) = self.direct_to_direct();
                 self.pc += 3;
                 self.adc_mem(addr1, addr2);
                 cycles = 6;
-            },
+            }
             0x8A => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.eor1(addr);
                 cycles = 5;
-            },
+            }
             0x8B => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.dec_mem(addr);
                 cycles = 4;
-            },
+            }
             0x8C => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.dec_mem(addr);
                 cycles = 5;
-            },
+            }
             0x8D => {
                 let addr = self.immediate();
                 self.pc += 2;
                 self.ldy(addr);
                 cycles = 2;
-            },
+            }
             0x8E => {
                 self.pc += 1;
                 self.pop_psw();
                 cycles = 4;
-            },
+            }
             0x8F => {
                 let (addr1, addr2) = self.immediate_to_direct();
                 self.pc += 3;
                 self.mov(addr1, addr2);
                 cycles = 5;
-            },
+            }
             0x90 => {
                 let addr = self.relative();
                 self.pc += 2;
                 self.bcc(addr);
                 cycles = 2;
-            },
+            }
             0x91 => {
                 self.pc += 1;
                 self.tcall(opcode);
                 cycles = 8;
-            },
+            }
             0x92 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.clr1(addr, opcode);
                 cycles = 4;
-            },
+            }
             0x93 => {
                 let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
                 self.bbc(addr1, addr2, opcode);
                 cycles = 5;
-            },
+            }
             0x94 => {
                 let addr = self.x_direct();
                 self.pc += 2;
                 self.adc_acc(addr);
                 cycles = 4;
-            },
+            }
             0x95 => {
                 let addr = self.x_absolute();
                 self.pc += 3;
                 self.adc_acc(addr);
                 cycles = 5;
-            },
+            }
             0x96 => {
                 let addr = self.y_absolute();
                 self.pc += 3;
                 self.adc_acc(addr);
                 cycles = 5;
-            },
+            }
             0x97 => {
                 let addr = self.indirect_y();
                 self.pc += 2;
                 self.adc_acc(addr);
                 cycles = 6;
-            },
+            }
             0x98 => {
                 let (addr1, addr2) = self.immediate_to_direct();
                 self.pc += 3;
                 self.adc_mem(addr1, addr2);
                 cycles = 5;
-            },
+            }
             0x99 => {
                 let (addr1, addr2) = self.indirect_to_indirect();
                 self.pc += 1;
                 self.adc_mem(addr1, addr2);
                 cycles = 5;
-            },
+            }
             0x9A => {
                 let (addr1, addr2) = self.direct_word();
                 self.pc += 2;
                 self.subw(addr1, addr2);
                 cycles = 5;
-            },
+            }
             0x9B => {
                 let addr = self.x_direct();
                 self.pc += 2;
                 self.dec_mem(addr);
                 cycles = 5;
-            },
+            }
             0x9C => {
                 self.pc += 1;
                 self.dec_acc();
                 cycles = 2;
-            },
+            }
             0x9D => {
                 self.pc += 1;
                 self.tsx();
                 cycles = 2;
-            },
+            }
             0x9E => {
                 self.pc += 1;
                 self.div();
                 cycles = 12;
-            },
+            }
             0x9F => {
                 self.pc += 1;
                 self.xcn();
                 cycles = 5;
-            },
+            }
             0xA0 => {
                 self.pc += 1;
                 self.sei();
                 cycles = 3;
-            },
+            }
             0xA1 => {
                 self.pc += 1;
                 self.tcall(opcode);
                 cycles = 8;
-            },
+            }
             0xA2 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.set1(addr, opcode);
                 cycles = 4;
-            },
+            }
             0xA3 => {
                 let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
@@ -1296,180 +1379,180 @@ impl Spc700 {
                 self.pc += 2;
                 self.sbc_acc(addr);
                 cycles = 3;
-            },
+            }
             0xA5 => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.sbc_acc(addr);
                 cycles = 4;
-            },
+            }
             0xA6 => {
                 let addr = self.indirect();
                 self.pc += 1;
                 self.sbc_acc(addr);
                 cycles = 3;
-            },
+            }
             0xA7 => {
                 let addr = self.x_indirect();
                 self.pc += 2;
                 self.sbc_acc(addr);
                 cycles = 6;
-            },
+            }
             0xA8 => {
                 let addr = self.immediate();
                 self.pc += 2;
                 self.sbc_acc(addr);
                 cycles = 2;
-            },
+            }
             0xA9 => {
                 let (addr1, addr2) = self.direct_to_direct();
                 self.pc += 3;
                 self.sbc_mem(addr1, addr2);
                 cycles = 6;
-            },
+            }
             0xAA => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.ldc(addr);
                 cycles = 4;
-            },
+            }
             0xAB => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.inc_mem(addr);
                 cycles = 4;
-            },
+            }
             0xAC => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.inc_mem(addr);
                 cycles = 5;
-            },
+            }
             0xAD => {
                 let addr = self.immediate();
                 self.pc += 2;
                 self.cmy(addr);
                 cycles = 2;
-            },
+            }
             0xAE => {
                 self.pc += 1;
                 self.pop_acc();
                 cycles = 4;
-            },
+            }
             0xAF => {
                 let addr = self.indirect_inc();
                 self.pc += 1;
                 self.sta(addr);
                 cycles = 4;
-            },
+            }
             0xB0 => {
                 let addr = self.relative();
                 self.pc += 2;
                 self.bcs(addr);
                 cycles = 2;
-            },
+            }
             0xB1 => {
                 self.pc += 1;
                 self.tcall(opcode);
                 cycles = 8;
-            },
+            }
             0xB2 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.clr1(addr, opcode);
                 cycles = 4;
-            },
+            }
             0xB3 => {
                 let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
                 self.bbc(addr1, addr2, opcode);
                 cycles = 5;
-            },
+            }
             0xB4 => {
                 let addr = self.x_direct();
                 self.pc += 2;
                 self.sbc_acc(addr);
                 cycles = 4;
-            },
+            }
             0xB5 => {
                 let addr = self.x_absolute();
                 self.pc += 3;
                 self.sbc_acc(addr);
                 cycles = 5;
-            },
+            }
             0xB6 => {
                 let addr = self.y_absolute();
                 self.pc += 3;
                 self.sbc_acc(addr);
                 cycles = 5;
-            },
+            }
             0xB7 => {
                 let addr = self.indirect_y();
                 self.pc += 2;
                 self.sbc_acc(addr);
                 cycles = 6;
-            },
+            }
             0xB8 => {
                 let (addr1, addr2) = self.immediate_to_direct();
                 self.pc += 3;
                 self.sbc_mem(addr1, addr2);
                 cycles = 5;
-            },
+            }
             0xB9 => {
                 let (addr1, addr2) = self.indirect_to_indirect();
                 self.pc += 1;
                 self.sbc_mem(addr1, addr2);
                 cycles = 5;
-            },
+            }
             0xBA => {
                 let (addr1, addr2) = self.direct_word();
                 self.pc += 2;
                 self.ldya(addr1, addr2);
                 cycles = 5;
-            },
+            }
             0xBB => {
                 let addr = self.x_direct();
                 self.pc += 2;
                 self.inc_mem(addr);
                 cycles = 5;
-            },
+            }
             0xBC => {
                 self.pc += 1;
                 self.inc_acc();
                 cycles = 2;
-            },
+            }
             0xBD => {
                 self.pc += 1;
                 self.txs();
                 cycles = 2;
-            },
+            }
             0xBE => {
                 self.pc += 1;
                 self.das();
                 cycles = 3;
-            },
+            }
             0xBF => {
                 let addr = self.indirect_inc();
                 self.pc += 1;
                 self.lda(addr);
                 cycles = 4;
-            },
+            }
             0xC0 => {
                 self.pc += 1;
                 self.cli();
                 cycles = 3;
-            },
+            }
             0xC1 => {
                 self.pc += 1;
                 self.tcall(opcode);
                 cycles = 8;
-            },
+            }
             0xC2 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.set1(addr, opcode);
                 cycles = 4;
-            },
+            }
             0xC3 => {
                 let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
@@ -1481,348 +1564,348 @@ impl Spc700 {
                 self.pc += 2;
                 self.sta(addr);
                 cycles = 4;
-            },
+            }
             0xC5 => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.sta(addr);
                 cycles = 5;
-            },
+            }
             0xC6 => {
                 let addr = self.indirect();
                 self.pc += 1;
                 self.sta(addr);
                 cycles = 4;
-            },
+            }
             0xC7 => {
                 let addr = self.x_indirect();
                 self.pc += 2;
                 self.sta(addr);
                 cycles = 7;
-            },
+            }
             0xC8 => {
                 let addr = self.immediate();
                 self.pc += 2;
                 self.cmx(addr);
                 cycles = 2;
-            },
+            }
             0xC9 => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.stx(addr);
                 cycles = 5;
-            },
+            }
             0xCA => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.stc(addr);
                 cycles = 6;
-            },
+            }
             0xCB => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.sty(addr);
                 cycles = 4;
-            },
+            }
             0xCC => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.sty(addr);
                 cycles = 5;
-            },
+            }
             0xCD => {
                 let addr = self.immediate();
                 self.pc += 2;
                 self.ldx(addr);
                 cycles = 2;
-            },
+            }
             0xCE => {
                 self.pc += 1;
                 self.pop_x();
                 cycles = 4;
-            },
+            }
             0xCF => {
                 self.pc += 1;
                 self.mul();
                 cycles = 9;
-            },
+            }
             0xD0 => {
                 let addr = self.relative();
                 self.pc += 2;
                 self.bne(addr);
                 cycles = 2;
-            },
+            }
             0xD1 => {
                 self.pc += 1;
                 self.tcall(opcode);
                 cycles = 8;
-            },
+            }
             0xD2 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.clr1(addr, opcode);
                 cycles = 4;
-            },
+            }
             0xD3 => {
                 let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
                 self.bbc(addr1, addr2, opcode);
                 cycles = 5;
-            },
+            }
             0xD4 => {
                 let addr = self.x_direct();
                 self.pc += 2;
                 self.sta(addr);
                 cycles = 5;
-            },
+            }
             0xD5 => {
                 let addr = self.x_absolute();
                 self.pc += 3;
                 self.sta(addr);
                 cycles = 6;
-            },
+            }
             0xD6 => {
                 let addr = self.y_absolute();
                 self.pc += 3;
                 self.sta(addr);
                 cycles = 6;
-            },
+            }
             0xD7 => {
                 let addr = self.indirect_y();
                 self.pc += 2;
                 self.sta(addr);
                 cycles = 7;
-            },
+            }
             0xD8 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.stx(addr);
                 cycles = 4;
-            },
+            }
             0xD9 => {
                 let addr = self.y_direct();
                 self.pc += 2;
                 self.stx(addr);
                 cycles = 5;
-            },
+            }
             0xDA => {
                 let (addr1, addr2) = self.direct_word();
                 self.pc += 2;
                 self.stya(addr1, addr2);
                 cycles = 5;
-            },
+            }
             0xDB => {
                 let addr = self.x_direct();
                 self.pc += 2;
                 self.sty(addr);
                 cycles = 5;
-            },
+            }
             0xDC => {
                 self.pc += 1;
                 self.dey();
                 cycles = 2;
-            },
+            }
             0xDD => {
                 self.pc += 1;
                 self.tya();
                 cycles = 2;
-            },
+            }
             0xDE => {
                 let (addr1, addr2) = self.x_direct_relative();
                 self.pc += 3;
                 self.cbne(addr1, addr2);
                 cycles = 6;
-            },
+            }
             0xDF => {
                 self.pc += 1;
                 self.daa();
                 cycles = 3;
-            },
+            }
             0xE0 => {
                 self.pc += 1;
                 self.clrv();
                 cycles = 2;
-            },
+            }
             0xE1 => {
                 self.pc += 1;
                 self.tcall(opcode);
                 cycles = 8;
-            },
+            }
             0xE2 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.set1(addr, opcode);
                 cycles = 4;
-            },
+            }
             0xE3 => {
                 let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
                 self.bbs(addr1, addr2, opcode);
                 cycles = 5;
-            },
+            }
             0xE4 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.lda(addr);
                 cycles = 3;
-            },
+            }
             0xE5 => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.lda(addr);
                 cycles = 4;
-            },
+            }
             0xE6 => {
                 let addr = self.indirect();
                 self.pc += 1;
                 self.lda(addr);
                 cycles = 3;
-            },
+            }
             0xE7 => {
                 let addr = self.x_indirect();
                 self.pc += 2;
                 self.lda(addr);
                 cycles = 6;
-            },
+            }
             0xE8 => {
                 let addr = self.immediate();
                 self.pc += 2;
                 self.lda(addr);
                 cycles = 2;
-            },
+            }
             0xE9 => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.ldx(addr);
                 cycles = 4;
-            },
+            }
             0xEA => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.not1(addr);
                 cycles = 5;
-            },
+            }
             0xEB => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.ldy(addr);
                 cycles = 3;
-            },
+            }
             0xEC => {
                 let addr = self.absolute();
                 self.pc += 3;
                 self.ldy(addr);
                 cycles = 4;
-            },
+            }
             0xED => {
                 self.pc += 1;
                 self.notc();
                 cycles = 3;
-            },
+            }
             0xEE => {
                 self.pc += 1;
                 self.pop_y();
                 cycles = 4;
-            },
+            }
             0xEF => {
                 self.pc += 1;
                 self.sleep();
                 cycles = 3;
-            },
+            }
             0xF0 => {
                 let addr = self.relative();
                 self.pc += 2;
                 self.beq(addr);
                 cycles = 2;
-            },
+            }
             0xF1 => {
                 self.pc += 1;
                 self.tcall(opcode);
                 cycles = 8;
-            },
+            }
             0xF2 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.clr1(addr, opcode);
                 cycles = 4;
-            },
+            }
             0xF3 => {
                 let (addr1, addr2) = self.direct_relative();
                 self.pc += 3;
                 self.bbc(addr1, addr2, opcode);
                 cycles = 5;
-            },
+            }
             0xF4 => {
                 let addr = self.x_direct();
                 self.pc += 2;
                 self.lda(addr);
                 cycles = 4;
-            },
+            }
             0xF5 => {
                 let addr = self.x_absolute();
                 self.pc += 3;
                 self.lda(addr);
                 cycles = 5;
-            },
+            }
             0xF6 => {
                 let addr = self.y_absolute();
                 self.pc += 3;
                 self.lda(addr);
                 cycles = 5;
-            },
+            }
             0xF7 => {
                 let addr = self.indirect_y();
                 self.pc += 2;
                 self.lda(addr);
                 cycles = 6;
-            },
+            }
             0xF8 => {
                 let addr = self.direct();
                 self.pc += 2;
                 self.ldx(addr);
                 cycles = 3;
-            },
+            }
             0xF9 => {
                 let addr = self.y_direct();
                 self.pc += 2;
                 self.ldx(addr);
                 cycles = 4;
-            },
+            }
             0xFA => {
                 let (addr1, addr2) = self.direct_to_direct();
                 self.pc += 3;
                 self.mov(addr1, addr2);
                 cycles = 5;
-            },
+            }
             0xFB => {
                 let addr = self.x_direct();
                 self.pc += 2;
                 self.ldy(addr);
                 cycles = 4;
-            },
+            }
             0xFC => {
                 self.pc += 1;
                 self.iny();
                 cycles = 2;
-            },
+            }
             0xFD => {
                 self.pc += 1;
                 self.tay();
                 cycles = 2;
-            },
+            }
             0xFE => {
                 let addr = self.relative();
                 self.pc += 2;
                 self.dbnz_y(addr);
                 cycles = 4;
-            },
+            }
             0xFF => {
                 self.pc += 1;
                 self.stop();
                 cycles = 3;
-            },
+            }
         }
-    
+
         self.spc_clocks_until_instr += cycles;
 
         if self.branch_taken {
@@ -1849,7 +1932,6 @@ impl Spc700 {
             self.clear_flag(flag);
         }
     }
-
 }
 
 // Addressing Modes
@@ -1915,10 +1997,7 @@ impl Spc700 {
     }
 
     fn absolute(&mut self) -> u16 {
-        u16::from_le_bytes([
-            self.read(self.pc + 1),
-            self.read(self.pc + 2),
-        ])
+        u16::from_le_bytes([self.read(self.pc + 1), self.read(self.pc + 2)])
     }
 
     fn absolute_x_indirect(&mut self) -> u16 {
@@ -1974,38 +2053,40 @@ impl Spc700 {
 // CPU Instructions
 impl Spc700 {
     fn add_16_base(&mut self, arg1: u16, arg2: u16) -> u16 {
-        let result = (arg1 as u32) + (arg2 as u32) + if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
+        let result =
+            (arg1 as u32) + (arg2 as u32) + if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
         let half_result = (arg1 & 0xFFF) + (arg2 & 0xFFF);
 
         self.set_flag_to_bool(Flag::FlagC, result > 0xFFFF);
         self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
         self.set_flag_to_bool(Flag::FlagH, half_result >= 0xFFF);
         self.set_flag_to_bool(Flag::FlagZ, result & 0xFF == 0);
-        
+
         // Set V flag if acc and data are same sign, but result is different sign
         let a = arg1.bit_en(15);
         let d = arg2.bit_en(15);
         let r = (result & 0x8000) != 0;
-        self.set_flag_to_bool(Flag::FlagV, !(a^d)&(a^r) );
-        
+        self.set_flag_to_bool(Flag::FlagV, !(a ^ d) & (a ^ r));
+
         result as u16
     }
 
     fn adc_base(&mut self, arg1: u8, arg2: u8) -> u8 {
-        let result = (arg1 as u16) + (arg2 as u16) + if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
+        let result =
+            (arg1 as u16) + (arg2 as u16) + if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
         let half_result = (arg1 & 0xF) + (arg2 & 0xF);
 
         self.set_flag_to_bool(Flag::FlagC, result > 0xFF);
         self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagH, half_result >= 0xA);
         self.set_flag_to_bool(Flag::FlagZ, result & 0xFF == 0);
-        
+
         // Set V flag if acc and data are same sign, but result is different sign
         let a = arg1.bit_en(7);
         let d = arg2.bit_en(7);
         let r = result.bit_en(7);
-        self.set_flag_to_bool(Flag::FlagV, !(a^d)&(a^r) );
-        
+        self.set_flag_to_bool(Flag::FlagV, !(a ^ d) & (a ^ r));
+
         result as u8
     }
 
@@ -2050,7 +2131,7 @@ impl Spc700 {
 
         self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
-        
+
         self.write(addr1, result);
     }
 
@@ -2060,7 +2141,6 @@ impl Spc700 {
 
         self.set_flag_to_bool(Flag::FlagC, data.bit_en(b));
     }
-
 
     // ASL - Shift Left One Bit (Accumulator version)
     fn asl_acc(&mut self) {
@@ -2153,7 +2233,6 @@ impl Spc700 {
         }
     }
 
-
     // BRA - BRanch Always
     fn bra(&mut self, branch_addr: u16) {
         self.pc = branch_addr;
@@ -2222,7 +2301,7 @@ impl Spc700 {
     }
 
     // CLI - CLear Interrupt flag (called DI in SPC700 documentation)
-    fn cli (&mut self) {
+    fn cli(&mut self) {
         self.clear_flag(Flag::FlagI);
     }
 
@@ -2257,7 +2336,7 @@ impl Spc700 {
         let data = ((hi as u16) << 8) | (lo as u16);
         let ya = ((self.y as u16) << 8) | (self.acc as u16);
         let result = (ya as i32) - (data as i32);
-        
+
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
         self.set_flag_to_bool(Flag::FlagN, result < 0);
         self.set_flag_to_bool(Flag::FlagC, result >= 0);
@@ -2327,13 +2406,13 @@ impl Spc700 {
     // DEC - decrement (memory)
     fn dec_mem(&mut self, address: u16) {
         let data = self.read(address) - 1;
-        
+
         self.set_flag_to_bool(Flag::FlagN, data.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, data == 0);
-        
+
         self.write(address, data);
     }
-    
+
     fn decw(&mut self, addr1: u16, addr2: u16) {
         let data = self.read_word(addr1, addr2);
         let result = data - 1;
@@ -2372,7 +2451,8 @@ impl Spc700 {
             self.y = mod_result as u8;
         } else {
             self.acc = (255 - (ya - ((self.x as u16) << 9)) / (256 - (self.x as u16))) as u8;
-            self.y = ((self.x as u16) + (ya - ((self.x as u16) << 9)) % (256 - (self.x as u16))) as u8;
+            self.y =
+                ((self.x as u16) + (ya - ((self.x as u16) << 9)) % (256 - (self.x as u16))) as u8;
         }
 
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
@@ -2381,7 +2461,7 @@ impl Spc700 {
 
     fn eor_acc(&mut self, address: u16) {
         self.acc ^= self.read(address);
-        
+
         self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
@@ -2390,7 +2470,7 @@ impl Spc700 {
         let arg1 = self.read(addr1);
         let arg2 = self.read(addr2);
         let result = arg1 ^ arg2;
-        
+
         self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
 
@@ -2460,7 +2540,7 @@ impl Spc700 {
         let addr = address & 0x1FFF;
         let data = self.read(addr);
         let b = (address >> 13) as u8;
-        
+
         self.set_flag_to_bool(Flag::FlagC, data.bit_en(b));
     }
 
@@ -2488,7 +2568,7 @@ impl Spc700 {
 
     fn lsr_acc(&mut self) {
         self.set_flag_to_bool(Flag::FlagC, self.acc.bit_en(0));
-        
+
         self.acc >>= 1;
 
         self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(7));
@@ -2502,7 +2582,7 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
         self.set_flag_to_bool(Flag::FlagC, data.bit_en(0));
-        
+
         self.write(address, result);
     }
 
@@ -2558,7 +2638,7 @@ impl Spc700 {
     fn or_acc(&mut self, address: u16) {
         let data = self.read(address);
         let result = self.acc | data;
-        
+
         self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
@@ -2567,7 +2647,7 @@ impl Spc700 {
         let arg1 = self.read(addr1);
         let arg2 = self.read(addr2);
         let result = arg1 | arg2;
-        
+
         self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
@@ -2635,7 +2715,7 @@ impl Spc700 {
 
     fn rol_acc(&mut self) {
         self.set_flag_to_bool(Flag::FlagC, self.acc.bit_en(7));
-        
+
         self.acc <<= 1;
         self.acc |= if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
 
@@ -2650,15 +2730,19 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
         self.set_flag_to_bool(Flag::FlagC, data.bit_en(7));
-        
+
         self.write(address, result);
     }
 
     fn ror_acc(&mut self) {
         self.set_flag_to_bool(Flag::FlagC, self.acc.bit_en(0));
-        
+
         self.acc >>= 1;
-        self.acc |= if self.is_flag_set(Flag::FlagC) { 0x80 } else { 0 };
+        self.acc |= if self.is_flag_set(Flag::FlagC) {
+            0x80
+        } else {
+            0
+        };
 
         self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
@@ -2666,12 +2750,16 @@ impl Spc700 {
 
     fn ror_mem(&mut self, address: u16) {
         let data = self.read(address);
-        let result = (if self.is_flag_set(Flag::FlagC) { 0x80 } else { 0 }) | (data >> 1);
+        let result = (if self.is_flag_set(Flag::FlagC) {
+            0x80
+        } else {
+            0
+        }) | (data >> 1);
 
         self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
         self.set_flag_to_bool(Flag::FlagC, data.bit_en(0));
-        
+
         self.write(address, result);
     }
 
@@ -2771,9 +2859,9 @@ impl Spc700 {
     fn tcall(&mut self, opcode: u8) {
         let n = (opcode >> 4) as u16;
         let addr = 0xFFDE - (n << 1);
-        
+
         self.push_word(self.pc);
-        self.pc = self.read_word(addr, addr+1);
+        self.pc = self.read_word(addr, addr + 1);
     }
 
     fn tclr1(&mut self, address: u16) {
@@ -2828,3 +2916,4 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
 }
+
