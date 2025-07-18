@@ -18,8 +18,16 @@ no-video = []
 no-audio = []
 test-env = ["warn-perf", "no-video", "no-audio"]
 
+debug-log-dmas = []
+
+debug-log-ppu = []
+debug-log-cpu = ["debug-log-dmas"]
+debug-log-apu = []
+debug-log-all = ["debug-log-ppu", "debug-log-cpu", "debug-log-apu"]
+
 [profile.dev]
 overflow-checks = false
+opt-level = 2
 debug = 2
 
 [profile.release]

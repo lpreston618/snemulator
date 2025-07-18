@@ -83,6 +83,8 @@ pub struct Cpu65c816 {
     vblank_nmi_ignore: bool,
 
     logger: Rc<RefCell<SnemLogger>>,
+
+    debug_flag: bool,
 }
 
 // SNES System Functionality
@@ -128,6 +130,8 @@ impl Cpu65c816 {
             vblank_nmi_ignore: true,
 
             logger,
+
+            debug_flag: false,
         }
     }
 
@@ -297,7 +301,13 @@ impl Cpu65c816 {
             0x2100..=0x213F => {
                 self.ppu_data.write(mmio_address as u8, data);
             }
-            0x2140 => { self.apuio_regs.cpuio0.set(data) }
+            0x2140 => {
+                if self.apuio_regs.cpuio0.get() == 0x1C && data == 0x20 {
+                    self.debug_flag = true;
+                }
+
+                self.apuio_regs.cpuio0.set(data);
+            }
             0x2141 => { self.apuio_regs.cpuio1.set(data) }
             0x2142 => { self.apuio_regs.cpuio2.set(data) }
             0x2143 => { self.apuio_regs.cpuio3.set(data) }
@@ -334,6 +344,12 @@ impl Cpu65c816 {
                         self.active_channel_idx = i;
                     }
                 }
+
+                #[cfg(feature = "debug-log-dmas")]
+                self.logger.borrow_mut().log(
+                    LogLevel::Debug,
+                    format!("Started DMA w/ channel enables (7..0) = {:08b}", data).as_str()
+                );
             }
             0x420C => {
                 // for i in 0..8 {
@@ -1263,7 +1279,7 @@ impl Cpu65c816 {
     fn and_m8(&mut self, address: u32) {
         let result = self.acc.get_lo() & self.read(address);
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
 
         self.acc.set_lo(result);
@@ -1279,11 +1295,11 @@ impl Cpu65c816 {
     }
 
     fn asl_acc_m8(&mut self) {
-        self.set_flag_to_bool(Flag::FlagC, self.acc.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagC, self.acc.get_lo().bit_en(7));
 
         self.acc.set_lo(self.acc.get_lo() << 1);
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo().bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
 
@@ -1300,11 +1316,11 @@ impl Cpu65c816 {
         let data = self.read(address);
         let result = data << 1;
 
-        self.set_flag_to_bool(Flag::FlagC, data & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagC, data.bit_en(7));
 
         self.write(address, result);
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
@@ -1345,7 +1361,7 @@ impl Cpu65c816 {
         let data = self.read(address);
         let result = self.acc.get_lo() & data;
 
-        self.set_flag_to_bool(Flag::FlagN, data & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, data.bit_en(7));
         self.set_flag_to_bool(Flag::FlagV, data & 0x40 != 0);
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
@@ -1455,7 +1471,7 @@ impl Cpu65c816 {
         let result = self.acc.get_lo() - data;
 
         self.set_flag_to_bool(Flag::FlagC, self.acc.get_lo() >= data);
-        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
     fn cmp_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
@@ -1500,7 +1516,7 @@ impl Cpu65c816 {
         let result = self.x.get_lo() - data;
 
         self.set_flag_to_bool(Flag::FlagC, self.x.get_lo() >= data);
-        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
     fn cpx_x16(&mut self, (address_lo, address_hi): (u32, u32)) {
@@ -1517,7 +1533,7 @@ impl Cpu65c816 {
         let result = self.y.get_lo() - data;
 
         self.set_flag_to_bool(Flag::FlagC, self.y.get_lo() >= data);
-        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
     fn cpy_x16(&mut self, (address_lo, address_hi): (u32, u32)) {
@@ -1532,7 +1548,7 @@ impl Cpu65c816 {
     fn dec_acc_m8(&mut self) {
         self.acc = dec_low_byte(self.acc);
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
     fn dec_acc_m16(&mut self) {
@@ -1546,7 +1562,7 @@ impl Cpu65c816 {
 
         self.write(address, result);
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
     fn dec_mem_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
@@ -1561,7 +1577,7 @@ impl Cpu65c816 {
     fn dex_x8(&mut self) {
         self.x = dec_low_byte(self.x);
 
-        self.set_flag_to_bool(Flag::FlagN, self.x & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.x.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
     }
     fn dex_x16(&mut self) {
@@ -1574,7 +1590,7 @@ impl Cpu65c816 {
     fn dey_x8(&mut self) {
         self.y = dec_low_byte(self.y);
 
-        self.set_flag_to_bool(Flag::FlagN, self.y & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.y.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
     }
     fn dey_x16(&mut self) {
@@ -1587,7 +1603,7 @@ impl Cpu65c816 {
     fn eor_m8(&mut self, address: u32) {
         let result = self.acc.get_lo() ^ self.read(address);
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
 
         self.acc.set_lo(result);
@@ -1604,7 +1620,7 @@ impl Cpu65c816 {
     fn inc_acc_m8(&mut self) {
         self.acc = inc_low_byte(self.acc);
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
     fn inc_acc_m16(&mut self) {
@@ -1618,7 +1634,7 @@ impl Cpu65c816 {
 
         self.write(address, result);
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
     fn inc_mem_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
@@ -1633,7 +1649,7 @@ impl Cpu65c816 {
     fn inx_x8(&mut self) {
         self.x = inc_low_byte(self.x);
 
-        self.set_flag_to_bool(Flag::FlagN, self.x & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.x.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
     }
     fn inx_x16(&mut self) {
@@ -1646,7 +1662,7 @@ impl Cpu65c816 {
     fn iny_x8(&mut self) {
         self.y = inc_low_byte(self.y);
 
-        self.set_flag_to_bool(Flag::FlagN, self.y & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.y.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
     }
     fn iny_x16(&mut self) {
@@ -1688,7 +1704,7 @@ impl Cpu65c816 {
         let data = self.read(address);
         self.acc.set_lo(data);
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
     fn lda_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
@@ -1701,7 +1717,7 @@ impl Cpu65c816 {
     fn ldx_x8(&mut self, address: u32) {
         self.x = self.read(address) as u16;
 
-        self.set_flag_to_bool(Flag::FlagN, self.x & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.x.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
     }
     fn ldx_x16(&mut self, (address_lo, address_hi): (u32, u32)) {
@@ -1715,7 +1731,7 @@ impl Cpu65c816 {
         let data = self.read(address);
         self.y.set_lo(data);
 
-        self.set_flag_to_bool(Flag::FlagN, self.y & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.y.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
     }
     fn ldy_x16(&mut self, (address_lo, address_hi): (u32, u32)) {
@@ -1815,7 +1831,7 @@ impl Cpu65c816 {
     fn ora_m8(&mut self, address: u32) {
         let result = self.acc.get_lo() | self.read(address);
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
 
         self.acc.set_lo(result);
@@ -1920,7 +1936,7 @@ impl Cpu65c816 {
         let data = self.pop8_n();
         self.acc.set_lo(data);
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo().bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
     fn pla_m16(&mut self) {
@@ -1933,20 +1949,20 @@ impl Cpu65c816 {
         let data = self.pop8_e();
         self.acc.set_lo(data);
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
 
     fn plb_n(&mut self) {
         self.data_bank = self.pop8_n();
 
-        self.set_flag_to_bool(Flag::FlagN, self.data_bank & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.data_bank.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.data_bank == 0);
     }
     fn plb_e(&mut self) {
         self.data_bank = self.pop8_e();
 
-        self.set_flag_to_bool(Flag::FlagN, self.data_bank & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.data_bank.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.data_bank == 0);
     }
 
@@ -1977,7 +1993,7 @@ impl Cpu65c816 {
         let data = self.pop8_n();
         self.x.set_lo(data);
 
-        self.set_flag_to_bool(Flag::FlagN, self.x.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.x.get_lo().bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.x.get_lo() == 0);
     }
     fn plx_x16(&mut self) {
@@ -1990,7 +2006,7 @@ impl Cpu65c816 {
         let data = self.pop8_e();
         self.x.set_lo(data);
 
-        self.set_flag_to_bool(Flag::FlagN, self.x & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.x.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
     }
 
@@ -1998,7 +2014,7 @@ impl Cpu65c816 {
         let data = self.pop8_n();
         self.y.set_lo(data);
 
-        self.set_flag_to_bool(Flag::FlagN, self.y & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.y.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
     }
     fn ply_x16(&mut self) {
@@ -2011,7 +2027,7 @@ impl Cpu65c816 {
         let data = self.pop8_e();
         self.y.set_lo(data);
 
-        self.set_flag_to_bool(Flag::FlagN, self.y & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.y.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
     }
 
@@ -2026,12 +2042,12 @@ impl Cpu65c816 {
 
     fn rol_acc_m8(&mut self) {
         let c = self.is_flag_set(Flag::FlagC);
-        self.set_flag_to_bool(Flag::FlagC, self.acc & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagC, self.acc.bit_en(7));
 
         self.acc.set_lo(self.acc.get_lo() << 1);
         self.acc |= bool2byte!(c);
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo().bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
     fn rol_acc_m16(&mut self) {
@@ -2049,11 +2065,11 @@ impl Cpu65c816 {
         let data = self.read(address);
         let result = (data << 1) | bool2byte!(c);
 
-        self.set_flag_to_bool(Flag::FlagC, data & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagC, data.bit_en(7));
 
         self.write(address, result);
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
     fn rol_mem_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
@@ -2076,7 +2092,7 @@ impl Cpu65c816 {
         self.acc >>= 1;
         self.acc |= bool2byte!(c) << 7;
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo().bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
     fn ror_acc_m16(&mut self) {
@@ -2099,7 +2115,7 @@ impl Cpu65c816 {
 
         self.write(address, result);
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
     fn ror_mem_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
@@ -2290,7 +2306,7 @@ impl Cpu65c816 {
     fn tax_x8(&mut self) {
         self.x.set_lo(self.acc.get_lo());
 
-        self.set_flag_to_bool(Flag::FlagN, self.x.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.x.get_lo().bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.x.get_lo() == 0);
     }
     fn tax_x16(&mut self) {
@@ -2303,7 +2319,7 @@ impl Cpu65c816 {
     fn tay_x8(&mut self) {
         self.y.set_lo(self.acc.get_lo());
 
-        self.set_flag_to_bool(Flag::FlagN, self.y.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.y.get_lo().bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.y.get_lo() == 0);
     }
     fn tay_x16(&mut self) {
@@ -2371,7 +2387,7 @@ impl Cpu65c816 {
     fn tsc_m8(&mut self) {
         self.acc.set_lo(self.stk_ptr as u8);
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo().bit_en(7));
         // self.clear_flag(Flag::FlagN); // the value transfered is always positive
         self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
@@ -2384,7 +2400,7 @@ impl Cpu65c816 {
     fn tsc_e(&mut self) {
         self.acc.set_lo(self.stk_ptr as u8);
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo().bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
         // self.clear_flag(Flag::FlagN); // the value transfered is always positive
         // self.clear_flag(Flag::FlagZ); // the value transfered is always non-zero
@@ -2393,7 +2409,7 @@ impl Cpu65c816 {
     fn tsx_x8(&mut self) {
         self.x = self.stk_ptr & 0xFF;
 
-        self.set_flag_to_bool(Flag::FlagN, self.x & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.x.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
     }
     fn tsx_x16(&mut self) {
@@ -2406,7 +2422,7 @@ impl Cpu65c816 {
     fn txa_m8(&mut self) {
         self.acc.set_lo(self.x.get_lo());
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo().bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
     fn txa_m16(&mut self) {
@@ -2426,7 +2442,7 @@ impl Cpu65c816 {
     fn txy_x8(&mut self) {
         self.y.set_lo(self.x.get_lo());
 
-        self.set_flag_to_bool(Flag::FlagN, self.y.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.y.get_lo().bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.y.get_lo() == 0);
     }
     fn txy_x16(&mut self) {
@@ -2439,7 +2455,7 @@ impl Cpu65c816 {
     fn tya_m8(&mut self) {
         self.acc.set_lo(self.y.get_lo());
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo().bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
     fn tya_m16(&mut self) {
@@ -2452,7 +2468,7 @@ impl Cpu65c816 {
     fn tyx_x8(&mut self) {
         self.x.set_lo(self.y.get_lo());
 
-        self.set_flag_to_bool(Flag::FlagN, self.x.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.x.get_lo().bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.x.get_lo() == 0);
     }
     fn tyx_x16(&mut self) {
@@ -2474,7 +2490,7 @@ impl Cpu65c816 {
         self.acc = self.acc.swap_bytes();
 
         // Flags are always based on the low byte of the acc for this instr
-        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo() & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo().bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
 
@@ -2497,7 +2513,7 @@ impl Cpu65c816 {
         self.sys_clocks_until_clock
     }
 
-    pub fn clock(&mut self) {
+    pub fn clock(&mut self, frame: usize) {
         self.sys_clocks_until_clock = 0;
 
         if !self.vblank_nmi_ignore && self.ppu_data.cpu_vblank_nmi.get() {
@@ -2508,7 +2524,7 @@ impl Cpu65c816 {
             self.ppu_data.hv_timer_irq.set(false);
         } else {
             match self.dma_status {
-                DmaStatus::Off => self.exec_instr(),
+                DmaStatus::Off => self.exec_instr(frame),
                 DmaStatus::DMA => self.do_dma(),
                 DmaStatus::HDMA => self.do_hdma(),
                 DmaStatus::LayeredHDMA => self.do_hdma(),
@@ -2533,14 +2549,16 @@ impl Cpu65c816 {
             dma_channel.bytes_written = 0;
 
             self.dma_status = DmaStatus::Off;
+            self.active_channel_idx += 1;
 
             // Go to next active DMA channel
-            for i in self.active_channel_idx+1..8 {
-                if self.dma_channels[i].active {
-                    self.active_channel_idx = i;
+            while self.active_channel_idx < 8 {
+                if self.dma_channels[self.active_channel_idx].active {
                     self.dma_status = DmaStatus::DMA;
                     break;
                 }
+
+                self.active_channel_idx += 1;
             }
         }
 
@@ -2582,11 +2600,48 @@ impl Cpu65c816 {
         // self.hdma_table_addr_hi[hdma_channel_idx] = (hdma_table_addr >> 8) as u8;
     }
 
-    fn exec_instr(&mut self) {
+    fn exec_instr(&mut self, frame: usize) {
         let opcode = self.read_prg();
         let extra_clocks: usize;
 
-        // println!("Opcode 0x{opcode:02X} from PC ${:04X}", self.pc);
+        // if frame > 20 {
+        //     self.dma_status = DmaStatus::DMA;
+        //     let b1 = self.read((self.pc + 1) as u32);
+        //     let b2 = self.read((self.pc + 2) as u32);
+        //     let b3 = self.read((self.pc + 3) as u32);
+        //     self.dma_status = DmaStatus::Off;
+
+        //     let mirror_addr = if (self.pc & 0x00FFFF) >= 0x8000 {
+        //         self.pc as u32 | 0x800000
+        //     } else {
+        //         (self.pc as u32 & 0xBFFFFF) | 0x008000
+        //     };
+        //     let mapped_pc = self.map_lorom_addr(mirror_addr);
+
+        //     // println!("Exec op 0x{opcode:02X} from ${:04X}", self.pc);
+        //     println!("[{}] Exec op 0x{:02X} from pc ${:04X} mapped to ${:04X}, next bytes = 0x{:02X}, 0x{:02X}, 0x{:02X}", 
+        //         frame,
+        //         opcode, 
+        //         self.pc, 
+        //         mapped_pc,
+        //         b1,
+        //         b2,
+        //         b3,
+        //     );
+        //     println!("{}", self.lemon_cpu_str());
+
+        //     std::thread::sleep(std::time::Duration::from_millis(20));
+        // }
+
+        // if frame > 100 {
+        //     self.dma_status = DmaStatus::DMA;
+        //     let abs_addr = self.absolute8();
+        //     let data = self.read16(abs_addr, abs_addr+1);
+        //     self.dma_status = DmaStatus::Off;
+
+        //     println!("Opcode 0x{opcode:02X} from PC ${:04X}, abs addr: ${abs_addr:04X} byte = 0x{data:02X}", self.pc);
+        //     println!("{}", self.lemon_cpu_str());
+        // }
 
         match (opcode, self.mode, self.acc_size(), self.idx_size()) {
             // brk, imp
@@ -6144,7 +6199,7 @@ impl Cpu65c816 {
     }
 }
 
-// impl Cpu65c816 {
+impl Cpu65c816 {
 //     pub fn temp_load_test(&mut self) {
 //         use std::path::Path;
 
@@ -6166,76 +6221,76 @@ impl Cpu65c816 {
 //         self.reset();
 //     }
 
-//     fn cpu_status_str(&self) -> String {
-//         let mut status_str = String::new();
-//         status_str.push(if self.is_flag_set(Flag::FlagN) {
-//             'N'
-//         } else {
-//             'n'
-//         });
-//         status_str.push(if self.is_flag_set(Flag::FlagV) {
-//             'V'
-//         } else {
-//             'v'
-//         });
-//         if self.mode == CpuMode::Emulation {
-//             status_str.push('1');
-//             status_str.push(if self.is_flag_set(Flag::FlagX) {
-//                 'B'
-//             } else {
-//                 'b'
-//             });
-//         } else {
-//             status_str.push(if self.is_flag_set(Flag::FlagM) {
-//                 'M'
-//             } else {
-//                 'm'
-//             });
-//             status_str.push(if self.is_flag_set(Flag::FlagX) {
-//                 'X'
-//             } else {
-//                 'x'
-//             });
-//         }
-//         status_str.push(if self.is_flag_set(Flag::FlagD) {
-//             'D'
-//         } else {
-//             'd'
-//         });
-//         status_str.push(if self.is_flag_set(Flag::FlagI) {
-//             'I'
-//         } else {
-//             'i'
-//         });
-//         status_str.push(if self.is_flag_set(Flag::FlagZ) {
-//             'Z'
-//         } else {
-//             'z'
-//         });
-//         status_str.push(if self.is_flag_set(Flag::FlagC) {
-//             'C'
-//         } else {
-//             'c'
-//         });
+    fn cpu_status_str(&self) -> String {
+        let mut status_str = String::new();
+        status_str.push(if self.is_flag_set(Flag::FlagN) {
+            'N'
+        } else {
+            'n'
+        });
+        status_str.push(if self.is_flag_set(Flag::FlagV) {
+            'V'
+        } else {
+            'v'
+        });
+        if self.mode == CpuMode::Emulation {
+            status_str.push('1');
+            status_str.push(if self.is_flag_set(Flag::FlagX) {
+                'B'
+            } else {
+                'b'
+            });
+        } else {
+            status_str.push(if self.is_flag_set(Flag::FlagM) {
+                'M'
+            } else {
+                'm'
+            });
+            status_str.push(if self.is_flag_set(Flag::FlagX) {
+                'X'
+            } else {
+                'x'
+            });
+        }
+        status_str.push(if self.is_flag_set(Flag::FlagD) {
+            'D'
+        } else {
+            'd'
+        });
+        status_str.push(if self.is_flag_set(Flag::FlagI) {
+            'I'
+        } else {
+            'i'
+        });
+        status_str.push(if self.is_flag_set(Flag::FlagZ) {
+            'Z'
+        } else {
+            'z'
+        });
+        status_str.push(if self.is_flag_set(Flag::FlagC) {
+            'C'
+        } else {
+            'c'
+        });
 
-//         status_str
-//     }
+        status_str
+    }
 
-//     fn lemon_cpu_str(&self) -> String {
-//         format!(
-//             "{:02x}{:04x} A:{:04x} X:{:04x} Y:{:04x} S:{:04x} D:{:04x} DB:{:02x} {} ",
-//             self.prg_bank,
-//             self.pc,
-//             self.acc,
-//             self.x,
-//             self.y,
-//             self.stk_ptr,
-//             self.direct_page,
-//             self.data_bank,
-//             self.cpu_status_str()
-//         )
-//     }
-// }
+    fn lemon_cpu_str(&self) -> String {
+        format!(
+            "{:02x}{:04x} A:{:04x} X:{:04x} Y:{:04x} S:{:04x} D:{:04x} DB:{:02x} {} ",
+            self.prg_bank,
+            self.pc,
+            self.acc,
+            self.x,
+            self.y,
+            self.stk_ptr,
+            self.direct_page,
+            self.data_bank,
+            self.cpu_status_str()
+        )
+    }
+}
 
 // #[cfg(test)]
 // mod tests {

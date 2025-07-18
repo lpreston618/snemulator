@@ -2,6 +2,8 @@ mod utils;
 
 use utils::{xbgr0555_xrgb0555_conv, Togglable, ToggleState};
 
+#[cfg(feature = "debug-log-ppu")]
+use crate::log::LogLevel;
 use crate::utils::{GetBits, SetCellBytes};
 use crate::log::SnemLogger;
 
@@ -119,12 +121,6 @@ enum WindowColorRegion {
     Outside,
     Inside,
     Everywhere,
-}
-
-#[derive(Clone, Copy, Debug)]
-enum DirectColorMode {
-    Palette,
-    Direct,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -345,10 +341,6 @@ pub(crate) struct PpuData {
     cgram_addr: Cell<u8>,
     cgram_latch: Cell<u8>,
 
-    // $2122    .BBB BBGG GGGR RRRR    Write Only
-    //       - CGRAM data write, increments CGADD byte address after each write
-    cgram_data: Cell<u16>,
-
     // $2123    DdCc BbAa    Write Only
     //       - Enable (ABCD) and Invert (abcd) windows for BG1 (AB) and BG2 (CD)
     bg2_w2_enabled: Cell<bool>,
@@ -549,10 +541,12 @@ pub(crate) struct PpuData {
     pub hv_timer_irq_mode: Cell<HVTimerIRQ>,
     pub hv_timer_irq: Cell<bool>,
     pub cpu_vblank_nmi: Cell<bool>,
+
+    logger: Rc<RefCell<SnemLogger>>
 }
 
 impl PpuData {
-    pub fn new() -> PpuData {
+    pub fn new(logger: Rc<RefCell<SnemLogger>>) -> PpuData {
         PpuData {
             in_fblank: Cell::new(false),
             screen_brightness: Cell::new(0),
@@ -653,8 +647,6 @@ impl PpuData {
 
             cgram_addr: Cell::new(0),
             cgram_latch: Cell::new(0),
-
-            cgram_data: Cell::new(0),
 
             bg2_w2_enabled: Cell::new(false),
             bg2_w2_inverted: Cell::new(false),
@@ -781,6 +773,8 @@ impl PpuData {
 
             cpu_vblank_nmi: Cell::new(false),
             hv_timer_irq: Cell::new(false),
+
+            logger,
         }
     }
 }
@@ -799,7 +793,14 @@ impl PpuData {
                 self.in_fblank.set(data.bit_en(7));
                 self.screen_brightness.set(data & 0x0F);
 
-                // println!("Set forced blanking to {} and screen brightness to {}", self.in_fblank.get(), self.screen_brightness.get());
+                #[cfg(feature = "debug-log-ppu")]
+                self.logger.borrow_mut().log(
+                    LogLevel::Debug,
+                    format!("Set forced blanking to {} and screen brightness to {}",
+                        self.in_fblank.get(),
+                        self.screen_brightness.get()
+                    ).as_str()
+                );
             }
 
             0x01 => {
@@ -819,7 +820,15 @@ impl PpuData {
                 self.name_secondary_select.set((data >> 3) & 0x03);
                 self.name_base_addr.set(data & 0x03);
 
-                // println!("Set obj spr size to {:?}, secondary select to {}, and name base addr to ${:X}", self.obj_sprite_size.get(), self.name_secondary_select.get(), self.name_base_addr.get());
+                #[cfg(feature = "debug-log-ppu")]
+                self.logger.borrow_mut().log(
+                    LogLevel::Debug,
+                    format!("Set obj spr size to {:?}, secondary select to {}, and name base addr to ${:X}", 
+                        self.obj_sprite_size.get(), 
+                        self.name_secondary_select.get(), 
+                        self.name_base_addr.get()
+                    ).as_str()
+                );
             }
 
             0x02 => {
@@ -829,7 +838,15 @@ impl PpuData {
                 self.priority_rotation_idx.set(data & 0xFE);
                 self.internal_oam_addr.set((self.oam_addr.get() & 0x1FF) << 1);
 
-                // println!("Set OAM addr to ${:04X}, internal OAM addr to ${:04X}, and priority rotation idx to 0x{:02X}", self.oam_addr.get(), self.internal_oam_addr.get(), self.priority_rotation_idx.get());
+                #[cfg(feature = "debug-log-ppu")]
+                self.logger.borrow_mut().log(
+                    LogLevel::Debug,
+                    format!("Set OAM addr to ${:04X}, internal OAM addr to ${:04X}, and priority rotation idx to 0x{:02X}",
+                        self.oam_addr.get(),
+                        self.internal_oam_addr.get(),
+                        self.priority_rotation_idx.get()
+                    ).as_str()
+                );
             }
 
             0x03 => {
@@ -839,7 +856,15 @@ impl PpuData {
                 self.priority_rotation.set(data.bit_en(7));
                 self.internal_oam_addr.set((self.oam_addr.get() & 0x1FF) << 1);
 
-                // println!("Set OAM addr to ${:04X}, internal OAM addr to ${:04X}, and priority rotation to {}", self.oam_addr.get(), self.internal_oam_addr.get(), self.priority_rotation.get());
+                #[cfg(feature = "debug-log-ppu")]
+                self.logger.borrow_mut().log(
+                    LogLevel::Debug,
+                    format!("Set OAM addr to ${:04X}, internal OAM addr to ${:04X}, and priority rotation to {}",
+                        self.oam_addr.get(),
+                        self.internal_oam_addr.get(),
+                        self.priority_rotation.get()
+                    ).as_str()
+                );
             }
 
             0x04 => {
@@ -895,13 +920,17 @@ impl PpuData {
                     }
                 );
 
-                println!("Set bg char sizes to 4: {:?}, 3: {:?}, 2: {:?}, 1: {:?}, bg 3 priority to {:?}, and bg mode to {:?}",
-                    self.bg4_char_size.get(),
-                    self.bg3_char_size.get(),
-                    self.bg2_char_size.get(),
-                    self.bg1_char_size.get(),
-                    self.bg3_mode1_priority.get(),
-                    self.bg_mode.get(),
+                #[cfg(feature = "debug-log-ppu")]
+                self.logger.borrow_mut().log(
+                    LogLevel::Debug,
+                    format!("Set bg char sizes to 4: {:?}, 3: {:?}, 2: {:?}, 1: {:?}, bg 3 priority to {:?}, and bg mode to {:?}",
+                        self.bg4_char_size.get(),
+                        self.bg3_char_size.get(),
+                        self.bg2_char_size.get(),
+                        self.bg1_char_size.get(),
+                        self.bg3_mode1_priority.get(),
+                        self.bg_mode.get(),
+                    ).as_str()
                 );
             }
 
@@ -912,12 +941,16 @@ impl PpuData {
                 self.bg2_mosaic.set(data.bit_en(1));
                 self.bg1_mosaic.set(data.bit_en(0));
 
-                println!("Set mosaic size to {} and mosaic enables to 4: {}, 3: {}, 2: {}, 1: {}",
-                    self.mosaic_size.get(),
-                    self.bg4_mosaic.get(),
-                    self.bg3_mosaic.get(),
-                    self.bg2_mosaic.get(),
-                    self.bg1_mosaic.get(),
+                #[cfg(feature = "debug-log-ppu")]
+                self.logger.borrow_mut().log(
+                    LogLevel::Debug,
+                    format!("Set mosaic size to {} and mosaic enables to 4: {}, 3: {}, 2: {}, 1: {}",
+                        self.mosaic_size.get(),
+                        self.bg4_mosaic.get(),
+                        self.bg3_mosaic.get(),
+                        self.bg2_mosaic.get(),
+                        self.bg1_mosaic.get(),
+                    ).as_str()
                 );
             }
 
@@ -1145,7 +1178,7 @@ impl PpuData {
                     self.vram[self.get_vram_addr() as usize].get()
                 );
 
-                // println!("Set VRAM addr (lo) to ${:04X} and VRAM latch to {:04X}", self.vram_addr.get(), self.vram_latch.get());
+                println!("Set VRAM addr (lo) to ${:04X} and VRAM latch to {:04X}", self.vram_addr.get(), self.vram_latch.get());
             }
 
             0x17 => {
@@ -1154,7 +1187,7 @@ impl PpuData {
                     self.vram[self.get_vram_addr() as usize].get()
                 );
 
-                // println!("Set VRAM addr (hi) to ${:04X} and VRAM latch to {:04X}", self.vram_addr.get(), self.vram_latch.get());
+                println!("Set VRAM addr (hi) to ${:04X} and VRAM latch to {:04X}", self.vram_addr.get(), self.vram_latch.get());
             }
 
             0x18 => {
@@ -1275,7 +1308,7 @@ impl PpuData {
             }
 
             0x22 => {
-                // print!("Write to CGRAM addr ${:02X} with data 0x{:02X}", self.cgram_addr.get(), data);
+                print!("Write to CGRAM addr ${:02X} with data 0x{:02X}", self.cgram_addr.get(), data);
 
                 if self.cgram_toggle.toggle() {
                     let addr = self.cgram_addr.get();
@@ -1780,6 +1813,16 @@ impl Ppu5C7x {
 
         if self.dot >= SCANLINE_END_DOT-4 {
             self.sys_clocks_until_clock += 1;
+        }
+
+        if self.frame == 120 && self.scanline == 0 && self.dot == 0 {
+            let mut cgram_clone = Vec::new();
+
+            for word in self.registers.cgram.iter() {
+                cgram_clone.push(word.get());
+            }
+
+            crate::tools::tools::hexdump16(&cgram_clone);
         }
     }
 

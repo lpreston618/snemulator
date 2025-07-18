@@ -117,8 +117,6 @@ pub struct Spc700 {
     slow_timer_clocks: u8,
 
     total_clocks: usize,
-
-    debug_bool: bool,
 }
 
 impl Spc700 {
@@ -150,9 +148,9 @@ impl Spc700 {
 
             apuio_regs,
 
-            timer0_en: false,
-            timer1_en: false,
-            timer2_en: false,
+            timer0_en: true,
+            timer1_en: true,
+            timer2_en: true,
             ipl_read: true,
             sdsp_read_only: false,
             sdsp_addr: 0,
@@ -168,8 +166,6 @@ impl Spc700 {
 
             slow_timer_clocks: 0,
             total_clocks: 0,
-
-            debug_bool: false,
         }
     }
 
@@ -288,16 +284,19 @@ impl Spc700 {
             0xB => self.timer1_target,
             0xC => self.timer2_target,
             0xD => {
+                println!("Read timer 0: 0x{:02x} {}", self.timer0_counter, self.timer0_en);
                 let data = self.timer0_counter;
                 self.timer0_counter = 0;
                 data
             }
             0xE => {
+                println!("Read timer 1: 0x{:02x}", self.timer1_counter);
                 let data = self.timer1_counter;
                 self.timer1_counter = 0;
                 data
             }
             0xF => {
+                println!("Read timer 2: 0x{:02x}", self.timer2_counter);
                 let data = self.timer2_counter;
                 self.timer2_counter = 0;
                 data
@@ -309,6 +308,10 @@ impl Spc700 {
     fn write_sound_regs(&mut self, address: u16, data: u8) {
         match address & 0xF {
             0x1 => {
+                println!("Wrote $00F1 w/ 0x{:02X}", data);
+
+                std::thread::sleep(std::time::Duration::from_secs(1));
+
                 if !self.timer0_en && data.bit_en(0) {
                     self.timer0_counter = 0;
                     self.timer0_internal_counter = 0;
@@ -348,10 +351,22 @@ impl Spc700 {
                     // self.sdsp.write_regs(self.sdsp_addr, data);
                 }
             }
-            0x4 => { self.apuio_regs.apuio0.set(data); }
-            0x5 => { self.apuio_regs.apuio1.set(data); }
-            0x6 => { self.apuio_regs.apuio2.set(data); }
-            0x7 => { self.apuio_regs.apuio3.set(data); }
+            0x4 => {
+                // println!("Set apuio0 to 0x{data:02X}");
+                self.apuio_regs.apuio0.set(data);
+            }
+            0x5 => {
+                // println!("Set apuio1 to 0x{data:02X}");
+                self.apuio_regs.apuio1.set(data);
+            }
+            0x6 => {
+                // println!("Set apuio2 to 0x{data:02X}");
+                self.apuio_regs.apuio2.set(data);
+            }
+            0x7 => {
+                // println!("Set apuio3 to 0x{data:02X}");
+                self.apuio_regs.apuio3.set(data);
+            }
             0x8 => { self.aram[0xFF08] = data; }
             0x9 => { self.aram[0xFF09] = data; }
             0xA => { self.timer0_target = data; }
@@ -397,12 +412,26 @@ impl Spc700 {
     fn exec_instr(&mut self) {
         let cycles: usize;
 
-        if !self.debug_bool && self.pc < 0xFFC0 {
-            println!("S-CPU to Spc700 Handshake Finished on Spc700 Clock {}.", self.total_clocks);
-            self.debug_bool = true;
-        }
+        // if self.pc == 0x697 {
+        //     println!("here on clk {}", self.total_clocks);
+        // }
 
         let opcode = self.read_prg();
+
+        // if opcode == 0x1F {
+        //     println!("Handshake with S-CPU complete. Jumping to ${:04X}", self.absolute_x_indirect());
+            
+        //     crate::tools::tools::hexdump8_to_file(&self.aram, "aram.txt");
+
+        //     self.pc -= 1;
+        // }
+
+        // if self.pc < 0xFFC0 {
+        //     println!("Exec Instr 0x{:02X} from PC ${:04X}", opcode, self.pc-1);
+        //     println!("{}", self.lemon_cpu_str());
+
+        //     std::thread::sleep(std::time::Duration::from_millis(10));
+        // }
 
         self.branch_taken = false;
 
@@ -1793,8 +1822,7 @@ impl Spc700 {
     }
 
     fn adc_base(&mut self, arg1: u8, arg2: u8) -> u8 {
-        let result =
-            (arg1 as u16) + (arg2 as u16) + if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
+        let result = (arg1 as u16) + (arg2 as u16) + if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
         let half_result = (arg1 & 0xF) + (arg2 & 0xF);
 
         self.set_flag_to_bool(Flag::FlagC, result > 0xFF);
@@ -1822,7 +1850,7 @@ impl Spc700 {
 
         let result = self.adc_base(arg1, arg2);
 
-        self.write(addr1, result);
+        self.write(addr2, result);
     }
 
     fn addw(&mut self, address: u16) {
@@ -1836,13 +1864,10 @@ impl Spc700 {
 
     // AND - AND Memory with Accumulator
     fn and_acc(&mut self, address: u16) {
-        let data = self.read(address);
-        let result = self.acc & data;
+        self.acc &= self.read(address);
 
-        self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
-        self.set_flag_to_bool(Flag::FlagZ, result == 0);
-
-        self.acc = result;
+        self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(7));
+        self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
 
     fn and_mem(&mut self, addr1: u16, addr2: u16) {
@@ -1853,7 +1878,7 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
 
-        self.write(addr1, result);
+        self.write(addr2, result);
     }
 
     fn and1(&mut self, address: u16, bit: u8) {
@@ -2001,23 +2026,21 @@ impl Spc700 {
     // CMP - Compare Memory with Accumulator
     fn cmp_acc(&mut self, address: u16) {
         let data = self.read(address);
+        let result = self.acc - data;
 
-        let result = (self.acc as i16) - (data as i16);
-
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
-        self.set_flag_to_bool(Flag::FlagN, result < 0);
-        self.set_flag_to_bool(Flag::FlagC, result >= 0);
+        self.set_flag_to_bool(Flag::FlagC, self.acc >= data);
     }
 
     fn cmp_mem(&mut self, addr1: u16, addr2: u16) {
         let arg1 = self.read(addr1);
         let arg2 = self.read(addr2);
+        let result = arg2 - arg1;
 
-        let result = (arg2 as i16) - (arg1 as i16);
-
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
-        self.set_flag_to_bool(Flag::FlagN, result < 0);
-        self.set_flag_to_bool(Flag::FlagC, result >= 0);
+        self.set_flag_to_bool(Flag::FlagC, arg2 >= arg1);
     }
 
     // CLI - CLear Interrupt flag (called DI in SPC700 documentation)
@@ -2053,31 +2076,31 @@ impl Spc700 {
     fn cmpw(&mut self, address: u16) {
         let data = self.read_word(address);
         let ya = ((self.y as u16) << 8) | (self.acc as u16);
-        let result = (ya as i32) - (data as i32);
+        let result = ya - data;
 
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
-        self.set_flag_to_bool(Flag::FlagN, result < 0);
-        self.set_flag_to_bool(Flag::FlagC, result >= 0);
+        self.set_flag_to_bool(Flag::FlagC, ya >= data);
     }
 
     // CMX - Compare Memory with X
     fn cmx(&mut self, address: u16) {
         let data = self.read(address);
+        let result = self.x - data;
 
-        let result = (self.x as i16) - (data as i16);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
-        self.set_flag_to_bool(Flag::FlagN, result < 0);
-        self.set_flag_to_bool(Flag::FlagC, result >= 0);
+        self.set_flag_to_bool(Flag::FlagC, self.x >= data);
     }
 
     // CMY - Compare Memory with X
     fn cmy(&mut self, address: u16) {
         let data = self.read(address);
+        let result = self.y - data;
 
-        let result = (self.y as i16) - (data as i16);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
-        self.set_flag_to_bool(Flag::FlagN, result < 0);
-        self.set_flag_to_bool(Flag::FlagC, result >= 0);
+        self.set_flag_to_bool(Flag::FlagC, self.y >= data);
     }
 
     // DAA - Decimal Adjust Addition
@@ -2192,7 +2215,7 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
 
-        self.write(addr1, result);
+        self.write(addr2, result);
     }
 
     fn eor1(&mut self, address: u16, bit: u8) {
@@ -2223,7 +2246,7 @@ impl Spc700 {
 
         self.write_word(address, result);
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
@@ -2349,11 +2372,10 @@ impl Spc700 {
     }
 
     fn or_acc(&mut self, address: u16) {
-        let data = self.read(address);
-        let result = self.acc | data;
+        self.acc |= self.read(address);
 
-        self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
-        self.set_flag_to_bool(Flag::FlagZ, result == 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(7));
+        self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
 
     fn or_mem(&mut self, addr1: u16, addr2: u16) {
@@ -2363,6 +2385,8 @@ impl Spc700 {
 
         self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
+
+        self.write(addr2, result);
     }
 
     fn pcall(&mut self, address: u16) {
@@ -2479,6 +2503,9 @@ impl Spc700 {
     fn sbc_acc(&mut self, address: u16) {
         let data = self.read(address);
         let comp = (-1 * (data as i8)) as u8;
+
+        self.set_flag_to_bool(Flag::FlagC, !self.is_flag_set(Flag::FlagC));
+
         self.acc = self.adc_base(self.acc, comp);
     }
 
@@ -2486,10 +2513,12 @@ impl Spc700 {
         let arg1 = self.read(addr1);
         let arg2 = self.read(addr2);
         let comp1 = (-1 * (arg1 as i8)) as u8;
-        let comp2 = (-1 * (arg2 as i8)) as u8;
-        let result = self.adc_base(comp1, comp2);
 
-        self.write(addr1, result);
+        self.set_flag_to_bool(Flag::FlagC, !self.is_flag_set(Flag::FlagC));
+
+        let result = self.adc_base(arg2, comp1);
+
+        self.write(addr2, result);
     }
 
     fn sei(&mut self) {
@@ -2533,7 +2562,7 @@ impl Spc700 {
     fn stop(&self) {}
 
     fn stx(&mut self, address: u16) {
-        self.write(address, self.y);
+        self.write(address, self.x);
     }
 
     fn sty(&mut self, address: u16) {
@@ -2541,8 +2570,8 @@ impl Spc700 {
     }
 
     fn stya(&mut self, address: u16) {
-        self.write(address, self.acc);
-        self.write((address & 0xFF00) | ((address + 1) & 0x00FF), self.y);
+        let ya = ((self.y as u16) << 8) | (self.acc as u16);
+        self.write_word(address, ya);
     }
 
     fn subw(&mut self, address: u16) {
@@ -2630,3 +2659,64 @@ impl Spc700 {
     }
 }
 
+
+impl Spc700 {
+    fn cpu_status_str(&self) -> String {
+        let mut status_str = String::new();
+        status_str.push(if self.is_flag_set(Flag::FlagN) {
+            'N'
+        } else {
+            'n'
+        });
+        status_str.push(if self.is_flag_set(Flag::FlagV) {
+            'V'
+        } else {
+            'v'
+        });
+        status_str.push(if self.is_flag_set(Flag::FlagP) {
+            'P'
+        } else {
+            'p'
+        });
+        status_str.push(if self.is_flag_set(Flag::FlagB) {
+            'B'
+        } else {
+            'b'
+        });
+        status_str.push(if self.is_flag_set(Flag::FlagH) {
+            'H'
+        } else {
+            'h'
+        });
+        status_str.push(if self.is_flag_set(Flag::FlagI) {
+            'I'
+        } else {
+            'i'
+        });
+        status_str.push(if self.is_flag_set(Flag::FlagZ) {
+            'Z'
+        } else {
+            'z'
+        });
+        status_str.push(if self.is_flag_set(Flag::FlagC) {
+            'C'
+        } else {
+            'c'
+        });
+
+        status_str
+    }
+
+    fn lemon_cpu_str(&self) -> String {
+        format!(
+            "P: {:03x} PC: {:04X} A:{:04x} X:{:04x} Y:{:04x} S:{:04x} {} ",
+            self.dir_page,
+            self.pc,
+            self.acc,
+            self.x,
+            self.y,
+            self.sp,
+            self.cpu_status_str()
+        )
+    }
+}

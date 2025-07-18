@@ -108,7 +108,7 @@ impl SnemulatorCore {
             self.snem_apu.clock(ppu_clocks);
         } else {
             self.snem_ppu.remove_clocks(cpu_clocks);
-            self.snem_cpu.clock();
+            self.snem_cpu.clock(self.frame_count as usize);
             self.snem_apu.clock(cpu_clocks);
         }
     }
@@ -159,7 +159,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         let pixel_format = args.env.set_pixel_format_0rgb1555(args.pixel_format)?;
         let rendering_mode = args.rendering_mode;
 
-        let ppu_data = Rc::new( ppu::PpuData::new() );
+        let ppu_data = Rc::new( ppu::PpuData::new(logger.clone()) );
         let apuio_regs = Rc::new( ssmp::ApuIORegs::new() );
         let snem_cpu = scpu::Cpu65c816::new(
             ppu_data.clone(),
