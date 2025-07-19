@@ -2,14 +2,11 @@ mod utils;
 
 use utils::{xbgr0555_xrgb0555_conv, Togglable, ToggleState};
 
-#[cfg(feature = "debug-log-ppu")]
-use crate::log::LogLevel;
 use crate::utils::{GetBits, SetCellBytes};
-use crate::log::SnemLogger;
+use crate::log::{SnemLogger, LogLevel};
 
 use libretro_rs::retro::pixel::format::ORGB1555;
 
-use std::cell::RefCell;
 use std::{cell::Cell, rc::Rc};
 
 const VBLANK_START_SCANLINE: u16 = 225;
@@ -542,11 +539,11 @@ pub(crate) struct PpuData {
     pub hv_timer_irq: Cell<bool>,
     pub cpu_vblank_nmi: Cell<bool>,
 
-    logger: Rc<RefCell<SnemLogger>>
+    logger: Rc<SnemLogger>
 }
 
 impl PpuData {
-    pub fn new(logger: Rc<RefCell<SnemLogger>>) -> PpuData {
+    pub fn new(logger: Rc<SnemLogger>) -> PpuData {
         PpuData {
             in_fblank: Cell::new(false),
             screen_brightness: Cell::new(0),
@@ -794,13 +791,12 @@ impl PpuData {
                 self.screen_brightness.set(data & 0x0F);
 
                 #[cfg(feature = "debug-log-ppu")]
-                self.logger.borrow_mut().log(
-                    LogLevel::Debug,
-                    format!("Set forced blanking to {} and screen brightness to {}",
-                        self.in_fblank.get(),
-                        self.screen_brightness.get()
-                    ).as_str()
-                );
+                if data.bit_en(7) != self.in_fblank.get() {
+                    self.logger.log(
+                        LogLevel::Debug,
+                        format!("Changed fblank to {}", data.bit_en(7)).as_str()
+                    );
+                }
             }
 
             0x01 => {
@@ -821,7 +817,7 @@ impl PpuData {
                 self.name_base_addr.set(data & 0x03);
 
                 #[cfg(feature = "debug-log-ppu")]
-                self.logger.borrow_mut().log(
+                self.logger.log(
                     LogLevel::Debug,
                     format!("Set obj spr size to {:?}, secondary select to {}, and name base addr to ${:X}", 
                         self.obj_sprite_size.get(), 
@@ -839,7 +835,7 @@ impl PpuData {
                 self.internal_oam_addr.set((self.oam_addr.get() & 0x1FF) << 1);
 
                 #[cfg(feature = "debug-log-ppu")]
-                self.logger.borrow_mut().log(
+                self.logger.log(
                     LogLevel::Debug,
                     format!("Set OAM addr to ${:04X}, internal OAM addr to ${:04X}, and priority rotation idx to 0x{:02X}",
                         self.oam_addr.get(),
@@ -857,7 +853,7 @@ impl PpuData {
                 self.internal_oam_addr.set((self.oam_addr.get() & 0x1FF) << 1);
 
                 #[cfg(feature = "debug-log-ppu")]
-                self.logger.borrow_mut().log(
+                self.logger.log(
                     LogLevel::Debug,
                     format!("Set OAM addr to ${:04X}, internal OAM addr to ${:04X}, and priority rotation to {}",
                         self.oam_addr.get(),
@@ -920,8 +916,17 @@ impl PpuData {
                     }
                 );
 
+                // println!("Set bg char sizes to 4: {:?}, 3: {:?}, 2: {:?}, 1: {:?}, bg 3 priority to {:?}, and bg mode to {:?}",
+                //         self.bg4_char_size.get(),
+                //         self.bg3_char_size.get(),
+                //         self.bg2_char_size.get(),
+                //         self.bg1_char_size.get(),
+                //         self.bg3_mode1_priority.get(),
+                //         self.bg_mode.get(),
+                //     );
+
                 #[cfg(feature = "debug-log-ppu")]
-                self.logger.borrow_mut().log(
+                self.logger.log(
                     LogLevel::Debug,
                     format!("Set bg char sizes to 4: {:?}, 3: {:?}, 2: {:?}, 1: {:?}, bg 3 priority to {:?}, and bg mode to {:?}",
                         self.bg4_char_size.get(),
@@ -941,8 +946,16 @@ impl PpuData {
                 self.bg2_mosaic.set(data.bit_en(1));
                 self.bg1_mosaic.set(data.bit_en(0));
 
+                // println!("Set mosaic size to {} and mosaic enables to 4: {}, 3: {}, 2: {}, 1: {}",
+                //         self.mosaic_size.get(),
+                //         self.bg4_mosaic.get(),
+                //         self.bg3_mosaic.get(),
+                //         self.bg2_mosaic.get(),
+                //         self.bg1_mosaic.get(),
+                //     );
+
                 #[cfg(feature = "debug-log-ppu")]
-                self.logger.borrow_mut().log(
+                self.logger.log(
                     LogLevel::Debug,
                     format!("Set mosaic size to {} and mosaic enables to 4: {}, 3: {}, 2: {}, 1: {}",
                         self.mosaic_size.get(),
@@ -963,11 +976,11 @@ impl PpuData {
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
 
-                println!("Set bg1 tilemap base VRAM addr to ${:04X}, bg1 tilemap count y to {:?}, and bg1 tilemap count x to {:?}",
-                    (self.bg1_vram_addr.get() as u16) << 10,
-                    self.bg1_tilemap_count_y.get(),
-                    self.bg1_tilemap_count_x.get(),
-                );
+                // println!("Set bg1 tilemap base VRAM addr to ${:04X}, bg1 tilemap count y to {:?}, and bg1 tilemap count x to {:?}",
+                //     (self.bg1_vram_addr.get() as u16) << 10,
+                //     self.bg1_tilemap_count_y.get(),
+                //     self.bg1_tilemap_count_x.get(),
+                // );
             }
 
             0x08 => {
@@ -979,11 +992,11 @@ impl PpuData {
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
 
-                println!("Set bg2 tilemap base VRAM addr to ${:04X}, bg2 tilemap count y to {:?}, and bg2 tilemap count x to {:?}",
-                    (self.bg2_vram_addr.get() as u16) << 10,
-                    self.bg2_tilemap_count_y.get(),
-                    self.bg2_tilemap_count_x.get(),
-                );
+                // println!("Set bg2 tilemap base VRAM addr to ${:04X}, bg2 tilemap count y to {:?}, and bg2 tilemap count x to {:?}",
+                //     (self.bg2_vram_addr.get() as u16) << 10,
+                //     self.bg2_tilemap_count_y.get(),
+                //     self.bg2_tilemap_count_x.get(),
+                // );
             }
 
             0x09 => {
@@ -995,11 +1008,11 @@ impl PpuData {
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
 
-                println!("Set bg3 tilemap base VRAM addr to ${:04X}, bg3 tilemap count y to {:?}, and bg3 tilemap count x to {:?}",
-                    (self.bg3_vram_addr.get() as u16) << 10,
-                    self.bg3_tilemap_count_y.get(),
-                    self.bg3_tilemap_count_x.get(),
-                );
+                // println!("Set bg3 tilemap base VRAM addr to ${:04X}, bg3 tilemap count y to {:?}, and bg3 tilemap count x to {:?}",
+                //     (self.bg3_vram_addr.get() as u16) << 10,
+                //     self.bg3_tilemap_count_y.get(),
+                //     self.bg3_tilemap_count_x.get(),
+                // );
             }
 
             0x0A => {
@@ -1011,31 +1024,31 @@ impl PpuData {
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
 
-                println!("Set bg4 tilemap base VRAM addr to ${:04X}, bg4 tilemap count y to {:?}, and bg4 tilemap count x to {:?}",
-                    (self.bg4_vram_addr.get() as u16) << 10,
-                    self.bg4_tilemap_count_y.get(),
-                    self.bg4_tilemap_count_x.get(),
-                );
+                // println!("Set bg4 tilemap base VRAM addr to ${:04X}, bg4 tilemap count y to {:?}, and bg4 tilemap count x to {:?}",
+                //     (self.bg4_vram_addr.get() as u16) << 10,
+                //     self.bg4_tilemap_count_y.get(),
+                //     self.bg4_tilemap_count_x.get(),
+                // );
             }
 
             0x0B => {
                 self.bg2_chr_base_addr.set(data >> 4);
                 self.bg1_chr_base_addr.set(data & 0x0F);
 
-                println!("Set bg CHR word base addrs to 2: ${:04X}, 1: ${:04X}", 
-                    (self.bg2_chr_base_addr.get() as u16) << 12,
-                    (self.bg1_chr_base_addr.get() as u16) << 12,
-                );
+                // println!("Set bg CHR word base addrs to 2: ${:04X}, 1: ${:04X}", 
+                //     (self.bg2_chr_base_addr.get() as u16) << 12,
+                //     (self.bg1_chr_base_addr.get() as u16) << 12,
+                // );
             }
 
             0x0C => {
                 self.bg4_chr_base_addr.set(data >> 4);
                 self.bg3_chr_base_addr.set(data & 0x0F);
 
-                println!("Set bg CHR word base addrs to 4: ${:04X}, 3: ${:04X}", 
-                    (self.bg4_chr_base_addr.get() as u16) << 12,
-                    (self.bg3_chr_base_addr.get() as u16) << 12,
-                );
+                // println!("Set bg CHR word base addrs to 4: ${:04X}, 3: ${:04X}", 
+                //     (self.bg4_chr_base_addr.get() as u16) << 12,
+                //     (self.bg3_chr_base_addr.get() as u16) << 12,
+                // );
             }
 
             0x0D => {
@@ -1046,11 +1059,11 @@ impl PpuData {
                     ((data as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07)
                 );
 
-                println!("Set bg offset latch to 0x{:02X}, bg horizontal offset latch to 0x{:02X}, and bg1 horizontal scroll to {:04X}",
-                    self.bg_offset_latch.get(),
-                    self.bg_offset_x_latch.get(),
-                    self.bg1_m7_x_offset.get(),
-                );
+                // println!("Set bg offset latch to 0x{:02X}, bg horizontal offset latch to 0x{:02X}, and bg1 horizontal scroll to {:04X}",
+                //     self.bg_offset_latch.get(),
+                //     self.bg_offset_x_latch.get(),
+                //     self.bg1_m7_x_offset.get(),
+                // );
             }
 
             0x0E => {
@@ -1058,10 +1071,10 @@ impl PpuData {
 
                 self.bg1_m7_y_offset.set(((data as u16) << 8) | bgofs_latch);
 
-                println!("Set bg offset latch to 0x{:02X} and bg1 vertical scroll to 0x{:04X}",
-                    self.bg_offset_latch.get(),
-                    self.bg1_m7_y_offset.get()
-                );
+                // println!("Set bg offset latch to 0x{:02X} and bg1 vertical scroll to 0x{:04X}",
+                //     self.bg_offset_latch.get(),
+                //     self.bg1_m7_y_offset.get()
+                // );
             }
 
             0x0F => {
@@ -1072,11 +1085,11 @@ impl PpuData {
                     ((data as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07)
                 );
 
-                println!("Set bg offset latch to 0x{:02X}, bg horizontal offset latch to 0x{:02X}, and bg2 horizontal scroll to {:04X}",
-                    self.bg_offset_latch.get(),
-                    self.bg_offset_x_latch.get(),
-                    self.bg2_x_offset.get(),
-                );
+                // println!("Set bg offset latch to 0x{:02X}, bg horizontal offset latch to 0x{:02X}, and bg2 horizontal scroll to {:04X}",
+                //     self.bg_offset_latch.get(),
+                //     self.bg_offset_x_latch.get(),
+                //     self.bg2_x_offset.get(),
+                // );
             }
 
             0x10 => {
@@ -1084,10 +1097,10 @@ impl PpuData {
 
                 self.bg2_y_offset.set(((data as u16) << 8) | bgofs_latch);
 
-                println!("Set bg offset latch to 0x{:02X} and bg2 vertical scroll to 0x{:04X}",
-                    self.bg_offset_latch.get(),
-                    self.bg2_y_offset.get()
-                );
+                // println!("Set bg offset latch to 0x{:02X} and bg2 vertical scroll to 0x{:04X}",
+                //     self.bg_offset_latch.get(),
+                //     self.bg2_y_offset.get()
+                // );
             }
 
             0x11 => {
@@ -1098,11 +1111,11 @@ impl PpuData {
                     ((data as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07)
                 );
 
-                println!("Set bg offset latch to 0x{:02X}, bg horizontal offset latch to 0x{:02X}, and bg3 horizontal scroll to {:04X}",
-                    self.bg_offset_latch.get(),
-                    self.bg_offset_x_latch.get(),
-                    self.bg3_x_offset.get(),
-                );
+                // println!("Set bg offset latch to 0x{:02X}, bg horizontal offset latch to 0x{:02X}, and bg3 horizontal scroll to {:04X}",
+                //     self.bg_offset_latch.get(),
+                //     self.bg_offset_x_latch.get(),
+                //     self.bg3_x_offset.get(),
+                // );
             }
 
             0x12 => {
@@ -1110,10 +1123,10 @@ impl PpuData {
 
                 self.bg3_y_offset.set(((data as u16) << 8) | bgofs_latch);
 
-                println!("Set bg offset latch to 0x{:02X} and bg3 vertical scroll to 0x{:04X}",
-                    self.bg_offset_latch.get(),
-                    self.bg3_y_offset.get()
-                );
+                // println!("Set bg offset latch to 0x{:02X} and bg3 vertical scroll to 0x{:04X}",
+                //     self.bg_offset_latch.get(),
+                //     self.bg3_y_offset.get()
+                // );
             }
 
             0x13 => {
@@ -1124,11 +1137,11 @@ impl PpuData {
                     ((data as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07)
                 );
 
-                println!("Set bg offset latch to 0x{:02X}, bg horizontal offset latch to 0x{:02X}, and bg4 horizontal scroll to {:04X}",
-                    self.bg_offset_latch.get(),
-                    self.bg_offset_x_latch.get(),
-                    self.bg4_x_offset.get(),
-                );
+                // println!("Set bg offset latch to 0x{:02X}, bg horizontal offset latch to 0x{:02X}, and bg4 horizontal scroll to {:04X}",
+                //     self.bg_offset_latch.get(),
+                //     self.bg_offset_x_latch.get(),
+                //     self.bg4_x_offset.get(),
+                // );
             }
 
             0x14 => {
@@ -1136,10 +1149,10 @@ impl PpuData {
 
                 self.bg4_y_offset.set(((data as u16) << 8) | bgofs_latch);
 
-                println!("Set bg offset latch to 0x{:02X} and bg4 vertical scroll to 0x{:04X}",
-                    self.bg_offset_latch.get(),
-                    self.bg4_y_offset.get()
-                );
+                // println!("Set bg offset latch to 0x{:02X} and bg4 vertical scroll to 0x{:04X}",
+                //     self.bg_offset_latch.get(),
+                //     self.bg4_y_offset.get()
+                // );
             }
 
             0x15 => {
@@ -1178,7 +1191,7 @@ impl PpuData {
                     self.vram[self.get_vram_addr() as usize].get()
                 );
 
-                println!("Set VRAM addr (lo) to ${:04X} and VRAM latch to {:04X}", self.vram_addr.get(), self.vram_latch.get());
+                // println!("Set VRAM addr (lo) to ${:04X} and VRAM latch to {:04X}", self.vram_addr.get(), self.vram_latch.get());
             }
 
             0x17 => {
@@ -1187,15 +1200,15 @@ impl PpuData {
                     self.vram[self.get_vram_addr() as usize].get()
                 );
 
-                println!("Set VRAM addr (hi) to ${:04X} and VRAM latch to {:04X}", self.vram_addr.get(), self.vram_latch.get());
+                // println!("Set VRAM addr (hi) to ${:04X} and VRAM latch to {:04X}", self.vram_addr.get(), self.vram_latch.get());
             }
 
             0x18 => {
                 // println!("Write to $2118 with data 0x{data:02X} with vblank: {} and fblank: {}", self.in_vblank.get(), self.in_fblank.get());
 
-                // if self.in_fblank.get() || self.in_vblank.get() {
+                if self.in_fblank.get() || self.in_vblank.get() {
                     self.vram[self.get_vram_addr() as usize].set_lo(data);
-                // }
+                }
 
                 // println!("$2118 VRAM addr: ${:04X}, data written: {:02X}", addr, data);
 
@@ -1208,9 +1221,9 @@ impl PpuData {
             }
 
             0x19 => {
-                // if self.in_fblank.get() || self.in_vblank.get() {
+                if self.in_fblank.get() || self.in_vblank.get() {
                     self.vram[self.get_vram_addr() as usize].set_hi(data);
-                // }
+                }
 
                 // println!("CPU wrote VRAM data (hi) to addr ${:04X} with data 0x{:02X}, new word = {:04X}", self.vram_addr.get(), data, self.vram[addr].get());
 
@@ -1241,11 +1254,11 @@ impl PpuData {
 
                 self.update_multiply_result();
 
-                println!("Set m7 latch to 0x{:02X}, mult factor 16bit/m7 matrix A to 0x{:04X}, and mult result to 0x{:08X}",
-                    self.m7_latch.get(),
-                    self.m7_matrix_a.get(),
-                    self.multiply_result.get(),
-                );
+                // println!("Set m7 latch to 0x{:02X}, mult factor 16bit/m7 matrix A to 0x{:04X}, and mult result to 0x{:08X}",
+                //     self.m7_latch.get(),
+                //     self.m7_matrix_a.get(),
+                //     self.multiply_result.get(),
+                // );
             }
 
             0x1C => {
@@ -1258,12 +1271,12 @@ impl PpuData {
 
                 self.update_multiply_result();
 
-                println!("Set m7 latch to 0x{:02X}, my matrix B to 0x{:04X}, mult factor 8bit to 0x{:02X}, and mult result to 0x{:08X}",
-                    self.m7_latch.get(),
-                    self.m7_matrix_b.get(),
-                    self.mult_factor_8.get(),
-                    self.multiply_result.get(),
-                );
+                // println!("Set m7 latch to 0x{:02X}, my matrix B to 0x{:04X}, mult factor 8bit to 0x{:02X}, and mult result to 0x{:08X}",
+                //     self.m7_latch.get(),
+                //     self.m7_matrix_b.get(),
+                //     self.mult_factor_8.get(),
+                //     self.multiply_result.get(),
+                // );
             }
 
             0x1D => {
@@ -1271,10 +1284,10 @@ impl PpuData {
 
                 self.m7_matrix_c.set(((data as u16) << 8) | latched_val);
 
-                println!("Set m7 latch to 0x{:02X} and m7 matrix C to {:04X}",
-                    self.m7_latch.get(),
-                    self.m7_matrix_c.get(),
-                );
+                // println!("Set m7 latch to 0x{:02X} and m7 matrix C to {:04X}",
+                //     self.m7_latch.get(),
+                //     self.m7_matrix_c.get(),
+                // );
             }
 
             0x1E => {
@@ -1282,10 +1295,10 @@ impl PpuData {
 
                 self.m7_matrix_d.set(((data as u16) << 8) | latched_val);
 
-                println!("Set m7 latch to 0x{:02X} and m7 matrix D to {:04X}",
-                    self.m7_latch.get(),
-                    self.m7_matrix_d.get(),
-                );
+                // println!("Set m7 latch to 0x{:02X} and m7 matrix D to {:04X}",
+                //     self.m7_latch.get(),
+                //     self.m7_matrix_d.get(),
+                // );
             }
 
             0x1F => {
@@ -1308,7 +1321,7 @@ impl PpuData {
             }
 
             0x22 => {
-                print!("Write to CGRAM addr ${:02X} with data 0x{:02X}", self.cgram_addr.get(), data);
+                // print!("Write to CGRAM addr ${:02X} with data 0x{:02X}", self.cgram_addr.get(), data);
 
                 if self.cgram_toggle.toggle() {
                     let addr = self.cgram_addr.get();
@@ -1342,7 +1355,7 @@ impl PpuData {
                 self.bg1_w1_enabled.set(data.bit_en(1));
                 self.bg1_w1_inverted.set(data.bit_en(0));
 
-                println!("Wrote 0x{data:02X} to bg2&1 win enable and invert");
+                // println!("Wrote 0x{data:02X} to bg2&1 win enable and invert");
             }
 
             0x24 => {
@@ -1355,7 +1368,7 @@ impl PpuData {
                 self.bg3_w1_enabled.set(data.bit_en(1));
                 self.bg3_w1_inverted.set(data.bit_en(0));
 
-                println!("Wrote 0x{data:02X} to bg4&3 win enable and invert");
+                // println!("Wrote 0x{data:02X} to bg4&3 win enable and invert");
             }
 
             0x25 => {
@@ -1368,7 +1381,7 @@ impl PpuData {
                 self.obj_w1_enabled.set(data.bit_en(1));
                 self.obj_w1_inverted.set(data.bit_en(0));
 
-                println!("Wrote 0x{data:02X} to obj&col win enable and invert");
+                // println!("Wrote 0x{data:02X} to obj&col win enable and invert");
             }
 
             0x26 => {
@@ -1454,13 +1467,13 @@ impl PpuData {
                 self.bg2_main_enabled.set(data.bit_en(1));
                 self.bg1_main_enabled.set(data.bit_en(0));
 
-                println!("Set main screen enable to Obj: {}, Bg4: {}, Bg3: {}, Bg2: {}, Bg1: {}",
-                    self.obj_main_enabled.get(),
-                    self.bg4_main_enabled.get(),
-                    self.bg3_main_enabled.get(),
-                    self.bg2_main_enabled.get(),
-                    self.bg1_main_enabled.get(),
-                );
+                // println!("Set main screen enable to Obj: {}, Bg4: {}, Bg3: {}, Bg2: {}, Bg1: {}",
+                //     self.obj_main_enabled.get(),
+                //     self.bg4_main_enabled.get(),
+                //     self.bg3_main_enabled.get(),
+                //     self.bg2_main_enabled.get(),
+                //     self.bg1_main_enabled.get(),
+                // );
             }
 
             0x2D => {
@@ -1526,7 +1539,7 @@ impl PpuData {
                 self.bg2_cmath_enabled.set(data.bit_en(1));
                 self.bg1_cmath_enabled.set(data.bit_en(0));
 
-                println!("Set bg1 color math enable to {}", self.bg1_cmath_enabled.get());
+                // println!("Set bg1 color math enable to {}", self.bg1_cmath_enabled.get());
             }
 
             0x32 => {
@@ -1778,11 +1791,11 @@ pub struct Ppu5C7x {
 
     pub frame_finished: bool,
 
-    logger: Rc<RefCell<SnemLogger>>,
+    logger: Rc<SnemLogger>,
 }
 
 impl Ppu5C7x {
-    pub fn new(ppu_data: Rc<PpuData>, logger: Rc<RefCell<SnemLogger>>) -> Self {
+    pub fn new(ppu_data: Rc<PpuData>, logger: Rc<SnemLogger>) -> Self {
         Ppu5C7x {
             registers: ppu_data,
             dot: 0,
@@ -1807,6 +1820,23 @@ impl Ppu5C7x {
             self.dot(frame_buffer);
         }
 
+        // if self.frame == 30 && self.dot == 0 && self.scanline == 0 {
+        //     let mut cgram_cpy = Vec::new();
+
+        //     for i in 0..CGRAM_SIZE {
+        //         let r = i & 0x1F;
+        //         let g = i & 0x3E0;
+        //         let col = ((r << 10) | g) as u16;
+
+        //         self.registers.cgram[i].set(col);
+
+        //         cgram_cpy.push(self.registers.cgram[i].get());
+        //     }
+
+        //     crate::tools::tools::hexdump16(&cgram_cpy);
+        // }
+
+
         self.update_dot_and_scanline();
 
         self.sys_clocks_until_clock += 4;
@@ -1815,7 +1845,7 @@ impl Ppu5C7x {
             self.sys_clocks_until_clock += 1;
         }
 
-        if self.frame == 120 && self.scanline == 0 && self.dot == 0 {
+        if self.frame == 60 && self.scanline == 0 && self.dot == 0 {
             let mut cgram_clone = Vec::new();
 
             for word in self.registers.cgram.iter() {

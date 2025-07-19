@@ -1,4 +1,5 @@
 mod dma;
+mod disassembler;
 mod utils;
 
 use dma::{DmaChannel, DmaStatus};
@@ -11,7 +12,6 @@ use crate::system::ssmp::ApuIORegs;
 use crate::utils::util_macros::bool2byte;
 use crate::utils::{dec_low_byte, inc_low_byte, GetBits, GetBytes, SetBytes};
 
-use std::cell::RefCell;
 use std::rc::Rc;
 
 const WRAM_SIZE: usize = 128 * 1024; // 128 KiB
@@ -82,7 +82,7 @@ pub struct Cpu65c816 {
 
     vblank_nmi_ignore: bool,
 
-    logger: Rc<RefCell<SnemLogger>>,
+    logger: Rc<SnemLogger>,
 
     debug_flag: bool,
 }
@@ -93,7 +93,7 @@ impl Cpu65c816 {
     pub fn new(
         ppu_data: Rc<PpuData>,
         apuio_regs: Rc<ApuIORegs>,
-        logger: Rc<RefCell<SnemLogger>>,
+        logger: Rc<SnemLogger>,
     ) -> Cpu65c816 {
         Cpu65c816 {
             acc: 0,
@@ -346,10 +346,20 @@ impl Cpu65c816 {
                 }
 
                 #[cfg(feature = "debug-log-dmas")]
-                self.logger.borrow_mut().log(
-                    LogLevel::Debug,
-                    format!("Started DMA w/ channel enables (7..0) = {:08b}", data).as_str()
-                );
+                {
+                    self.logger.log(LogLevel::Debug, format!("Wrote to DMA enable with 0x{:02X}", data).as_str());
+                    for (i, dma_channel) in self.dma_channels.iter_mut().enumerate().rev() {
+                        if dma_channel.active {
+                            self.logger.log(
+                                LogLevel::Debug,
+                                format!("  Ch. {i}: {} bytes w/ A: ${:06X}, B: $21{:02X}, dir: {:?}", 
+                                    dma_channel.byte_count, dma_channel.a_bus_addr(), 
+                                    dma_channel.b_bus_addr, dma_channel.direction
+                                ).as_str()
+                            );
+                        }
+                    }
+                }
             }
             0x420C => {
                 // for i in 0..8 {
@@ -1124,12 +1134,12 @@ impl Cpu65c816 {
 
     fn relative8(&mut self) -> u32 {
         let offset = (self.read(self.immediate8()) as i8) as u16;
-        let original_addr = ((self.pc + 2) as u32).with_bank(self.prg_bank);
-        let offset_addr = original_addr.with_bank_addr(original_addr.bank_addr() + offset);
+        let new_pc = self.pc + 2 + offset;
+        let relative_addr = (new_pc as u32).with_bank(self.prg_bank);
 
-        self.page_crossed = original_addr.page() != offset_addr.page();
+        self.page_crossed = relative_addr.page() != relative_addr.page();
 
-        offset_addr
+        relative_addr
     }
     fn relative16(&mut self) -> u32 {
         let (offset_lo, offset_hi) = self.immediate16();
@@ -2545,6 +2555,15 @@ impl Cpu65c816 {
         dma_channel.byte_count -= 1;
 
         if dma_channel.byte_count == 0 {
+            #[cfg(feature = "debug-log-dmas")]
+            self.logger.log(
+                LogLevel::Debug,
+                format!("Finished DMA of {} bytes on Ch. {}", 
+                    dma_channel.bytes_written, 
+                    self.active_channel_idx
+                ).as_str(),
+            );
+
             dma_channel.active = false;
             dma_channel.bytes_written = 0;
 
@@ -2604,44 +2623,21 @@ impl Cpu65c816 {
         let opcode = self.read_prg();
         let extra_clocks: usize;
 
-        // if frame > 20 {
-        //     self.dma_status = DmaStatus::DMA;
-        //     let b1 = self.read((self.pc + 1) as u32);
-        //     let b2 = self.read((self.pc + 2) as u32);
-        //     let b3 = self.read((self.pc + 3) as u32);
-        //     self.dma_status = DmaStatus::Off;
-
-        //     let mirror_addr = if (self.pc & 0x00FFFF) >= 0x8000 {
-        //         self.pc as u32 | 0x800000
-        //     } else {
-        //         (self.pc as u32 & 0xBFFFFF) | 0x008000
-        //     };
-        //     let mapped_pc = self.map_lorom_addr(mirror_addr);
-
-        //     // println!("Exec op 0x{opcode:02X} from ${:04X}", self.pc);
-        //     println!("[{}] Exec op 0x{:02X} from pc ${:04X} mapped to ${:04X}, next bytes = 0x{:02X}, 0x{:02X}, 0x{:02X}", 
-        //         frame,
-        //         opcode, 
-        //         self.pc, 
-        //         mapped_pc,
-        //         b1,
-        //         b2,
-        //         b3,
-        //     );
-        //     println!("{}", self.lemon_cpu_str());
-
-        //     std::thread::sleep(std::time::Duration::from_millis(20));
-        // }
-
-        // if frame > 100 {
-        //     self.dma_status = DmaStatus::DMA;
-        //     let abs_addr = self.absolute8();
-        //     let data = self.read16(abs_addr, abs_addr+1);
-        //     self.dma_status = DmaStatus::Off;
-
-        //     println!("Opcode 0x{opcode:02X} from PC ${:04X}, abs addr: ${abs_addr:04X} byte = 0x{data:02X}", self.pc);
-        //     println!("{}", self.lemon_cpu_str());
-        // }
+        #[cfg(feature = "debug-log-cpu-instrs")]
+        if frame > 100 {
+            self.logger.log(
+                LogLevel::Debug,
+                format!("mapped_pc = {:04X}, {}", self.map_lorom_addr(self.pc as u32), disassembler::instr_disassembly(
+                    self.prg_bank,
+                    self.pc,
+                    &self.rom,
+                    self.rom_mirror,
+                    self.is_flag_set(Flag::FlagM),
+                    self.is_flag_set(Flag::FlagX),
+                    self.mode == CpuMode::Emulation
+                )).as_str()
+            );
+        }
 
         match (opcode, self.mode, self.acc_size(), self.idx_size()) {
             // brk, imp

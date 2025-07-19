@@ -34,7 +34,7 @@ const AUDIO_FREQ: usize = 44100;
 const AUDIO_BUFFER_SAMPLES: usize = AUDIO_FREQ / 60;
 
 struct SnemulatorCore {
-    logger: Rc<RefCell<SnemLogger>>,
+    logger: Rc<SnemLogger>,
     frame_buffer: ResizableFrameBuffer<ORGB1555, FRAME_BUF_SIZE>,
     pixel_format: ActiveFormat<ORGB1555>,
     rendering_mode: SoftwareRenderEnabled,
@@ -105,21 +105,17 @@ impl SnemulatorCore {
         if ppu_clocks < cpu_clocks {
             self.snem_cpu.remove_clocks(ppu_clocks);
             self.snem_ppu.clock(&mut self.frame_buffer);
-            self.snem_apu.clock(ppu_clocks);
+            self.snem_apu.clock(ppu_clocks, self.frame_count as usize);
         } else {
             self.snem_ppu.remove_clocks(cpu_clocks);
             self.snem_cpu.clock(self.frame_count as usize);
-            self.snem_apu.clock(cpu_clocks);
+            self.snem_apu.clock(cpu_clocks, self.frame_count as usize);
         }
     }
 
     /// Clocks all components of the SNES until the PPU reports that the frame 
     /// is finished.
     fn cycle_frame(&mut self) {
-        // if self.frame_count == 30 {
-        //     self.snem_cpu.trigger_interrupt(crate::system::scpu::CpuInterrupt::NMI);
-        // }
-
         while !self.snem_ppu.frame_finished {
             self.cycle();
         }
@@ -139,16 +135,16 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         )
     }
 
-    fn init(_env: &mut impl retro::env::Init) -> Self::Init {}
+    fn init(env: &mut impl retro::env::Init) -> Self::Init {}
 
     fn load_without_content<E: retro::env::LoadGame>(
         args: LoadGameExtraArgs<'a, '_, E, Self::Init>,
     ) -> Result<Self, retro::error::CoreError> {
-        let logger = Rc::new(RefCell::new(
+        let logger = Rc::new(
             SnemLogger::new(args.env.get_log_interface()?)
-        ));
+        );
 
-        logger.borrow_mut().log(LogLevel::Info, "loading Snemulator core with no content");
+        logger.log(LogLevel::Info, "loading Snemulator core with no content");
 
         args.env.set_hw_render_none()?;
 
@@ -168,7 +164,10 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         let snem_ppu = ppu::Ppu5C7x::new(
             ppu_data.clone(),
             logger.clone());
-        let snem_apu = ssmp::Spc700::new(apuio_regs.clone());
+        let snem_apu = ssmp::Spc700::new(
+            apuio_regs.clone(), 
+            logger.clone()
+        );
 
         let core = SnemulatorCore {
             logger,
@@ -204,12 +203,11 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         } else if game.is_data() {
             game.as_data().unwrap().path().unwrap().as_str()
         } else {
-            core.logger.borrow_mut()
-                .log(LogLevel::Error, "game provided is neither path nor data");
+            core.logger.log(LogLevel::Error, "game provided is neither path nor data");
             return Err(CoreError::new());
         };
 
-        core.logger.borrow_mut().log(
+        core.logger.log(
             LogLevel::Info,
             format!("loading game from '{}'", path_str).as_str(),
         );
@@ -218,15 +216,16 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         let cart_res = Cartridge::from_path(game_path);
 
         if let Err(msg) = cart_res {
-            core.logger.borrow_mut()
-                .log(LogLevel::Error, format!("failed to load game: {}", msg).as_str());
+            core.logger.log(LogLevel::Error, format!("failed to load game: {}", msg).as_str());
             return Err(CoreError::new());
         }
 
         let cart = cart_res.unwrap();
 
-        core.logger.borrow_mut().log(LogLevel::Info, 
-            format!("loaded ROM with {:?} memory mapping", cart.mapping_mode()).as_str());
+        core.logger.log(
+            LogLevel::Info, 
+            format!("loaded ROM with {:?} memory mapping", cart.mapping_mode()).as_str()
+        );
 
         core.snem_cpu.load_cart(cart);
         core.snem_cpu.initialize();
@@ -265,7 +264,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
                 let avg_fps = self.prev_fps.drain(0..60).sum::<f32>() / 60.0;
 
                 if avg_fps < MIN_AVG_FPS {
-                    self.logger.borrow_mut().log(
+                    self.logger.log(
                         LogLevel::Warn,
                         format!("Poor performance detected. Avg FPS: {:.04}", avg_fps).as_str()
                     );
@@ -281,12 +280,12 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
     }
 
     fn reset(&mut self, _env: &mut impl retro::env::Reset) {
-        self.logger.borrow_mut().log(LogLevel::Info, "core reset");
+        self.logger.log(LogLevel::Info, "core reset");
         todo!("Reset Core");
     }
 
     fn unload_game(self, _env: &mut impl retro::env::UnloadGame) -> Self::Init {
-        self.logger.borrow_mut().log(LogLevel::Info, "unloading game");
+        self.logger.log(LogLevel::Info, "unloading game");
     }
 
     fn set_environment(env: &mut impl retro::env::SetEnvironment) {

@@ -13,17 +13,20 @@ serde_json = "1.0.134"
 rand="*"
 
 [features]
-warn-perf = []
+debug-logging-en = []
+
+warn-perf = ["debug-logging-en"]
 no-video = []
 no-audio = []
-test-env = ["warn-perf", "no-video", "no-audio"]
 
-debug-log-dmas = []
+debug-log-dmas = ["debug-logging-en"]
+debug-log-cpu-instrs = ["debug-logging-en"]
+debug-log-apu-instrs = ["debug-logging-en"]
 
-debug-log-ppu = []
-debug-log-cpu = ["debug-log-dmas"]
-debug-log-apu = []
-debug-log-all = ["debug-log-ppu", "debug-log-cpu", "debug-log-apu"]
+debug-log-ppu = ["debug-logging-en"]
+debug-log-cpu = ["debug-logging-en", "debug-log-dmas", "debug-log-cpu-instrs"]
+debug-log-apu = ["debug-logging-en"]
+debug-log-all = ["debug-logging-en", "warn-perf", "debug-log-ppu", "debug-log-cpu", "debug-log-apu"]
 
 [profile.dev]
 overflow-checks = false

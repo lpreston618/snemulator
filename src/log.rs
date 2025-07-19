@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use libretro_rs::{c_utf8::CUtf8, ffi::retro_log_level, retro::log::{LogInterface, PlatformLogger}};
 
 #[allow(dead_code)]
@@ -21,21 +23,27 @@ impl Into<retro_log_level> for LogLevel {
 }
 
 pub struct SnemLogger {
-    logger: PlatformLogger
+    logger: Cell<Option<PlatformLogger>>
 }
 
 impl SnemLogger {
     pub fn new(logger: PlatformLogger) -> Self {
-        SnemLogger { logger }
+        SnemLogger { logger: Cell::new(Some(logger)) }
     }
 
-    pub fn log(&mut self, level: LogLevel, message: &str) {
-        // let message = format!("SNEM {}", message);
+    pub fn dummy() -> Self {
+        SnemLogger { logger: Cell::new(None) }
+    }
 
-        self.logger.log(
-            level.into(), 
-            // Safety: \0 char included manually in formatted str so from_str_unchecked is fine.
-            unsafe { CUtf8::from_str_unchecked(format!("[Snem Log] {}\0", message).as_str()) }
-        );
+    pub fn log(&self, level: LogLevel, message: &str) {
+        if let Some(mut logger) = self.logger.get() {
+            logger.log(
+                level.into(), 
+                // Safety: \0 char included manually in formatted str so from_str_unchecked is fine.
+                unsafe { CUtf8::from_str_unchecked(format!("[Snemulator] {}\0", message).as_str()) }
+            );
+
+            self.logger.set(Some(logger));
+        }
     }
 }

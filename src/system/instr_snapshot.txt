@@ -1,0 +1,1009 @@
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549    ================================================\
+[libretro DEBUG] [Snemulator] $054E:  6D       push  y
+[libretro DEBUG] [Snemulator] $054F:  E8 38    lda   #$38
+[libretro DEBUG] [Snemulator] $0551:  CF       mul
+[libretro DEBUG] [Snemulator] $0552:  60       clrc
+[libretro DEBUG] [Snemulator] $0553:  84 44    adc   $44
+[libretro DEBUG] [Snemulator] $0555:  C4 44    sta   $44
+[libretro DEBUG] [Snemulator] $0557:  90 1A    bcc   $0573
+[libretro DEBUG] [Snemulator] $0573:  E4 51    lda   $51
+[libretro DEBUG] [Snemulator] $0575:  EE       pop   y
+[libretro DEBUG] [Snemulator] $0576:  CF       mul
+[libretro DEBUG] [Snemulator] $0577:  60       clrc
+[libretro DEBUG] [Snemulator] $0578:  84 49    adc   $49
+[libretro DEBUG] [Snemulator] $057A:  C4 49    sta   $49
+[libretro DEBUG] [Snemulator] $057C:  90 0F    bcc   $058D
+[libretro DEBUG] [Snemulator] $058D:  E4 06    lda   $06
+[libretro DEBUG] [Snemulator] $058F:  F0 B8    beq   $0549    ================================================/
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549    ================================================\
+[libretro DEBUG] [Snemulator] $054E:  6D       push  y
+[libretro DEBUG] [Snemulator] $054F:  E8 38    lda   #$38
+[libretro DEBUG] [Snemulator] $0551:  CF       mul
+[libretro DEBUG] [Snemulator] $0552:  60       clrc
+[libretro DEBUG] [Snemulator] $0553:  84 44    adc   $44
+[libretro DEBUG] [Snemulator] $0555:  C4 44    sta   $44
+[libretro DEBUG] [Snemulator] $0557:  90 1A    bcc   $0573
+[libretro DEBUG] [Snemulator] $0559:  AB 45    inc   $45
+[libretro DEBUG] [Snemulator] $055B:  3F AE 06 call  $06AE
+[libretro DEBUG] [Snemulator] $06AE:  78 12 00 cmp   $00,#$12
+[libretro DEBUG] [Snemulator] $06B1:  F0 0F    beq   $06C2
+[libretro DEBUG] [Snemulator] $06B3:  78 11 00 cmp   $00,#$11
+[libretro DEBUG] [Snemulator] $06B6:  F0 0A    beq   $06C2
+[libretro DEBUG] [Snemulator] $06B8:  78 11 04 cmp   $04,#$11
+[libretro DEBUG] [Snemulator] $06BB:  F0 0B    beq   $06C8
+[libretro DEBUG] [Snemulator] $06BD:  78 1D 04 cmp   $04,#$1D
+[libretro DEBUG] [Snemulator] $06C0:  F0 06    beq   $06C8
+[libretro DEBUG] [Snemulator] $06C2:  E4 00    lda   $00
+[libretro DEBUG] [Snemulator] $06C4:  30 D8    bmi   $069E
+[libretro DEBUG] [Snemulator] $06C6:  D0 0A    bne   $06D2
+[libretro DEBUG] [Snemulator] $06C8:  E5 82 03 lda   $0382
+[libretro DEBUG] [Snemulator] $06CB:  D0 4D    bne   $071A
+[libretro DEBUG] [Snemulator] $06CD:  E4 04    lda   $04
+[libretro DEBUG] [Snemulator] $06CF:  D0 7C    bne   $074D
+[libretro DEBUG] [Snemulator] $06D1:  6F       ret
+[libretro DEBUG] [Snemulator] $055E:  CD 00    ldx   #$00
+[libretro DEBUG] [Snemulator] $0560:  3F A5 05 call  $05A5
+[libretro DEBUG] [Snemulator] $05A5:  7D       txa
+[libretro DEBUG] [Snemulator] $05A6:  FD       tay
+[libretro DEBUG] [Snemulator] $05A7:  F4 04    lda   $04+X
+[libretro DEBUG] [Snemulator] $05A9:  D5 F4 00 sta   $00F4+X
+[libretro DEBUG] [Snemulator] $05AC:  F5 F4 00 lda   $00F4+X
+[libretro DEBUG] [Snemulator] $05AF:  75 F4 00 cmp   $00F4+X
+[libretro DEBUG] [Snemulator] $05B2:  D0 F8    bne   $05AC
+[libretro DEBUG] [Snemulator] $05B4:  FD       tay
+[libretro DEBUG] [Snemulator] $05B5:  F4 08    lda   $08+X
+[libretro DEBUG] [Snemulator] $05B7:  DB 08    sty   $08+X
+[libretro DEBUG] [Snemulator] $05B9:  DE 08 05 cbne  $08+X,$05C0
+[libretro DEBUG] [Snemulator] $05BC:  8D 00    ldy   #$00
+[libretro DEBUG] [Snemulator] $05BE:  DB 00    sty   $00+X
+[libretro DEBUG] [Snemulator] $05C0:  6F       ret
+[libretro DEBUG] [Snemulator] $0563:  3F E5 09 call  $09E5
+[libretro DEBUG] [Snemulator] $09E5:  E4 01    lda   $01
+[libretro DEBUG] [Snemulator] $09E7:  68 FF    cmp   #$FF
+[libretro DEBUG] [Snemulator] $09E9:  F0 B1    beq   $099C
+[libretro DEBUG] [Snemulator] $09EB:  68 02    cmp   #$02
+[libretro DEBUG] [Snemulator] $09ED:  F0 8E    beq   $097D
+[libretro DEBUG] [Snemulator] $09EF:  68 03    cmp   #$03
+[libretro DEBUG] [Snemulator] $09F1:  F0 A2    beq   $0995
+[libretro DEBUG] [Snemulator] $09F3:  68 01    cmp   #$01
+[libretro DEBUG] [Snemulator] $09F5:  F0 1D    beq   $0A14
+[libretro DEBUG] [Snemulator] $09F7:  E4 05    lda   $05
+[libretro DEBUG] [Snemulator] $09F9:  68 01    cmp   #$01
+[libretro DEBUG] [Snemulator] $09FB:  F0 06    beq   $0A03
+[libretro DEBUG] [Snemulator] $09FD:  E4 01    lda   $01
+[libretro DEBUG] [Snemulator] $09FF:  68 04    cmp   #$04
+[libretro DEBUG] [Snemulator] $0A01:  F0 0B    beq   $0A0E
+[libretro DEBUG] [Snemulator] $0A03:  E4 05    lda   $05
+[libretro DEBUG] [Snemulator] $0A05:  68 01    cmp   #$01
+[libretro DEBUG] [Snemulator] $0A07:  F0 48    beq   $0A51
+[libretro DEBUG] [Snemulator] $0A09:  68 04    cmp   #$04
+[libretro DEBUG] [Snemulator] $0A0B:  F0 04    beq   $0A11
+[libretro DEBUG] [Snemulator] $0A0D:  6F       ret
+[libretro DEBUG] [Snemulator] $0566:  CD 01    ldx   #$01
+[libretro DEBUG] [Snemulator] $0568:  3F A5 05 call  $05A5
+[libretro DEBUG] [Snemulator] $05A5:  7D       txa   
+[libretro DEBUG] [Snemulator] $05A6:  FD       tay
+[libretro DEBUG] [Snemulator] $05A7:  F4 04    lda   $04+X
+[libretro DEBUG] [Snemulator] $05A9:  D5 F4 00 sta   $00F4+X
+[libretro DEBUG] [Snemulator] $05AC:  F5 F4 00 lda   $00F4+X
+[libretro DEBUG] [Snemulator] $05AF:  75 F4 00 cmp   $00F4+X
+[libretro DEBUG] [Snemulator] $05B2:  D0 F8    bne   $05AC
+[libretro DEBUG] [Snemulator] $05B4:  FD       tay
+[libretro DEBUG] [Snemulator] $05B5:  F4 08    lda   $08+X
+[libretro DEBUG] [Snemulator] $05B7:  DB 08    sty   $08+X
+[libretro DEBUG] [Snemulator] $05B9:  DE 08 05 cbne  $08+X,$05C0
+[libretro DEBUG] [Snemulator] $05BC:  8D 00    ldy   #$00
+[libretro DEBUG] [Snemulator] $05BE:  DB 00    sty   $00+X
+[libretro DEBUG] [Snemulator] $05C0:  6F       ret
+[libretro DEBUG] [Snemulator] $056B:  3F 16 08 call  $0816
+[libretro DEBUG] [Snemulator] $0816:  78 24 07 cmp   $07,#$24
+[libretro DEBUG] [Snemulator] $0819:  F0 13    beq   $082E
+[libretro DEBUG] [Snemulator] $081B:  78 24 03 cmp   $03,#$24
+[libretro DEBUG] [Snemulator] $081E:  F0 0A    beq   $082A
+[libretro DEBUG] [Snemulator] $0820:  78 1D 07 cmp   $07,#$1D
+[libretro DEBUG] [Snemulator] $0823:  F0 09    beq   $082E
+[libretro DEBUG] [Snemulator] $0825:  78 05 07 cmp   $07,#$05
+[libretro DEBUG] [Snemulator] $0828:  F0 04    beq   $082E
+[libretro DEBUG] [Snemulator] $082A:  E4 03    lda   $03
+[libretro DEBUG] [Snemulator] $082C:  D0 09    bne   $0837
+[libretro DEBUG] [Snemulator] $082E:  E4 0D    lda   $0D
+[libretro DEBUG] [Snemulator] $0830:  D0 19    bne   $084B
+[libretro DEBUG] [Snemulator] $0832:  E4 07    lda   $07
+[libretro DEBUG] [Snemulator] $0834:  D0 40    bne   $0876
+[libretro DEBUG] [Snemulator] $0836:  6F       ret
+[libretro DEBUG] [Snemulator] $056E:  CD 03    ldx   #$03
+[libretro DEBUG] [Snemulator] $0570:  3F A5 05 call  $05A5
+[libretro DEBUG] [Snemulator] $05A5:  7D       txa
+[libretro DEBUG] [Snemulator] $05A6:  FD       tay
+[libretro DEBUG] [Snemulator] $05A7:  F4 04    lda   $04+X
+[libretro DEBUG] [Snemulator] $05A9:  D5 F4 00 sta   $00F4+X
+[libretro DEBUG] [Snemulator] $05AC:  F5 F4 00 lda   $00F4+X
+[libretro DEBUG] [Snemulator] $05AF:  75 F4 00 cmp   $00F4+X
+[libretro DEBUG] [Snemulator] $05B2:  D0 F8    bne   $05AC
+[libretro DEBUG] [Snemulator] $05B4:  FD       tay
+[libretro DEBUG] [Snemulator] $05B5:  F4 08    lda   $08+X
+[libretro DEBUG] [Snemulator] $05B7:  DB 08    sty   $08+X
+[libretro DEBUG] [Snemulator] $05B9:  DE 08 05 cbne  $08+X,$05C0
+[libretro DEBUG] [Snemulator] $05BC:  8D 00    ldy   #$00
+[libretro DEBUG] [Snemulator] $05BE:  DB 00    sty   $00+X
+[libretro DEBUG] [Snemulator] $05C0:  6F       ret
+[libretro DEBUG] [Snemulator] $0573:  E4 51    lda   $51
+[libretro DEBUG] [Snemulator] $0575:  EE       pop   y
+[libretro DEBUG] [Snemulator] $0576:  CF       mul
+[libretro DEBUG] [Snemulator] $0577:  60       clrc
+[libretro DEBUG] [Snemulator] $0578:  84 49    adc   $49
+[libretro DEBUG] [Snemulator] $057A:  C4 49    sta   $49
+[libretro DEBUG] [Snemulator] $057C:  90 0F    bcc   $058D
+[libretro DEBUG] [Snemulator] $058D:  E4 06    lda   $06
+[libretro DEBUG] [Snemulator] $058F:  F0 B8    beq   $0549    ================================================/
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
+[libretro DEBUG] [Snemulator] $0549:  EC FD 00 ldy   $00FD
+[libretro DEBUG] [Snemulator] $054C:  F0 FB    beq   $0549
