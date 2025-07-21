@@ -113,8 +113,6 @@ impl SnemulatorCore {
             self.cycle();
         }
 
-        println!("Finished frame {}", self.frame_count);
-
         self.snem_ppu.frame_finished = false;
     }
 }

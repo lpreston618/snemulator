@@ -16,6 +16,8 @@ const MASTER_CLOCK_PERIOD: f32 = 1.0 / MASTER_CLOCK_HZ as f32;
 const SDSP_CLOCK_HZ: usize = 3072000;
 const SDSP_CLOCK_PERIOD: f32 = 1.0 / SDSP_CLOCK_HZ as f32;
 
+const ARAM_SIZE: usize = 0x10000; // 64 KiB of Audio RAM
+
 #[derive(PartialEq)]
 pub enum Flag {
     FlagC = 1,   // Carry
@@ -120,8 +122,6 @@ pub struct Spc700 {
 
     slow_timer_clocks: u8,
 
-    last_timer_inc: std::time::Instant,
-
     logger: Rc<SnemLogger>,
 }
 
@@ -147,7 +147,7 @@ impl Spc700 {
             branch_taken: false,
             dir_page: 0,
 
-            aram: vec![0; 0x10000],
+            aram: vec![0; ARAM_SIZE],
 
             secs_since_last_clock: 0.0,
             sdsp_clocks: 0,
@@ -175,8 +175,6 @@ impl Spc700 {
 
             slow_timer_clocks: 0,
 
-            last_timer_inc: std::time::Instant::now(),
-
             logger,
         }
     }
@@ -194,7 +192,7 @@ impl Spc700 {
             self.secs_since_last_clock -= SDSP_CLOCK_PERIOD;
 
             // 3.072 MHz
-            // self.sdsp.clock();
+            self.sdsp.clock();
 
             self.sdsp_clocks += 1;
 

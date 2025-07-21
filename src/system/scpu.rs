@@ -83,6 +83,8 @@ pub struct Cpu65c816 {
     vblank_nmi_ignore: bool,
 
     logger: Rc<SnemLogger>,
+
+    debug_cnt: usize
 }
 
 // SNES System Functionality
@@ -128,6 +130,8 @@ impl Cpu65c816 {
             vblank_nmi_ignore: true,
 
             logger,
+
+            debug_cnt: 0,
         }
     }
 
@@ -281,6 +285,10 @@ impl Cpu65c816 {
     }
 
     fn write_mmio_regs(&mut self, mmio_address: u16, data: u8) {
+        if mmio_address == 0x2100 {
+            println!("Set fblank to {} at pc: ${:04X} prg bank: ${:02X}", data.bit_en(7), self.pc, self.prg_bank);
+        }
+
         match mmio_address {
             0x2100..=0x213F => {
                 self.ppu_data.write(mmio_address as u8, data);
@@ -308,16 +316,17 @@ impl Cpu65c816 {
                     self.dma_status = DmaStatus::Off;
                 } else {
                     self.dma_status = DmaStatus::DMA;
+                    // Position of lowest set bit
                 }
 
-                self.dma_channels[0].active = data & (1 << 0) != 0;
-                self.dma_channels[1].active = data & (1 << 1) != 0;
-                self.dma_channels[2].active = data & (1 << 2) != 0;
-                self.dma_channels[3].active = data & (1 << 3) != 0;
-                self.dma_channels[4].active = data & (1 << 4) != 0;
-                self.dma_channels[5].active = data & (1 << 5) != 0;
-                self.dma_channels[6].active = data & (1 << 6) != 0;
-                self.dma_channels[7].active = data & (1 << 7) != 0;
+                self.dma_channels[0].active = data.bit_en(0);
+                self.dma_channels[1].active = data.bit_en(1);
+                self.dma_channels[2].active = data.bit_en(2);
+                self.dma_channels[3].active = data.bit_en(3);
+                self.dma_channels[4].active = data.bit_en(4);
+                self.dma_channels[5].active = data.bit_en(5);
+                self.dma_channels[6].active = data.bit_en(6);
+                self.dma_channels[7].active = data.bit_en(7);
 
                 self.dma_channels[0].bytes_written = 0;
                 self.dma_channels[1].bytes_written = 0;
@@ -327,9 +336,21 @@ impl Cpu65c816 {
                 self.dma_channels[5].bytes_written = 0;
                 self.dma_channels[6].bytes_written = 0;
                 self.dma_channels[7].bytes_written = 0;
+
+                self.active_channel_idx = data.trailing_zeros() as usize;
+
+                // println!("Wrote to DMA enable with 0x{data:02X}, active channel = {}", self.active_channel_idx);
+                // println!("  Ch. 0 active: {}", self.dma_channels[0].active);
+                // println!("  Ch. 1 active: {}", self.dma_channels[1].active);
+                // println!("  Ch. 2 active: {}", self.dma_channels[2].active);
+                // println!("  Ch. 3 active: {}", self.dma_channels[3].active);
+                // println!("  Ch. 4 active: {}", self.dma_channels[4].active);
+                // println!("  Ch. 5 active: {}", self.dma_channels[5].active);
+                // println!("  Ch. 6 active: {}", self.dma_channels[6].active);
+                // println!("  Ch. 7 active: {}", self.dma_channels[7].active);
             }
             0x420C => {
-                println!("Wrote 0x{data:02X} to HDMA enable");
+                // println!("Wrote 0x{data:02X} to HDMA enable");
             }
 
             0x4300..=0x43FF if ((mmio_address >> 4) & 0xF) < 8 => {
@@ -759,6 +780,8 @@ impl Cpu65c816 {
         if interrupt == CpuInterrupt::IRQ && self.is_flag_set(Flag::FlagI) {
             return;
         }
+
+        println!("CPU INTERRUPT {:?}", interrupt);
 
         if interrupt == CpuInterrupt::Reset {
             self.set_mode(CpuMode::Emulation);
@@ -1622,6 +1645,11 @@ impl Cpu65c816 {
         self.pc = address.bank_addr();
     }
 
+    fn jmp_long_all(&mut self, address: u32) {
+        self.prg_bank = address.bank();
+        self.pc = address.bank_addr();
+    }
+
     fn jsr_n(&mut self, address: u32) {
         self.push16_n(self.pc + 2); // push the address of the brk instruction + 2
         self.pc = address.bank_addr();
@@ -2462,7 +2490,7 @@ impl Cpu65c816 {
     pub fn clock(&mut self) {
         self.sys_clocks_until_clock = 0;
 
-        if !self.vblank_nmi_ignore && self.ppu_data.cpu_vblank_nmi.get() {
+        if self.ppu_data.cpu_vblank_nmi.get() && !self.vblank_nmi_ignore {
             self.trigger_interrupt(CpuInterrupt::NMI);
             self.ppu_data.cpu_vblank_nmi.set(false);
         } else if self.ppu_data.hv_timer_irq.get() {
@@ -2491,6 +2519,14 @@ impl Cpu65c816 {
         dma_channel.byte_count -= 1;
 
         if dma_channel.byte_count == 0 {
+            // println!("Finished DMA of {} bytes on channel {}. A: ${:06X}, B: $21{:02X}, Dir: {:?}",
+            //     dma_channel.bytes_written, 
+            //     self.active_channel_idx,
+            //     dma_channel.a_bus_addr(),
+            //     dma_channel.b_bus_addr,
+            //     dma_channel.direction,
+            // );
+
             dma_channel.active = false;
             dma_channel.bytes_written = 0;
 
@@ -2530,6 +2566,36 @@ impl Cpu65c816 {
     fn exec_instr(&mut self) {
         let opcode = self.read_prg();
         let extra_clocks: usize;
+
+        let temp_pc = self.pc;
+
+        // if self.debug_cnt > 0 {
+        //     let (prg_data, prg_mirror) = if self.prg_bank == 0x7e || self.prg_bank == 0x7f {
+        //         (&self.wram[..], self.wram.len()-1)
+        //     } else {
+        //         (&self.rom[..], self.rom_mirror as usize)
+        //     };
+
+        //     self.logger.log(
+        //         LogLevel::Info,
+        //         format!("{}",
+        //             disassembler::instr_disassembly(
+        //                 self.prg_bank,
+        //                 self.pc,
+        //                 prg_data,
+        //                 prg_mirror,
+        //                 self.is_flag_set(Flag::FlagM), 
+        //                 self.is_flag_set(Flag::FlagX),
+        //                 self.mode == CpuMode::Emulation,
+        //             )
+        //         ).as_str()
+        //     );
+
+        //     if self.pc > 0xFFc2 && self.prg_bank == 0 {
+        //         println!("PC OUT OF BOUNDS =========================");
+        //         // std::process::exit(0);
+        //     }
+        // }
 
         match (opcode, self.mode, self.acc_size(), self.idx_size()) {
             // brk, imp
@@ -3815,7 +3881,7 @@ impl Cpu65c816 {
             // jmp, long
             (0x5C, ..) => {
                 let addr = self.absolute8();
-                self.jmp_all(addr);
+                self.jmp_long_all(addr);
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -5581,7 +5647,7 @@ impl Cpu65c816 {
             // jmp, [abs]
             (0xDC, ..) => {
                 let addr = self.absolute_indirect_long();
-                self.jmp_all(addr);
+                self.jmp_long_all(addr);
                 extra_clocks = 0;
             }
 
@@ -6073,6 +6139,14 @@ impl Cpu65c816 {
                 self.pc += 4;
                 extra_clocks = 0;
             }
+        }
+
+        if self.pc == 0x9391 && self.prg_bank == 0 {
+            println!("At Nintendo Presents ($9391) from ${temp_pc:04X} ================================");
+            self.debug_cnt = 1;
+        } else if temp_pc == 0x93FC && self.prg_bank == 0 {
+            println!("Finished Nintendo Presents, RET to ${:04X}", self.pc);
+            self.debug_cnt = 0;
         }
 
         if self.branch_taken {

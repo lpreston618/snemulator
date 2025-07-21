@@ -9,15 +9,15 @@ use libretro_rs::retro::pixel::format::ORGB1555;
 
 use std::{cell::Cell, rc::Rc};
 
-const VBLANK_START_SCANLINE: u16 = 225;
-const VBLANK_END_SCANLINE_NTSC: u16 = 261;
+const VBLANK_START_SCANLINE: usize = 225;
+const VBLANK_END_SCANLINE_NTSC: usize = 261;
 // const VBLANK_END_SCANLINE_PAL: u16 = 311;
 // const VBLANK_INTERLACE_START_SCANLINE: u16 = 239;
 const VISIBLE_SCANLINE_START_DOT: usize = 22;
-const HBLANK_END_DOT: u16 = VISIBLE_SCANLINE_START_DOT as u16;
-const HBLANK_START_DOT: u16 = 278;
-const HBLANK_DISABLE_SCANLINE: u16 = VBLANK_START_SCANLINE-1;
-const SCANLINE_END_DOT: u16 = 340;
+const HBLANK_END_DOT: usize = VISIBLE_SCANLINE_START_DOT;
+const HBLANK_START_DOT: usize = 278;
+const HBLANK_DISABLE_SCANLINE: usize = VBLANK_START_SCANLINE-1;
+const SCANLINE_END_DOT: usize = 340;
 
 const VRAM_SIZE: usize = 32 * 1024;  // 64 KiB (32 Ki-Word)
 const CGRAM_SIZE: usize = 256;       // 512 Bytes (256 Words)
@@ -141,6 +141,9 @@ enum VideoType {
 }
 
 pub(crate) struct PpuData {
+    scanline: Cell<usize>,
+    dot: Cell<usize>,
+
     // $2100    F... BBBB    Write only
     //       - Forced blanking (F)
     //       - Screen brightness (B)
@@ -545,6 +548,9 @@ pub(crate) struct PpuData {
 impl PpuData {
     pub fn new(logger: Rc<SnemLogger>) -> PpuData {
         PpuData {
+            scanline: Cell::new(0),
+            dot: Cell::new(0),
+
             in_fblank: Cell::new(false),
             screen_brightness: Cell::new(0),
 
@@ -779,12 +785,12 @@ impl PpuData {
 // CPU Access
 impl PpuData {
     pub fn write(&self, address: u8, data: u8) {
-        // println!("PPU write $21{address:02X} with 0x{data:02X}");
-
         match address {
             0x00 => {
                 self.in_fblank.set(data.bit_en(7));
                 self.screen_brightness.set(data & 0x0F);
+
+                println!("Set fblank to {}, S: {} D: {}", self.in_fblank.get(), self.scanline.get(), self.dot.get());
             }
 
             0x01 => {
@@ -803,6 +809,8 @@ impl PpuData {
                 self.obj_sprite_size.set(new_obj_size);
                 self.name_secondary_select.set((data >> 3) & 0x03);
                 self.name_base_addr.set(data & 0x03);
+
+                println!("Set name base addr to ${:04X}", (self.name_base_addr.get() as u16) << 13);
             }
 
             0x02 => {
@@ -835,7 +843,7 @@ impl PpuData {
                     self.oam[internal_oam_addr].set(data);
                 }
 
-                self.internal_oam_addr.set((internal_oam_addr as u16 + 1) & 0x1FF);
+                self.internal_oam_addr.set((internal_oam_addr as u16 + 1) % OAM_SIZE as u16);
             }
 
             0x05 => {
@@ -853,7 +861,7 @@ impl PpuData {
                 );
                 self.bg3_mode1_priority.set(data.bit_en(3));
                 self.bg_mode.set(
-                    match data & 0x07 {
+                    match data & 7 {
                         0 => BgMode::Mode0,
                         1 => BgMode::Mode1,
                         2 => BgMode::Mode2,
@@ -865,6 +873,8 @@ impl PpuData {
                         _ => unreachable!(),
                     }
                 );
+
+                println!("Set Bg Mode to {:?} and bg3 priority to {}", self.bg_mode.get(), self.bg3_mode1_priority.get());
             }
 
             0x06 => {
@@ -883,6 +893,8 @@ impl PpuData {
                 self.bg1_tilemap_count_x.set(
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
+
+                // println!("Set Bg1 vram base addr to ${:04X}", (self.bg1_vram_addr.get() as u16) << 10);
             }
 
             0x08 => {
@@ -893,6 +905,8 @@ impl PpuData {
                 self.bg2_tilemap_count_x.set(
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
+
+                // println!("Set Bg2 vram base addr to ${:04X}", (self.bg2_vram_addr.get() as u16) << 10);
             }
 
             0x09 => {
@@ -903,6 +917,8 @@ impl PpuData {
                 self.bg3_tilemap_count_x.set(
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
+
+                // println!("Set Bg3 vram base addr to ${:04X}", (self.bg3_vram_addr.get() as u16) << 10);
             }
 
             0x0A => {
@@ -913,16 +929,24 @@ impl PpuData {
                 self.bg4_tilemap_count_x.set(
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
+
+                // println!("Set Bg4 vram base addr to ${:04X}", (self.bg4_vram_addr.get() as u16) << 10);
             }
 
             0x0B => {
                 self.bg2_chr_base_addr.set(data >> 4);
                 self.bg1_chr_base_addr.set(data & 0x0F);
+
+                // println!("Set Bg1 chr base address to ${:04X}", (self.bg1_chr_base_addr.get() as u16) << 12);
+                // println!("Set Bg2 chr base address to ${:04X}", (self.bg2_chr_base_addr.get() as u16) << 12);
             }
 
             0x0C => {
                 self.bg4_chr_base_addr.set(data >> 4);
                 self.bg3_chr_base_addr.set(data & 0x0F);
+
+                // println!("Set Bg3 chr base address to ${:04X}", (self.bg3_chr_base_addr.get() as u16) << 12);
+                // println!("Set Bg4 chr base address to ${:04X}", (self.bg4_chr_base_addr.get() as u16) << 12);
             }
 
             0x0D => {
@@ -1014,6 +1038,8 @@ impl PpuData {
                 self.vram_latch.set(
                     self.vram[self.get_vram_addr() as usize].get()
                 );
+
+                // println!("Set vram addr (lo) to ${:04X}", self.vram_addr.get());
             }
 
             0x17 => {
@@ -1021,6 +1047,8 @@ impl PpuData {
                 self.vram_latch.set(
                     self.vram[self.get_vram_addr() as usize].get()
                 );
+
+                // println!("Set vram addr (hi) to ${:04X}", self.vram_addr.get());
             }
 
             0x18 => {
@@ -1226,6 +1254,14 @@ impl PpuData {
                 self.bg3_main_enabled.set(data.bit_en(2));
                 self.bg2_main_enabled.set(data.bit_en(1));
                 self.bg1_main_enabled.set(data.bit_en(0));
+
+                println!("Set main en flags to Bg1: {}, Bg2: {}, Bg3: {}, Bg4: {}, Obj: {}",
+                    self.bg1_main_enabled.get(),
+                    self.bg2_main_enabled.get(),
+                    self.bg3_main_enabled.get(),
+                    self.bg4_main_enabled.get(),
+                    self.obj_main_enabled.get(),
+                )
             }
 
             0x2D => {
@@ -1529,8 +1565,8 @@ struct OAMSprite {
 pub struct Ppu5C7x {
     registers: Rc<PpuData>,
 
-    dot: u16,
-    scanline: u16,
+    dot: usize,
+    scanline: usize,
     sys_clocks_until_clock: usize,
     frame: usize,
 
@@ -1564,11 +1600,42 @@ impl Ppu5C7x {
     pub fn clock(&mut self, frame_buffer: &mut [ORGB1555]) {
         self.sys_clocks_until_clock = 0;
 
-        if !self.in_fblank() && !self.in_hblank() && !self.in_vblank() && self.scanline != 0 {
+        if !self.in_vblank() && !self.in_hblank() && self.scanline != 0 {
             self.dot(frame_buffer);
         }
 
+        // if self.frame == 100 && self.scanline == 0 && self.dot == 0 {
+        //     let mut oam_clone = Vec::new();
+
+        //     for word in &self.registers.oam[..] {
+        //         oam_clone.push(word.get());
+        //     }
+
+        //     crate::tools::hexdump::hexdump8_raw(&oam_clone, "oam_dump.bin");
+
+        //     // let mut cgram_clone = Vec::new();
+
+        //     // for word in &self.registers.cgram[..] {
+        //     //     cgram_clone.push(word.get());
+        //     // }
+
+        //     // crate::tools::hexdump::hexdump16_to_file(&cgram_clone, 0, "cgram_dump.txt");
+
+        //     // let mut vram_clone = Vec::new();
+
+        //     // for word in &self.registers.vram[..] {
+        //     //     vram_clone.push(word.get());
+        //     // }
+
+        //     // crate::tools::hexdump::hexdump16_to_file(&vram_clone, 0, "vram_dump.txt");
+
+        //     std::process::exit(0);
+        // }
+
         self.update_dot_and_scanline();
+
+        self.registers.scanline.set(self.scanline);
+        self.registers.dot.set(self.dot);
 
         self.sys_clocks_until_clock += 4;
 
@@ -1599,7 +1666,7 @@ impl Ppu5C7x {
             (HBLANK_END_DOT, _) => {
                 self.registers.in_hblank.set(false);
 
-                if 1 <= self.scanline && self.scanline <= HBLANK_DISABLE_SCANLINE {
+                if self.screen_y() < VBLANK_START_SCANLINE {
                     self.find_scanline_sprites();
                 }
             }
@@ -1621,8 +1688,8 @@ impl Ppu5C7x {
     }
 
     fn update_hv_timers(&self) {
-        self.registers.h_counter.set(self.dot);
-        self.registers.v_counter.set(self.scanline);
+        self.registers.h_counter.set(self.dot as u16);
+        self.registers.v_counter.set(self.scanline as u16);
 
         match self.registers.hv_timer_irq_mode.get() {
             HVTimerIRQ::None => {}
@@ -1780,6 +1847,10 @@ impl Ppu5C7x {
         let screen_x = self.screen_x();
         let screen_y = self.screen_y();
 
+        if self.in_fblank() {
+            frame_buffer[screen_y * 256 + screen_x] = ORGB1555::new_with_raw_value(0);
+        }
+
         // All bg modes need spr_col
         let spr_col = self.sprite_col(screen_x, screen_y);
 
@@ -1815,7 +1886,7 @@ impl Ppu5C7x {
                 scanline_spr_cnt = 32;
             }
 
-            if sprite.x as usize <= screen_x && screen_x < sprite.max_x as usize  {
+            if sprite.x as usize <= screen_x && screen_x < sprite.max_x as usize {
                 let sprite_col = screen_x - sprite.x as usize;
                 let sprite_row = screen_y - sprite.y as usize;
                 let (tile_x, tile_col) = (sprite_col / 8, sprite_col % 8);
@@ -2050,9 +2121,10 @@ impl Ppu5C7x {
             ColorLayer::Bg1 => self.bg1_cmath_enabled(),
             ColorLayer::Bg2 => self.bg2_cmath_enabled(),
             ColorLayer::Bg3 => self.bg3_cmath_enabled(),
+            ColorLayer::Bg4 => self.bg4_cmath_enabled(),
             ColorLayer::Obj => self.obj_cmath_enabled(),
             ColorLayer::Back => self.back_cmath_enabled(),
-            _ => unreachable!(), // No other layers considered in Mode 1
+            _ => unreachable!(), // No other layers considered in Mode 0
         };
 
         if !cmath_en {
@@ -2093,7 +2165,7 @@ impl Ppu5C7x {
             WindowColorRegion::Inside => if col_win_en { 0 } else { main_col },
             WindowColorRegion::Everywhere => { 0 }
         };
-        let sub_col = match self.col_win_main_region() {
+        let sub_col = match self.col_win_sub_region() {
             WindowColorRegion::Nowhere => sub_col,
             WindowColorRegion::Outside => if col_win_en { sub_col } else { self.fixed_color() },
             WindowColorRegion::Inside => if col_win_en { self.fixed_color() } else { sub_col },
@@ -2243,6 +2315,13 @@ impl Ppu5C7x {
             _ => unreachable!(), // No other layers considered in Mode 1
         };
 
+        if screen_x == 0 && screen_y == 0 {
+            println!("Frame {}", self.frame);
+        }
+        if self.frame == 400 && screen_y == 6 {
+            println!("Pixel colored by tile on {:?}, cmath = {}", main_layer, cmath_en);
+        }
+
         if !cmath_en {
             return main_col;
         }
@@ -2281,7 +2360,7 @@ impl Ppu5C7x {
             WindowColorRegion::Inside => if col_win_en { 0 } else { main_col },
             WindowColorRegion::Everywhere => { 0 }
         };
-        let sub_col = match self.col_win_main_region() {
+        let sub_col = match self.col_win_sub_region() {
             WindowColorRegion::Nowhere => sub_col,
             WindowColorRegion::Outside => if col_win_en { sub_col } else { self.fixed_color() },
             WindowColorRegion::Inside => if col_win_en { self.fixed_color() } else { sub_col },
@@ -2400,10 +2479,9 @@ impl Ppu5C7x {
         let cmath_en = match main_layer {
             ColorLayer::Bg1 => self.bg1_cmath_enabled(),
             ColorLayer::Bg2 => self.bg2_cmath_enabled(),
-            ColorLayer::Bg3 => self.bg3_cmath_enabled(),
             ColorLayer::Obj => self.obj_cmath_enabled(),
             ColorLayer::Back => self.back_cmath_enabled(),
-            _ => unreachable!(), // No other layers considered in Mode 1
+            _ => unreachable!(), // No other layers considered in Mode 5
         };
 
         if !cmath_en {
@@ -2436,7 +2514,7 @@ impl Ppu5C7x {
             WindowColorRegion::Inside => if col_win_en { 0 } else { main_col },
             WindowColorRegion::Everywhere => { 0 }
         };
-        let sub_col = match self.col_win_main_region() {
+        let sub_col = match self.col_win_sub_region() {
             WindowColorRegion::Nowhere => sub_col,
             WindowColorRegion::Outside => if col_win_en { sub_col } else { self.fixed_color() },
             WindowColorRegion::Inside => if col_win_en { self.fixed_color() } else { sub_col },
