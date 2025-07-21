@@ -73,7 +73,6 @@ pub struct Spc700 {
     aram: Vec<u8>,
 
     secs_since_last_clock: f32,
-    time_since_last_clock: usize,
     sdsp_clocks: usize,
     spc_clocks_until_instr: usize,
 
@@ -151,7 +150,6 @@ impl Spc700 {
             aram: vec![0; 0x10000],
 
             secs_since_last_clock: 0.0,
-            time_since_last_clock: 0,
             sdsp_clocks: 0,
             spc_clocks_until_instr: 0,
 
@@ -562,7 +560,6 @@ impl Spc700 {
             }
             0x1F => {
                 let addr = self.x_absolute();
-                // let addr = self.absolute_x_indirect();
                 self.jmp(addr);
                 cycles = 6;
             }
@@ -1644,7 +1641,7 @@ impl Spc700 {
     }
 }
 
-// Helper functions.
+// Flag functions
 impl Spc700 {
     fn is_flag_set(&self, flag: Flag) -> bool {
         (self.status & flag as u8) != 0
@@ -1669,12 +1666,6 @@ impl Spc700 {
     fn direct(&mut self) -> u16 {
         (self.read_prg() as u16) | self.dir_page
     }
-
-    // fn direct_bit(&mut self) -> u16 {
-    //     let addr = self.direct();
-
-    //     (addr & 0x1FFF, addr >> 13)
-    // }
 
     fn x_direct(&mut self) -> u16 {
         ((self.read_prg() + self.x) as u16) | self.dir_page
@@ -1733,13 +1724,6 @@ impl Spc700 {
         let address = self.absolute();
 
         (address & 0x1FFF, (address >> 13) as u8)
-    }
-
-    fn absolute_x_indirect(&mut self) -> u16 {
-        let ptr_addr = (self.read_prg() + self.x) as u16;
-        let branch_addr = self.read_word(ptr_addr);
-
-        branch_addr
     }
 
     fn x_absolute(&mut self) -> u16 {
@@ -2644,66 +2628,3 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
 }
-
-
-impl Spc700 {
-    fn cpu_status_str(&self) -> String {
-        let mut status_str = String::new();
-        status_str.push(if self.is_flag_set(Flag::FlagN) {
-            'N'
-        } else {
-            'n'
-        });
-        status_str.push(if self.is_flag_set(Flag::FlagV) {
-            'V'
-        } else {
-            'v'
-        });
-        status_str.push(if self.is_flag_set(Flag::FlagP) {
-            'P'
-        } else {
-            'p'
-        });
-        status_str.push(if self.is_flag_set(Flag::FlagB) {
-            'B'
-        } else {
-            'b'
-        });
-        status_str.push(if self.is_flag_set(Flag::FlagH) {
-            'H'
-        } else {
-            'h'
-        });
-        status_str.push(if self.is_flag_set(Flag::FlagI) {
-            'I'
-        } else {
-            'i'
-        });
-        status_str.push(if self.is_flag_set(Flag::FlagZ) {
-            'Z'
-        } else {
-            'z'
-        });
-        status_str.push(if self.is_flag_set(Flag::FlagC) {
-            'C'
-        } else {
-            'c'
-        });
-
-        status_str
-    }
-
-    fn lemon_cpu_str(&self) -> String {
-        format!(
-            "P: {:03x} PC: {:04X} A:{:04x} X:{:04x} Y:{:04x} S:{:04x} {} ",
-            self.dir_page,
-            self.pc,
-            self.acc,
-            self.x,
-            self.y,
-            self.sp,
-            self.cpu_status_str()
-        )
-    }
-}
-

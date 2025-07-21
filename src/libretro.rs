@@ -52,13 +52,6 @@ struct SnemulatorCore {
     prev_fps: Vec<f32>,
 }
 
-fn screen_message(env: &mut impl retro::env::Run, message: &str, frames: u32) {
-    let msg_str = format!("{}\0", message);
-    let fps_count = unsafe { CStr::from_bytes_with_nul_unchecked(msg_str.as_bytes()) };
-    let msg = Message::new(fps_count, frames);
-    let _ = env.set_message(&msg);
-}
-
 impl SnemulatorCore {
     pub fn render_audio(&mut self, callbacks: &mut impl Callbacks) {
         callbacks.upload_audio_frame(&self.audio_buffer);
@@ -137,7 +130,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         )
     }
 
-    fn init(env: &mut impl retro::env::Init) -> Self::Init {}
+    fn init(_env: &mut impl retro::env::Init) -> Self::Init {}
 
     fn load_without_content<E: retro::env::LoadGame>(
         args: LoadGameExtraArgs<'a, '_, E, Self::Init>,

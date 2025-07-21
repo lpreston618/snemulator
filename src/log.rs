@@ -31,10 +31,6 @@ impl SnemLogger {
         SnemLogger { logger: Cell::new(Some(logger)) }
     }
 
-    pub fn dummy() -> Self {
-        SnemLogger { logger: Cell::new(None) }
-    }
-
     pub fn log(&self, level: LogLevel, message: &str) {
         if let Some(mut logger) = self.logger.get() {
             logger.log(

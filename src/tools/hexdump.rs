@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::io::Write;
 
 fn hexdump8_str(bytes: &[u8], startval: usize) -> String {
