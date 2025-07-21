@@ -83,8 +83,6 @@ pub struct Cpu65c816 {
     vblank_nmi_ignore: bool,
 
     logger: Rc<SnemLogger>,
-
-    debug_flag: bool,
 }
 
 // SNES System Functionality
@@ -130,8 +128,6 @@ impl Cpu65c816 {
             vblank_nmi_ignore: true,
 
             logger,
-
-            debug_flag: false,
         }
     }
 
@@ -164,15 +160,13 @@ impl Cpu65c816 {
     const ONE_CYCLE_SLOW: usize = 8;
     const TWO_CYCLE: usize = 12;
     const THREE_CYCLE: usize = 18;
-    // const FOUR_CYCLE: usize = 24;
+    const FOUR_CYCLE: usize = 24;
 
     fn add_clocks(&mut self, clocks: usize) {
         self.sys_clocks_until_clock += clocks;
     }
 
     fn read(&mut self, address: u32) -> u8 {
-        // println!("Read from: 0x{address:06x}");
-
         let (data, clocks) = match (address.bank(), address.bank_addr()) {
             // Mirror of low RAM
             (0..=0x3F, bank_addr @ 0..=0x1FFF) | (0x80..=0xBF, bank_addr @ 0..=0x1FFF) => {
@@ -259,8 +253,6 @@ impl Cpu65c816 {
             0x2142 => self.apuio_regs.apuio2.get(),
             0x2143 => self.apuio_regs.apuio3.get(),
 
-            // NOTE: This read is only for cpu debugging purposes, and
-            // will be removed later.
             0x4210 => {
                 let vblank_nmi_bit = if self.ppu_data.cpu_vblank_nmi() {
                     0x80
@@ -270,8 +262,6 @@ impl Cpu65c816 {
                 let cpu_version_bits = 0;
 
                 self.ppu_data.clear_cpu_vblank_nmi();
-
-                // println!("read 0x{:02X} from vblanknmi", vblank_nmi_bit);
 
                 vblank_nmi_bit | cpu_version_bits
             }
@@ -286,13 +276,7 @@ impl Cpu65c816 {
 
             0x4300..=0x43FF if ((mmio_address >> 4) & 0xF) < 8 => self.read_dma_regs(mmio_address),
 
-            _ => {
-                // if mmio_address != 0x2180 {
-                // println!(" ==== Attempt to read mmio reg ${mmio_address:04X}");
-                // }
-
-                0
-            }
+            _ => 0,
         }
     }
 
@@ -301,16 +285,11 @@ impl Cpu65c816 {
             0x2100..=0x213F => {
                 self.ppu_data.write(mmio_address as u8, data);
             }
-            0x2140 => {
-                if self.apuio_regs.cpuio0.get() == 0x1C && data == 0x20 {
-                    self.debug_flag = true;
-                }
+            0x2140 => { self.apuio_regs.cpuio0.set(data); }
+            0x2141 => { self.apuio_regs.cpuio1.set(data); }
+            0x2142 => { self.apuio_regs.cpuio2.set(data); }
+            0x2143 => { self.apuio_regs.cpuio3.set(data); }
 
-                self.apuio_regs.cpuio0.set(data);
-            }
-            0x2141 => { self.apuio_regs.cpuio1.set(data) }
-            0x2142 => { self.apuio_regs.cpuio2.set(data) }
-            0x2143 => { self.apuio_regs.cpuio3.set(data) }
             0x4200 => {
                 self.vblank_nmi_ignore = (data & 0x80) == 0;
                 self.ppu_data.hv_timer_irq_mode.set(
@@ -322,11 +301,6 @@ impl Cpu65c816 {
                         _ => unreachable!(),
                     }
                 );
-
-                println!(
-                    "Vblank NMI ignore set to {} and H/V Timer IRQ to {:?}",
-                    self.vblank_nmi_ignore, self.ppu_data.hv_timer_irq_mode
-                );
             }
 
             0x420B => {
@@ -336,36 +310,25 @@ impl Cpu65c816 {
                     self.dma_status = DmaStatus::DMA;
                 }
 
-                for (i, dma_channel) in self.dma_channels.iter_mut().enumerate().rev() {
-                    dma_channel.active = (data & (1 << i)) != 0;
+                self.dma_channels[0].active = data & (1 << 0) != 0;
+                self.dma_channels[1].active = data & (1 << 1) != 0;
+                self.dma_channels[2].active = data & (1 << 2) != 0;
+                self.dma_channels[3].active = data & (1 << 3) != 0;
+                self.dma_channels[4].active = data & (1 << 4) != 0;
+                self.dma_channels[5].active = data & (1 << 5) != 0;
+                self.dma_channels[6].active = data & (1 << 6) != 0;
+                self.dma_channels[7].active = data & (1 << 7) != 0;
 
-                    if dma_channel.active {
-                        dma_channel.bytes_written = 0;
-                        self.active_channel_idx = i;
-                    }
-                }
-
-                #[cfg(feature = "debug-log-dmas")]
-                {
-                    self.logger.log(LogLevel::Debug, format!("Wrote to DMA enable with 0x{:02X}", data).as_str());
-                    for (i, dma_channel) in self.dma_channels.iter_mut().enumerate().rev() {
-                        if dma_channel.active {
-                            self.logger.log(
-                                LogLevel::Debug,
-                                format!("  Ch. {i}: {} bytes w/ A: ${:06X}, B: $21{:02X}, dir: {:?}", 
-                                    dma_channel.byte_count, dma_channel.a_bus_addr(), 
-                                    dma_channel.b_bus_addr, dma_channel.direction
-                                ).as_str()
-                            );
-                        }
-                    }
-                }
+                self.dma_channels[0].bytes_written = 0;
+                self.dma_channels[1].bytes_written = 0;
+                self.dma_channels[2].bytes_written = 0;
+                self.dma_channels[3].bytes_written = 0;
+                self.dma_channels[4].bytes_written = 0;
+                self.dma_channels[5].bytes_written = 0;
+                self.dma_channels[6].bytes_written = 0;
+                self.dma_channels[7].bytes_written = 0;
             }
             0x420C => {
-                // for i in 0..8 {
-                //     self.dma_channels[i].active = (data & (1 << i)) != 0;
-                // }
-
                 println!("Wrote 0x{data:02X} to HDMA enable");
             }
 
@@ -373,11 +336,7 @@ impl Cpu65c816 {
                 self.write_dma_regs(mmio_address, data);
             }
 
-            _ => {
-                // if mmio_address != 0x2180 {
-                // println!(" ==== Attempt to write mmio reg ${mmio_address:04X} with data 0x{data:02X}");
-                // }
-            }
+            _ => {}
         }
     }
 
@@ -411,8 +370,6 @@ impl Cpu65c816 {
 
         let dma_channel = &mut self.dma_channels[channel_idx];
 
-        // println!("Write to DMA reg ${:02X} (ch {}) with 0x{:02X}", reg_address, channel_idx, data);
-
         match reg_address {
             0x4300 => {
                 dma_channel.params_raw = data;
@@ -436,38 +393,13 @@ impl Cpu65c816 {
                     0 => dma::Direction::AtoB,
                     _ => dma::Direction::BtoA,
                 };
-
-                // println!("Wrote 0x{data:02X} to DMA channel {channel_idx} Params (Transfer Pattern = {:?}, A Inc Mode = {:?}, Indirect = {}, Direction = {:?})",
-                //     dma_channel.transfer_pattern,
-                //     dma_channel.inc_mode,
-                //     dma_channel.indirect,
-                //     dma_channel.direction,
-                // );
             }
-            0x4301 => {
-                dma_channel.b_bus_addr = data;
-                // println!("Wrote 0x{data:02X} to DMA channel {channel_idx} B-Bus Address");
-            }
-            0x4302 => {
-                dma_channel.a_bus_lo = data;
-                // println!("Wrote 0x{data:02X} to DMA channel {channel_idx} A-Bus Address Low");
-            }
-            0x4303 => {
-                dma_channel.a_bus_hi = data;
-                // println!("Wrote 0x{data:02X} to DMA channel {channel_idx} A-Bus Address Hi");
-            }
-            0x4304 => {
-                dma_channel.a_bus_bank = data;
-                // println!("Wrote 0x{data:02X} to DMA channel {channel_idx} A-Bus Address Bank");
-            }
-            0x4305 => {
-                dma_channel.byte_count = (dma_channel.byte_count & 0xFF00) | (data as u16);
-                // println!("Wrote 0x{data:02X} to DMA channel {channel_idx} Byte Count Low");
-            }
-            0x4306 => {
-                dma_channel.byte_count = (dma_channel.byte_count & 0x00FF) | ((data as u16) << 8);
-                // println!("Wrote 0x{data:02X} to DMA channel {channel_idx} Byte Count Hi");
-            }
+            0x4301 => { dma_channel.b_bus_addr = data; }
+            0x4302 => { dma_channel.a_bus_lo = data; }
+            0x4303 => { dma_channel.a_bus_hi = data; }
+            0x4304 => { dma_channel.a_bus_bank = data; }
+            0x4305 => { dma_channel.byte_count.set_lo(data); }
+            0x4306 => { dma_channel.byte_count.set_hi(data); }
             // 0x4307 => { self.hdma_indirect_addr_bank[channel_idx] = data; }
             // 0x4308 => { self.hdma_table_addr_lo[channel_idx] = data; }
             // 0x4309 => { self.hdma_table_addr_hi[channel_idx] = data; }
@@ -824,6 +756,10 @@ impl Cpu65c816 {
     }
 
     pub fn trigger_interrupt(&mut self, interrupt: CpuInterrupt) {
+        if interrupt == CpuInterrupt::IRQ && self.is_flag_set(Flag::FlagI) {
+            return;
+        }
+
         if interrupt == CpuInterrupt::Reset {
             self.set_mode(CpuMode::Emulation);
         }
@@ -1697,14 +1633,14 @@ impl Cpu65c816 {
 
     fn jsl_n(&mut self, address: u32) {
         self.push8_n(self.prg_bank);
-        self.push16_n(self.pc + 3); // push the address of the JSL instruction + 3
+        self.push16_n(self.pc + 3);
 
         self.pc = address.bank_addr();
         self.prg_bank = address.bank();
     }
     fn jsl_e(&mut self, address: u32) {
         self.push8_e(self.prg_bank);
-        self.push16_e(self.pc + 3); // push the address of the JSL instruction + 3
+        self.push16_e(self.pc + 3);
 
         self.pc = address.bank_addr();
         self.prg_bank = address.bank();
@@ -2523,7 +2459,7 @@ impl Cpu65c816 {
         self.sys_clocks_until_clock
     }
 
-    pub fn clock(&mut self, frame: usize) {
+    pub fn clock(&mut self) {
         self.sys_clocks_until_clock = 0;
 
         if !self.vblank_nmi_ignore && self.ppu_data.cpu_vblank_nmi.get() {
@@ -2534,7 +2470,7 @@ impl Cpu65c816 {
             self.ppu_data.hv_timer_irq.set(false);
         } else {
             match self.dma_status {
-                DmaStatus::Off => self.exec_instr(frame),
+                DmaStatus::Off => self.exec_instr(),
                 DmaStatus::DMA => self.do_dma(),
                 DmaStatus::HDMA => self.do_hdma(),
                 DmaStatus::LayeredHDMA => self.do_hdma(),
@@ -2555,15 +2491,6 @@ impl Cpu65c816 {
         dma_channel.byte_count -= 1;
 
         if dma_channel.byte_count == 0 {
-            #[cfg(feature = "debug-log-dmas")]
-            self.logger.log(
-                LogLevel::Debug,
-                format!("Finished DMA of {} bytes on Ch. {}", 
-                    dma_channel.bytes_written, 
-                    self.active_channel_idx
-                ).as_str(),
-            );
-
             dma_channel.active = false;
             dma_channel.bytes_written = 0;
 
@@ -2597,47 +2524,12 @@ impl Cpu65c816 {
 
     fn do_hdma(&mut self) {
         self.add_clocks(Cpu65c816::ONE_CYCLE);
-        // let hdma_channel_idx = self.hdma_enable.ilog2() as usize;
 
-        // let hdma_indirect = self.dma_params[hdma_channel_idx] & 0x40 != 0;
-        // let dst_addr = 0x002100 | self.get_b_with_offset(hdma_channel_idx) as u32;
-        // let mut hdma_table_addr = self.hdma_table_addr[hdma_channel_idx];
-
-        // // Starting a new HDMA channel transfer
-        // if hdma_channel_idx as u8 != self.hdma_current_channel {
-        //     self.hdma_current_channel = hdma_channel_idx as u8;
-        //     self.hdma_bytes_written = 0;
-
-        //     let control_byte = self.read(hdma_table_addr);
-
-        //     self.hdma_line_counter[hdma_channel_idx] = self.read(hdma_table_addr);
-        // }
-
-        // hdma_table_addr += 1;
-
-        // self.hdma_table_addr_lo[hdma_channel_idx] = hdma_table_addr as u8;
-        // self.hdma_table_addr_hi[hdma_channel_idx] = (hdma_table_addr >> 8) as u8;
     }
 
-    fn exec_instr(&mut self, frame: usize) {
+    fn exec_instr(&mut self) {
         let opcode = self.read_prg();
         let extra_clocks: usize;
-
-        #[cfg(feature = "debug-log-cpu-instrs")]
-        if frame > 100 {
-            self.logger.log(
-                LogLevel::Debug,
-                format!("mapped_pc = {:04X}, {}", self.map_lorom_addr(self.pc as u32), disassembler::instr_disassembly(
-                    self.prg_bank,
-                    self.pc,
-                    &self.rom,
-                    self.rom_mirror,
-                    self.is_flag_set(Flag::FlagM),
-                    self.is_flag_set(Flag::FlagX),
-                    self.mode == CpuMode::Emulation
-                )).as_str()
-            );
-        }
 
         match (opcode, self.mode, self.acc_size(), self.idx_size()) {
             // brk, imp
@@ -2840,13 +2732,13 @@ impl Cpu65c816 {
 
             // ora, long
             (0x0F, _, RegSize::Byte, _) => {
-                let addr = self.absolute8();
+                let addr = self.absolute_long8();
                 self.ora_m8(addr);
                 self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x0F, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute16();
+                let addr = self.absolute_long16();
                 self.ora_m16(addr);
                 self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
@@ -3117,12 +3009,12 @@ impl Cpu65c816 {
 
             // jsl, long
             (0x22, CpuMode::Emulation, ..) => {
-                let addr = self.absolute8();
+                let addr = self.absolute_long8();
                 self.jsl_e(addr);
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x22, CpuMode::Native, ..) => {
-                let addr = self.absolute8();
+                let addr = self.absolute_long8();
                 self.jsl_n(addr);
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
@@ -3291,13 +3183,13 @@ impl Cpu65c816 {
 
             // and, long
             (0x2F, _, RegSize::Byte, _) => {
-                let addr = self.absolute8();
+                let addr = self.absolute_long8();
                 self.and_m8(addr);
                 self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x2F, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute16();
+                let addr = self.absolute_long16();
                 self.and_m16(addr);
                 self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
@@ -3743,13 +3635,13 @@ impl Cpu65c816 {
 
             // eor, long
             (0x4F, _, RegSize::Byte, _) => {
-                let addr = self.absolute8();
+                let addr = self.absolute_long8();
                 self.eor_m8(addr);
                 self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x4F, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute16();
+                let addr = self.absolute_long16();
                 self.eor_m16(addr);
                 self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
@@ -3982,11 +3874,11 @@ impl Cpu65c816 {
             // rts, imp
             (0x60, CpuMode::Emulation, ..) => {
                 self.rts_e();
-                extra_clocks = Cpu65c816::THREE_CYCLE;
+                extra_clocks = Cpu65c816::FOUR_CYCLE;
             }
             (0x60, CpuMode::Native, ..) => {
                 self.rts_n();
-                extra_clocks = Cpu65c816::THREE_CYCLE;
+                extra_clocks = Cpu65c816::FOUR_CYCLE;
             }
 
             // adc, (dir,X)
@@ -4133,11 +4025,11 @@ impl Cpu65c816 {
             // rtl, imp
             (0x6B, CpuMode::Emulation, ..) => {
                 self.rtl_e();
-                extra_clocks = Cpu65c816::TWO_CYCLE;
+                extra_clocks = Cpu65c816::THREE_CYCLE;
             }
             (0x6B, CpuMode::Native, ..) => {
                 self.rtl_n();
-                extra_clocks = Cpu65c816::TWO_CYCLE;
+                extra_clocks = Cpu65c816::THREE_CYCLE;
             }
 
             // jmp, (abs)
@@ -4177,13 +4069,13 @@ impl Cpu65c816 {
 
             // adc, long
             (0x6F, _, RegSize::Byte, _) => {
-                let addr = self.absolute8();
+                let addr = self.absolute_long8();
                 self.adc_m8(addr);
                 self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x6F, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute16();
+                let addr = self.absolute_long16();
                 self.adc_m16(addr);
                 self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
@@ -4613,13 +4505,13 @@ impl Cpu65c816 {
 
             // sta, long
             (0x8F, _, RegSize::Byte, _) => {
-                let addr = self.absolute8();
+                let addr = self.absolute_long8();
                 self.sta_m8(addr);
                 self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x8F, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute16();
+                let addr = self.absolute_long16();
                 self.sta_m16(addr);
                 self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
@@ -5043,13 +4935,13 @@ impl Cpu65c816 {
 
             // lda, long
             (0xAF, _, RegSize::Byte, _) => {
-                let addr = self.absolute8();
+                let addr = self.absolute_long8();
                 self.lda_m8(addr);
                 self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xAF, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute16();
+                let addr = self.absolute_long16();
                 self.lda_m16(addr);
                 self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
@@ -5503,13 +5395,13 @@ impl Cpu65c816 {
 
             // cmp, long
             (0xCF, _, RegSize::Byte, _) => {
-                let addr = self.absolute8();
+                let addr = self.absolute_long8();
                 self.cmp_m8(addr);
                 self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xCF, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute16();
+                let addr = self.absolute_long16();
                 self.cmp_m16(addr);
                 self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
@@ -5935,13 +5827,13 @@ impl Cpu65c816 {
 
             // sbc, long
             (0xEF, _, RegSize::Byte, _) => {
-                let addr = self.absolute8();
+                let addr = self.absolute_long8();
                 self.sbc_m8(addr);
                 self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xEF, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute16();
+                let addr = self.absolute_long16();
                 self.sbc_m16(addr);
                 self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
@@ -6194,325 +6086,3 @@ impl Cpu65c816 {
         self.add_clocks(extra_clocks);
     }
 }
-
-impl Cpu65c816 {
-//     pub fn temp_load_test(&mut self) {
-//         use std::path::Path;
-
-//         // C:\Users\lance\Desktop\Pet Projects\RustProjects\snemulator\games\Super Mario World (USA).sfc
-//         let test_path_str = format!("tests/lemons/CPUTest/CPUADC.sfc");
-//         // let test_path_str = format!("tests/ppu_tests/test_hello.sfc");
-//         // let test_path_str = format!("games/Super Mario World (USA).sfc");
-//         // let test_path_str = format!("games/SNES Test Program.sfc");
-//         let test_path = Path::new(&test_path_str);
-//         let cart = Cartridge::from_path(test_path).unwrap();
-
-//         self.load_cart(cart);
-
-//         self.stk_ptr = 0x1ff;
-//         self.status = 0x34;
-
-//         self.rom_mirror = self.rom.len() - 1;
-
-//         self.reset();
-//     }
-
-    fn cpu_status_str(&self) -> String {
-        let mut status_str = String::new();
-        status_str.push(if self.is_flag_set(Flag::FlagN) {
-            'N'
-        } else {
-            'n'
-        });
-        status_str.push(if self.is_flag_set(Flag::FlagV) {
-            'V'
-        } else {
-            'v'
-        });
-        if self.mode == CpuMode::Emulation {
-            status_str.push('1');
-            status_str.push(if self.is_flag_set(Flag::FlagX) {
-                'B'
-            } else {
-                'b'
-            });
-        } else {
-            status_str.push(if self.is_flag_set(Flag::FlagM) {
-                'M'
-            } else {
-                'm'
-            });
-            status_str.push(if self.is_flag_set(Flag::FlagX) {
-                'X'
-            } else {
-                'x'
-            });
-        }
-        status_str.push(if self.is_flag_set(Flag::FlagD) {
-            'D'
-        } else {
-            'd'
-        });
-        status_str.push(if self.is_flag_set(Flag::FlagI) {
-            'I'
-        } else {
-            'i'
-        });
-        status_str.push(if self.is_flag_set(Flag::FlagZ) {
-            'Z'
-        } else {
-            'z'
-        });
-        status_str.push(if self.is_flag_set(Flag::FlagC) {
-            'C'
-        } else {
-            'c'
-        });
-
-        status_str
-    }
-
-    fn lemon_cpu_str(&self) -> String {
-        format!(
-            "{:02x}{:04x} A:{:04x} X:{:04x} Y:{:04x} S:{:04x} D:{:04x} DB:{:02x} {} ",
-            self.prg_bank,
-            self.pc,
-            self.acc,
-            self.x,
-            self.y,
-            self.stk_ptr,
-            self.direct_page,
-            self.data_bank,
-            self.cpu_status_str()
-        )
-    }
-}
-
-// #[cfg(test)]
-// mod tests {
-//     use std::path::Path;
-
-//     use libretro_rs::retro::{
-//         framebuf::ResizableFrameBuffer, log::PlatformLogger, pixel::format::XRGB8888,
-//     };
-
-//     // Note this useful idiom: importing names from outer (for mod tests) scope.
-//     use super::*;
-//     use crate::system::{cartridge::Cartridge, ppu::Ppu5C7x};
-
-//     /// Prints out a slice of bytes in hex and ASCII format, side by side. When
-//     /// startval is specified, indices beginning at the startval will be printed
-//     /// before each line. If startval is unspecified, indeces start at 0.
-//     pub fn hexdump_at(bytes: &[u8], startval: usize) {
-//         const CHUNK_SIZE: usize = 16;
-
-//         let mut index = startval;
-//         println!();
-//         for chunk in bytes.chunks(CHUNK_SIZE) {
-//             let l = chunk.len();
-//             print!("{:08X}: ", index);
-//             for b in chunk.iter() {
-//                 print!("{b:02X} ");
-//             }
-
-//             print!("{:>width$} ", "|", width = (CHUNK_SIZE - l) * 3 + 1);
-//             for b in chunk.iter() {
-//                 match b {
-//                     32..=126 => print!("{}", *b as char),
-//                     _ => print!("."),
-//                 }
-//             }
-//             println!();
-//             index += CHUNK_SIZE;
-//         }
-//     }
-
-//     /// Prints out a slice of bytes in hex and ASCII format, side by side. When
-//     /// startval is specified, indeces beginning at the startval will be printed
-//     /// before each line. If startval is unspecified, indeces start at 0.
-//     pub fn hexdump(bytes: &[u8]) {
-//         hexdump_at(bytes, 0);
-//     }
-
-//     /// Find the subvector "needle" in the vector "haystack"
-//     fn find_subvec(haystack: &Vec<u8>, needle: &Vec<u8>) -> Option<usize> {
-//         (0..haystack.len() - needle.len() + 1)
-//             .filter(|&i| haystack[i..i + needle.len()] == needle[..])
-//             .next()
-//     }
-
-//     fn cpu_status_str(cpu: &Cpu65c816) -> String {
-//         let mut status_str = String::new();
-//         status_str.push(if cpu.is_flag_set(Flag::FlagN) {
-//             'N'
-//         } else {
-//             'n'
-//         });
-//         status_str.push(if cpu.is_flag_set(Flag::FlagV) {
-//             'V'
-//         } else {
-//             'v'
-//         });
-//         if cpu.mode == CpuMode::Emulation {
-//             status_str.push('1');
-//             status_str.push(if cpu.is_flag_set(Flag::FlagX) {
-//                 'B'
-//             } else {
-//                 'b'
-//             });
-//         } else {
-//             status_str.push(if cpu.is_flag_set(Flag::FlagM) {
-//                 'M'
-//             } else {
-//                 'm'
-//             });
-//             status_str.push(if cpu.is_flag_set(Flag::FlagX) {
-//                 'X'
-//             } else {
-//                 'x'
-//             });
-//         }
-//         status_str.push(if cpu.is_flag_set(Flag::FlagD) {
-//             'D'
-//         } else {
-//             'd'
-//         });
-//         status_str.push(if cpu.is_flag_set(Flag::FlagI) {
-//             'I'
-//         } else {
-//             'i'
-//         });
-//         status_str.push(if cpu.is_flag_set(Flag::FlagZ) {
-//             'Z'
-//         } else {
-//             'z'
-//         });
-//         status_str.push(if cpu.is_flag_set(Flag::FlagC) {
-//             'C'
-//         } else {
-//             'c'
-//         });
-
-//         status_str
-//     }
-
-//     fn lemon_cpu_str(cpu: &Cpu65c816) -> String {
-//         format!(
-//             "{:02x}{:04x} A:{:04x} X:{:04x} Y:{:04x} S:{:04x} D:{:04x} DB:{:02x} {} ",
-//             cpu.prg_bank,
-//             cpu.pc,
-//             cpu.acc,
-//             cpu.x,
-//             cpu.y,
-//             cpu.stk_ptr,
-//             cpu.direct_page,
-//             cpu.data_bank,
-//             cpu_status_str(cpu)
-//         )
-//     }
-
-//     const INSTR_NAMES: [&str; 256] = [
-//         "BRK", "ORA", "COP", "ORA", "TSB", "ORA", "ASL", "ORA", "PHP", "ORA", "ASL", "PHD", "TSB",
-//         "ORA", "ASL", "ORA", "BPL", "ORA", "ORA", "ORA", "TRB", "ORA", "ASL", "ORA", "CLC", "ORA",
-//         "INC", "TCS", "TRB", "ORA", "ASL", "ORA", "JSR", "AND", "JSL", "AND", "BIT", "AND", "ROL",
-//         "AND", "PLP", "AND", "ROL", "PLD", "BIT", "AND", "ROL", "AND", "BMI", "AND", "AND", "AND",
-//         "BIT", "AND", "ROL", "AND", "SEC", "AND", "DEC", "TSC", "BIT", "AND", "ROL", "AND", "RTI",
-//         "EOR", "WDM", "EOR", "MVP", "EOR", "LSR", "EOR", "PHA", "EOR", "LSR", "PHK", "JMP", "EOR",
-//         "LSR", "EOR", "BVC", "EOR", "EOR", "EOR", "MVN", "EOR", "LSR", "EOR", "CLI", "EOR", "PHY",
-//         "TCD", "JMP", "EOR", "LSR", "EOR", "RTS", "ADC", "PEX", "ADC", "STZ", "ADC", "ROR", "ADC",
-//         "PLA", "ADC", "ROR", "RTL", "JMP", "ADC", "ROR", "ADC", "BVS", "ADC", "ADC", "ADC", "STZ",
-//         "ADC", "ROR", "ADC", "SEI", "ADC", "PLY", "TDC", "JMP", "ADC", "ROR", "ADC", "BRA", "STA",
-//         "BRA", "STA", "STY", "STA", "STX", "STA", "DEY", "BIT", "TXA", "PHB", "STY", "STA", "STX",
-//         "STA", "BCC", "STA", "STA", "STA", "STY", "STA", "STX", "STA", "TYA", "STA", "TXS", "TXY",
-//         "STZ", "STA", "STZ", "STA", "LDY", "LDA", "LDX", "LDA", "LDY", "LDA", "LDX", "LDA", "TAY",
-//         "LDA", "TAX", "PLB", "LDY", "LDA", "LDX", "LDA", "BCS", "LDA", "LDA", "LDA", "LDY", "LDA",
-//         "LDX", "LDA", "CLV", "LDA", "TSX", "TYX", "LDY", "LDA", "LDX", "LDA", "CPY", "CMP", "REP",
-//         "CMP", "CPY", "CMP", "DEC", "CMP", "INY", "CMP", "DEX", "WAI", "CPY", "CMP", "DEC", "CMP",
-//         "BNE", "CMP", "CMP", "CMP", "PEX", "CMP", "DEC", "CMP", "CLD", "CMP", "PHX", "STP", "JMP",
-//         "CMP", "DEC", "CMP", "CPX", "SBC", "SEP", "SBC", "CPX", "SBC", "INC", "SBC", "INX", "SBC",
-//         "NOP", "XBA", "CPX", "SBC", "INC", "SBC", "BEQ", "SBC", "SBC", "SBC", "PEX", "SBC", "INC",
-//         "SBC", "SED", "SBC", "PLX", "XCE", "JSR", "SBC", "INC", "SBC",
-//     ];
-
-//     #[test]
-//     fn test_lorom_title() {
-//         let test_path = Path::new("tests/blarggs/test_adc_sbc/test_adc.smc");
-//         // let cart = Cartridge::from_path_with_mode(test_path, MappingMode::LoROM).unwrap();
-
-//         let ppu_data = Rc::new(PpuData::new());
-//         let mut cpu = Cpu65c816::new(ppu_data);
-
-//         cpu.load_cart(cart);
-
-//         hexdump_at(&cpu.rom[0x8000..0x8000 + 0x1000], 0x8000);
-//     }
-
-//     fn run_lemon_test(test_name: &str) {
-//         let test_path_str = format!("tests/lemons/CPUTest/{test_name}.sfc");
-//         let test_path = Path::new(&test_path_str);
-//         let cart = Cartridge::from_path(test_path).unwrap();
-
-//         let log_path_str = format!("tests/lemons/CPUTest/{test_name}-trace_compare.log");
-//         let log_path = Path::new(&log_path_str);
-//         let log_lines: Vec<String> = std::fs::read_to_string(log_path)
-//             .unwrap()
-//             .lines()
-//             .map(String::from)
-//             .collect();
-
-//         let ppu_data = Rc::new(PpuData::new());
-//         let mut cpu = Cpu65c816::new(ppu_data);
-//         cpu.load_cart(cart);
-
-//         cpu.stk_ptr = 0x1ff;
-//         cpu.status = 0x34;
-
-//         cpu.rom_mirror = cpu.rom.len() - 1;
-
-//         cpu.pc = 0x8000;
-
-//         cpu.wram[0] = 0xb5;
-
-//         for (i, line) in log_lines.iter().enumerate() {
-//             let opcode = cpu.read_prg();
-//             let (addr_lo, addr_hi) = cpu.immediate16();
-//             let val1 = cpu.read(addr_lo);
-//             let val2 = cpu.read(addr_hi);
-
-//             // Quick hack for running this test
-//             if opcode == 0x2C && val1 == 0x10 && val2 == 0x42 {
-//                 cpu.debug_nmi = if log_lines[i + 1].as_bytes()[48] == b'N' {
-//                     0xc2
-//                 } else {
-//                     0x42
-//                 }
-//             }
-
-//             assert_eq!(*line, lemon_cpu_str(&cpu));
-
-//             cpu.exec_instr();
-//         }
-//     }
-
-//     #[test]
-//     fn test_lemon_all() {
-//         let paths = std::fs::read_dir("./tests/lemons/CPUTest").unwrap();
-
-//         for path in paths {
-//             if let Ok(path) = path {
-//                 let file_name = String::from(path.file_name().to_str().unwrap());
-
-//                 if let Some(test_name) = file_name.strip_suffix(".sfc") {
-//                     if test_name == "CPUMSC" {
-//                         println!("cpumsc [[SKIPPED - PPU Dependent]]");
-//                         continue;
-//                     }
-
-//                     run_lemon_test(test_name);
-
-//                     println!("{} [[PASSED]]", test_name.to_lowercase());
-//                 }
-//             }
-//         }
-//     }
-// }

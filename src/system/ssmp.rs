@@ -1,17 +1,9 @@
 mod disassembler;
+mod sdsp;
 
 use std::{cell::Cell, rc::Rc};
 
-use crate::{log::{LogLevel, SnemLogger}, utils::GetBits};
-
-// Master Clock runs at 21.4773 MHz, and S-DSP internally clocks at 3.072 MHz
-// The ratio of Master Clock Period / S-DSP Clock Period = (1/21477300 Hz) / (1/3072000 Hz)
-// = 0.143034739 is approximated closely by 97/678 = 0.143067846608
-// with an error of 0.02274%
-// const MASTER_CLOCK_TIME_UNITS: usize = 97;
-// const SDSP_CLOCK_TIME_UNITS: usize = 678;
-const MASTER_CLOCK_TIME_UNITS: usize = 10240;
-const SDSP_CLOCK_TIME_UNITS: usize = 71591;
+use crate::{log::{LogLevel, SnemLogger}, system::ssmp::sdsp::SuperDSP, utils::{GetBits, GetBytes}};
 
 // TIMER2 runs at 64kHz, which translates to one tick per every 48 DSP clocks.
 // Timers 0 and 1 each run at 1/8th that speed (8kHz), so we keep a secondary
@@ -21,7 +13,7 @@ const SLOW_TIMER_TICKS_MAX: u8 = 8;
 
 const MASTER_CLOCK_HZ: usize = 21477300;
 const MASTER_CLOCK_PERIOD: f32 = 1.0 / MASTER_CLOCK_HZ as f32;
-const SDSP_CLOCK_HZ: usize = 307200;
+const SDSP_CLOCK_HZ: usize = 3072000;
 const SDSP_CLOCK_PERIOD: f32 = 1.0 / SDSP_CLOCK_HZ as f32;
 
 #[derive(PartialEq)]
@@ -72,6 +64,7 @@ pub struct Spc700 {
     x: u8,
     y: u8,
     status: u8,
+    stopped: bool,
 
     branch_taken: bool,
 
@@ -83,6 +76,8 @@ pub struct Spc700 {
     time_since_last_clock: usize,
     sdsp_clocks: usize,
     spc_clocks_until_instr: usize,
+
+    sdsp: SuperDSP,
 
     apuio_regs: Rc<ApuIORegs>,
 
@@ -126,13 +121,9 @@ pub struct Spc700 {
 
     slow_timer_clocks: u8,
 
-    total_clocks: usize,
-
-    debug_flag: bool,
-
     last_timer_inc: std::time::Instant,
 
-    logger: Rc<SnemLogger>
+    logger: Rc<SnemLogger>,
 }
 
 impl Spc700 {
@@ -153,6 +144,7 @@ impl Spc700 {
             x: 0,
             y: 0,
             status: 0,
+            stopped: false,
             branch_taken: false,
             dir_page: 0,
 
@@ -162,6 +154,8 @@ impl Spc700 {
             time_since_last_clock: 0,
             sdsp_clocks: 0,
             spc_clocks_until_instr: 0,
+
+            sdsp: SuperDSP::new(),
 
             apuio_regs,
 
@@ -182,9 +176,6 @@ impl Spc700 {
             timer2_internal_counter: 0,
 
             slow_timer_clocks: 0,
-            total_clocks: 0,
-
-            debug_flag: false,
 
             last_timer_inc: std::time::Instant::now(),
 
@@ -198,17 +189,13 @@ impl Spc700 {
         self.timer2_en = false;
     }
 
-    pub fn clock(&mut self, master_clocks_elapsed: usize, frame: usize) {
+    pub fn clock(&mut self, master_clocks_elapsed: usize) {
         self.secs_since_last_clock += MASTER_CLOCK_PERIOD * master_clocks_elapsed as f32;
-        // self.time_since_last_clock += master_clocks_elapsed * MASTER_CLOCK_TIME_UNITS;
-
-        // while self.time_since_last_clock > SDSP_CLOCK_TIME_UNITS {
 
         while self.secs_since_last_clock > SDSP_CLOCK_PERIOD {
             self.secs_since_last_clock -= SDSP_CLOCK_PERIOD;
-            // self.time_since_last_clock -= SDSP_CLOCK_TIME_UNITS;
 
-            // Once every ~3.072 MHz
+            // 3.072 MHz
             // self.sdsp.clock();
 
             self.sdsp_clocks += 1;
@@ -220,10 +207,6 @@ impl Spc700 {
                 self.sdsp_clocks = 0;
                 self.slow_timer_clocks += 1;
 
-                // if self.debug_flag {
-                //     println!("Slow Timer clks: {}", self.slow_timer_clocks);
-                // }
-
                 // Slow timers clock every 8 fast timer cycles
                 if self.slow_timer_clocks == SLOW_TIMER_TICKS_MAX {
                     self.clock_slow_timers();
@@ -233,11 +216,9 @@ impl Spc700 {
             }
 
             // Spc700 clocks every 3 S-DSP cycles
-            if self.sdsp_clocks % 3 == 0 {
-                self.total_clocks += 1;
-
+            if self.sdsp_clocks % 3 == 0 && !self.stopped {
                 if self.spc_clocks_until_instr == 0 {
-                    self.exec_instr(frame);
+                    self.exec_instr();
                 }
 
                 self.spc_clocks_until_instr -= 1;
@@ -304,7 +285,7 @@ impl Spc700 {
     fn read_sound_regs(&mut self, address: u16) -> u8 {
         match address & 0xF {
             0x2 => self.sdsp_addr,
-            0x3 => 0, // self.sdsp.read_regs(self.sdsp_addr),
+            0x3 => self.sdsp.read_regs(self.sdsp_addr),
             0x4 => self.apuio_regs.cpuio0.get(),
             0x5 => self.apuio_regs.cpuio1.get(),
             0x6 => self.apuio_regs.cpuio2.get(),
@@ -315,21 +296,16 @@ impl Spc700 {
             0xB => self.timer1_target,
             0xC => self.timer2_target,
             0xD => {
-                // if self.debug_flag {
-                //     println!("Read timer 0: 0x{:02x} ({}/{}) en: {}", self.timer0_counter, self.timer0_internal_counter, self.timer0_target, self.timer0_en);
-                // }
                 let data = self.timer0_counter;
                 self.timer0_counter = 0;
                 data
             }
             0xE => {
-                // println!("Read timer 1: 0x{:02x} {}", self.timer1_counter, self.timer1_en);
                 let data = self.timer1_counter;
                 self.timer1_counter = 0;
                 data
             }
             0xF => {
-                // println!("Read timer 2: 0x{:02x} {}", self.timer2_counter, self.timer2_en);
                 let data = self.timer2_counter;
                 self.timer2_counter = 0;
                 data
@@ -377,30 +353,16 @@ impl Spc700 {
             }
             0x3 => {
                 if !self.sdsp_read_only {
-                    // self.sdsp.write_regs(self.sdsp_addr, data);
+                    self.sdsp.write_regs(self.sdsp_addr, data);
                 }
             }
-            0x4 => {
-                // println!("Set apuio0 to 0x{data:02X}");
-                self.apuio_regs.apuio0.set(data);
-            }
-            0x5 => {
-                // println!("Set apuio1 to 0x{data:02X}");
-                self.apuio_regs.apuio1.set(data);
-            }
-            0x6 => {
-                // println!("Set apuio2 to 0x{data:02X}");
-                self.apuio_regs.apuio2.set(data);
-            }
-            0x7 => {
-                // println!("Set apuio3 to 0x{data:02X}");
-                self.apuio_regs.apuio3.set(data);
-            }
+            0x4 => { self.apuio_regs.apuio0.set(data); }
+            0x5 => { self.apuio_regs.apuio1.set(data); }
+            0x6 => { self.apuio_regs.apuio2.set(data); }
+            0x7 => { self.apuio_regs.apuio3.set(data); }
             0x8 => { self.aram[0xFF08] = data; }
             0x9 => { self.aram[0xFF09] = data; }
-            0xA => {
-                println!("Set t0 target to {}", data);
-                self.timer0_target = data; }
+            0xA => { self.timer0_target = data; }
             0xB => { self.timer1_target = data; }
             0xC => { self.timer2_target = data; }
             0xD => { self.timer0_counter = data; }
@@ -444,13 +406,7 @@ impl Spc700 {
         self.push(word as u8);
     }
 
-    fn exec_instr(&mut self, frame: usize) {
-        #[cfg(feature = "debug-log-apu-instrs")]
-        self.logger.log(
-            LogLevel::Debug,
-            &disassembler::disassembly_string(self.pc, &self.aram)
-        );
-
+    fn exec_instr(&mut self) {
         let cycles: usize;
         let opcode = self.read_prg();
         self.branch_taken = false;
@@ -605,7 +561,8 @@ impl Spc700 {
                 cycles = 4;
             }
             0x1F => {
-                let addr = self.absolute_x_indirect();
+                let addr = self.x_absolute();
+                // let addr = self.absolute_x_indirect();
                 self.jmp(addr);
                 cycles = 6;
             }
@@ -1684,18 +1641,6 @@ impl Spc700 {
         if self.branch_taken {
             self.spc_clocks_until_instr += 2;
         }
-
-        // if self.pc == 0x549 && temp_pc != 0x54c && temp_pc != 0x546 {
-        //     println!("At $0549 from ${temp_pc:04X} on frame {frame}");
-        // }
-
-        // if self.pc == 0x54E {
-        //     // self.debug_flag = true;
-        //     println!("Exec Instr 0x{:02X} from PC ${:04X}", opcode, self.pc-1);
-        //     println!("{}", self.lemon_cpu_str());
-
-        //     std::thread::sleep(std::time::Duration::from_millis(10));
-        // }
     }
 }
 
@@ -2610,9 +2555,7 @@ impl Spc700 {
         }
     }
 
-    fn stop(&self) {
-        println!("Stop.");
-    }
+    fn stop(&mut self) { self.stopped = true; }
 
     fn stx(&mut self, address: u16) {
         self.write(address, self.x);
@@ -2764,59 +2707,3 @@ impl Spc700 {
     }
 }
 
-
-#[cfg(test)]
-mod test {
-    use std::{io::Read, rc::Rc};
-
-    use libretro_rs::retro::log::PlatformLogger;
-
-    use crate::{log::SnemLogger, system::ssmp::{disassembler, ApuIORegs, Spc700}};
-
-    fn load_test(spc: &mut Spc700, test_name: &str) {
-        const BLARGG_TEST_PC_START: u16 = 0x400;
-
-        let test_path_str = format!("testroms/blarggs/spc-700-cpu-tests-main/tests/{test_name}");
-        let test_path = std::path::Path::new(&test_path_str);
-        let mut test_bytes = Vec::new();
-
-        println!("Loading test '{test_path_str}'");
-        
-        std::fs::File::open(test_path)
-            .unwrap()
-            .read_to_end(&mut test_bytes)
-            .unwrap();
-
-        println!("Copying {} bytes into Audio RAM (from $400 on).", test_bytes.len());
-
-        for i in 0..test_bytes.len() {
-            spc.aram[i + BLARGG_TEST_PC_START as usize] = test_bytes[i];
-        }
-
-        spc.pc = BLARGG_TEST_PC_START;
-
-        println!("Test loaded. Creating disassembly.");
-
-        let disassembly_file_str = format!("{test_path_str}.s");
-
-        disassembler::disassemble_block(&spc.aram[0x400..0x870], BLARGG_TEST_PC_START, &disassembly_file_str);
-    }
-
-
-    #[test]
-    fn test_spc_arith_edge() {
-        let _apuregs = Rc::new(ApuIORegs::new());
-        let _logger = Rc::new(SnemLogger::dummy());
-        let mut spc = Spc700::new(_apuregs, _logger);
-
-        load_test(&mut spc, "CPU Instructions_Edge arith");
-
-        crate::tools::tools::hexdump8_at(&spc.aram[0x400..0x900], 0x400);
-
-        for _ in 0..1000 {
-            spc.clock(10, 0);
-        }
-
-        crate::tools::tools::hexdump8_at(&spc.aram[0x8000..0x8200], 0x8000);
-    }
-}

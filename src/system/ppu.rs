@@ -783,20 +783,8 @@ impl PpuData {
 
         match address {
             0x00 => {
-                // if data.bit_en(7) != self.in_fblank.get() {
-                //     println!("Changed fblank to {}", data.bit_en(7));
-                // }
-
                 self.in_fblank.set(data.bit_en(7));
                 self.screen_brightness.set(data & 0x0F);
-
-                #[cfg(feature = "debug-log-ppu")]
-                if data.bit_en(7) != self.in_fblank.get() {
-                    self.logger.log(
-                        LogLevel::Debug,
-                        format!("Changed fblank to {}", data.bit_en(7)).as_str()
-                    );
-                }
             }
 
             0x01 => {
@@ -815,16 +803,6 @@ impl PpuData {
                 self.obj_sprite_size.set(new_obj_size);
                 self.name_secondary_select.set((data >> 3) & 0x03);
                 self.name_base_addr.set(data & 0x03);
-
-                #[cfg(feature = "debug-log-ppu")]
-                self.logger.log(
-                    LogLevel::Debug,
-                    format!("Set obj spr size to {:?}, secondary select to {}, and name base addr to ${:X}", 
-                        self.obj_sprite_size.get(), 
-                        self.name_secondary_select.get(), 
-                        self.name_base_addr.get()
-                    ).as_str()
-                );
             }
 
             0x02 => {
@@ -833,16 +811,6 @@ impl PpuData {
                 self.oam_addr.set(new_addr);
                 self.priority_rotation_idx.set(data & 0xFE);
                 self.internal_oam_addr.set((self.oam_addr.get() & 0x1FF) << 1);
-
-                #[cfg(feature = "debug-log-ppu")]
-                self.logger.log(
-                    LogLevel::Debug,
-                    format!("Set OAM addr to ${:04X}, internal OAM addr to ${:04X}, and priority rotation idx to 0x{:02X}",
-                        self.oam_addr.get(),
-                        self.internal_oam_addr.get(),
-                        self.priority_rotation_idx.get()
-                    ).as_str()
-                );
             }
 
             0x03 => {
@@ -851,16 +819,6 @@ impl PpuData {
                 self.oam_addr.set(new_addr);
                 self.priority_rotation.set(data.bit_en(7));
                 self.internal_oam_addr.set((self.oam_addr.get() & 0x1FF) << 1);
-
-                #[cfg(feature = "debug-log-ppu")]
-                self.logger.log(
-                    LogLevel::Debug,
-                    format!("Set OAM addr to ${:04X}, internal OAM addr to ${:04X}, and priority rotation to {}",
-                        self.oam_addr.get(),
-                        self.internal_oam_addr.get(),
-                        self.priority_rotation.get()
-                    ).as_str()
-                );
             }
 
             0x04 => {
@@ -868,24 +826,16 @@ impl PpuData {
 
                 if internal_oam_addr & 1 == 0 {
                     self.oam_data_latch.set(data);
-
-                    // println!("Set OAM data latch to 0x{:02X}", self.oam_data_latch.get());
                 } else if internal_oam_addr < 0x200 {
                     self.oam[internal_oam_addr - 1].set(self.oam_data_latch.get());
                     self.oam[internal_oam_addr].set(data);
-
-                    // println!("Wrote 0x{:02X} and 0x{:02X} to OAM addrs ${:04X} and ${:04X}", self.oam_data_latch.get(), data, internal_oam_addr-1, internal_oam_addr);
                 }
                 
                 if internal_oam_addr >= 0x200 {
                     self.oam[internal_oam_addr].set(data);
-
-                    // println!("Wrote 0x{:02X} to OAM addr ${:04X}", data, internal_oam_addr);
                 }
 
                 self.internal_oam_addr.set((internal_oam_addr as u16 + 1) & 0x1FF);
-
-                // println!("Incremented internal OAM addr to ${:04X}", self.internal_oam_addr.get());
             }
 
             0x05 => {
@@ -915,28 +865,6 @@ impl PpuData {
                         _ => unreachable!(),
                     }
                 );
-
-                // println!("Set bg char sizes to 4: {:?}, 3: {:?}, 2: {:?}, 1: {:?}, bg 3 priority to {:?}, and bg mode to {:?}",
-                //         self.bg4_char_size.get(),
-                //         self.bg3_char_size.get(),
-                //         self.bg2_char_size.get(),
-                //         self.bg1_char_size.get(),
-                //         self.bg3_mode1_priority.get(),
-                //         self.bg_mode.get(),
-                //     );
-
-                #[cfg(feature = "debug-log-ppu")]
-                self.logger.log(
-                    LogLevel::Debug,
-                    format!("Set bg char sizes to 4: {:?}, 3: {:?}, 2: {:?}, 1: {:?}, bg 3 priority to {:?}, and bg mode to {:?}",
-                        self.bg4_char_size.get(),
-                        self.bg3_char_size.get(),
-                        self.bg2_char_size.get(),
-                        self.bg1_char_size.get(),
-                        self.bg3_mode1_priority.get(),
-                        self.bg_mode.get(),
-                    ).as_str()
-                );
             }
 
             0x06 => {
@@ -945,26 +873,6 @@ impl PpuData {
                 self.bg3_mosaic.set(data.bit_en(2));
                 self.bg2_mosaic.set(data.bit_en(1));
                 self.bg1_mosaic.set(data.bit_en(0));
-
-                // println!("Set mosaic size to {} and mosaic enables to 4: {}, 3: {}, 2: {}, 1: {}",
-                //         self.mosaic_size.get(),
-                //         self.bg4_mosaic.get(),
-                //         self.bg3_mosaic.get(),
-                //         self.bg2_mosaic.get(),
-                //         self.bg1_mosaic.get(),
-                //     );
-
-                #[cfg(feature = "debug-log-ppu")]
-                self.logger.log(
-                    LogLevel::Debug,
-                    format!("Set mosaic size to {} and mosaic enables to 4: {}, 3: {}, 2: {}, 1: {}",
-                        self.mosaic_size.get(),
-                        self.bg4_mosaic.get(),
-                        self.bg3_mosaic.get(),
-                        self.bg2_mosaic.get(),
-                        self.bg1_mosaic.get(),
-                    ).as_str()
-                );
             }
 
             0x07 => {
@@ -975,12 +883,6 @@ impl PpuData {
                 self.bg1_tilemap_count_x.set(
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
-
-                // println!("Set bg1 tilemap base VRAM addr to ${:04X}, bg1 tilemap count y to {:?}, and bg1 tilemap count x to {:?}",
-                //     (self.bg1_vram_addr.get() as u16) << 10,
-                //     self.bg1_tilemap_count_y.get(),
-                //     self.bg1_tilemap_count_x.get(),
-                // );
             }
 
             0x08 => {
@@ -991,12 +893,6 @@ impl PpuData {
                 self.bg2_tilemap_count_x.set(
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
-
-                // println!("Set bg2 tilemap base VRAM addr to ${:04X}, bg2 tilemap count y to {:?}, and bg2 tilemap count x to {:?}",
-                //     (self.bg2_vram_addr.get() as u16) << 10,
-                //     self.bg2_tilemap_count_y.get(),
-                //     self.bg2_tilemap_count_x.get(),
-                // );
             }
 
             0x09 => {
@@ -1007,12 +903,6 @@ impl PpuData {
                 self.bg3_tilemap_count_x.set(
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
-
-                // println!("Set bg3 tilemap base VRAM addr to ${:04X}, bg3 tilemap count y to {:?}, and bg3 tilemap count x to {:?}",
-                //     (self.bg3_vram_addr.get() as u16) << 10,
-                //     self.bg3_tilemap_count_y.get(),
-                //     self.bg3_tilemap_count_x.get(),
-                // );
             }
 
             0x0A => {
@@ -1023,32 +913,16 @@ impl PpuData {
                 self.bg4_tilemap_count_x.set(
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
-
-                // println!("Set bg4 tilemap base VRAM addr to ${:04X}, bg4 tilemap count y to {:?}, and bg4 tilemap count x to {:?}",
-                //     (self.bg4_vram_addr.get() as u16) << 10,
-                //     self.bg4_tilemap_count_y.get(),
-                //     self.bg4_tilemap_count_x.get(),
-                // );
             }
 
             0x0B => {
                 self.bg2_chr_base_addr.set(data >> 4);
                 self.bg1_chr_base_addr.set(data & 0x0F);
-
-                // println!("Set bg CHR word base addrs to 2: ${:04X}, 1: ${:04X}", 
-                //     (self.bg2_chr_base_addr.get() as u16) << 12,
-                //     (self.bg1_chr_base_addr.get() as u16) << 12,
-                // );
             }
 
             0x0C => {
                 self.bg4_chr_base_addr.set(data >> 4);
                 self.bg3_chr_base_addr.set(data & 0x0F);
-
-                // println!("Set bg CHR word base addrs to 4: ${:04X}, 3: ${:04X}", 
-                //     (self.bg4_chr_base_addr.get() as u16) << 12,
-                //     (self.bg3_chr_base_addr.get() as u16) << 12,
-                // );
             }
 
             0x0D => {
@@ -1058,23 +932,12 @@ impl PpuData {
                 self.bg1_m7_x_offset.set(
                     ((data as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07)
                 );
-
-                // println!("Set bg offset latch to 0x{:02X}, bg horizontal offset latch to 0x{:02X}, and bg1 horizontal scroll to {:04X}",
-                //     self.bg_offset_latch.get(),
-                //     self.bg_offset_x_latch.get(),
-                //     self.bg1_m7_x_offset.get(),
-                // );
             }
 
             0x0E => {
                 let bgofs_latch = self.bg_offset_latch.replace(data) as u16;
 
                 self.bg1_m7_y_offset.set(((data as u16) << 8) | bgofs_latch);
-
-                // println!("Set bg offset latch to 0x{:02X} and bg1 vertical scroll to 0x{:04X}",
-                //     self.bg_offset_latch.get(),
-                //     self.bg1_m7_y_offset.get()
-                // );
             }
 
             0x0F => {
@@ -1084,23 +947,12 @@ impl PpuData {
                 self.bg2_x_offset.set(
                     ((data as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07)
                 );
-
-                // println!("Set bg offset latch to 0x{:02X}, bg horizontal offset latch to 0x{:02X}, and bg2 horizontal scroll to {:04X}",
-                //     self.bg_offset_latch.get(),
-                //     self.bg_offset_x_latch.get(),
-                //     self.bg2_x_offset.get(),
-                // );
             }
 
             0x10 => {
                 let bgofs_latch = self.bg_offset_latch.replace(data) as u16;
 
                 self.bg2_y_offset.set(((data as u16) << 8) | bgofs_latch);
-
-                // println!("Set bg offset latch to 0x{:02X} and bg2 vertical scroll to 0x{:04X}",
-                //     self.bg_offset_latch.get(),
-                //     self.bg2_y_offset.get()
-                // );
             }
 
             0x11 => {
@@ -1110,23 +962,12 @@ impl PpuData {
                 self.bg3_x_offset.set(
                     ((data as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07)
                 );
-
-                // println!("Set bg offset latch to 0x{:02X}, bg horizontal offset latch to 0x{:02X}, and bg3 horizontal scroll to {:04X}",
-                //     self.bg_offset_latch.get(),
-                //     self.bg_offset_x_latch.get(),
-                //     self.bg3_x_offset.get(),
-                // );
             }
 
             0x12 => {
                 let bgofs_latch = self.bg_offset_latch.replace(data) as u16;
 
                 self.bg3_y_offset.set(((data as u16) << 8) | bgofs_latch);
-
-                // println!("Set bg offset latch to 0x{:02X} and bg3 vertical scroll to 0x{:04X}",
-                //     self.bg_offset_latch.get(),
-                //     self.bg3_y_offset.get()
-                // );
             }
 
             0x13 => {
@@ -1136,23 +977,12 @@ impl PpuData {
                 self.bg4_x_offset.set(
                     ((data as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07)
                 );
-
-                // println!("Set bg offset latch to 0x{:02X}, bg horizontal offset latch to 0x{:02X}, and bg4 horizontal scroll to {:04X}",
-                //     self.bg_offset_latch.get(),
-                //     self.bg_offset_x_latch.get(),
-                //     self.bg4_x_offset.get(),
-                // );
             }
 
             0x14 => {
                 let bgofs_latch = self.bg_offset_latch.replace(data) as u16;
 
                 self.bg4_y_offset.set(((data as u16) << 8) | bgofs_latch);
-
-                // println!("Set bg offset latch to 0x{:02X} and bg4 vertical scroll to 0x{:04X}",
-                //     self.bg_offset_latch.get(),
-                //     self.bg4_y_offset.get()
-                // );
             }
 
             0x15 => {
@@ -1177,12 +1007,6 @@ impl PpuData {
                         _ => unreachable!(),
                     }
                 );
-
-                // println!("Set VRAM inc mode to {:?}, VRAM addr remap to {:?}, and VRAM addr inc size to {:?}",
-                //     self.vram_addr_inc_mode.get(),
-                //     self.addr_remap_mode.get(),
-                //     self.addr_inc_size.get(),
-                // );
             }
 
             0x16 => {
@@ -1190,8 +1014,6 @@ impl PpuData {
                 self.vram_latch.set(
                     self.vram[self.get_vram_addr() as usize].get()
                 );
-
-                // println!("Set VRAM addr (lo) to ${:04X} and VRAM latch to {:04X}", self.vram_addr.get(), self.vram_latch.get());
             }
 
             0x17 => {
@@ -1199,20 +1021,12 @@ impl PpuData {
                 self.vram_latch.set(
                     self.vram[self.get_vram_addr() as usize].get()
                 );
-
-                // println!("Set VRAM addr (hi) to ${:04X} and VRAM latch to {:04X}", self.vram_addr.get(), self.vram_latch.get());
             }
 
             0x18 => {
-                // println!("Write to $2118 with data 0x{data:02X} with vblank: {} and fblank: {}", self.in_vblank.get(), self.in_fblank.get());
-
                 if self.in_fblank.get() || self.in_vblank.get() {
                     self.vram[self.get_vram_addr() as usize].set_lo(data);
                 }
-
-                // println!("$2118 VRAM addr: ${:04X}, data written: {:02X}", addr, data);
-
-                // println!("CPU wrote VRAM data (lo) to addr ${:04X} with data 0x{:02X}, new word = 0x{:04X}", self.vram_addr.get(), data, self.vram[addr].get());
 
                 match self.vram_addr_inc_mode.get() {
                     VramIncMode::LowByte => self.inc_vram_addr(),
@@ -1224,8 +1038,6 @@ impl PpuData {
                 if self.in_fblank.get() || self.in_vblank.get() {
                     self.vram[self.get_vram_addr() as usize].set_hi(data);
                 }
-
-                // println!("CPU wrote VRAM data (hi) to addr ${:04X} with data 0x{:02X}, new word = {:04X}", self.vram_addr.get(), data, self.vram[addr].get());
 
                 match self.vram_addr_inc_mode.get() {
                     VramIncMode::HighByte => self.inc_vram_addr(),
@@ -1253,12 +1065,6 @@ impl PpuData {
                 );
 
                 self.update_multiply_result();
-
-                // println!("Set m7 latch to 0x{:02X}, mult factor 16bit/m7 matrix A to 0x{:04X}, and mult result to 0x{:08X}",
-                //     self.m7_latch.get(),
-                //     self.m7_matrix_a.get(),
-                //     self.multiply_result.get(),
-                // );
             }
 
             0x1C => {
@@ -1270,35 +1076,18 @@ impl PpuData {
                 self.mult_factor_8.set(latched_val);
 
                 self.update_multiply_result();
-
-                // println!("Set m7 latch to 0x{:02X}, my matrix B to 0x{:04X}, mult factor 8bit to 0x{:02X}, and mult result to 0x{:08X}",
-                //     self.m7_latch.get(),
-                //     self.m7_matrix_b.get(),
-                //     self.mult_factor_8.get(),
-                //     self.multiply_result.get(),
-                // );
             }
 
             0x1D => {
                 let latched_val = self.m7_latch.replace(data) as u16;
 
                 self.m7_matrix_c.set(((data as u16) << 8) | latched_val);
-
-                // println!("Set m7 latch to 0x{:02X} and m7 matrix C to {:04X}",
-                //     self.m7_latch.get(),
-                //     self.m7_matrix_c.get(),
-                // );
             }
 
             0x1E => {
                 let latched_val = self.m7_latch.replace(data) as u16;
 
                 self.m7_matrix_d.set(((data as u16) << 8) | latched_val);
-
-                // println!("Set m7 latch to 0x{:02X} and m7 matrix D to {:04X}",
-                //     self.m7_latch.get(),
-                //     self.m7_matrix_d.get(),
-                // );
             }
 
             0x1F => {
@@ -1316,13 +1105,9 @@ impl PpuData {
             0x21 => {
                 self.cgram_addr.set(data);
                 self.cgram_toggle.set_lo();
-
-                // println!("Set CGRAM addr to ${:02X} and CGRAM toggle to {:?}", self.cgram_addr.get(), self.cgram_toggle.get());
             }
 
             0x22 => {
-                // print!("Write to CGRAM addr ${:02X} with data 0x{:02X}", self.cgram_addr.get(), data);
-
                 if self.cgram_toggle.toggle() {
                     let addr = self.cgram_addr.get();
                     let new_col = ((data as u16) << 8) | self.cgram_latch.get() as u16;
@@ -1332,16 +1117,8 @@ impl PpuData {
                     self.cgram[addr as usize].set(xrgb0555_col);
 
                     self.cgram_addr.set(addr + 1);
-
-                    if addr == 0 {
-                        // println!("Set transparent color to 0x{:04X}", self.cgram[0].get());
-                    }
-
-                    // println!(", new val = 0x{:04X}, new addr = ${:02X}", self.cgram[addr as usize].get(), addr+1);
                 } else {
                     self.cgram_latch.set(data);
-
-                    // println!(", new latch = 0x{:02X}", data);
                 }
             }
 
@@ -1354,8 +1131,6 @@ impl PpuData {
                 self.bg1_w2_inverted.set(data.bit_en(2));
                 self.bg1_w1_enabled.set(data.bit_en(1));
                 self.bg1_w1_inverted.set(data.bit_en(0));
-
-                // println!("Wrote 0x{data:02X} to bg2&1 win enable and invert");
             }
 
             0x24 => {
@@ -1367,8 +1142,6 @@ impl PpuData {
                 self.bg3_w2_inverted.set(data.bit_en(2));
                 self.bg3_w1_enabled.set(data.bit_en(1));
                 self.bg3_w1_inverted.set(data.bit_en(0));
-
-                // println!("Wrote 0x{data:02X} to bg4&3 win enable and invert");
             }
 
             0x25 => {
@@ -1380,25 +1153,12 @@ impl PpuData {
                 self.obj_w2_inverted.set(data.bit_en(2));
                 self.obj_w1_enabled.set(data.bit_en(1));
                 self.obj_w1_inverted.set(data.bit_en(0));
-
-                // println!("Wrote 0x{data:02X} to obj&col win enable and invert");
             }
 
-            0x26 => {
-                self.w1_left_pos.set(data);
-            }
-
-            0x27 => {
-                self.w1_right_pos.set(data);
-            }
-
-            0x28 => {
-                self.w2_left_pos.set(data);
-            }
-
-            0x29 => {
-                self.w2_right_pos.set(data);
-            }
+            0x26 => { self.w1_left_pos.set(data); }
+            0x27 => { self.w1_right_pos.set(data); }
+            0x28 => { self.w2_left_pos.set(data); }
+            0x29 => { self.w2_right_pos.set(data); }
 
             0x2A => {
                 self.bg4_win_logic.set(
@@ -1466,14 +1226,6 @@ impl PpuData {
                 self.bg3_main_enabled.set(data.bit_en(2));
                 self.bg2_main_enabled.set(data.bit_en(1));
                 self.bg1_main_enabled.set(data.bit_en(0));
-
-                // println!("Set main screen enable to Obj: {}, Bg4: {}, Bg3: {}, Bg2: {}, Bg1: {}",
-                //     self.obj_main_enabled.get(),
-                //     self.bg4_main_enabled.get(),
-                //     self.bg3_main_enabled.get(),
-                //     self.bg2_main_enabled.get(),
-                //     self.bg1_main_enabled.get(),
-                // );
             }
 
             0x2D => {
@@ -1538,8 +1290,6 @@ impl PpuData {
                 self.bg3_cmath_enabled.set(data.bit_en(2));
                 self.bg2_cmath_enabled.set(data.bit_en(1));
                 self.bg1_cmath_enabled.set(data.bit_en(0));
-
-                // println!("Set bg1 color math enable to {}", self.bg1_cmath_enabled.get());
             }
 
             0x32 => {
@@ -1573,8 +1323,6 @@ impl PpuData {
     }
 
     pub fn read(&self, address: u8) -> u8 {
-        // println!("PPU read $21{address:02X}");
-
         let data = match address {
             0x34 => { self.multiply_result.get() as u8 }
             0x35 => { (self.multiply_result.get() >> 8) as u8 }
@@ -1820,39 +1568,12 @@ impl Ppu5C7x {
             self.dot(frame_buffer);
         }
 
-        // if self.frame == 30 && self.dot == 0 && self.scanline == 0 {
-        //     let mut cgram_cpy = Vec::new();
-
-        //     for i in 0..CGRAM_SIZE {
-        //         let r = i & 0x1F;
-        //         let g = i & 0x3E0;
-        //         let col = ((r << 10) | g) as u16;
-
-        //         self.registers.cgram[i].set(col);
-
-        //         cgram_cpy.push(self.registers.cgram[i].get());
-        //     }
-
-        //     crate::tools::tools::hexdump16(&cgram_cpy);
-        // }
-
-
         self.update_dot_and_scanline();
 
         self.sys_clocks_until_clock += 4;
 
         if self.dot >= SCANLINE_END_DOT-4 {
             self.sys_clocks_until_clock += 1;
-        }
-
-        if self.frame == 60 && self.scanline == 0 && self.dot == 0 {
-            let mut cgram_clone = Vec::new();
-
-            for word in self.registers.cgram.iter() {
-                cgram_clone.push(word.get());
-            }
-
-            crate::tools::tools::hexdump16(&cgram_clone);
         }
     }
 
@@ -1873,7 +1594,6 @@ impl Ppu5C7x {
             (0, 0) => {
                 self.registers.in_vblank.set(false);
                 self.registers.cpu_vblank_nmi.set(false);
-                // println!("V-blank end");
             }
             // Start of visible scanline, end of h-blank
             (HBLANK_END_DOT, _) => {
@@ -1893,7 +1613,6 @@ impl Ppu5C7x {
                 self.registers.cpu_vblank_nmi.set(true);
                 self.frame_finished = true;
                 self.frame += 1;
-                // println!("V-blank start, set vblank nmi to {}", self.registers.cpu_vblank_nmi());
             }
             _ => {}
         }
@@ -2044,15 +1763,6 @@ struct TilePosData {
     tile_row: u8,
     tile_col: u8,
 }
-
-/// Converts a u16 of the form (.bbb bbgg gggr rrrr) into an XRGB8888 color
-// fn cgram_raw_color_to_xrgb(word: u16) -> ORGB1555 {
-//     let r = ((word & 0x1F) as u32) << 19;
-//     let g = ((word & 0x3E0) as u32) << 6;
-//     let b = ((word & 0x7C00) as u32) >> 7;
-
-//     XRGB8888::new_with_raw_value( 0xFF000000 | r | g | b )
-// }
 
 impl Ppu5C7x {
     fn screen_x(&self) -> usize { self.dot as usize - VISIBLE_SCANLINE_START_DOT }

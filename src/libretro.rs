@@ -3,7 +3,7 @@ use std::ffi::CStr;
 use std::rc::Rc;
 
 use crate::log::{LogLevel, SnemLogger};
-use crate::system::cartridge::Cartridge;
+use crate::system::cartridge::{self, Cartridge};
 use crate::system::scpu;
 use crate::system::ppu;
 use crate::system::ssmp;
@@ -105,11 +105,11 @@ impl SnemulatorCore {
         if ppu_clocks < cpu_clocks {
             self.snem_cpu.remove_clocks(ppu_clocks);
             self.snem_ppu.clock(&mut self.frame_buffer);
-            self.snem_apu.clock(ppu_clocks, self.frame_count as usize);
+            self.snem_apu.clock(ppu_clocks);
         } else {
             self.snem_ppu.remove_clocks(cpu_clocks);
-            self.snem_cpu.clock(self.frame_count as usize);
-            self.snem_apu.clock(cpu_clocks, self.frame_count as usize);
+            self.snem_cpu.clock();
+            self.snem_apu.clock(cpu_clocks);
         }
     }
 
@@ -119,6 +119,8 @@ impl SnemulatorCore {
         while !self.snem_ppu.frame_finished {
             self.cycle();
         }
+
+        println!("Finished frame {}", self.frame_count);
 
         self.snem_ppu.frame_finished = false;
     }

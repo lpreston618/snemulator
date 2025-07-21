@@ -81,7 +81,7 @@ fn disassemble_instr(pc: u16, pc_disp_offset: u16, aram: &[u8]) -> DisassembledI
             addr_mode_str = format!("${b0:02X}").to_string();
         }
         0x03 => {
-            let rel_addr = opcode_addr + 2 + (b1 as i8) as u16;
+            let rel_addr = opcode_addr + 3 + (b1 as i8) as u16;
 
             instr_name = "bbs0".to_string();
             nbytes = 3;
@@ -168,7 +168,7 @@ fn disassemble_instr(pc: u16, pc_disp_offset: u16, aram: &[u8]) -> DisassembledI
             addr_mode_str = format!("${b0:02X},0").to_string();
         }
         0x13 => {
-            let rel_addr = opcode_addr + 2 + (b1 as i8) as u16;
+            let rel_addr = opcode_addr + 3 + (b1 as i8) as u16;
 
             instr_name = "bbc0".to_string();
             nbytes = 3;
@@ -250,7 +250,7 @@ fn disassemble_instr(pc: u16, pc_disp_offset: u16, aram: &[u8]) -> DisassembledI
             addr_mode_str = format!("${b0:02X},1").to_string();
         }
         0x23 => {
-            let rel_addr = opcode_addr + 2 + (b1 as i8) as u16;
+            let rel_addr = opcode_addr + 3 + (b1 as i8) as u16;
 
             instr_name = "bbs1".to_string();
             nbytes = 3;
@@ -310,7 +310,7 @@ fn disassemble_instr(pc: u16, pc_disp_offset: u16, aram: &[u8]) -> DisassembledI
             addr_mode_str = "acc".to_string();
         }
         0x2E => {
-            let rel_addr = opcode_addr + 2 + (b1 as i8) as u16;
+            let rel_addr = opcode_addr + 3 + (b1 as i8) as u16;
 
             instr_name = "cbne".to_string();
             nbytes = 3;
@@ -341,7 +341,7 @@ fn disassemble_instr(pc: u16, pc_disp_offset: u16, aram: &[u8]) -> DisassembledI
             addr_mode_str = format!("${b0:02X},1").to_string();
         }
         0x33 => {
-            let rel_addr = opcode_addr + 2 + (b1 as i8) as u16;
+            let rel_addr = opcode_addr + 3 + (b1 as i8) as u16;
 
             instr_name = "bbc1".to_string();
             nbytes = 3;
@@ -423,7 +423,7 @@ fn disassemble_instr(pc: u16, pc_disp_offset: u16, aram: &[u8]) -> DisassembledI
             addr_mode_str = format!("${b0:02X},2").to_string();
         }
         0x43 => {
-            let rel_addr = opcode_addr + 2 + (b1 as i8) as u16;
+            let rel_addr = opcode_addr + 3 + (b1 as i8) as u16;
 
             instr_name = "bbs2".to_string();
             nbytes = 3;
@@ -510,7 +510,7 @@ fn disassemble_instr(pc: u16, pc_disp_offset: u16, aram: &[u8]) -> DisassembledI
             addr_mode_str = format!("${b0:02X},2").to_string();
         }
         0x53 => {
-            let rel_addr = opcode_addr + 2 + (b1 as i8) as u16;
+            let rel_addr = opcode_addr + 3 + (b1 as i8) as u16;
 
             instr_name = "bbc2".to_string();
             nbytes = 3;
@@ -592,7 +592,7 @@ fn disassemble_instr(pc: u16, pc_disp_offset: u16, aram: &[u8]) -> DisassembledI
             addr_mode_str = format!("${b0:02X},3").to_string();
         }
         0x63 => {
-            let rel_addr = opcode_addr + 2 + (b1 as i8) as u16;
+            let rel_addr = opcode_addr + 3 + (b1 as i8) as u16;
 
             instr_name = "bbs3".to_string();
             nbytes = 3;
@@ -652,7 +652,7 @@ fn disassemble_instr(pc: u16, pc_disp_offset: u16, aram: &[u8]) -> DisassembledI
             addr_mode_str = "y".to_string();
         }
         0x6E => {
-            let rel_addr = opcode_addr + 2 + (b1 as i8) as u16;
+            let rel_addr = opcode_addr + 3 + (b1 as i8) as u16;
 
             instr_name = "dbnz".to_string();
             nbytes = 3;
@@ -681,7 +681,7 @@ fn disassemble_instr(pc: u16, pc_disp_offset: u16, aram: &[u8]) -> DisassembledI
             addr_mode_str = format!("${b0:02X},3").to_string();
         }
         0x73 => {
-            let rel_addr = opcode_addr + 2 + (b1 as i8) as u16;
+            let rel_addr = opcode_addr + 3 + (b1 as i8) as u16;
 
             instr_name = "bbc3".to_string();
             nbytes = 3;
@@ -763,7 +763,7 @@ fn disassemble_instr(pc: u16, pc_disp_offset: u16, aram: &[u8]) -> DisassembledI
             addr_mode_str = format!("${b0:02X},4").to_string();
         }
         0x83 => {
-            let rel_addr = opcode_addr + 2 + (b1 as i8) as u16;
+            let rel_addr = opcode_addr + 3 + (b1 as i8) as u16;
 
             instr_name = "bbs4".to_string();
             nbytes = 3;
@@ -850,7 +850,7 @@ fn disassemble_instr(pc: u16, pc_disp_offset: u16, aram: &[u8]) -> DisassembledI
             addr_mode_str = format!("${b0:02X},4").to_string();
         }
         0x93 => {
-            let rel_addr = opcode_addr + 2 + (b1 as i8) as u16;
+            let rel_addr = opcode_addr + 3 + (b1 as i8) as u16;
 
             instr_name = "bbc4".to_string();
             nbytes = 3;
@@ -932,7 +932,7 @@ fn disassemble_instr(pc: u16, pc_disp_offset: u16, aram: &[u8]) -> DisassembledI
             addr_mode_str = format!("${b0:02X},5").to_string();
         }
         0xA3 => {
-            let rel_addr = opcode_addr + 2 + (b1 as i8) as u16;
+            let rel_addr = opcode_addr + 3 + (b1 as i8) as u16;
 
             instr_name = "bbs5".to_string();
             nbytes = 3;
@@ -1019,7 +1019,7 @@ fn disassemble_instr(pc: u16, pc_disp_offset: u16, aram: &[u8]) -> DisassembledI
             addr_mode_str = format!("${b0:02X},5").to_string();
         }
         0xB3 => {
-            let rel_addr = opcode_addr + 2 + (b1 as i8) as u16;
+            let rel_addr = opcode_addr + 3 + (b1 as i8) as u16;
 
             instr_name = "bbc5".to_string();
             nbytes = 3;
@@ -1101,7 +1101,7 @@ fn disassemble_instr(pc: u16, pc_disp_offset: u16, aram: &[u8]) -> DisassembledI
             addr_mode_str = format!("${b0:02X},6").to_string();
         }
         0xC3 => {
-            let rel_addr = opcode_addr + 2 + (b1 as i8) as u16;
+            let rel_addr = opcode_addr + 3 + (b1 as i8) as u16;
 
             instr_name = "bbs6".to_string();
             nbytes = 3;
@@ -1188,7 +1188,7 @@ fn disassemble_instr(pc: u16, pc_disp_offset: u16, aram: &[u8]) -> DisassembledI
             addr_mode_str = format!("${b0:02X},6").to_string();
         }
         0xD3 => {
-            let rel_addr = opcode_addr + 2 + (b1 as i8) as u16;
+            let rel_addr = opcode_addr + 3 + (b1 as i8) as u16;
 
             instr_name = "bbc6".to_string();
             nbytes = 3;
@@ -1245,7 +1245,7 @@ fn disassemble_instr(pc: u16, pc_disp_offset: u16, aram: &[u8]) -> DisassembledI
             addr_mode_str = "".to_string();
         }
         0xDE => {
-            let rel_addr = opcode_addr + 2 + (b1 as i8) as u16;
+            let rel_addr = opcode_addr + 3 + (b1 as i8) as u16;
 
             instr_name = "cbne".to_string();
             nbytes = 3;
@@ -1272,7 +1272,7 @@ fn disassemble_instr(pc: u16, pc_disp_offset: u16, aram: &[u8]) -> DisassembledI
             addr_mode_str = format!("${b0:02X},7").to_string();
         }
         0xE3 => {
-            let rel_addr = opcode_addr + 2 + (b1 as i8) as u16;
+            let rel_addr = opcode_addr + 3 + (b1 as i8) as u16;
 
             instr_name = "bbs7".to_string();
             nbytes = 3;
@@ -1359,7 +1359,7 @@ fn disassemble_instr(pc: u16, pc_disp_offset: u16, aram: &[u8]) -> DisassembledI
             addr_mode_str = format!("${b0:02X},7").to_string();
         }
         0xF3 => {
-            let rel_addr = opcode_addr + 2 + (b1 as i8) as u16;
+            let rel_addr = opcode_addr + 3 + (b1 as i8) as u16;
 
             instr_name = "bbc7".to_string();
             nbytes = 3;
@@ -1450,7 +1450,7 @@ pub(super) fn disassemble_block(prg_bytes: &[u8], pc_disp_offset: u16, outfile_s
     let mut pc = 0;
     let mut instr_cnt = 0;
 
-    while pc < prg_bytes.len() as u16 {
+    while (pc as usize) < prg_bytes.len() {
         let instr = disassemble_instr(pc, pc_disp_offset, prg_bytes);
 
         let instr_str = format!("{}\n", instr.instr_as_string());

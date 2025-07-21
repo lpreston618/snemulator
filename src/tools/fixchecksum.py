@@ -89,7 +89,12 @@ if __name__ == "__main__":
     rom_bytes = []
     with open(rom_filepath, "rb") as rom_file:
         rom_bytes = list(rom_file.read())
-    
+
+    header = []
+    if len(rom_bytes) % 1024 == 512:
+        header = rom_bytes[:512]
+        rom_bytes = rom_bytes[512:]
+
     padded_rom = pad_rom(rom_bytes)
 
     header_pos = 0
@@ -110,7 +115,7 @@ if __name__ == "__main__":
     print(f"Writing fixed ROM to '{fixed_rom_filepath}'")
     
     with open(fixed_rom_filepath, "wb") as out_file:
-        out_file.write(bytes(fixed_rom))
+        out_file.write(bytes(header + fixed_rom))
     
     print("Verifying ROM integrity...")
 

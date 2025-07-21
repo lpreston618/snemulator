@@ -83,3 +83,14 @@ pub fn hexdump8_to_file(bytes: &[u8], filepath: &str) {
 
     println!("Done.")
 }
+
+pub fn hexdump8_raw(bytes: &[u8], filepath: &str) {
+    println!("Dumping {} raw bytes to file '{}'", bytes.len(), filepath);
+
+    let path = std::path::Path::new(filepath);
+    let mut outf = std::fs::File::create(path).unwrap();
+
+    outf.write(bytes).unwrap();
+
+    println!("Done.")
+}
