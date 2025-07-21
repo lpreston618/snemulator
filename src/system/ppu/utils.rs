@@ -33,8 +33,15 @@ impl Togglable for Cell<ToggleState> {
     fn set_hi(&self) { self.set(ToggleState::HiByte); }
 }
 
-/// Swaps bits 0..=4 and 10..=14 of the u16. This effectively converts 0RGB0555
-/// colors to 0BGR0555 colors and vice versa.
-pub(super) fn xbgr0555_xrgb0555_conv(col: u16) -> u16 {
-    ((col & 0x1F) << 10) | (col & 0x03E0) | ((col & 0x7C00) >> 10)
+/// Converts a u16 from the 0BGR0555 color format used by the SNES into the
+/// libretro supported RGB565 format. The lowest bit of the green color value
+/// will never be set in the RGB565 format.
+pub(super) fn xbgr0555_to_rgb565(col: u16) -> u16 {
+    ((col & 0x1F) << 11) | ((col & 0x03E0) << 1) | ((col & 0x7C00) >> 10)
+}
+
+/// Converts a u16 from the RGB565 color format used by libretro into the
+/// SNES's color format, 0BGR0555.
+pub(super) fn rgb565_to_xbgr0555(col: u16) -> u16 {
+    ((col & 0x1F) << 10) | ((col & 0x07C0) >> 1) | ((col & 0xF800) >> 11)
 }

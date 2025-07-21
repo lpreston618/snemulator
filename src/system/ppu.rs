@@ -1,11 +1,11 @@
 mod utils;
 
-use utils::{xbgr0555_xrgb0555_conv, Togglable, ToggleState};
+use utils::{xbgr0555_to_rgb565, rgb565_to_xbgr0555, Togglable, ToggleState};
 
 use crate::utils::{GetBits, SetCellBytes};
 use crate::log::{SnemLogger, LogLevel};
 
-use libretro_rs::retro::pixel::format::ORGB1555;
+use libretro_rs::retro::pixel::format::RGB565;
 
 use std::{cell::Cell, rc::Rc};
 
@@ -1140,9 +1140,9 @@ impl PpuData {
                     let addr = self.cgram_addr.get();
                     let new_col = ((data as u16) << 8) | self.cgram_latch.get() as u16;
 
-                    let xrgb0555_col = xbgr0555_xrgb0555_conv(new_col);
+                    let rgb565 = xbgr0555_to_rgb565(new_col);
 
-                    self.cgram[addr as usize].set(xrgb0555_col);
+                    self.cgram[addr as usize].set(rgb565);
 
                     self.cgram_addr.set(addr + 1);
                 } else {
@@ -1426,9 +1426,9 @@ impl PpuData {
             }
 
             0x3B => {
-                let xrgb0555_col = self.cgram[self.cgram_addr.get() as usize].get();
+                let rgb565 = self.cgram[self.cgram_addr.get() as usize].get();
                 
-                let data = xbgr0555_xrgb0555_conv(xrgb0555_col);
+                let data = rgb565_to_xbgr0555(rgb565);
 
                 if self.cgram_toggle.toggle() {
                     data as u8
@@ -1597,7 +1597,7 @@ impl Ppu5C7x {
     pub fn sys_clocks_left(&self) -> usize { self.sys_clocks_until_clock }
 
     /// Clocks the PPU until the next dot is complete
-    pub fn clock(&mut self, frame_buffer: &mut [ORGB1555]) {
+    pub fn clock(&mut self, frame_buffer: &mut [RGB565]) {
         self.sys_clocks_until_clock = 0;
 
         if !self.in_vblank() && !self.in_hblank() && self.scanline != 0 {
@@ -1843,12 +1843,12 @@ impl Ppu5C7x {
         }
     }
 
-    fn dot(&mut self, frame_buffer: &mut [ORGB1555]) {
+    fn dot(&mut self, frame_buffer: &mut [RGB565]) {
         let screen_x = self.screen_x();
         let screen_y = self.screen_y();
 
         if self.in_fblank() {
-            frame_buffer[screen_y * 256 + screen_x] = ORGB1555::new_with_raw_value(0);
+            frame_buffer[screen_y * 256 + screen_x] = RGB565::new_with_raw_value(0);
         }
 
         // All bg modes need spr_col
@@ -1866,7 +1866,7 @@ impl Ppu5C7x {
             _ => 0,
         };
 
-        frame_buffer[screen_y * 256 + screen_x] = ORGB1555::new_with_raw_value(dot_col);
+        frame_buffer[screen_y * 256 + screen_x] = RGB565::new_with_raw_value(dot_col);
     }
 
     /// Gets the color of the first visible sprite on the screen.
