@@ -1549,6 +1549,7 @@ impl PpuData {
     pub fn clear_cpu_vblank_nmi(&self) { self.cpu_vblank_nmi.set(false); }
 }
 
+#[derive(Debug)]
 struct OAMSprite {
     x: u16,
     max_x: u16,
@@ -1613,21 +1614,21 @@ impl Ppu5C7x {
 
         //     crate::tools::hexdump::hexdump8_raw(&oam_clone, "oam_dump.bin");
 
-        //     // let mut cgram_clone = Vec::new();
+        //     let mut cgram_clone = Vec::new();
 
-        //     // for word in &self.registers.cgram[..] {
-        //     //     cgram_clone.push(word.get());
-        //     // }
+        //     for word in &self.registers.cgram[..] {
+        //         cgram_clone.push(word.get());
+        //     }
 
-        //     // crate::tools::hexdump::hexdump16_to_file(&cgram_clone, 0, "cgram_dump.txt");
+        //     crate::tools::hexdump::hexdump16_to_file(&cgram_clone, 0, "cgram_dump.txt");
 
-        //     // let mut vram_clone = Vec::new();
+        //     let mut vram_clone = Vec::new();
 
-        //     // for word in &self.registers.vram[..] {
-        //     //     vram_clone.push(word.get());
-        //     // }
+        //     for word in &self.registers.vram[..] {
+        //         vram_clone.push(word.get());
+        //     }
 
-        //     // crate::tools::hexdump::hexdump16_to_file(&vram_clone, 0, "vram_dump.txt");
+        //     crate::tools::hexdump::hexdump16_to_file(&vram_clone, 0, "vram_dump.txt");
 
         //     std::process::exit(0);
         // }
@@ -1763,7 +1764,7 @@ impl Ppu5C7x {
             };
             let spr_y = spr_data[1].get();
             let spr_x = (((spr_extra_data as u16) & 1) << 8) | (spr_data[0].get() as u16);
-            let (spr_max_x, spr_y_max) = match spr_size {
+            let (spr_x_max, spr_y_max) = match spr_size {
                 ObjectSize::Size8x8 => (spr_x + 8, spr_y + 8),
                 ObjectSize::Size16x16 => (spr_x + 16, spr_y + 16),
                 ObjectSize::Size16x32 | ObjectSize::Size32x32 => (spr_x + 32, spr_y + 32),
@@ -1774,7 +1775,7 @@ impl Ppu5C7x {
             if spr_y as usize <= screen_y && screen_y < spr_y_max as usize  {
                 let sprite = OAMSprite {
                     x: spr_x,
-                    max_x: spr_max_x,
+                    max_x: spr_x_max,
                     y: spr_y,
                     tile_idx: spr_data[2].get(),
                     use_second_obj_table: (spr_data[3].get() & 1) != 0,
@@ -1891,15 +1892,8 @@ impl Ppu5C7x {
                 let sprite_row = screen_y - sprite.y as usize;
                 let (tile_x, tile_col) = (sprite_col / 8, sprite_col % 8);
                 let (tile_y, tile_row) = (sprite_row / 8, sprite_row % 8);
-                
-                let spr_width_tiles = match sprite.size {
-                    ObjectSize::Size8x8 => 1,
-                    ObjectSize::Size16x16 | ObjectSize::Size16x32 => 2,
-                    ObjectSize::Size32x32 | ObjectSize::Size32x64 => 4,
-                    ObjectSize::Size64x64 => 8,
-                };
 
-                let tile_idx = tile_y*spr_width_tiles + tile_x;
+                let chr_idx = (tile_y << 4) + tile_x;
 
                 let obj_table_base_addr = if sprite.use_second_obj_table {
                     self.name_base_addr() + ((self.name_secondary_select() as u16) << 12)
@@ -1907,12 +1901,12 @@ impl Ppu5C7x {
                     self.name_base_addr()
                 };
 
-                let spr_tile_base_addr = obj_table_base_addr | ((sprite.tile_idx as u16) << 4);
-                let spr_tile_addr = spr_tile_base_addr + ((tile_idx as u16) << 4);
-                let spr_tile_row_addr = spr_tile_addr | ((tile_row as u16) << 1);
-                
+                let spr_tile_base_addr = obj_table_base_addr + ((sprite.tile_idx as u16) << 4);
+                let spr_tile_addr = spr_tile_base_addr + ((chr_idx as u16) << 4);
+                let spr_tile_row_addr = spr_tile_addr + tile_row as u16;
+
                 let bp01 = self.vram_read(spr_tile_row_addr + 0);
-                let bp23 = self.vram_read(spr_tile_row_addr + 1);
+                let bp23 = self.vram_read(spr_tile_row_addr + 8);
 
                 let b0 = ((bp01 >> (7-tile_col)) as u8) & 1;
                 let b1 = ((bp01 >> (15-tile_col)) as u8) & 1;
@@ -2617,7 +2611,7 @@ impl Ppu5C7x {
             let tile_chr_addr = bg_chr_base_addr + (tile_chr_idx << 4) + (tile_row << 1) as u16;
 
             let bp01 = self.vram_read(tile_chr_addr + 0);
-            let bp23 = self.vram_read(tile_chr_addr + 1);
+            let bp23 = self.vram_read(tile_chr_addr + 1); // TODO: Test 4bpp, might need to be +8 like sprites
 
             let b0 = ((bp01 >> (7-tile_col)) & 1) as u8;
             let b1 = ((bp01 >> (15-tile_col)) & 1) as u8;
