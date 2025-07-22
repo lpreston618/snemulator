@@ -3,3 +3,4 @@ mod log;
 mod libretro;
 mod tools;
 mod utils;
+mod controller;

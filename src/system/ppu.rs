@@ -790,7 +790,7 @@ impl PpuData {
                 self.in_fblank.set(data.bit_en(7));
                 self.screen_brightness.set(data & 0x0F);
 
-                println!("Set fblank to {}, S: {} D: {}", self.in_fblank.get(), self.scanline.get(), self.dot.get());
+                // println!("Set fblank to {}, S: {} D: {}", self.in_fblank.get(), self.scanline.get(), self.dot.get());
             }
 
             0x01 => {
@@ -810,7 +810,7 @@ impl PpuData {
                 self.name_secondary_select.set((data >> 3) & 0x03);
                 self.name_base_addr.set(data & 0x03);
 
-                println!("Set name base addr to ${:04X}", (self.name_base_addr.get() as u16) << 13);
+                // println!("Set name base addr to ${:04X}", (self.name_base_addr.get() as u16) << 13);
             }
 
             0x02 => {
@@ -874,7 +874,7 @@ impl PpuData {
                     }
                 );
 
-                println!("Set Bg Mode to {:?} and bg3 priority to {}", self.bg_mode.get(), self.bg3_mode1_priority.get());
+                // println!("Set Bg Mode to {:?} and bg3 priority to {}", self.bg_mode.get(), self.bg3_mode1_priority.get());
             }
 
             0x06 => {
@@ -1255,13 +1255,13 @@ impl PpuData {
                 self.bg2_main_enabled.set(data.bit_en(1));
                 self.bg1_main_enabled.set(data.bit_en(0));
 
-                println!("Set main en flags to Bg1: {}, Bg2: {}, Bg3: {}, Bg4: {}, Obj: {}",
-                    self.bg1_main_enabled.get(),
-                    self.bg2_main_enabled.get(),
-                    self.bg3_main_enabled.get(),
-                    self.bg4_main_enabled.get(),
-                    self.obj_main_enabled.get(),
-                )
+                // println!("Set main en flags to Bg1: {}, Bg2: {}, Bg3: {}, Bg4: {}, Obj: {}",
+                //     self.bg1_main_enabled.get(),
+                //     self.bg2_main_enabled.get(),
+                //     self.bg3_main_enabled.get(),
+                //     self.bg4_main_enabled.get(),
+                //     self.obj_main_enabled.get(),
+                // );
             }
 
             0x2D => {
@@ -2308,13 +2308,6 @@ impl Ppu5C7x {
             ColorLayer::Back => self.back_cmath_enabled(),
             _ => unreachable!(), // No other layers considered in Mode 1
         };
-
-        if screen_x == 0 && screen_y == 0 {
-            println!("Frame {}", self.frame);
-        }
-        if self.frame == 400 && screen_y == 6 {
-            println!("Pixel colored by tile on {:?}, cmath = {}", main_layer, cmath_en);
-        }
 
         if !cmath_en {
             return main_col;

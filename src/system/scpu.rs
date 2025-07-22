@@ -84,7 +84,10 @@ pub struct Cpu65c816 {
 
     logger: Rc<SnemLogger>,
 
-    debug_cnt: usize
+    pub poll_controllers: bool,
+
+    p1_controller_state: u16,
+    p2_controller_state: u16,
 }
 
 // SNES System Functionality
@@ -131,7 +134,9 @@ impl Cpu65c816 {
 
             logger,
 
-            debug_cnt: 0,
+            poll_controllers: false,
+            p1_controller_state: 0,
+            p2_controller_state: 0,
         }
     }
 
@@ -155,6 +160,11 @@ impl Cpu65c816 {
 
     pub fn reset(&mut self) {
         self.trigger_interrupt(CpuInterrupt::Reset);
+    }
+
+    pub fn latch_controller_states(&mut self, p1_controller_state: u16, p2_controller_state: u16) {
+        self.p1_controller_state = p1_controller_state;
+        self.p2_controller_state = p2_controller_state;
     }
 }
 
@@ -257,6 +267,22 @@ impl Cpu65c816 {
             0x2142 => self.apuio_regs.apuio2.get(),
             0x2143 => self.apuio_regs.apuio3.get(),
 
+            0x4016 => {
+                let p1_button = (self.p1_controller_state & 1) as u8;
+
+                self.p1_controller_state >>= 1;
+
+                p1_button
+            }
+
+            0x4017 => {
+                let p2_button = (self.p2_controller_state & 1) as u8;
+
+                self.p2_controller_state >>= 1;
+
+                p2_button
+            }
+
             0x4210 => {
                 let vblank_nmi_bit = if self.ppu_data.cpu_vblank_nmi() {
                     0x80
@@ -285,10 +311,6 @@ impl Cpu65c816 {
     }
 
     fn write_mmio_regs(&mut self, mmio_address: u16, data: u8) {
-        if mmio_address == 0x2100 {
-            println!("Set fblank to {} at pc: ${:04X} prg bank: ${:02X}", data.bit_en(7), self.pc, self.prg_bank);
-        }
-
         match mmio_address {
             0x2100..=0x213F => {
                 self.ppu_data.write(mmio_address as u8, data);
@@ -297,6 +319,8 @@ impl Cpu65c816 {
             0x2141 => { self.apuio_regs.cpuio1.set(data); }
             0x2142 => { self.apuio_regs.cpuio2.set(data); }
             0x2143 => { self.apuio_regs.cpuio3.set(data); }
+
+            0x4016 => { self.poll_controllers = data.bit_en(0); }
 
             0x4200 => {
                 self.vblank_nmi_ignore = (data & 0x80) == 0;
@@ -528,7 +552,7 @@ impl Cpu65c816 {
             && address.bank_addr() <= 0x7FFF && self.has_sram {
 
             let _sram_addr = (address - 0x6000) & 0xFFFF;
-            let _data = data;
+            let data = data;
 
             todo!("Read SRAM");
         }
@@ -780,8 +804,6 @@ impl Cpu65c816 {
         if interrupt == CpuInterrupt::IRQ && self.is_flag_set(Flag::FlagI) {
             return;
         }
-
-        println!("CPU INTERRUPT {:?}", interrupt);
 
         if interrupt == CpuInterrupt::Reset {
             self.set_mode(CpuMode::Emulation);
@@ -2566,8 +2588,6 @@ impl Cpu65c816 {
     fn exec_instr(&mut self) {
         let opcode = self.read_prg();
         let extra_clocks: usize;
-
-        let temp_pc = self.pc;
 
         // if self.debug_cnt > 0 {
         //     let (prg_data, prg_mirror) = if self.prg_bank == 0x7e || self.prg_bank == 0x7f {
@@ -6139,14 +6159,6 @@ impl Cpu65c816 {
                 self.pc += 4;
                 extra_clocks = 0;
             }
-        }
-
-        if self.pc == 0x9391 && self.prg_bank == 0 {
-            println!("At Nintendo Presents ($9391) from ${temp_pc:04X} ================================");
-            self.debug_cnt = 1;
-        } else if temp_pc == 0x93FC && self.prg_bank == 0 {
-            println!("Finished Nintendo Presents, RET to ${:04X}", self.pc);
-            self.debug_cnt = 0;
         }
 
         if self.branch_taken {

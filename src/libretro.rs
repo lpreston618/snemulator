@@ -1,16 +1,15 @@
-use std::cell::RefCell;
-use std::ffi::CStr;
 use std::rc::Rc;
 
+use crate::controller::{SnemController, SnemControllerButton};
 use crate::log::{LogLevel, SnemLogger};
-use crate::system::cartridge::{self, Cartridge};
+use crate::system::cartridge::Cartridge;
 use crate::system::scpu;
 use crate::system::ppu;
 use crate::system::ssmp;
 
 use libretro_rs::c_utf8::c_utf8;
 use libretro_rs::retro::av::{
-    GameGeometry, Message, SoftwareRenderEnabled, SystemAVInfo,
+    GameGeometry, SoftwareRenderEnabled, SystemAVInfo,
 };
 use libretro_rs::retro::env::GetAvInfo;
 use libretro_rs::retro::error::CoreError;
@@ -33,6 +32,18 @@ const FRAME_BUF_SIZE: usize = SNES_FRAME_WIDTH * SNES_FRAME_HEIGHT;
 const AUDIO_FREQ: usize = 44100;
 const AUDIO_BUFFER_SAMPLES: usize = AUDIO_FREQ / 60;
 
+macro_rules! set_button {
+    ($cb:expr, $controller:expr, $port:expr, $button:expr) => {
+        $controller.update_button_state($button,
+            $cb.is_joypad_button_pressed(
+                $port,
+                $button.into()
+            )
+        );
+    }
+}
+
+
 struct SnemulatorCore {
     logger: Rc<SnemLogger>,
     frame_buffer: ResizableFrameBuffer<RGB565, FRAME_BUF_SIZE>,
@@ -44,12 +55,10 @@ struct SnemulatorCore {
     snem_ppu: ppu::Ppu5C7x,
     snem_apu: ssmp::Spc700,
 
-    frame_count: u64,
+    p1_controller: SnemController,
+    p2_controller: SnemController,
 
-    #[cfg(feature = "warn-perf")]
-    last_frame: std::time::Instant,
-    #[cfg(feature = "warn-perf")]
-    prev_fps: Vec<f32>,
+    frame_count: u64,
 }
 
 impl SnemulatorCore {
@@ -64,26 +73,34 @@ impl SnemulatorCore {
     pub fn update_input(&mut self, callbacks: &mut impl Callbacks) -> InputsPolled {
         let inputs_polled = callbacks.poll_inputs();
 
-        // let p1_port = DevicePort::new(0);
-        // let p2_port = DevicePort::new(1);
+        let p1_port = retro::device::DevicePort::new(0);
+        let p2_port = retro::device::DevicePort::new(1);
 
-        // set_button!(self, callbacks, p1_controller, p1_port, A);
-        // set_button!(self, callbacks, p1_controller, p1_port, B);
-        // set_button!(self, callbacks, p1_controller, p1_port, Start);
-        // set_button!(self, callbacks, p1_controller, p1_port, Select);
-        // set_button!(self, callbacks, p1_controller, p1_port, Up);
-        // set_button!(self, callbacks, p1_controller, p1_port, Down);
-        // set_button!(self, callbacks, p1_controller, p1_port, Left);
-        // set_button!(self, callbacks, p1_controller, p1_port, Right);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::A);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::B);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::X);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::Y);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::Up);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::Down);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::Left);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::Right);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::Select);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::Start);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::L);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::R);
 
-        // set_button!(self, callbacks, p2_controller, p2_port, A);
-        // set_button!(self, callbacks, p2_controller, p2_port, B);
-        // set_button!(self, callbacks, p2_controller, p2_port, Start);
-        // set_button!(self, callbacks, p2_controller, p2_port, Select);
-        // set_button!(self, callbacks, p2_controller, p2_port, Up);
-        // set_button!(self, callbacks, p2_controller, p2_port, Down);
-        // set_button!(self, callbacks, p2_controller, p2_port, Left);
-        // set_button!(self, callbacks, p2_controller, p2_port, Right);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::A);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::B);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::X);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::Y);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::Up);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::Down);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::Left);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::Right);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::Select);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::Start);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::L);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::R);
 
         inputs_polled
     }
@@ -103,6 +120,15 @@ impl SnemulatorCore {
             self.snem_ppu.remove_clocks(cpu_clocks);
             self.snem_cpu.clock();
             self.snem_apu.clock(cpu_clocks);
+
+            if self.snem_cpu.poll_controllers {
+                self.snem_cpu.latch_controller_states(
+                    self.p1_controller.state_as_u16(),
+                    self.p1_controller.state_as_u16()
+                );
+
+                self.snem_cpu.poll_controllers = false;
+            }
         }
     }
 
@@ -173,12 +199,10 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
             snem_ppu,
             snem_apu,
 
-            frame_count: 0,
+            p1_controller: SnemController::new(),
+            p2_controller: SnemController::new(),
 
-            #[cfg(feature = "warn-perf")]
-            last_frame: std::time::Instant::now(),
-            #[cfg(feature = "warn-perf")]
-            prev_fps: Vec::new(),
+            frame_count: 0,
         };
 
         Ok(core)
@@ -240,32 +264,8 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
 
         self.cycle_frame();
 
-        #[cfg(not(feature = "no-audio"))]
         self.render_audio(callbacks);
-        #[cfg(not(feature = "no-video"))]
         self.render_video(callbacks);
-
-        #[cfg(feature = "warn-perf")]
-        {
-            const MIN_AVG_FPS: f32 = 45.0;
-
-            let fps = 1.0 / self.last_frame.elapsed().as_secs_f32();
-
-            self.prev_fps.push(fps);
-            
-            if self.prev_fps.len() > 120 {
-                let avg_fps = self.prev_fps.drain(0..60).sum::<f32>() / 60.0;
-
-                if avg_fps < MIN_AVG_FPS {
-                    self.logger.log(
-                        LogLevel::Warn,
-                        format!("Poor performance detected. Avg FPS: {:.04}", avg_fps).as_str()
-                    );
-                }
-            }
-
-            self.last_frame = std::time::Instant::now();
-        }
 
         self.frame_count += 1;
 
