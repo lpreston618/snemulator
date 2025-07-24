@@ -1616,36 +1616,36 @@ impl Ppu5C7x {
             self.dot(frame_buffer);
         }
 
-        if self.frame == 500 && self.scanline == 0 && self.dot == 0 {
-            // let mut oam_clone = Vec::new();
-            // for word in &self.registers.oam[..] {
-            //     oam_clone.push(word.get());
-            // }
-            // crate::tools::hexdump::hexdump8_raw(&oam_clone, "oam_dump.bin");
+        // if self.frame == 500 && self.scanline == 0 && self.dot == 0 {
+        //     // let mut oam_clone = Vec::new();
+        //     // for word in &self.registers.oam[..] {
+        //     //     oam_clone.push(word.get());
+        //     // }
+        //     // crate::tools::hexdump::hexdump8_raw(&oam_clone, "oam_dump.bin");
 
-            // let mut cgram_clone = Vec::new();
-            // for word in &self.registers.cgram[..] {
-            //     cgram_clone.push(word.get());
-            // }
-            // crate::tools::hexdump::hexdump16_to_file(&cgram_clone, 0, "cgram_dump.txt");
+        //     // let mut cgram_clone = Vec::new();
+        //     // for word in &self.registers.cgram[..] {
+        //     //     cgram_clone.push(word.get());
+        //     // }
+        //     // crate::tools::hexdump::hexdump16_to_file(&cgram_clone, 0, "cgram_dump.txt");
 
-            // let mut vram_clone = Vec::new();
-            // for word in &self.registers.vram[..] {
-            //     vram_clone.push(word.get());
-            // }
-            // crate::tools::hexdump::hexdump16_to_file(&vram_clone, 0, "vram_dump.txt");
+        //     // let mut vram_clone = Vec::new();
+        //     // for word in &self.registers.vram[..] {
+        //     //     vram_clone.push(word.get());
+        //     // }
+        //     // crate::tools::hexdump::hexdump16_to_file(&vram_clone, 0, "vram_dump.txt");
 
-            println!("Bg1 vram base addr: ${:04X}", (self.registers.bg1_vram_addr.get() as u16) << 10);
-            println!("Bg2 vram base addr: ${:04X}", (self.registers.bg2_vram_addr.get() as u16) << 10);
-            println!("Bg3 vram base addr: ${:04X}", (self.registers.bg3_vram_addr.get() as u16) << 10);
-            println!("Bg4 vram base addr: ${:04X}", (self.registers.bg4_vram_addr.get() as u16) << 10);
-            println!("Bg1 chr base address: ${:04X}", (self.registers.bg1_chr_base_addr.get() as u16) << 12);
-            println!("Bg2 chr base address: ${:04X}", (self.registers.bg2_chr_base_addr.get() as u16) << 12);
-            println!("Bg3 chr base address: ${:04X}", (self.registers.bg3_chr_base_addr.get() as u16) << 12);
-            println!("Bg4 chr base address: ${:04X}", (self.registers.bg4_chr_base_addr.get() as u16) << 12);
+        //     println!("Bg1 vram base addr: ${:04X}", (self.registers.bg1_vram_addr.get() as u16) << 10);
+        //     println!("Bg2 vram base addr: ${:04X}", (self.registers.bg2_vram_addr.get() as u16) << 10);
+        //     println!("Bg3 vram base addr: ${:04X}", (self.registers.bg3_vram_addr.get() as u16) << 10);
+        //     println!("Bg4 vram base addr: ${:04X}", (self.registers.bg4_vram_addr.get() as u16) << 10);
+        //     println!("Bg1 chr base address: ${:04X}", (self.registers.bg1_chr_base_addr.get() as u16) << 12);
+        //     println!("Bg2 chr base address: ${:04X}", (self.registers.bg2_chr_base_addr.get() as u16) << 12);
+        //     println!("Bg3 chr base address: ${:04X}", (self.registers.bg3_chr_base_addr.get() as u16) << 12);
+        //     println!("Bg4 chr base address: ${:04X}", (self.registers.bg4_chr_base_addr.get() as u16) << 12);
 
-            std::process::exit(0);
-        }
+        //     std::process::exit(0);
+        // }
 
         self.update_dot_and_scanline();
 
@@ -1686,8 +1686,13 @@ impl Ppu5C7x {
                 }
             }
             // End of scanline, start of h-blank
-            (HBLANK_START_DOT, _) => {
+            (HBLANK_START_DOT, 0..VBLANK_START_SCANLINE) => {
                 self.registers.in_hblank.set(true);
+                self.registers.hblank_start.set(true);
+            }
+            // Dot after hblank start
+            (286, 0..VBLANK_START_SCANLINE) => {
+                self.registers.hblank_start.set(false);
             }
             // Start of v-blank
             (0, VBLANK_START_SCANLINE) => {

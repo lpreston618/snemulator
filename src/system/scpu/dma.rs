@@ -45,7 +45,9 @@ pub(super) enum TransferPattern {
 #[derive(Default, Clone)]
 pub(super) struct DmaChannel {
     pub params_raw: u8,
-    pub active: bool,
+    pub dma_enable: bool,
+    pub hdma_enable: bool,
+    pub table_started: bool,
     pub direction: Direction,
     pub indirect: bool,
     pub inc_mode: AddressIncMode,
@@ -54,11 +56,14 @@ pub(super) struct DmaChannel {
     pub a_bus_hi: u8,
     pub a_bus_lo: u8,
     pub b_bus_addr: u8,
-    pub byte_count: u16,
+    pub byte_count: u16,               // These two are actually the same
+    pub hdma_indirect_table_addr: u32, // register in hardware.
+    pub hdma_table_start_addr: u32,
     pub hdma_table_addr: u16,
     pub hdma_reload: bool,
-    pub scanline: u8,
+    pub scanlines_left: u8,
     pub unused: u8,
+    pub repeat: bool,
     pub bytes_written: usize, // needed to keep track of B bus increment patterns
 }
 
