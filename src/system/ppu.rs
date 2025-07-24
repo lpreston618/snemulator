@@ -790,7 +790,7 @@ impl PpuData {
                 self.in_fblank.set(data.bit_en(7));
                 self.screen_brightness.set(data & 0x0F);
 
-                // println!("Set fblank to {}, S: {} D: {}", self.in_fblank.get(), self.scanline.get(), self.dot.get());
+                println!("Set fblank to {}, S: {} D: {}", self.in_fblank.get(), self.scanline.get(), self.dot.get());
             }
 
             0x01 => {
@@ -810,7 +810,7 @@ impl PpuData {
                 self.name_secondary_select.set((data >> 3) & 0x03);
                 self.name_base_addr.set(data & 0x03);
 
-                // println!("Set name base addr to ${:04X}", (self.name_base_addr.get() as u16) << 13);
+                println!("Set name base addr to ${:04X}", (self.name_base_addr.get() as u16) << 13);
             }
 
             0x02 => {
@@ -874,7 +874,7 @@ impl PpuData {
                     }
                 );
 
-                // println!("Set Bg Mode to {:?} and bg3 priority to {}", self.bg_mode.get(), self.bg3_mode1_priority.get());
+                println!("Set Bg Mode to {:?} and bg3 priority to {}", self.bg_mode.get(), self.bg3_mode1_priority.get());
             }
 
             0x06 => {
@@ -894,7 +894,7 @@ impl PpuData {
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
 
-                // println!("Set Bg1 vram base addr to ${:04X}", (self.bg1_vram_addr.get() as u16) << 10);
+                println!("Set Bg1 vram base addr to ${:04X}", (self.bg1_vram_addr.get() as u16) << 10);
             }
 
             0x08 => {
@@ -906,7 +906,7 @@ impl PpuData {
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
 
-                // println!("Set Bg2 vram base addr to ${:04X}", (self.bg2_vram_addr.get() as u16) << 10);
+                println!("Set Bg2 vram base addr to ${:04X}", (self.bg2_vram_addr.get() as u16) << 10);
             }
 
             0x09 => {
@@ -918,7 +918,7 @@ impl PpuData {
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
 
-                // println!("Set Bg3 vram base addr to ${:04X}", (self.bg3_vram_addr.get() as u16) << 10);
+                println!("Set Bg3 vram base addr to ${:04X}", (self.bg3_vram_addr.get() as u16) << 10);
             }
 
             0x0A => {
@@ -930,23 +930,23 @@ impl PpuData {
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
 
-                // println!("Set Bg4 vram base addr to ${:04X}", (self.bg4_vram_addr.get() as u16) << 10);
+                println!("Set Bg4 vram base addr to ${:04X}", (self.bg4_vram_addr.get() as u16) << 10);
             }
 
             0x0B => {
                 self.bg2_chr_base_addr.set(data >> 4);
                 self.bg1_chr_base_addr.set(data & 0x0F);
 
-                // println!("Set Bg1 chr base address to ${:04X}", (self.bg1_chr_base_addr.get() as u16) << 12);
-                // println!("Set Bg2 chr base address to ${:04X}", (self.bg2_chr_base_addr.get() as u16) << 12);
+                println!("Set Bg1 chr base address to ${:04X}", (self.bg1_chr_base_addr.get() as u16) << 12);
+                println!("Set Bg2 chr base address to ${:04X}", (self.bg2_chr_base_addr.get() as u16) << 12);
             }
 
             0x0C => {
                 self.bg4_chr_base_addr.set(data >> 4);
                 self.bg3_chr_base_addr.set(data & 0x0F);
 
-                // println!("Set Bg3 chr base address to ${:04X}", (self.bg3_chr_base_addr.get() as u16) << 12);
-                // println!("Set Bg4 chr base address to ${:04X}", (self.bg4_chr_base_addr.get() as u16) << 12);
+                println!("Set Bg3 chr base address to ${:04X}", (self.bg3_chr_base_addr.get() as u16) << 12);
+                println!("Set Bg4 chr base address to ${:04X}", (self.bg4_chr_base_addr.get() as u16) << 12);
             }
 
             0x0D => {
@@ -1255,13 +1255,13 @@ impl PpuData {
                 self.bg2_main_enabled.set(data.bit_en(1));
                 self.bg1_main_enabled.set(data.bit_en(0));
 
-                // println!("Set main en flags to Bg1: {}, Bg2: {}, Bg3: {}, Bg4: {}, Obj: {}",
-                //     self.bg1_main_enabled.get(),
-                //     self.bg2_main_enabled.get(),
-                //     self.bg3_main_enabled.get(),
-                //     self.bg4_main_enabled.get(),
-                //     self.obj_main_enabled.get(),
-                // );
+                println!("Set main en flags to Bg1: {}, Bg2: {}, Bg3: {}, Bg4: {}, Obj: {}",
+                    self.bg1_main_enabled.get(),
+                    self.bg2_main_enabled.get(),
+                    self.bg3_main_enabled.get(),
+                    self.bg4_main_enabled.get(),
+                    self.obj_main_enabled.get(),
+                );
             }
 
             0x2D => {
@@ -1352,6 +1352,8 @@ impl PpuData {
                 self.overscan_enabled.set(data.bit_en(2));
                 self.obj_interlace_enabled.set(data.bit_en(1));
                 self.screen_interlace_enabled.set(data.bit_en(0));
+
+                if self.screen_interlace_enabled.get() {}
             }
 
             _ => {}
@@ -1563,6 +1565,11 @@ struct OAMSprite {
     size: ObjectSize,
 }
 
+pub enum FrameBufferSize {
+    Size256x240,
+    Size512x480,
+}
+
 pub struct Ppu5C7x {
     registers: Rc<PpuData>,
 
@@ -1575,6 +1582,7 @@ pub struct Ppu5C7x {
     scanline_spr_cnt: usize,
 
     pub frame_finished: bool,
+    pub new_frame_buf_size: Option<FrameBufferSize>,
 
     logger: Rc<SnemLogger>,
 }
@@ -1590,6 +1598,7 @@ impl Ppu5C7x {
             scanline_sprites: Vec::with_capacity(32),
             scanline_spr_cnt: 0,
             frame_finished: false,
+            new_frame_buf_size: None,
             logger,
         }
     }

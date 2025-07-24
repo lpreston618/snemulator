@@ -32,34 +32,6 @@ pub(crate) struct Cartridge {
 
 
 impl Cartridge {
-    pub fn force_load(path: &Path, mapping_mode: MappingMode) -> Cartridge {
-        let mut rom_file = std::fs::File::open(path).unwrap();
-
-        let mut cart_rom = Vec::new();
-
-        let res = rom_file.read_to_end(&mut cart_rom).unwrap();
-
-        // Ignore optional 512 byte header
-        if cart_rom.len() % 1024 == 512 {
-            cart_rom.drain(0..512);
-        }
-
-        let cart_rom = pad_rom(cart_rom).unwrap();
-
-        let header_start = match mapping_mode {
-            MappingMode::LoROM => 0x007FC0,
-            MappingMode::HiROM => 0x00FFC0,
-            MappingMode::ExHiROM => 0x40FFC0,
-        };
-        let header_end = header_start + 0x40 as usize;
-
-        let mut cart = Cartridge::default();
-
-        cart.populate_header_data(&cart_rom[header_start..header_end]);
-        cart.cart_rom = Some(cart_rom);
-
-        cart
-    }
     /// Read in a cartridge from the given path to an spc or sfc file
     pub fn from_path(path: &Path) -> Result<Cartridge, String> {
         let mut rom_file = std::fs::File::open(path).unwrap();

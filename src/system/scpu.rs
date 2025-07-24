@@ -88,6 +88,8 @@ pub struct Cpu65c816 {
 
     p1_controller_state: u16,
     p2_controller_state: u16,
+
+    pub debug_flag: bool,
 }
 
 // SNES System Functionality
@@ -137,6 +139,8 @@ impl Cpu65c816 {
             poll_controllers: false,
             p1_controller_state: 0,
             p2_controller_state: 0,
+
+            debug_flag: false,
         }
     }
 
@@ -165,6 +169,8 @@ impl Cpu65c816 {
     pub fn latch_controller_states(&mut self, p1_controller_state: u16, p2_controller_state: u16) {
         self.p1_controller_state = p1_controller_state;
         self.p2_controller_state = p2_controller_state;
+
+        println!("p1: {:016b}, p2: {:016b}", p1_controller_state, p2_controller_state);
     }
 }
 
@@ -2589,7 +2595,7 @@ impl Cpu65c816 {
         let opcode = self.read_prg();
         let extra_clocks: usize;
 
-        // if self.debug_cnt > 0 {
+        // if self.debug_flag {
         //     let (prg_data, prg_mirror) = if self.prg_bank == 0x7e || self.prg_bank == 0x7f {
         //         (&self.wram[..], self.wram.len()-1)
         //     } else {
@@ -2610,11 +2616,6 @@ impl Cpu65c816 {
         //             )
         //         ).as_str()
         //     );
-
-        //     if self.pc > 0xFFc2 && self.prg_bank == 0 {
-        //         println!("PC OUT OF BOUNDS =========================");
-        //         // std::process::exit(0);
-        //     }
         // }
 
         match (opcode, self.mode, self.acc_size(), self.idx_size()) {

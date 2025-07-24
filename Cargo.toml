@@ -12,11 +12,6 @@ libretro-rs = { path = "./libretro/libretro-rs" }
 serde_json = "1.0.134"
 rand="*"
 
-[features]
-warn-perf = []
-no-video = []
-no-audio = []
-
 [profile.dev]
 overflow-checks = false
 opt-level = 2

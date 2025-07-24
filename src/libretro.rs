@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::controller::{SnemController, SnemControllerButton};
+use crate::controller::SnemController;
 use crate::log::{LogLevel, SnemLogger};
 use crate::system::cartridge::Cartridge;
 use crate::system::scpu;
@@ -11,6 +11,7 @@ use libretro_rs::c_utf8::c_utf8;
 use libretro_rs::retro::av::{
     GameGeometry, SoftwareRenderEnabled, SystemAVInfo,
 };
+use libretro_rs::retro::device::JoypadButton;
 use libretro_rs::retro::env::GetAvInfo;
 use libretro_rs::retro::error::CoreError;
 use libretro_rs::retro::game::GameInfo;
@@ -76,31 +77,31 @@ impl SnemulatorCore {
         let p1_port = retro::device::DevicePort::new(0);
         let p2_port = retro::device::DevicePort::new(1);
 
-        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::A);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::B);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::X);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::Y);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::Up);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::Down);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::Left);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::Right);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::Select);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::Start);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::L);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, SnemControllerButton::R);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::A);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::B);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::X);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::Y);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::Up);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::Down);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::Left);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::Right);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::Select);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::Start);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::L1);
+        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::R1);
 
-        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::A);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::B);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::X);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::Y);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::Up);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::Down);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::Left);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::Right);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::Select);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::Start);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::L);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, SnemControllerButton::R);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::A);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::B);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::X);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::Y);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::Up);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::Down);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::Left);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::Right);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::Select);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::Start);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::L1);
+        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::R1);
 
         inputs_polled
     }
@@ -124,7 +125,7 @@ impl SnemulatorCore {
             if self.snem_cpu.poll_controllers {
                 self.snem_cpu.latch_controller_states(
                     self.p1_controller.state_as_u16(),
-                    self.p1_controller.state_as_u16()
+                    self.p2_controller.state_as_u16()
                 );
 
                 self.snem_cpu.poll_controllers = false;
@@ -137,6 +138,10 @@ impl SnemulatorCore {
     fn cycle_frame(&mut self) {
         while !self.snem_ppu.frame_finished {
             self.cycle();
+        }
+
+        if self.frame_count == 100 {
+            self.snem_cpu.debug_flag = true;
         }
 
         self.snem_ppu.frame_finished = false;

@@ -1,3 +1,0 @@
-[alias]
-build-perf = "build --features warn-perf"
-build-debug-all = "build --features debug-log-all"
