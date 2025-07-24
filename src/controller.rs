@@ -1,40 +1,5 @@
 use libretro_rs::retro::device::JoypadButton;
 
-// #[derive(Debug)]
-// pub enum JoypadButton {
-//     A = 0,
-//     B = 1,
-//     X = 2,
-//     Y = 3,
-//     Up = 4,
-//     Down = 5,
-//     Left = 6,
-//     Right = 7,
-//     Select = 8,
-//     Start = 9,
-//     L = 10,
-//     R = 11,
-// }
-
-// impl Into<retro::device::JoypadButton> for JoypadButton {
-//     fn into(self) -> retro::device::JoypadButton {
-//         match self {
-//             JoypadButton::A => retro::device::JoypadButton::A,
-//             JoypadButton::B => retro::device::JoypadButton::B,
-//             JoypadButton::X => retro::device::JoypadButton::X,
-//             JoypadButton::Y => retro::device::JoypadButton::Y,
-//             JoypadButton::Up => retro::device::JoypadButton::Up,
-//             JoypadButton::Down => retro::device::JoypadButton::Down,
-//             JoypadButton::Left => retro::device::JoypadButton::Left,
-//             JoypadButton::Right => retro::device::JoypadButton::Right,
-//             JoypadButton::Select => retro::device::JoypadButton::Select,
-//             JoypadButton::Start => retro::device::JoypadButton::Start,
-//             JoypadButton::L => retro::device::JoypadButton::L1,
-//             JoypadButton::R => retro::device::JoypadButton::R1,
-//         }
-//     }
-// }
-
 pub struct SnemController {
     buttons: [bool; 12],
 }

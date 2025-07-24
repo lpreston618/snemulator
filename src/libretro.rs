@@ -140,7 +140,7 @@ impl SnemulatorCore {
             self.cycle();
         }
 
-        if self.frame_count == 100 {
+        if self.frame_count == 90 {
             self.snem_cpu.debug_flag = true;
         }
 

@@ -169,8 +169,6 @@ impl Cpu65c816 {
     pub fn latch_controller_states(&mut self, p1_controller_state: u16, p2_controller_state: u16) {
         self.p1_controller_state = p1_controller_state;
         self.p2_controller_state = p2_controller_state;
-
-        println!("p1: {:016b}, p2: {:016b}", p1_controller_state, p2_controller_state);
     }
 }
 
@@ -217,7 +215,7 @@ impl Cpu65c816 {
         };
 
         match self.dma_status {
-            DmaStatus::Off => self.add_clocks(clocks),
+            DmaStatus::Off | DmaStatus::InactiveHDMA => self.add_clocks(clocks),
             _ => {}
         }
 
@@ -259,7 +257,7 @@ impl Cpu65c816 {
         };
 
         match self.dma_status {
-            DmaStatus::Off => self.add_clocks(clocks),
+            DmaStatus::Off | DmaStatus::InactiveHDMA => self.add_clocks(clocks),
             _ => {}
         };
     }
@@ -342,11 +340,12 @@ impl Cpu65c816 {
             }
 
             0x420B => {
-                if data == 0 {
-                    self.dma_status = DmaStatus::Off;
-                } else {
-                    self.dma_status = DmaStatus::DMA;
-                    // Position of lowest set bit
+                if data != 0 {
+                    self.dma_status = match self.dma_status {
+                        DmaStatus::Off => DmaStatus::DMA,
+                        DmaStatus::InactiveHDMA => DmaStatus::InactiveLayeredHDMA,
+                        _ => self.dma_status,
+                    };
                 }
 
                 self.dma_channels[0].active = data.bit_en(0);
@@ -369,18 +368,48 @@ impl Cpu65c816 {
 
                 self.active_channel_idx = data.trailing_zeros() as usize;
 
-                // println!("Wrote to DMA enable with 0x{data:02X}, active channel = {}", self.active_channel_idx);
-                // println!("  Ch. 0 active: {}", self.dma_channels[0].active);
-                // println!("  Ch. 1 active: {}", self.dma_channels[1].active);
-                // println!("  Ch. 2 active: {}", self.dma_channels[2].active);
-                // println!("  Ch. 3 active: {}", self.dma_channels[3].active);
-                // println!("  Ch. 4 active: {}", self.dma_channels[4].active);
-                // println!("  Ch. 5 active: {}", self.dma_channels[5].active);
-                // println!("  Ch. 6 active: {}", self.dma_channels[6].active);
-                // println!("  Ch. 7 active: {}", self.dma_channels[7].active);
+                println!("Wrote to DMA enable with 0x{data:02X}, active channel = {}", self.active_channel_idx);
+                println!("  Ch. 0 active: {}", self.dma_channels[0].active);
+                println!("  Ch. 1 active: {}", self.dma_channels[1].active);
+                println!("  Ch. 2 active: {}", self.dma_channels[2].active);
+                println!("  Ch. 3 active: {}", self.dma_channels[3].active);
+                println!("  Ch. 4 active: {}", self.dma_channels[4].active);
+                println!("  Ch. 5 active: {}", self.dma_channels[5].active);
+                println!("  Ch. 6 active: {}", self.dma_channels[6].active);
+                println!("  Ch. 7 active: {}", self.dma_channels[7].active);
             }
             0x420C => {
-                // println!("Wrote 0x{data:02X} to HDMA enable");
+                if data != 0 {
+                    self.dma_status = match self.dma_status {
+                        DmaStatus::Off => DmaStatus::InactiveHDMA,
+                        _ => self.dma_status,
+                    };
+                } else {
+                    self.dma_status = match self.dma_status {
+                        DmaStatus::InactiveHDMA => DmaStatus::Off,
+                        _ => self.dma_status,
+                    };
+                }
+
+                self.dma_channels[0].active = data.bit_en(0);
+                self.dma_channels[1].active = data.bit_en(1);
+                self.dma_channels[2].active = data.bit_en(2);
+                self.dma_channels[3].active = data.bit_en(3);
+                self.dma_channels[4].active = data.bit_en(4);
+                self.dma_channels[5].active = data.bit_en(5);
+                self.dma_channels[6].active = data.bit_en(6);
+                self.dma_channels[7].active = data.bit_en(7);
+
+                self.dma_channels[0].bytes_written = 0;
+                self.dma_channels[1].bytes_written = 0;
+                self.dma_channels[2].bytes_written = 0;
+                self.dma_channels[3].bytes_written = 0;
+                self.dma_channels[4].bytes_written = 0;
+                self.dma_channels[5].bytes_written = 0;
+                self.dma_channels[6].bytes_written = 0;
+                self.dma_channels[7].bytes_written = 0;
+
+                self.active_channel_idx = data.trailing_zeros() as usize;
             }
 
             0x4300..=0x43FF if ((mmio_address >> 4) & 0xF) < 8 => {
@@ -847,6 +876,7 @@ impl Cpu65c816 {
             }
         }
 
+        self.prg_bank = 0;
         self.pc = self.read16(vector_lo, vector_hi);
         self.add_clocks(Cpu65c816::ONE_CYCLE);
     }
@@ -2518,18 +2548,26 @@ impl Cpu65c816 {
     pub fn clock(&mut self) {
         self.sys_clocks_until_clock = 0;
 
-        if self.ppu_data.cpu_vblank_nmi.get() && !self.vblank_nmi_ignore {
+        if self.ppu_data.cpu_vblank_nmi.get() && !self.vblank_nmi_ignore { // TODO: maybe clear cpu_vblank_nmi regardless of vblank_nmi_ignore
             self.trigger_interrupt(CpuInterrupt::NMI);
             self.ppu_data.cpu_vblank_nmi.set(false);
-        } else if self.ppu_data.hv_timer_irq.get() {
+        } else if self.ppu_data.hv_timer_irq.get() { // TODO: Same as ^^^, maybe clear flag even when ignore is false
             self.trigger_interrupt(CpuInterrupt::IRQ);
             self.ppu_data.hv_timer_irq.set(false);
         } else {
+            if self.ppu_data.hblank_start.get() {
+                self.dma_status = match self.dma_status {
+                    DmaStatus::InactiveHDMA => DmaStatus::HDMA,
+                    DmaStatus::InactiveLayeredHDMA => DmaStatus::ActiveLayeredHDMA,
+                    _ => self.dma_status,
+                };
+                self.ppu_data.hblank_start.set(false);
+            }
+
             match self.dma_status {
-                DmaStatus::Off => self.exec_instr(),
-                DmaStatus::DMA => self.do_dma(),
-                DmaStatus::HDMA => self.do_hdma(),
-                DmaStatus::LayeredHDMA => self.do_hdma(),
+                DmaStatus::Off | DmaStatus::InactiveHDMA => self.exec_instr(),
+                DmaStatus::DMA | DmaStatus::InactiveLayeredHDMA => self.do_dma(),
+                DmaStatus::HDMA | DmaStatus::ActiveLayeredHDMA => self.do_hdma(),
             }
         }
     }
@@ -2547,13 +2585,13 @@ impl Cpu65c816 {
         dma_channel.byte_count -= 1;
 
         if dma_channel.byte_count == 0 {
-            // println!("Finished DMA of {} bytes on channel {}. A: ${:06X}, B: $21{:02X}, Dir: {:?}",
-            //     dma_channel.bytes_written, 
-            //     self.active_channel_idx,
-            //     dma_channel.a_bus_addr(),
-            //     dma_channel.b_bus_addr,
-            //     dma_channel.direction,
-            // );
+            println!("Finished DMA of {} bytes on channel {}. A: ${:06X}, B: $21{:02X}, Dir: {:?}",
+                dma_channel.bytes_written, 
+                self.active_channel_idx,
+                dma_channel.a_bus_addr(),
+                dma_channel.b_bus_addr,
+                dma_channel.direction,
+            );
 
             dma_channel.active = false;
             dma_channel.bytes_written = 0;

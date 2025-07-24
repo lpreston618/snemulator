@@ -1,10 +1,17 @@
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub(super) enum DmaStatus {
-    #[default]
+    /// No enabled DMA or H-DMA channels
     Off,
+    /// DMA in progress, no H-DMA channels enabled
     DMA,
+    /// H-DMA in progress, no DMA channels enabled
     HDMA,
-    LayeredHDMA,
+    /// H-DMA waiting for next hblank, no DMA channels enabled
+    InactiveHDMA,
+    /// H-DMA active, DMA waiting for H-DMA to finish
+    ActiveLayeredHDMA,
+    /// DMA active, H-DMA waiting for next hblank
+    InactiveLayeredHDMA,
 }
 
 #[derive(Default, Clone, Debug)]

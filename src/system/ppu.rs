@@ -541,6 +541,7 @@ pub(crate) struct PpuData {
     pub hv_timer_irq_mode: Cell<HVTimerIRQ>,
     pub hv_timer_irq: Cell<bool>,
     pub cpu_vblank_nmi: Cell<bool>,
+    pub hblank_start: Cell<bool>,
 
     logger: Rc<SnemLogger>
 }
@@ -776,6 +777,7 @@ impl PpuData {
 
             cpu_vblank_nmi: Cell::new(false),
             hv_timer_irq: Cell::new(false),
+            hblank_start: Cell::new(false),
 
             logger,
         }
@@ -1614,33 +1616,36 @@ impl Ppu5C7x {
             self.dot(frame_buffer);
         }
 
-        // if self.frame == 100 && self.scanline == 0 && self.dot == 0 {
-        //     let mut oam_clone = Vec::new();
+        if self.frame == 500 && self.scanline == 0 && self.dot == 0 {
+            // let mut oam_clone = Vec::new();
+            // for word in &self.registers.oam[..] {
+            //     oam_clone.push(word.get());
+            // }
+            // crate::tools::hexdump::hexdump8_raw(&oam_clone, "oam_dump.bin");
 
-        //     for word in &self.registers.oam[..] {
-        //         oam_clone.push(word.get());
-        //     }
+            // let mut cgram_clone = Vec::new();
+            // for word in &self.registers.cgram[..] {
+            //     cgram_clone.push(word.get());
+            // }
+            // crate::tools::hexdump::hexdump16_to_file(&cgram_clone, 0, "cgram_dump.txt");
 
-        //     crate::tools::hexdump::hexdump8_raw(&oam_clone, "oam_dump.bin");
+            // let mut vram_clone = Vec::new();
+            // for word in &self.registers.vram[..] {
+            //     vram_clone.push(word.get());
+            // }
+            // crate::tools::hexdump::hexdump16_to_file(&vram_clone, 0, "vram_dump.txt");
 
-        //     let mut cgram_clone = Vec::new();
+            println!("Bg1 vram base addr: ${:04X}", (self.registers.bg1_vram_addr.get() as u16) << 10);
+            println!("Bg2 vram base addr: ${:04X}", (self.registers.bg2_vram_addr.get() as u16) << 10);
+            println!("Bg3 vram base addr: ${:04X}", (self.registers.bg3_vram_addr.get() as u16) << 10);
+            println!("Bg4 vram base addr: ${:04X}", (self.registers.bg4_vram_addr.get() as u16) << 10);
+            println!("Bg1 chr base address: ${:04X}", (self.registers.bg1_chr_base_addr.get() as u16) << 12);
+            println!("Bg2 chr base address: ${:04X}", (self.registers.bg2_chr_base_addr.get() as u16) << 12);
+            println!("Bg3 chr base address: ${:04X}", (self.registers.bg3_chr_base_addr.get() as u16) << 12);
+            println!("Bg4 chr base address: ${:04X}", (self.registers.bg4_chr_base_addr.get() as u16) << 12);
 
-        //     for word in &self.registers.cgram[..] {
-        //         cgram_clone.push(word.get());
-        //     }
-
-        //     crate::tools::hexdump::hexdump16_to_file(&cgram_clone, 0, "cgram_dump.txt");
-
-        //     let mut vram_clone = Vec::new();
-
-        //     for word in &self.registers.vram[..] {
-        //         vram_clone.push(word.get());
-        //     }
-
-        //     crate::tools::hexdump::hexdump16_to_file(&vram_clone, 0, "vram_dump.txt");
-
-        //     std::process::exit(0);
-        // }
+            std::process::exit(0);
+        }
 
         self.update_dot_and_scanline();
 
@@ -2610,10 +2615,10 @@ impl Ppu5C7x {
             // let flip_x = (tile_data & 0x4000) != 0; // TODO: implement h/v flipping
             // let flip_y = (tile_data & 0x8000) != 0;
 
-            let tile_chr_addr = bg_chr_base_addr + (tile_chr_idx << 4) + (tile_row << 1) as u16;
+            let tile_chr_addr = bg_chr_base_addr + (tile_chr_idx << 4) + tile_row as u16;
 
             let bp01 = self.vram_read(tile_chr_addr + 0);
-            let bp23 = self.vram_read(tile_chr_addr + 1); // TODO: Test 4bpp, might need to be +8 like sprites
+            let bp23 = self.vram_read(tile_chr_addr + 8);
 
             let b0 = ((bp01 >> (7-tile_col)) & 1) as u8;
             let b1 = ((bp01 >> (15-tile_col)) & 1) as u8;
