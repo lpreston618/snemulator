@@ -119,7 +119,7 @@ impl SnemulatorCore {
             self.snem_apu.clock(ppu_clocks);
         } else {
             self.snem_ppu.remove_clocks(cpu_clocks);
-            self.snem_cpu.clock();
+            self.snem_cpu.clock(self.frame_count as usize);
             self.snem_apu.clock(cpu_clocks);
 
             if self.snem_cpu.poll_controllers {
@@ -130,6 +130,15 @@ impl SnemulatorCore {
 
                 self.snem_cpu.poll_controllers = false;
             }
+
+            if self.snem_cpu.auto_read_controllers {
+                self.snem_cpu.do_joypad_auto_read(
+                    self.p1_controller.state_as_u16(),
+                    self.p2_controller.state_as_u16()
+                );
+
+                self.snem_cpu.auto_read_controllers = false;
+            }
         }
     }
 
@@ -138,10 +147,6 @@ impl SnemulatorCore {
     fn cycle_frame(&mut self) {
         while !self.snem_ppu.frame_finished {
             self.cycle();
-        }
-
-        if self.frame_count == 90 {
-            self.snem_cpu.debug_flag = true;
         }
 
         self.snem_ppu.frame_finished = false;

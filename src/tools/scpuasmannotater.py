@@ -219,6 +219,9 @@ if __name__ == "__main__":
         if named_addrs.get(target_addr, False):
             lines[i] = line[:-1] + "  ;  " + named_addrs.get(target_addr) + "\n"
 
+    for i in range(len(lines)):
+        lines[i] = lines[i].replace("[libretro INFO] [Snemulator] ", "")
+
     with open(f"{infile[:-4]}_annotated.txt", "w") as outf:
         outf.writelines(lines)
 

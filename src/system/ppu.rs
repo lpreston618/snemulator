@@ -2,6 +2,7 @@ mod utils;
 
 use utils::{xbgr0555_to_rgb565, rgb565_to_xbgr0555, Togglable, ToggleState};
 
+use crate::system::ppu::utils::{rgb565_from_parts, rgb565_to_parts};
 use crate::utils::{GetBits, SetCellBytes};
 use crate::log::{SnemLogger, LogLevel};
 
@@ -535,13 +536,15 @@ pub(crate) struct PpuData {
 
     h_counter: Cell<u16>,
     v_counter: Cell<u16>,
-    h_counter_target: Cell<u16>,
-    v_counter_target: Cell<u16>,
+
+    pub h_counter_target: Cell<u16>,
+    pub v_counter_target: Cell<u16>,
     
     pub hv_timer_irq_mode: Cell<HVTimerIRQ>,
     pub hv_timer_irq: Cell<bool>,
     pub cpu_vblank_nmi: Cell<bool>,
     pub hblank_start: Cell<bool>,
+    pub vblank_start: Cell<bool>,
 
     logger: Rc<SnemLogger>
 }
@@ -778,6 +781,7 @@ impl PpuData {
             cpu_vblank_nmi: Cell::new(false),
             hv_timer_irq: Cell::new(false),
             hblank_start: Cell::new(false),
+            vblank_start: Cell::new(false),
 
             logger,
         }
@@ -792,7 +796,7 @@ impl PpuData {
                 self.in_fblank.set(data.bit_en(7));
                 self.screen_brightness.set(data & 0x0F);
 
-                println!("Set fblank to {}, S: {} D: {}", self.in_fblank.get(), self.scanline.get(), self.dot.get());
+                // println!("Set fblank to {}, S: {} D: {}", self.in_fblank.get(), self.scanline.get(), self.dot.get());
             }
 
             0x01 => {
@@ -812,7 +816,7 @@ impl PpuData {
                 self.name_secondary_select.set((data >> 3) & 0x03);
                 self.name_base_addr.set(data & 0x03);
 
-                println!("Set name base addr to ${:04X}", (self.name_base_addr.get() as u16) << 13);
+                // println!("Set name base addr to ${:04X}", (self.name_base_addr.get() as u16) << 13);
             }
 
             0x02 => {
@@ -876,7 +880,7 @@ impl PpuData {
                     }
                 );
 
-                println!("Set Bg Mode to {:?} and bg3 priority to {}", self.bg_mode.get(), self.bg3_mode1_priority.get());
+                // println!("Set Bg Mode to {:?} and bg3 priority to {}", self.bg_mode.get(), self.bg3_mode1_priority.get());
             }
 
             0x06 => {
@@ -896,7 +900,7 @@ impl PpuData {
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
 
-                println!("Set Bg1 vram base addr to ${:04X}", (self.bg1_vram_addr.get() as u16) << 10);
+                // println!("Set Bg1 vram base addr to ${:04X}", (self.bg1_vram_addr.get() as u16) << 10);
             }
 
             0x08 => {
@@ -908,7 +912,7 @@ impl PpuData {
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
 
-                println!("Set Bg2 vram base addr to ${:04X}", (self.bg2_vram_addr.get() as u16) << 10);
+                // println!("Set Bg2 vram base addr to ${:04X}", (self.bg2_vram_addr.get() as u16) << 10);
             }
 
             0x09 => {
@@ -920,7 +924,7 @@ impl PpuData {
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
 
-                println!("Set Bg3 vram base addr to ${:04X}", (self.bg3_vram_addr.get() as u16) << 10);
+                // println!("Set Bg3 vram base addr to ${:04X}", (self.bg3_vram_addr.get() as u16) << 10);
             }
 
             0x0A => {
@@ -932,23 +936,23 @@ impl PpuData {
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
 
-                println!("Set Bg4 vram base addr to ${:04X}", (self.bg4_vram_addr.get() as u16) << 10);
+                // println!("Set Bg4 vram base addr to ${:04X}", (self.bg4_vram_addr.get() as u16) << 10);
             }
 
             0x0B => {
                 self.bg2_chr_base_addr.set(data >> 4);
                 self.bg1_chr_base_addr.set(data & 0x0F);
 
-                println!("Set Bg1 chr base address to ${:04X}", (self.bg1_chr_base_addr.get() as u16) << 12);
-                println!("Set Bg2 chr base address to ${:04X}", (self.bg2_chr_base_addr.get() as u16) << 12);
+                // println!("Set Bg1 chr base address to ${:04X}", (self.bg1_chr_base_addr.get() as u16) << 12);
+                // println!("Set Bg2 chr base address to ${:04X}", (self.bg2_chr_base_addr.get() as u16) << 12);
             }
 
             0x0C => {
                 self.bg4_chr_base_addr.set(data >> 4);
                 self.bg3_chr_base_addr.set(data & 0x0F);
 
-                println!("Set Bg3 chr base address to ${:04X}", (self.bg3_chr_base_addr.get() as u16) << 12);
-                println!("Set Bg4 chr base address to ${:04X}", (self.bg4_chr_base_addr.get() as u16) << 12);
+                // println!("Set Bg3 chr base address to ${:04X}", (self.bg3_chr_base_addr.get() as u16) << 12);
+                // println!("Set Bg4 chr base address to ${:04X}", (self.bg4_chr_base_addr.get() as u16) << 12);
             }
 
             0x0D => {
@@ -1185,8 +1189,14 @@ impl PpuData {
                 self.obj_w1_inverted.set(data.bit_en(0));
             }
 
-            0x26 => { self.w1_left_pos.set(data); }
-            0x27 => { self.w1_right_pos.set(data); }
+            0x26 => {
+                // println!("Set w1 left pos to 0x{:02X}", self.w1_left_pos.get());
+                self.w1_left_pos.set(data);
+            }
+            0x27 => {
+                // println!("Set w1 right pos to 0x{:02X}", self.w1_right_pos.get());
+                self.w1_right_pos.set(data);
+            }
             0x28 => { self.w2_left_pos.set(data); }
             0x29 => { self.w2_right_pos.set(data); }
 
@@ -1257,13 +1267,13 @@ impl PpuData {
                 self.bg2_main_enabled.set(data.bit_en(1));
                 self.bg1_main_enabled.set(data.bit_en(0));
 
-                println!("Set main en flags to Bg1: {}, Bg2: {}, Bg3: {}, Bg4: {}, Obj: {}",
-                    self.bg1_main_enabled.get(),
-                    self.bg2_main_enabled.get(),
-                    self.bg3_main_enabled.get(),
-                    self.bg4_main_enabled.get(),
-                    self.obj_main_enabled.get(),
-                );
+                // println!("Set main en flags to Bg1: {}, Bg2: {}, Bg3: {}, Bg4: {}, Obj: {}",
+                //     self.bg1_main_enabled.get(),
+                //     self.bg2_main_enabled.get(),
+                //     self.bg3_main_enabled.get(),
+                //     self.bg4_main_enabled.get(),
+                //     self.obj_main_enabled.get(),
+                // );
             }
 
             0x2D => {
@@ -1309,8 +1319,10 @@ impl PpuData {
                         _ => unreachable!(),
                     }
                 );
-                self.sub_color_fixed.set(data.bit_en(1));
+                self.sub_color_fixed.set(!data.bit_en(1));
                 self.use_direct_col.set(data.bit_en(0));
+
+                println!("Set main col win region to {:?}, sub win col region to {:?}", self.col_win_main_region.get(), self.col_win_sub_region.get());
             }
 
             0x31 => {
@@ -1332,19 +1344,18 @@ impl PpuData {
 
             0x32 => {
                 let prev_col = self.fixed_color.get();
+
+                let (prev_r, prev_g, prev_b) = rgb565_to_parts(prev_col);
+
                 let new_val = (data & 0x1F) as u16;
 
-                let new_r =  (new_val << 10) * data.get_bit(5) as u16;
-                let new_g =  (new_val << 5) * data.get_bit(6) as u16;
-                let new_b =  (new_val) * data.get_bit(7) as u16;
-                let new_col = new_r | new_g | new_b;
+                let new_r = if data.bit_en(5) { new_val } else { prev_r };
+                let new_g = if data.bit_en(6) { new_val } else { prev_g };
+                let new_b = if data.bit_en(7) { new_val } else { prev_b };
 
-                let mask_r = (data.get_bit(5) as u16) * 0x7C00;
-                let mask_g = (data.get_bit(6) as u16) * 0x03E0;
-                let mask_b = (data.get_bit(7) as u16) * 0x001F;
-                let mask = mask_r | mask_g | mask_b;
+                let new_col = rgb565_from_parts(new_r, new_g, new_b);
 
-                self.fixed_color.set((prev_col & mask) | new_col);
+                self.fixed_color.set(new_col);
             }
 
             0x33 => {
@@ -1354,8 +1365,6 @@ impl PpuData {
                 self.overscan_enabled.set(data.bit_en(2));
                 self.obj_interlace_enabled.set(data.bit_en(1));
                 self.screen_interlace_enabled.set(data.bit_en(0));
-
-                if self.screen_interlace_enabled.get() {}
             }
 
             _ => {}
@@ -1616,7 +1625,7 @@ impl Ppu5C7x {
             self.dot(frame_buffer);
         }
 
-        // if self.frame == 500 && self.scanline == 0 && self.dot == 0 {
+        // if self.frame == 600 && self.scanline == 0 && self.dot == 0 {
         //     // let mut oam_clone = Vec::new();
         //     // for word in &self.registers.oam[..] {
         //     //     oam_clone.push(word.get());
@@ -1675,6 +1684,7 @@ impl Ppu5C7x {
             // End of v-blank, scanline 0 is not visible
             (0, 0) => {
                 self.registers.in_vblank.set(false);
+                self.registers.vblank_start.set(false);
                 self.registers.cpu_vblank_nmi.set(false);
             }
             // Start of visible scanline, end of h-blank
@@ -1697,6 +1707,7 @@ impl Ppu5C7x {
             // Start of v-blank
             (0, VBLANK_START_SCANLINE) => {
                 self.registers.in_vblank.set(true);
+                self.registers.vblank_start.set(true);
                 self.registers.cpu_vblank_nmi.set(true);
                 self.frame_finished = true;
                 self.frame += 1;
@@ -1886,6 +1897,16 @@ impl Ppu5C7x {
             _ => 0,
         };
 
+        let (r, g, b) = rgb565_to_parts(dot_col);
+
+        let brightness = (self.registers.screen_brightness.get() as f32) / 15.0;
+
+        let r = ((r as f32) * brightness) as u16;
+        let g = ((g as f32) * brightness) as u16;
+        let b = ((b as f32) * brightness) as u16;
+
+        let dot_col = rgb565_from_parts(r, g, b);
+
         frame_buffer[screen_y * 256 + screen_x] = RGB565::new_with_raw_value(dot_col);
     }
 
@@ -2028,6 +2049,7 @@ impl Ppu5C7x {
             self.bg1_vram_base_addr(), 
             self.bg1_chr_base_addr(), 
             BG1_CGRAM_BASE_ADDR,
+            self.bg1_tile_size(),
         );
         let bg1_main_col = if self.bg1_main_enabled() && !bg1_win_main {
             bg1_col.clone()
@@ -2048,6 +2070,7 @@ impl Ppu5C7x {
             self.bg2_vram_base_addr(), 
             self.bg2_chr_base_addr(), 
             BG2_CGRAM_BASE_ADDR,
+            self.bg2_tile_size(),
         );
         let bg2_main_col = if self.bg2_main_enabled() && !bg2_win_main {
             bg2_col.clone()
@@ -2068,6 +2091,7 @@ impl Ppu5C7x {
             self.bg3_vram_base_addr(), 
             self.bg3_chr_base_addr(), 
             BG3_CGRAM_BASE_ADDR,
+            self.bg3_tile_size(),
         );
         let bg3_main_col = if self.bg3_main_enabled() && !bg3_win_main {
             bg3_col.clone()
@@ -2088,6 +2112,7 @@ impl Ppu5C7x {
             self.bg4_vram_base_addr(), 
             self.bg4_chr_base_addr(), 
             BG4_CGRAM_BASE_ADDR,
+            self.bg4_tile_size(),
         );
         let bg4_main_col = if self.bg4_main_enabled() && !bg4_win_main {
             bg4_col.clone()
@@ -2240,6 +2265,7 @@ impl Ppu5C7x {
             self.bg1_vram_base_addr(), 
             self.bg1_chr_base_addr(), 
             BG1_CGRAM_BASE_ADDR,
+            self.bg1_tile_size(),
         );
         let bg1_main_col = if self.bg1_main_enabled() && !bg1_win_main {
             bg1_col.clone()
@@ -2260,6 +2286,7 @@ impl Ppu5C7x {
             self.bg2_vram_base_addr(), 
             self.bg2_chr_base_addr(), 
             BG2_CGRAM_BASE_ADDR,
+            self.bg2_tile_size(),
         );
         let bg2_main_col = if self.bg2_main_enabled() && !bg2_win_main {
             bg2_col.clone()
@@ -2280,6 +2307,7 @@ impl Ppu5C7x {
             self.bg3_vram_base_addr(), 
             self.bg3_chr_base_addr(), 
             BG3_CGRAM_BASE_ADDR,
+            self.bg3_tile_size(),
         );
         let bg3_main_col = if self.bg3_main_enabled() && !bg3_win_main {
             bg3_col.clone()
@@ -2360,6 +2388,19 @@ impl Ppu5C7x {
             self.fixed_color() // Sub screen is fixed color if all layers are transparent
         };
 
+        let in_main_col_win = match self.col_win_main_region() {
+            WindowColorRegion::Nowhere => col_win_en,
+            WindowColorRegion::Outside => if col_win_en { col_win_en } else { false },
+            WindowColorRegion::Inside => if col_win_en { false } else { col_win_en },
+            WindowColorRegion::Everywhere => { false }
+        };
+        let in_sub_col_win = match self.col_win_sub_region() {
+            WindowColorRegion::Nowhere => col_win_en,
+            WindowColorRegion::Outside => if col_win_en { col_win_en } else { false },
+            WindowColorRegion::Inside => if col_win_en { false } else { col_win_en },
+            WindowColorRegion::Everywhere => { false }
+        };
+
         let main_col = match self.col_win_main_region() {
             WindowColorRegion::Nowhere => main_col,
             WindowColorRegion::Outside => if col_win_en { main_col } else { 0 },
@@ -2368,9 +2409,15 @@ impl Ppu5C7x {
         };
         let sub_col = match self.col_win_sub_region() {
             WindowColorRegion::Nowhere => sub_col,
-            WindowColorRegion::Outside => if col_win_en { sub_col } else { self.fixed_color() },
-            WindowColorRegion::Inside => if col_win_en { self.fixed_color() } else { sub_col },
-            WindowColorRegion::Everywhere => { self.fixed_color() }
+            WindowColorRegion::Outside => if col_win_en { sub_col } else { self.transparent_color() },
+            WindowColorRegion::Inside => if col_win_en { self.transparent_color() } else { sub_col },
+            WindowColorRegion::Everywhere => { self.transparent_color() }
+        };
+
+        let sub_col = if self.sub_color_fixed() {
+            self.fixed_color()
+        } else {
+            sub_col
         };
 
         self.apply_cmath(main_col, sub_col)
@@ -2429,6 +2476,7 @@ impl Ppu5C7x {
             self.bg1_vram_base_addr(), 
             self.bg1_chr_base_addr(), 
             BG1_CGRAM_BASE_ADDR,
+            self.bg1_tile_size(),
         );
         let bg1_main_col = if self.bg1_main_enabled() && !bg1_win_main {
             bg1_col.clone()
@@ -2449,6 +2497,7 @@ impl Ppu5C7x {
             self.bg2_vram_base_addr(), 
             self.bg2_chr_base_addr(), 
             BG2_CGRAM_BASE_ADDR,
+            self.bg2_tile_size(),
         );
         let bg2_main_col = if self.bg2_main_enabled() && !bg2_win_main {
             bg2_col.clone()
@@ -2572,7 +2621,12 @@ impl Ppu5C7x {
 
     fn bg_col_2bpp(&self, tilemap_idx: u16, tile_row: u8, tile_col: u8,
         bg_vram_base_addr: u16, bg_chr_base_addr: u16,
-        bg_cgram_base_addr: u8) -> ColorData {
+        bg_cgram_base_addr: u8, bg_tile_size: TileSize) -> ColorData {
+
+            let (tile_height, tile_width) = match bg_tile_size {
+                TileSize::Size8x8 => (8,8),
+                TileSize::Size16x16 => (16,16),
+            };
 
             let tile_data_addr = bg_vram_base_addr + tilemap_idx;
 
@@ -2580,8 +2634,23 @@ impl Ppu5C7x {
             let tile_chr_idx = tile_data & 0x3FF;
             let tile_pal = ((tile_data >> 10) & 7) as u8;
             let tile_priority = ((tile_data >> 13) & 1) as u8;
-            // let flip_x = (tile_data & 0x4000) != 0; // TODO: implement h/v flipping
-            // let flip_y = (tile_data & 0x8000) != 0;
+            let flip_x = (tile_data & 0x4000) != 0; // TODO: implement h/v flipping
+            let flip_y = (tile_data & 0x8000) != 0;
+
+            let tile_row = if flip_y { tile_height - tile_row - 1 } else { tile_row };
+            let tile_col = if flip_x { tile_width - tile_col - 1 } else { tile_col };
+
+            let (tile_chr_idx, tile_row) = if tile_row > 7 {
+                (tile_chr_idx + 32, tile_row - 8)
+            } else {
+                (tile_chr_idx, tile_row)
+            };
+
+            let (tile_chr_idx, tile_col) = if tile_col > 7 {
+                (tile_chr_idx + 1, tile_col - 8)
+            } else {
+                (tile_chr_idx, tile_col)
+            };
 
             let tile_chr_addr = bg_chr_base_addr + (tile_chr_idx << 3) + tile_row as u16;
 
@@ -2609,7 +2678,12 @@ impl Ppu5C7x {
 
     fn bg_col_4bpp(&self, tilemap_idx: u16, tile_row: u8, tile_col: u8,
         bg_vram_base_addr: u16, bg_chr_base_addr: u16,
-        bg_cgram_base_addr: u8) -> ColorData {
+        bg_cgram_base_addr: u8, bg_tile_size: TileSize) -> ColorData {
+
+            let (tile_height, tile_width) = match bg_tile_size {
+                TileSize::Size8x8 => (8,8),
+                TileSize::Size16x16 => (16,16),
+            };
 
             let tile_data_addr = bg_vram_base_addr + tilemap_idx;
 
@@ -2617,8 +2691,23 @@ impl Ppu5C7x {
             let tile_chr_idx = tile_data & 0x3FF;
             let tile_pal = ((tile_data >> 10) & 7) as u8;
             let tile_priority = ((tile_data >> 13) & 1) as u8;
-            // let flip_x = (tile_data & 0x4000) != 0; // TODO: implement h/v flipping
-            // let flip_y = (tile_data & 0x8000) != 0;
+            let flip_x = (tile_data & 0x4000) != 0;
+            let flip_y = (tile_data & 0x8000) != 0;
+
+            let tile_row = if flip_y { tile_height - tile_row - 1 } else { tile_row };
+            let tile_col = if flip_x { tile_width - tile_col - 1 } else { tile_col };
+
+            let (tile_chr_idx, tile_row) = if tile_row > 7 {
+                (tile_chr_idx + 32, tile_row - 8)
+            } else {
+                (tile_chr_idx, tile_row)
+            };
+
+            let (tile_chr_idx, tile_col) = if tile_col > 7 {
+                (tile_chr_idx + 1, tile_col - 8)
+            } else {
+                (tile_chr_idx, tile_col)
+            };
 
             let tile_chr_addr = bg_chr_base_addr + (tile_chr_idx << 4) + tile_row as u16;
 
@@ -2648,13 +2737,8 @@ impl Ppu5C7x {
     }
 
     fn apply_cmath(&self, main_col: u16, sub_col: u16) -> u16 {
-        let main_r = (main_col >> 0) & 0x1F;
-        let main_g = (main_col >> 5) & 0x1F;
-        let main_b = (main_col >> 10) & 0x1F;
-
-        let sub_r = (sub_col >> 0) & 0x1F;
-        let sub_g = (sub_col >> 5) & 0x1F;
-        let sub_b = (sub_col >> 10) & 0x1F;
+        let (main_r, main_g, main_b) = rgb565_to_parts(main_col);
+        let (sub_r, sub_g, sub_b) = rgb565_to_parts(sub_col);
 
         let (r,g,b) = match self.cmath_operator() {
             CMathOperator::Add => (main_r + sub_r, main_g + sub_g, main_b + sub_b),
@@ -2668,11 +2752,11 @@ impl Ppu5C7x {
         };
 
         // Negative values clamped to 0, positive values clamped to 31
-        let r = if (r & 0x8000) != 0 { 0 } else { r & 0x1F };
-        let g = if (g & 0x8000) != 0 { 0 } else { g & 0x1F };
-        let b = if (b & 0x8000) != 0 { 0 } else { b & 0x1F };
+        let r = if r.bit_en(15) { 0 } else { r & 0x1F };
+        let g = if g.bit_en(15) { 0 } else { g & 0x1F };
+        let b = if b.bit_en(15) { 0 } else { b & 0x1F };
 
-        (b << 10) | (g << 5) | r
+        rgb565_from_parts(r, g, b)
     }
 }
 

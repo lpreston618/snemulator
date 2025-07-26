@@ -56,8 +56,8 @@ pub(super) struct DmaChannel {
     pub a_bus_hi: u8,
     pub a_bus_lo: u8,
     pub b_bus_addr: u8,
-    pub byte_count: u16,               // These two are actually the same
-    pub hdma_indirect_table_addr: u32, // register in hardware.
+    pub byte_count: u16,
+    pub hdma_indirect_table_bank: u8,
     pub hdma_table_start_addr: u32,
     pub hdma_table_addr: u16,
     pub hdma_reload: bool,

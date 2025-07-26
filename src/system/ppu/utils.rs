@@ -45,3 +45,15 @@ pub(super) fn xbgr0555_to_rgb565(col: u16) -> u16 {
 pub(super) fn rgb565_to_xbgr0555(col: u16) -> u16 {
     ((col & 0x1F) << 10) | ((col & 0x07C0) >> 1) | ((col & 0xF800) >> 11)
 }
+
+pub(super) fn rgb565_to_parts(col: u16) -> (u16, u16, u16) {
+    let r = col >> 11;
+    let g = (col >> 6) & 0x1F;
+    let b = col & 0x1F;
+
+    (r, g, b)
+}
+
+pub(super) fn rgb565_from_parts(r: u16, g: u16, b: u16) -> u16 {
+    (r << 11) | (g << 6) | b
+} 
