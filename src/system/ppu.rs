@@ -991,14 +991,18 @@ impl PpuData {
                 let bghofs_latch = self.bg_offset_x_latch.replace(data) as u16;
 
                 self.bg1_m7_x_offset.set(
-                    ((data as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07)
+                    (((data & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07)
                 );
+
+                println!("Set Bg1 x scroll to {}", self.bg1_m7_x_offset.get());
             }
 
             0x0E => {
                 let bgofs_latch = self.bg_offset_latch.replace(data) as u16;
 
-                self.bg1_m7_y_offset.set(((data as u16) << 8) | bgofs_latch);
+                self.bg1_m7_y_offset.set((((data & 3) as u16) << 8) | bgofs_latch);
+
+                println!("Set Bg1 y scroll to {}", self.bg1_m7_y_offset.get());
             }
 
             0x0F => {
@@ -1006,14 +1010,14 @@ impl PpuData {
                 let bghofs_latch = self.bg_offset_x_latch.replace(data) as u16;
 
                 self.bg2_x_offset.set(
-                    ((data as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07)
+                    (((data & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07)
                 );
             }
 
             0x10 => {
                 let bgofs_latch = self.bg_offset_latch.replace(data) as u16;
 
-                self.bg2_y_offset.set(((data as u16) << 8) | bgofs_latch);
+                self.bg2_y_offset.set((((data & 3) as u16) << 8) | bgofs_latch);
             }
 
             0x11 => {
@@ -1021,14 +1025,14 @@ impl PpuData {
                 let bghofs_latch = self.bg_offset_x_latch.replace(data) as u16;
 
                 self.bg3_x_offset.set(
-                    ((data as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07)
+                    (((data & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07)
                 );
             }
 
             0x12 => {
                 let bgofs_latch = self.bg_offset_latch.replace(data) as u16;
 
-                self.bg3_y_offset.set(((data as u16) << 8) | bgofs_latch);
+                self.bg3_y_offset.set((((data & 3) as u16) << 8) | bgofs_latch);
             }
 
             0x13 => {
@@ -1036,14 +1040,14 @@ impl PpuData {
                 let bghofs_latch = self.bg_offset_x_latch.replace(data) as u16;
 
                 self.bg4_x_offset.set(
-                    ((data as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07)
+                    (((data & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07)
                 );
             }
 
             0x14 => {
                 let bgofs_latch = self.bg_offset_latch.replace(data) as u16;
 
-                self.bg4_y_offset.set(((data as u16) << 8) | bgofs_latch);
+                self.bg4_y_offset.set((((data & 3) as u16) << 8) | bgofs_latch);
             }
 
             0x15 => {
@@ -2575,8 +2579,8 @@ impl Ppu5C7x {
             _ => unreachable!("Should only be called for bg layers.")
         };
 
-        let shifted_x = (screen_x as u16) - (scroll_x as u16);
-        let shifted_y = (screen_y as u16) - (scroll_y as u16);
+        let shifted_x = (screen_x as u16) + (scroll_x as u16);
+        let shifted_y = (screen_y as u16) + (scroll_y as u16);
 
         let tilemap_offset = match (tilemap_cnt_x, tilemap_cnt_y) {
             (TilemapCount::One, TilemapCount::One) => 0x000,
