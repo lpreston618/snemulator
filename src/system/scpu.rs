@@ -448,7 +448,7 @@ impl Cpu65c816 {
 
                 self.active_dma_channel_idx = data.trailing_zeros() as usize;
 
-                // println!("Wrote to DMA enable with 0x{data:02X}, active channel = {}", self.active_dma_channel_idx);
+                // println!("Wrote to DMA enable with 0x{data:02X}, active channel = {}, vram_addr: ${:04X}", self.active_dma_channel_idx, self.ppu_data.vram_addr.get());
                 // println!("  Ch. 0 active: {}", self.dma_channels[0].dma_enable);
                 // println!("  Ch. 1 active: {}", self.dma_channels[1].dma_enable);
                 // println!("  Ch. 2 active: {}", self.dma_channels[2].dma_enable);

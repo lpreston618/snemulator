@@ -93,6 +93,14 @@ enum AddressRemapping {
 }
 
 #[derive(Clone, Copy, Debug)]
+enum ColorDepth {
+    Direct,
+    Bpp2,
+    Bpp4,
+    Bpp8,
+}
+
+#[derive(Clone, Copy, Debug)]
 enum IncrSize {
     Bytes2,
     Bytes64,
@@ -290,7 +298,7 @@ pub(crate) struct PpuData {
     // $2117    hHHH HHHH    Write x2 Only
     //       - VRAM word address Low (L)
     //       - VRAM word address High (H)
-    vram_addr: Cell<u16>,
+    pub(crate) vram_addr: Cell<u16>,
 
     // $211A    RF.. ..YX    W8
     //       - Mode 7 tilemap repeat (R)
@@ -880,7 +888,14 @@ impl PpuData {
                     }
                 );
 
-                // println!("Set Bg Mode to {:?} and bg3 priority to {}", self.bg_mode.get(), self.bg3_mode1_priority.get());
+                // println!("Set Bg Mode to {:?} and bg3 priority to {}, bg tile sizes to bg1: {:?}, bg2: {:?}, bg3: {:?}, bg4: {:?}",
+                //     self.bg_mode.get(),
+                //     self.bg3_mode1_priority.get(),
+                //     self.bg1_char_size.get(),
+                //     self.bg2_char_size.get(),
+                //     self.bg3_char_size.get(),
+                //     self.bg4_char_size.get(),
+                // );
             }
 
             0x06 => {
@@ -900,7 +915,11 @@ impl PpuData {
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
 
-                // println!("Set Bg1 vram base addr to ${:04X}", (self.bg1_vram_addr.get() as u16) << 10);
+                println!("Set Bg1 vram base addr to ${:04X}, count_x: {:?}, count_y: {:?}", 
+                    (self.bg1_vram_addr.get() as u16) << 10, 
+                    self.bg1_tilemap_count_x.get(), 
+                    self.bg1_tilemap_count_y.get()
+                );
             }
 
             0x08 => {
@@ -912,7 +931,11 @@ impl PpuData {
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
 
-                // println!("Set Bg2 vram base addr to ${:04X}", (self.bg2_vram_addr.get() as u16) << 10);
+                println!("Set Bg2 vram base addr to ${:04X}, count_x: {:?}, count_y: {:?}", 
+                    (self.bg2_vram_addr.get() as u16) << 10, 
+                    self.bg2_tilemap_count_x.get(), 
+                    self.bg2_tilemap_count_y.get()
+                );
             }
 
             0x09 => {
@@ -924,7 +947,11 @@ impl PpuData {
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
 
-                // println!("Set Bg3 vram base addr to ${:04X}", (self.bg3_vram_addr.get() as u16) << 10);
+                println!("Set Bg3 vram base addr to ${:04X}, count_x: {:?}, count_y: {:?}", 
+                    (self.bg3_vram_addr.get() as u16) << 10, 
+                    self.bg3_tilemap_count_x.get(), 
+                    self.bg3_tilemap_count_y.get()
+                );
             }
 
             0x0A => {
@@ -936,23 +963,27 @@ impl PpuData {
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
 
-                // println!("Set Bg4 vram base addr to ${:04X}", (self.bg4_vram_addr.get() as u16) << 10);
+                println!("Set Bg4 vram base addr to ${:04X}, count_x: {:?}, count_y: {:?}", 
+                    (self.bg4_vram_addr.get() as u16) << 10, 
+                    self.bg4_tilemap_count_x.get(), 
+                    self.bg4_tilemap_count_y.get()
+                );
             }
 
             0x0B => {
                 self.bg2_chr_base_addr.set(data >> 4);
                 self.bg1_chr_base_addr.set(data & 0x0F);
 
-                // println!("Set Bg1 chr base address to ${:04X}", (self.bg1_chr_base_addr.get() as u16) << 12);
-                // println!("Set Bg2 chr base address to ${:04X}", (self.bg2_chr_base_addr.get() as u16) << 12);
+                println!("Set Bg1 chr base address to ${:04X}", (self.bg1_chr_base_addr.get() as u16) << 12);
+                println!("Set Bg2 chr base address to ${:04X}", (self.bg2_chr_base_addr.get() as u16) << 12);
             }
 
             0x0C => {
                 self.bg4_chr_base_addr.set(data >> 4);
                 self.bg3_chr_base_addr.set(data & 0x0F);
 
-                // println!("Set Bg3 chr base address to ${:04X}", (self.bg3_chr_base_addr.get() as u16) << 12);
-                // println!("Set Bg4 chr base address to ${:04X}", (self.bg4_chr_base_addr.get() as u16) << 12);
+                println!("Set Bg3 chr base address to ${:04X}", (self.bg3_chr_base_addr.get() as u16) << 12);
+                println!("Set Bg4 chr base address to ${:04X}", (self.bg4_chr_base_addr.get() as u16) << 12);
             }
 
             0x0D => {
@@ -1189,14 +1220,8 @@ impl PpuData {
                 self.obj_w1_inverted.set(data.bit_en(0));
             }
 
-            0x26 => {
-                // println!("Set w1 left pos to 0x{:02X}", self.w1_left_pos.get());
-                self.w1_left_pos.set(data);
-            }
-            0x27 => {
-                // println!("Set w1 right pos to 0x{:02X}", self.w1_right_pos.get());
-                self.w1_right_pos.set(data);
-            }
+            0x26 => { self.w1_left_pos.set(data); }
+            0x27 => { self.w1_right_pos.set(data); }
             0x28 => { self.w2_left_pos.set(data); }
             0x29 => { self.w2_right_pos.set(data); }
 
@@ -1267,13 +1292,13 @@ impl PpuData {
                 self.bg2_main_enabled.set(data.bit_en(1));
                 self.bg1_main_enabled.set(data.bit_en(0));
 
-                // println!("Set main en flags to Bg1: {}, Bg2: {}, Bg3: {}, Bg4: {}, Obj: {}",
-                //     self.bg1_main_enabled.get(),
-                //     self.bg2_main_enabled.get(),
-                //     self.bg3_main_enabled.get(),
-                //     self.bg4_main_enabled.get(),
-                //     self.obj_main_enabled.get(),
-                // );
+                println!("Set main en flags to Bg1: {}, Bg2: {}, Bg3: {}, Bg4: {}, Obj: {}",
+                    self.bg1_main_enabled.get(),
+                    self.bg2_main_enabled.get(),
+                    self.bg3_main_enabled.get(),
+                    self.bg4_main_enabled.get(),
+                    self.obj_main_enabled.get(),
+                );
             }
 
             0x2D => {
@@ -1321,8 +1346,6 @@ impl PpuData {
                 );
                 self.sub_color_fixed.set(!data.bit_en(1));
                 self.use_direct_col.set(data.bit_en(0));
-
-                println!("Set main col win region to {:?}, sub win col region to {:?}", self.col_win_main_region.get(), self.col_win_sub_region.get());
             }
 
             0x31 => {
@@ -1574,6 +1597,8 @@ struct OAMSprite {
     flip_x: bool,
     flip_y: bool,
     size: ObjectSize,
+    width: usize,
+    height: usize,
 }
 
 pub enum FrameBufferSize {
@@ -1625,33 +1650,24 @@ impl Ppu5C7x {
             self.dot(frame_buffer);
         }
 
-        // if self.frame == 600 && self.scanline == 0 && self.dot == 0 {
-        //     // let mut oam_clone = Vec::new();
-        //     // for word in &self.registers.oam[..] {
-        //     //     oam_clone.push(word.get());
-        //     // }
-        //     // crate::tools::hexdump::hexdump8_raw(&oam_clone, "oam_dump.bin");
+        // if self.frame == 1200 && self.scanline == 0 && self.dot == 0 {
+        //     let mut oam_clone = Vec::new();
+        //     for word in &self.registers.oam[..] {
+        //         oam_clone.push(word.get());
+        //     }
+        //     crate::tools::hexdump::hexdump8_raw(&oam_clone, "oam_dump.bin");
 
-        //     // let mut cgram_clone = Vec::new();
-        //     // for word in &self.registers.cgram[..] {
-        //     //     cgram_clone.push(word.get());
-        //     // }
-        //     // crate::tools::hexdump::hexdump16_to_file(&cgram_clone, 0, "cgram_dump.txt");
+        //     let mut cgram_clone = Vec::new();
+        //     for word in &self.registers.cgram[..] {
+        //         cgram_clone.push(word.get());
+        //     }
+        //     crate::tools::hexdump::hexdump16_to_file(&cgram_clone, 0, "cgram_dump.txt");
 
-        //     // let mut vram_clone = Vec::new();
-        //     // for word in &self.registers.vram[..] {
-        //     //     vram_clone.push(word.get());
-        //     // }
-        //     // crate::tools::hexdump::hexdump16_to_file(&vram_clone, 0, "vram_dump.txt");
-
-        //     println!("Bg1 vram base addr: ${:04X}", (self.registers.bg1_vram_addr.get() as u16) << 10);
-        //     println!("Bg2 vram base addr: ${:04X}", (self.registers.bg2_vram_addr.get() as u16) << 10);
-        //     println!("Bg3 vram base addr: ${:04X}", (self.registers.bg3_vram_addr.get() as u16) << 10);
-        //     println!("Bg4 vram base addr: ${:04X}", (self.registers.bg4_vram_addr.get() as u16) << 10);
-        //     println!("Bg1 chr base address: ${:04X}", (self.registers.bg1_chr_base_addr.get() as u16) << 12);
-        //     println!("Bg2 chr base address: ${:04X}", (self.registers.bg2_chr_base_addr.get() as u16) << 12);
-        //     println!("Bg3 chr base address: ${:04X}", (self.registers.bg3_chr_base_addr.get() as u16) << 12);
-        //     println!("Bg4 chr base address: ${:04X}", (self.registers.bg4_chr_base_addr.get() as u16) << 12);
+        //     let mut vram_clone = Vec::new();
+        //     for word in &self.registers.vram[..] {
+        //         vram_clone.push(word.get());
+        //     }
+        //     crate::tools::hexdump::hexdump16_to_file(&vram_clone, 0, "vram_dump.txt");
 
         //     std::process::exit(0);
         // }
@@ -1792,6 +1808,14 @@ impl Ppu5C7x {
                     ObjectSizeSelect::Size16x32_32x32 => ObjectSize::Size16x32,
                 }
             };
+            let (spr_w, spr_h) = match spr_size {
+                ObjectSize::Size8x8 => (8, 8),
+                ObjectSize::Size16x16 => (16, 16),
+                ObjectSize::Size16x32 => (16, 32),
+                ObjectSize::Size32x32 => (32, 32),
+                ObjectSize::Size32x64 => (32, 64),
+                ObjectSize::Size64x64 => (64, 64),
+            };
             let spr_y = spr_data[1].get();
             let spr_x = (((spr_extra_data as u16) & 1) << 8) | (spr_data[0].get() as u16);
             let (spr_x_max, spr_y_max) = match spr_size {
@@ -1814,6 +1838,8 @@ impl Ppu5C7x {
                     flip_x: (spr_data[3].get() & 0x40) != 0,
                     flip_y: (spr_data[3].get() & 0x80) != 0,
                     size: spr_size,
+                    width: spr_w,
+                    height: spr_h,
                 };
 
                 if self.scanline_sprites.len() < 32 {
@@ -1856,10 +1882,19 @@ struct ColorData {
     transparent: bool,
 }
 
-struct TilePosData {
-    tilemap_idx: u16,
+struct TileData {
+    tile_addr: u16,
     tile_row: u8,
     tile_col: u8,
+    tile_size: TileSize,
+}
+
+struct ChrData {
+    chr_idx: u16,
+    chr_row: u8,
+    chr_col: u8,
+    chr_pal: u8,
+    chr_priority: u8,
 }
 
 impl Ppu5C7x {
@@ -1930,6 +1965,10 @@ impl Ppu5C7x {
             if sprite.x as usize <= screen_x && screen_x < sprite.max_x as usize {
                 let sprite_col = screen_x - sprite.x as usize;
                 let sprite_row = screen_y - sprite.y as usize;
+
+                let sprite_col = if sprite.flip_x { sprite.width - sprite_col - 1 } else { sprite_col };
+                let sprite_row = if sprite.flip_y { sprite.height - sprite_row - 1 } else { sprite_row };
+
                 let (tile_x, tile_col) = (sprite_col / 8, sprite_col % 8);
                 let (tile_y, tile_row) = (sprite_row / 8, sprite_row % 8);
 
@@ -2005,31 +2044,6 @@ impl Ppu5C7x {
         let (bg3_win_main, bg3_win_sub) = self.bg3_win_active_signals(screen_x);
         let (bg4_win_main, bg4_win_sub) = self.bg4_win_active_signals(screen_x);
 
-        let bg1_tilemap_data = self.bg_tile_idx(
-            screen_x, screen_y,
-            self.bg1_m7_x_offset(),
-            self.bg1_m7_y_offset(),
-            self.bg1_tile_size(),
-        );
-        let bg2_tilemap_data = self.bg_tile_idx(
-            screen_x, screen_y,
-            self.bg2_x_offset(),
-            self.bg2_y_offset(),
-            self.bg2_tile_size(),
-        );
-        let bg3_tilemap_data = self.bg_tile_idx(
-            screen_x, screen_y,
-            self.bg3_x_offset(),
-            self.bg3_y_offset(),
-            self.bg3_tile_size(),
-        );
-        let bg4_tilemap_data = self.bg_tile_idx(
-            screen_x, screen_y,
-            self.bg4_x_offset(),
-            self.bg4_y_offset(),
-            self.bg4_tile_size(),
-        );
-
         let spr_main_col = if self.obj_main_enabled() && !obj_win_main {
             spr_col.clone()
         } else {
@@ -2042,14 +2056,10 @@ impl Ppu5C7x {
         };
         drop(spr_col); // Obj col should not be used past this point
 
-        let bg1_col = self.bg_col_2bpp(
-            bg1_tilemap_data.tilemap_idx, 
-            bg1_tilemap_data.tile_row, 
-            bg1_tilemap_data.tile_col, 
-            self.bg1_vram_base_addr(), 
-            self.bg1_chr_base_addr(), 
-            BG1_CGRAM_BASE_ADDR,
-            self.bg1_tile_size(),
+        let bg1_col = self.bg_col(
+            screen_x, screen_y, 
+            ColorLayer::Bg1, ColorDepth::Bpp2,
+            BG1_CGRAM_BASE_ADDR
         );
         let bg1_main_col = if self.bg1_main_enabled() && !bg1_win_main {
             bg1_col.clone()
@@ -2063,14 +2073,10 @@ impl Ppu5C7x {
         };
         drop(bg1_col); // Bg1 col should not be used past this point
 
-        let bg2_col = self.bg_col_2bpp(
-            bg2_tilemap_data.tilemap_idx, 
-            bg2_tilemap_data.tile_row, 
-            bg2_tilemap_data.tile_col, 
-            self.bg2_vram_base_addr(), 
-            self.bg2_chr_base_addr(), 
-            BG2_CGRAM_BASE_ADDR,
-            self.bg2_tile_size(),
+        let bg2_col = self.bg_col(
+            screen_x, screen_y, 
+            ColorLayer::Bg2, ColorDepth::Bpp2,
+            BG2_CGRAM_BASE_ADDR
         );
         let bg2_main_col = if self.bg2_main_enabled() && !bg2_win_main {
             bg2_col.clone()
@@ -2084,14 +2090,10 @@ impl Ppu5C7x {
         };
         drop(bg2_col); // Bg2 col should not be used past this point
 
-        let bg3_col = self.bg_col_2bpp(
-            bg3_tilemap_data.tilemap_idx, 
-            bg3_tilemap_data.tile_row, 
-            bg3_tilemap_data.tile_col, 
-            self.bg3_vram_base_addr(), 
-            self.bg3_chr_base_addr(), 
-            BG3_CGRAM_BASE_ADDR,
-            self.bg3_tile_size(),
+        let bg3_col = self.bg_col(
+            screen_x, screen_y, 
+            ColorLayer::Bg3, ColorDepth::Bpp2,
+            BG3_CGRAM_BASE_ADDR
         );
         let bg3_main_col = if self.bg3_main_enabled() && !bg3_win_main {
             bg3_col.clone()
@@ -2105,14 +2107,10 @@ impl Ppu5C7x {
         };
         drop(bg3_col); // Bg3 col should not be used past this point
 
-        let bg4_col = self.bg_col_2bpp(
-            bg4_tilemap_data.tilemap_idx, 
-            bg4_tilemap_data.tile_row, 
-            bg4_tilemap_data.tile_col, 
-            self.bg4_vram_base_addr(), 
-            self.bg4_chr_base_addr(), 
-            BG4_CGRAM_BASE_ADDR,
-            self.bg4_tile_size(),
+        let bg4_col = self.bg_col(
+            screen_x, screen_y, 
+            ColorLayer::Bg4, ColorDepth::Bpp2,
+            BG4_CGRAM_BASE_ADDR
         );
         let bg4_main_col = if self.bg4_main_enabled() && !bg4_win_main {
             bg4_col.clone()
@@ -2125,7 +2123,6 @@ impl Ppu5C7x {
             self.transparent_color_data()
         };
         drop(bg4_col); // Bg3 col should not be used past this point
-
 
         let (main_col, main_layer) = if spr_main_col.priority == 3 && !spr_main_col.transparent {
             (spr_main_col.raw_color, ColorLayer::Obj)
@@ -2227,25 +2224,6 @@ impl Ppu5C7x {
         let (bg2_win_main, bg2_win_sub) = self.bg2_win_active_signals(screen_x);
         let (bg3_win_main, bg3_win_sub) = self.bg3_win_active_signals(screen_x);
 
-        let bg1_tilemap_data = self.bg_tile_idx(
-            screen_x, screen_y,
-            self.bg1_m7_x_offset(),
-            self.bg1_m7_y_offset(),
-            self.bg1_tile_size(),
-        );
-        let bg2_tilemap_data = self.bg_tile_idx(
-            screen_x, screen_y,
-            self.bg2_x_offset(),
-            self.bg2_y_offset(),
-            self.bg2_tile_size(),
-        );
-        let bg3_tilemap_data = self.bg_tile_idx(
-            screen_x, screen_y,
-            self.bg3_x_offset(),
-            self.bg3_y_offset(),
-            self.bg3_tile_size(),
-        );
-
         let spr_main_col = if self.obj_main_enabled() && !obj_win_main {
             spr_col.clone()
         } else {
@@ -2258,14 +2236,10 @@ impl Ppu5C7x {
         };
         drop(spr_col); // Obj col should not be used past this point
 
-        let bg1_col = self.bg_col_4bpp(
-            bg1_tilemap_data.tilemap_idx, 
-            bg1_tilemap_data.tile_row, 
-            bg1_tilemap_data.tile_col, 
-            self.bg1_vram_base_addr(), 
-            self.bg1_chr_base_addr(), 
-            BG1_CGRAM_BASE_ADDR,
-            self.bg1_tile_size(),
+        let bg1_col = self.bg_col(
+            screen_x, screen_y,
+            ColorLayer::Bg1, ColorDepth::Bpp4,
+            BG1_CGRAM_BASE_ADDR
         );
         let bg1_main_col = if self.bg1_main_enabled() && !bg1_win_main {
             bg1_col.clone()
@@ -2279,14 +2253,10 @@ impl Ppu5C7x {
         };
         drop(bg1_col); // Bg1 col should not be used past this point
 
-        let bg2_col = self.bg_col_4bpp(
-            bg2_tilemap_data.tilemap_idx, 
-            bg2_tilemap_data.tile_row, 
-            bg2_tilemap_data.tile_col, 
-            self.bg2_vram_base_addr(), 
-            self.bg2_chr_base_addr(), 
-            BG2_CGRAM_BASE_ADDR,
-            self.bg2_tile_size(),
+        let bg2_col = self.bg_col(
+            screen_x, screen_y,
+            ColorLayer::Bg2, ColorDepth::Bpp4,
+            BG2_CGRAM_BASE_ADDR
         );
         let bg2_main_col = if self.bg2_main_enabled() && !bg2_win_main {
             bg2_col.clone()
@@ -2300,14 +2270,10 @@ impl Ppu5C7x {
         };
         drop(bg2_col); // Bg2 col should not be used past this point
 
-        let bg3_col = self.bg_col_2bpp(
-            bg3_tilemap_data.tilemap_idx, 
-            bg3_tilemap_data.tile_row, 
-            bg3_tilemap_data.tile_col, 
-            self.bg3_vram_base_addr(), 
-            self.bg3_chr_base_addr(), 
-            BG3_CGRAM_BASE_ADDR,
-            self.bg3_tile_size(),
+        let bg3_col = self.bg_col(
+            screen_x, screen_y,
+            ColorLayer::Bg3, ColorDepth::Bpp2,
+            BG3_CGRAM_BASE_ADDR
         );
         let bg3_main_col = if self.bg3_main_enabled() && !bg3_win_main {
             bg3_col.clone()
@@ -2388,19 +2354,6 @@ impl Ppu5C7x {
             self.fixed_color() // Sub screen is fixed color if all layers are transparent
         };
 
-        let in_main_col_win = match self.col_win_main_region() {
-            WindowColorRegion::Nowhere => col_win_en,
-            WindowColorRegion::Outside => if col_win_en { col_win_en } else { false },
-            WindowColorRegion::Inside => if col_win_en { false } else { col_win_en },
-            WindowColorRegion::Everywhere => { false }
-        };
-        let in_sub_col_win = match self.col_win_sub_region() {
-            WindowColorRegion::Nowhere => col_win_en,
-            WindowColorRegion::Outside => if col_win_en { col_win_en } else { false },
-            WindowColorRegion::Inside => if col_win_en { false } else { col_win_en },
-            WindowColorRegion::Everywhere => { false }
-        };
-
         let main_col = match self.col_win_main_region() {
             WindowColorRegion::Nowhere => main_col,
             WindowColorRegion::Outside => if col_win_en { main_col } else { 0 },
@@ -2444,19 +2397,6 @@ impl Ppu5C7x {
         let (bg1_win_main, bg1_win_sub) = self.bg1_win_active_signals(screen_x);
         let (bg2_win_main, bg2_win_sub) = self.bg2_win_active_signals(screen_x);
 
-        let bg1_tilemap_data = self.bg_tile_idx(
-            screen_x, screen_y,
-            self.bg1_m7_x_offset(),
-            self.bg1_m7_y_offset(),
-            self.bg1_tile_size(),
-        );
-        let bg2_tilemap_data = self.bg_tile_idx(
-            screen_x, screen_y,
-            self.bg2_x_offset(),
-            self.bg2_y_offset(),
-            self.bg2_tile_size(),
-        );
-
         let spr_main_col = if self.obj_main_enabled() && !obj_win_main {
             spr_col.clone()
         } else {
@@ -2469,14 +2409,10 @@ impl Ppu5C7x {
         };
         drop(spr_col); // Obj col should not be used past this point
 
-        let bg1_col = self.bg_col_4bpp(
-            bg1_tilemap_data.tilemap_idx, 
-            bg1_tilemap_data.tile_row, 
-            bg1_tilemap_data.tile_col, 
-            self.bg1_vram_base_addr(), 
-            self.bg1_chr_base_addr(), 
-            BG1_CGRAM_BASE_ADDR,
-            self.bg1_tile_size(),
+        let bg1_col = self.bg_col(
+            screen_x, screen_y,
+            ColorLayer::Bg1, ColorDepth::Bpp4,
+            BG1_CGRAM_BASE_ADDR
         );
         let bg1_main_col = if self.bg1_main_enabled() && !bg1_win_main {
             bg1_col.clone()
@@ -2490,14 +2426,10 @@ impl Ppu5C7x {
         };
         drop(bg1_col); // Bg1 col should not be used past this point
 
-        let bg2_col = self.bg_col_2bpp(
-            bg2_tilemap_data.tilemap_idx, 
-            bg2_tilemap_data.tile_row, 
-            bg2_tilemap_data.tile_col, 
-            self.bg2_vram_base_addr(), 
-            self.bg2_chr_base_addr(), 
-            BG2_CGRAM_BASE_ADDR,
-            self.bg2_tile_size(),
+        let bg2_col = self.bg_col(
+            screen_x, screen_y,
+            ColorLayer::Bg2, ColorDepth::Bpp4,
+            BG2_CGRAM_BASE_ADDR
         );
         let bg2_main_col = if self.bg2_main_enabled() && !bg2_win_main {
             bg2_col.clone()
@@ -2587,153 +2519,208 @@ impl Ppu5C7x {
 
     // }
 
-    fn bg_tile_idx(&self, screen_x: usize, screen_y: usize, 
-        scroll_x: u16, scroll_y: u16, tile_size: TileSize) -> TilePosData {
+    fn bg_col(&self, screen_x: usize, screen_y: usize, 
+        bg_layer: ColorLayer, color_depth: ColorDepth, 
+        bg_cgram_base_addr: u8) -> ColorData {
 
-        match tile_size {
-            TileSize::Size8x8 => {
-                let shifted_x = ((screen_x as u16) - (scroll_x as u16 & 0x1FF)) & 0xFF;
-                let shifted_y = ((screen_y as u16) - (scroll_y as u16 & 0x1FF)) & 0xFF;
+        let bg_chr_base_addr = match bg_layer {
+            ColorLayer::Bg1 => self.bg1_chr_base_addr(),
+            ColorLayer::Bg2 => self.bg2_chr_base_addr(),
+            ColorLayer::Bg3 => self.bg3_chr_base_addr(),
+            ColorLayer::Bg4 => self.bg4_chr_base_addr(),
 
-                let tilemap_idx = ((shifted_y >> 3) << 5) | (shifted_x >> 3);
+            _ => unreachable!("Should only be called for bg layers")
+        };
+        
+        let tile_data = self.bg_tile_idx(screen_x, screen_y, bg_layer);
 
-                TilePosData {
-                    tilemap_idx,
-                    tile_row: (shifted_y & 7) as u8,
-                    tile_col: (shifted_x & 7) as u8,
+        let col = match color_depth {
+            ColorDepth::Bpp2 => self.bg_col_2bpp(tile_data, bg_chr_base_addr, bg_cgram_base_addr),
+            ColorDepth::Bpp4 =>  self.bg_col_4bpp(tile_data, bg_chr_base_addr, bg_cgram_base_addr),
+            _ => todo!("8bpp and direct color not implemented yet"),
+        };
+
+        col
+    }
+
+    fn bg_tile_idx(&self, screen_x: usize, screen_y: usize, bg_layer: ColorLayer) -> TileData {
+        let (scroll_x, scroll_y, 
+            tilemap_cnt_x, tilemap_cnt_y, 
+            tile_size, tilemap_base_addr) = match bg_layer {
+
+            ColorLayer::Bg1 => (
+                self.bg1_m7_x_offset(), self.bg1_m7_y_offset(),
+                self.bg1_tilemap_count_x(), self.bg1_tilemap_count_y(),
+                self.bg1_tile_size(), self.bg1_vram_base_addr(),
+            ),
+
+            ColorLayer::Bg2 => (
+                self.bg2_x_offset(), self.bg2_y_offset(),
+                self.bg2_tilemap_count_x(), self.bg2_tilemap_count_y(),
+                self.bg2_tile_size(), self.bg2_vram_base_addr(),
+            ),
+
+            ColorLayer::Bg3 => (
+                self.bg3_x_offset(), self.bg3_y_offset(),
+                self.bg3_tilemap_count_x(), self.bg3_tilemap_count_y(),
+                self.bg3_tile_size(), self.bg3_vram_base_addr(),
+            ),
+
+            ColorLayer::Bg4 => (
+                self.bg4_x_offset(), self.bg4_y_offset(),
+                self.bg4_tilemap_count_x(), self.bg4_tilemap_count_y(),
+                self.bg4_tile_size(), self.bg4_vram_base_addr(),
+            ),
+
+            _ => unreachable!("Should only be called for bg layers.")
+        };
+
+        let shifted_x = (screen_x as u16) - (scroll_x as u16);
+        let shifted_y = (screen_y as u16) - (scroll_y as u16);
+
+        let tilemap_offset = match (tilemap_cnt_x, tilemap_cnt_y) {
+            (TilemapCount::One, TilemapCount::One) => 0x000,
+            (TilemapCount::One, TilemapCount::Two) => {
+                if shifted_y >= 256 {
+                    0x400
+                } else {
+                    0x000
                 }
             }
-
-            TileSize::Size16x16 => {
-                let shifted_x = ((screen_x as u16) - (scroll_x as u16 & 0x3FF)) & 0xFF;
-                let shifted_y = ((screen_y as u16) - (scroll_y as u16 & 0x3FF)) & 0xFF;
-
-                let tilemap_idx = (shifted_y & 0xF0) | (shifted_x >> 4);
-
-                TilePosData {
-                    tilemap_idx,
-                    tile_row: (shifted_y & 0xF) as u8,
-                    tile_col: (shifted_x & 0xF) as u8,
+            (TilemapCount::Two, TilemapCount::One) => {
+                if shifted_x >= 256 {
+                    0x400
+                } else {
+                    0x000
                 }
             }
+            (TilemapCount::Two, TilemapCount::Two) => {
+                if shifted_x >= 256 && shifted_y >= 256 {
+                    0xC00
+                } else if shifted_y >= 256 {
+                    0x800
+                } else if shifted_x >= 256 {
+                    0x400
+                } else {
+                    0x000
+                }
+            }
+        };
+
+        let x = shifted_x & 0xFF;
+        let y = shifted_y & 0xFF;
+
+        let tile_idx = match tile_size {
+            TileSize::Size8x8 => ((y >> 3) << 5) | (x >> 3),
+            TileSize::Size16x16 => (y & 0xF0) | (x >> 4),
+        };
+
+        let (tile_col, tile_row) = match tile_size {
+            TileSize::Size8x8 => (x & 7, y & 7),
+            TileSize::Size16x16 => (x & 0xF, y & 0xF),
+        };
+
+        TileData {
+            tile_addr: tilemap_base_addr + tilemap_offset + tile_idx,
+            tile_row: tile_row as u8,
+            tile_col: tile_col as u8,
+            tile_size
         }
     }
 
-    fn bg_col_2bpp(&self, tilemap_idx: u16, tile_row: u8, tile_col: u8,
-        bg_vram_base_addr: u16, bg_chr_base_addr: u16,
-        bg_cgram_base_addr: u8, bg_tile_size: TileSize) -> ColorData {
+    fn fetch_chr_data(&self, tile_data: TileData) -> ChrData {
+        let tile_word = self.vram_read(tile_data.tile_addr);
 
-            let (tile_height, tile_width) = match bg_tile_size {
-                TileSize::Size8x8 => (8,8),
-                TileSize::Size16x16 => (16,16),
-            };
+        let (tile_height, tile_width) = match tile_data.tile_size {
+            TileSize::Size8x8 => (8,8),
+            TileSize::Size16x16 => (16,16),
+        };
 
-            let tile_data_addr = bg_vram_base_addr + tilemap_idx;
+        let tile_chr_idx = tile_word & 0x3FF;
+        let tile_pal = ((tile_word >> 10) & 7) as u8;
+        let tile_priority = ((tile_word >> 13) & 1) as u8;
+        let flip_x = (tile_word & 0x4000) != 0;
+        let flip_y = (tile_word & 0x8000) != 0;
 
-            let tile_data = self.vram_read(tile_data_addr);
-            let tile_chr_idx = tile_data & 0x3FF;
-            let tile_pal = ((tile_data >> 10) & 7) as u8;
-            let tile_priority = ((tile_data >> 13) & 1) as u8;
-            let flip_x = (tile_data & 0x4000) != 0; // TODO: implement h/v flipping
-            let flip_y = (tile_data & 0x8000) != 0;
+        let tile_row = if flip_y { tile_height - tile_data.tile_row - 1 } else { tile_data.tile_row };
+        let tile_col = if flip_x { tile_width - tile_data.tile_col - 1 } else { tile_data.tile_col };
 
-            let tile_row = if flip_y { tile_height - tile_row - 1 } else { tile_row };
-            let tile_col = if flip_x { tile_width - tile_col - 1 } else { tile_col };
+        let (tile_chr_idx, tile_row) = if tile_row > 7 {
+            (tile_chr_idx + 32, tile_row - 8)
+        } else {
+            (tile_chr_idx, tile_row)
+        };
 
-            let (tile_chr_idx, tile_row) = if tile_row > 7 {
-                (tile_chr_idx + 32, tile_row - 8)
-            } else {
-                (tile_chr_idx, tile_row)
-            };
+        let (tile_chr_idx, tile_col) = if tile_col > 7 {
+            (tile_chr_idx + 1, tile_col - 8)
+        } else {
+            (tile_chr_idx, tile_col)
+        };
 
-            let (tile_chr_idx, tile_col) = if tile_col > 7 {
-                (tile_chr_idx + 1, tile_col - 8)
-            } else {
-                (tile_chr_idx, tile_col)
-            };
-
-            let tile_chr_addr = bg_chr_base_addr + (tile_chr_idx << 3) + tile_row as u16;
-
-            let bp01 = self.vram_read(tile_chr_addr);
-
-            let b0 = ((bp01 >> (7-tile_col)) & 1) as u8;
-            let b1 = ((bp01 >> (15-tile_col)) & 1) as u8;
-
-            let pal_idx = (b1 << 1) | b0;
-            
-            let cgram_addr = bg_cgram_base_addr | (tile_pal << 2) | pal_idx;
-
-            let raw_color = if pal_idx == 0 {
-                self.transparent_color()
-            } else {
-                self.registers.cgram[cgram_addr as usize].get()
-            };
-
-            ColorData {
-                raw_color,
-                priority: tile_priority,
-                transparent: pal_idx == 0,
-            }
+        ChrData {
+            chr_idx: tile_chr_idx,
+            chr_col: tile_col,
+            chr_row: tile_row,
+            chr_pal: tile_pal,
+            chr_priority: tile_priority,
         }
+    }
 
-    fn bg_col_4bpp(&self, tilemap_idx: u16, tile_row: u8, tile_col: u8,
-        bg_vram_base_addr: u16, bg_chr_base_addr: u16,
-        bg_cgram_base_addr: u8, bg_tile_size: TileSize) -> ColorData {
+    fn bg_col_2bpp(&self, tile_data: TileData, bg_chr_base_addr: u16, bg_cgram_base_addr: u8) -> ColorData {        
+        let chr_data = self.fetch_chr_data(tile_data);
 
-            let (tile_height, tile_width) = match bg_tile_size {
-                TileSize::Size8x8 => (8,8),
-                TileSize::Size16x16 => (16,16),
-            };
+        let tile_chr_addr = bg_chr_base_addr + (chr_data.chr_idx << 3) + chr_data.chr_row as u16;
 
-            let tile_data_addr = bg_vram_base_addr + tilemap_idx;
+        let bp01 = self.vram_read(tile_chr_addr);
 
-            let tile_data = self.vram_read(tile_data_addr);
-            let tile_chr_idx = tile_data & 0x3FF;
-            let tile_pal = ((tile_data >> 10) & 7) as u8;
-            let tile_priority = ((tile_data >> 13) & 1) as u8;
-            let flip_x = (tile_data & 0x4000) != 0;
-            let flip_y = (tile_data & 0x8000) != 0;
+        let b0 = ((bp01 >> (7-chr_data.chr_col)) & 1) as u8;
+        let b1 = ((bp01 >> (15-chr_data.chr_col)) & 1) as u8;
 
-            let tile_row = if flip_y { tile_height - tile_row - 1 } else { tile_row };
-            let tile_col = if flip_x { tile_width - tile_col - 1 } else { tile_col };
+        let pal_idx = (b1 << 1) | b0;
+        
+        let cgram_addr = bg_cgram_base_addr | (chr_data.chr_pal << 2) | pal_idx;
 
-            let (tile_chr_idx, tile_row) = if tile_row > 7 {
-                (tile_chr_idx + 32, tile_row - 8)
-            } else {
-                (tile_chr_idx, tile_row)
-            };
+        let raw_color = if pal_idx == 0 {
+            self.transparent_color()
+        } else {
+            self.registers.cgram[cgram_addr as usize].get()
+        };
 
-            let (tile_chr_idx, tile_col) = if tile_col > 7 {
-                (tile_chr_idx + 1, tile_col - 8)
-            } else {
-                (tile_chr_idx, tile_col)
-            };
+        ColorData {
+            raw_color,
+            priority: chr_data.chr_priority,
+            transparent: pal_idx == 0,
+        }
+    }
 
-            let tile_chr_addr = bg_chr_base_addr + (tile_chr_idx << 4) + tile_row as u16;
+    fn bg_col_4bpp(&self, tile_data: TileData, bg_chr_base_addr: u16, bg_cgram_base_addr: u8) -> ColorData {
+        let chr_data = self.fetch_chr_data(tile_data);
 
-            let bp01 = self.vram_read(tile_chr_addr + 0);
-            let bp23 = self.vram_read(tile_chr_addr + 8);
+        let tile_chr_addr = bg_chr_base_addr + (chr_data.chr_idx << 4) + chr_data.chr_row as u16;
 
-            let b0 = ((bp01 >> (7-tile_col)) & 1) as u8;
-            let b1 = ((bp01 >> (15-tile_col)) & 1) as u8;
-            let b2 = ((bp23 >> (7-tile_col)) & 1) as u8;
-            let b3 = ((bp23 >> (15-tile_col)) & 1) as u8;
+        let bp01 = self.vram_read(tile_chr_addr + 0);
+        let bp23 = self.vram_read(tile_chr_addr + 8);
 
-            let pal_idx = (b3 << 3) | (b2 << 2) | (b1 << 1) | b0;
-            
-            let cgram_addr = bg_cgram_base_addr | (tile_pal << 4) | pal_idx;
+        let b0 = ((bp01 >> (7-chr_data.chr_col)) & 1) as u8;
+        let b1 = ((bp01 >> (15-chr_data.chr_col)) & 1) as u8;
+        let b2 = ((bp23 >> (7-chr_data.chr_col)) & 1) as u8;
+        let b3 = ((bp23 >> (15-chr_data.chr_col)) & 1) as u8;
 
-            let raw_color = if pal_idx == 0 {
-                self.transparent_color()
-            } else {
-                self.registers.cgram[cgram_addr as usize].get()
-            };
+        let pal_idx = (b3 << 3) | (b2 << 2) | (b1 << 1) | b0;
+        
+        let cgram_addr = bg_cgram_base_addr | (chr_data.chr_pal << 4) | pal_idx;
 
-            ColorData {
-                raw_color,
-                priority: tile_priority,
-                transparent: pal_idx == 0,
-            }
+        let raw_color = if pal_idx == 0 {
+            self.transparent_color()
+        } else {
+            self.registers.cgram[cgram_addr as usize].get()
+        };
+
+        ColorData {
+            raw_color,
+            priority: chr_data.chr_priority,
+            transparent: pal_idx == 0,
+        }
     }
 
     fn apply_cmath(&self, main_col: u16, sub_col: u16) -> u16 {
@@ -2947,14 +2934,6 @@ impl Ppu5C7x {
     // fn bg3_mosaic(&self) -> bool { self.registers.bg3_mosaic.get() }
     // fn bg2_mosaic(&self) -> bool { self.registers.bg2_mosaic.get() }
     // fn bg1_mosaic(&self) -> bool { self.registers.bg1_mosaic.get() }
-    // fn bg1_tilemap_count_y(&self) -> TilemapCount { self.registers.bg1_tilemap_count_y.get() }
-    // fn bg1_tilemap_count_x(&self) -> TilemapCount { self.registers.bg1_tilemap_count_x.get() }
-    // fn bg2_tilemap_count_y(&self) -> TilemapCount { self.registers.bg2_tilemap_count_y.get() }
-    // fn bg2_tilemap_count_x(&self) -> TilemapCount { self.registers.bg2_tilemap_count_x.get() }
-    // fn bg3_tilemap_count_y(&self) -> TilemapCount { self.registers.bg3_tilemap_count_y.get() }
-    // fn bg3_tilemap_count_x(&self) -> TilemapCount { self.registers.bg3_tilemap_count_x.get() }
-    // fn bg4_tilemap_count_y(&self) -> TilemapCount { self.registers.bg4_tilemap_count_y.get() }
-    // fn bg4_tilemap_count_x(&self) -> TilemapCount { self.registers.bg4_tilemap_count_x.get() }
     // fn m7_latch(&self) -> u8 { self.registers.m7_latch.get() }
     // fn bg_offset_latch(&self) -> u8 { self.registers.bg_offset_latch.get() }
     // fn bg_offset_x_latch(&self) -> u8 { self.registers.bg_offset_x_latch.get() }
@@ -3042,6 +3021,14 @@ impl Ppu5C7x {
     fn bg3_cmath_enabled(&self) -> bool { self.registers.bg3_cmath_enabled.get() }
     fn bg2_cmath_enabled(&self) -> bool { self.registers.bg2_cmath_enabled.get() }
     fn bg1_cmath_enabled(&self) -> bool { self.registers.bg1_cmath_enabled.get() }
+    fn bg1_tilemap_count_y(&self) -> TilemapCount { self.registers.bg1_tilemap_count_y.get() }
+    fn bg1_tilemap_count_x(&self) -> TilemapCount { self.registers.bg1_tilemap_count_x.get() }
+    fn bg2_tilemap_count_y(&self) -> TilemapCount { self.registers.bg2_tilemap_count_y.get() }
+    fn bg2_tilemap_count_x(&self) -> TilemapCount { self.registers.bg2_tilemap_count_x.get() }
+    fn bg3_tilemap_count_y(&self) -> TilemapCount { self.registers.bg3_tilemap_count_y.get() }
+    fn bg3_tilemap_count_x(&self) -> TilemapCount { self.registers.bg3_tilemap_count_x.get() }
+    fn bg4_tilemap_count_y(&self) -> TilemapCount { self.registers.bg4_tilemap_count_y.get() }
+    fn bg4_tilemap_count_x(&self) -> TilemapCount { self.registers.bg4_tilemap_count_x.get() }
 
     // fn ext_bg_enabled(&self) -> bool { self.registers.ext_bg_enabled.get() }
     // fn hi_res_enabled(&self) -> bool { self.registers.hi_res_enabled.get() }
