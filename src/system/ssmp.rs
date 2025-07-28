@@ -376,8 +376,8 @@ impl Spc700 {
     }
 
     fn write_word(&mut self, address: u16, word: u16) {
-        self.write(address, word as u8);
-        self.write((address & 0xFF00) | ((address + 1) & 0x00FF), (word >> 8) as u8);
+        self.write(address, word.get_lo());
+        self.write((address & 0xFF00) | ((address + 1) & 0x00FF), word.get_hi());
     }
 
     fn pop(&mut self) -> u8 {
@@ -398,14 +398,35 @@ impl Spc700 {
     }
 
     fn push_word(&mut self, word: u16) {
-        self.push((word >> 8) as u8);
-        self.push(word as u8);
+        self.push(word.get_hi());
+        self.push(word.get_lo());
     }
 
     fn exec_instr(&mut self) {
         let cycles: usize;
         let opcode = self.read_prg();
         self.branch_taken = false;
+
+        // if self.apuio_regs.debug_flag.get() {
+        //     let prg_data = if self.pc-1 >= 0xFFC0 {
+        //         &Self::IPL_ROM[..]
+        //     } else {
+        //         &self.aram[..]
+        //     };
+
+        //     let pc = if self.pc-1 >= 0xFFC0 {
+        //         self.pc - 1 - 0xFFC0
+        //     } else {
+        //         self.pc - 1
+        //     };
+
+        //     self.logger.log(
+        //         LogLevel::Info,
+        //         format!("{}",
+        //             disassembler::disassembly_string(pc, prg_data)
+        //         ).as_str()
+        //     );
+        // }
 
         match opcode {
             0x00 => {
@@ -423,7 +444,7 @@ impl Spc700 {
             }
             0x03 => {
                 let (data_addr, branch_addr) = self.direct_relative();
-                self.bbs(data_addr, branch_addr, opcode);
+                self.bbs(data_addr, branch_addr, 0);
                 cycles = 5;
             }
             0x04 => {
@@ -500,7 +521,7 @@ impl Spc700 {
             }
             0x13 => {
                 let (data_addr, branch_addr) = self.direct_relative();
-                self.bbc(data_addr, branch_addr, opcode);
+                self.bbc(data_addr, branch_addr, 0);
                 cycles = 5;
             }
             0x14 => {
@@ -557,7 +578,7 @@ impl Spc700 {
                 cycles = 4;
             }
             0x1F => {
-                let addr = self.x_absolute();
+                let addr = self.x_absolute_indirect();
                 self.jmp(addr);
                 cycles = 6;
             }
@@ -576,7 +597,7 @@ impl Spc700 {
             }
             0x23 => {
                 let (data_addr, branch_addr) = self.direct_relative();
-                self.bbs(data_addr, branch_addr, opcode);
+                self.bbs(data_addr, branch_addr, 1);
                 cycles = 5;
             }
             0x24 => {
@@ -654,7 +675,7 @@ impl Spc700 {
             }
             0x33 => {
                 let (data_addr, branch_addr) = self.direct_relative();
-                self.bbc(data_addr, branch_addr, opcode);
+                self.bbc(data_addr, branch_addr, 1);
                 cycles = 5;
             }
             0x34 => {
@@ -730,7 +751,7 @@ impl Spc700 {
             }
             0x43 => {
                 let (data_addr, branch_addr) = self.direct_relative();
-                self.bbs(data_addr, branch_addr, opcode);
+                self.bbs(data_addr, branch_addr, 2);
                 cycles = 5;
             }
             0x44 => {
@@ -808,7 +829,7 @@ impl Spc700 {
             }
             0x53 => {
                 let (data_addr, branch_addr) = self.direct_relative();
-                self.bbc(data_addr, branch_addr, opcode);
+                self.bbc(data_addr, branch_addr, 2);
                 cycles = 5;
             }
             0x54 => {
@@ -884,7 +905,7 @@ impl Spc700 {
             }
             0x63 => {
                 let (data_addr, branch_addr) = self.direct_relative();
-                self.bbs(data_addr, branch_addr, opcode);
+                self.bbs(data_addr, branch_addr, 3);
                 cycles = 5;
             }
             0x64 => {
@@ -961,7 +982,7 @@ impl Spc700 {
             }
             0x73 => {
                 let (data_addr, branch_addr) = self.direct_relative();
-                self.bbc(data_addr, branch_addr, opcode);
+                self.bbc(data_addr, branch_addr, 3);
                 cycles = 5;
             }
             0x74 => {
@@ -1036,7 +1057,7 @@ impl Spc700 {
             }
             0x83 => {
                 let (data_addr, branch_addr) = self.direct_relative();
-                self.bbs(data_addr, branch_addr, opcode);
+                self.bbs(data_addr, branch_addr, 4);
                 cycles = 5;
             }
             0x84 => {
@@ -1114,7 +1135,7 @@ impl Spc700 {
             }
             0x93 => {
                 let (data_addr, branch_addr) = self.direct_relative();
-                self.bbc(data_addr, branch_addr, opcode);
+                self.bbc(data_addr, branch_addr, 4);
                 cycles = 5;
             }
             0x94 => {
@@ -1188,7 +1209,7 @@ impl Spc700 {
             }
             0xA3 => {
                 let (data_addr, branch_addr) = self.direct_relative();
-                self.bbs(data_addr, branch_addr, opcode);
+                self.bbs(data_addr, branch_addr, 5);
                 cycles = 5;
             }
             0xA4 => {
@@ -1266,7 +1287,7 @@ impl Spc700 {
             }
             0xB3 => {
                 let (data_addr, branch_addr) = self.direct_relative();
-                self.bbc(data_addr, branch_addr, opcode);
+                self.bbc(data_addr, branch_addr, 5);
                 cycles = 5;
             }
             0xB4 => {
@@ -1341,7 +1362,7 @@ impl Spc700 {
             }
             0xC3 => {
                 let (data_addr, branch_addr) = self.direct_relative();
-                self.bbs(data_addr, branch_addr, opcode);
+                self.bbs(data_addr, branch_addr, 6);
                 cycles = 5;
             }
             0xC4 => {
@@ -1418,7 +1439,7 @@ impl Spc700 {
             }
             0xD3 => {
                 let (data_addr, branch_addr) = self.direct_relative();
-                self.bbc(data_addr, branch_addr, opcode);
+                self.bbc(data_addr, branch_addr, 6);
                 cycles = 5;
             }
             0xD4 => {
@@ -1493,7 +1514,7 @@ impl Spc700 {
             }
             0xE3 => {
                 let (data_addr, branch_addr) = self.direct_relative();
-                self.bbs(data_addr, branch_addr, opcode);
+                self.bbs(data_addr, branch_addr, 7);
                 cycles = 5;
             }
             0xE4 => {
@@ -1569,7 +1590,7 @@ impl Spc700 {
             }
             0xF3 => {
                 let (data_addr, branch_addr) = self.direct_relative();
-                self.bbc(data_addr, branch_addr, opcode);
+                self.bbc(data_addr, branch_addr, 7);
                 cycles = 5;
             }
             0xF4 => {
@@ -1726,6 +1747,12 @@ impl Spc700 {
 
     fn x_absolute(&mut self) -> u16 {
         self.absolute() + (self.x as u16)
+    }
+
+    fn x_absolute_indirect(&mut self) -> u16 {
+        let ptr_addr = self.x_absolute();
+
+        self.read_word(ptr_addr)
     }
 
     fn y_absolute(&mut self) -> u16 {

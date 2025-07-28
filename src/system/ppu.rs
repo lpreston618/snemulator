@@ -993,16 +993,12 @@ impl PpuData {
                 self.bg1_m7_x_offset.set(
                     (((data & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07)
                 );
-
-                println!("Set Bg1 x scroll to {}", self.bg1_m7_x_offset.get());
             }
 
             0x0E => {
                 let bgofs_latch = self.bg_offset_latch.replace(data) as u16;
 
                 self.bg1_m7_y_offset.set((((data & 3) as u16) << 8) | bgofs_latch);
-
-                println!("Set Bg1 y scroll to {}", self.bg1_m7_y_offset.get());
             }
 
             0x0F => {

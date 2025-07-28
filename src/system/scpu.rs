@@ -101,7 +101,6 @@ pub struct Cpu65c816 {
 
     joypad_auto_read: bool,
 
-    pub debug_flag: bool,
     debug_cnt: usize,
 }
 
@@ -160,7 +159,6 @@ impl Cpu65c816 {
             p2_auto_read: 0,
             joypad_auto_read: false,
 
-            debug_flag: false,
             debug_cnt: 0,
         }
     }
@@ -258,10 +256,10 @@ impl Cpu65c816 {
     }
 
     fn _write(&mut self, address: u32, data: u8) -> usize {
-        if address == 0x000100 {
-            println!("Set game mode to 0x{data:02X} on prg_addr = ${:02X}{:04X}", self.prg_bank, self.pc);
-        }
-        
+        // if address == 0x000100 {
+        //     println!("Set game mode to 0x{data:02X} on prg_addr = ${:02X}{:04X}", self.prg_bank, self.pc);
+        // }
+
         let clocks = match (address.bank(), address.bank_addr()) {
             // Mirror of low RAM
             (0..=0x3F, bank_addr @ 0..=0x1FFF) | (0x80..=0xBF, bank_addr @ 0..=0x1FFF) => {
@@ -2121,7 +2119,7 @@ impl Cpu65c816 {
         self.acc.set_lo(data);
 
         self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(7));
-        self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
 
     fn plb_n(&mut self) {
@@ -2992,21 +2990,16 @@ impl Cpu65c816 {
         let opcode = self.read_prg();
         let extra_clocks: usize;
 
-        // 00a28f: jsr $987d
-        // 00988c: jsl $03c0c6
+        let temp_pc = self.pc;
 
-        // if self.prg_bank == 0x00 && self.pc == 0x942e {
-        //     self.wram[0x1df5] = 0x01;
-        // }
-
-        // if self.prg_bank == 0x00 && self.pc == 0xcc17 {
+        // if self.prg_bank == 0x00 && self.pc == 0x9f5b && self.wram[0x100] == 0x0C {
         //     self.debug_flag = true;
         //     println!("HERE ============================= ");
-        //     crate::tools::hexdump::hexdump8_raw(&self.wram[0x4a0..0x660], format!("wram_dumps/wram_dump{}.bin", self.debug_cnt).as_str());
-        //     self.debug_cnt += 1;
+        //     // crate::tools::hexdump::hexdump8_raw(&self.wram[0x4a0..0x660], format!("wram_dumps/wram_dump{}.bin", self.debug_cnt).as_str());
+        //     // self.debug_cnt += 1;
         // }
 
-        // if self.debug_flag {
+        // if self.apuio_regs.debug_flag.get() {
         //     let (prg_data, prg_mirror) = if self.prg_bank == 0x7e || self.prg_bank == 0x7f {
         //         (&self.wram[..], self.wram.len()-1)
         //     } else {
@@ -6572,7 +6565,7 @@ impl Cpu65c816 {
                 extra_clocks = 0;
             }
         }
-
+        
         if self.branch_taken {
             self.add_clocks(Cpu65c816::ONE_CYCLE);
 
