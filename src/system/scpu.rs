@@ -88,8 +88,6 @@ pub struct Cpu65c816 {
 
     vblank_nmi_ignore: bool,
 
-    logger: Rc<SnemLogger>,
-
     pub poll_controllers: bool,
     pub auto_read_controllers: bool,
 
@@ -101,6 +99,8 @@ pub struct Cpu65c816 {
 
     joypad_auto_read: bool,
 
+    logger: Rc<SnemLogger>,
+    
     debug_cnt: usize,
 }
 
@@ -2989,8 +2989,6 @@ impl Cpu65c816 {
     fn exec_instr(&mut self, frame: usize) {
         let opcode = self.read_prg();
         let extra_clocks: usize;
-
-        let temp_pc = self.pc;
 
         // if self.prg_bank == 0x00 && self.pc == 0x9f5b && self.wram[0x100] == 0x0C {
         //     self.debug_flag = true;

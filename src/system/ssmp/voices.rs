@@ -1,4 +1,6 @@
-use crate::utils::{GetBits, GetBytes, SetBytes};
+use std::{cell::Cell, rc::Rc};
+
+use crate::utils::{GetBits, SetCellBytes};
 
 #[derive(Clone, Copy, Debug)]
 enum GainMode {
@@ -10,87 +12,105 @@ enum GainMode {
 }
 
 #[derive(Clone)]
-pub struct Voice {
-    lchannel_volume: i8,
-    rchannel_volume: i8,
-    pitch: u16,
-    sample_source: u8,
-    adsr_enable: bool,
-    adsr_attack: u8,
-    adsr_decay: u8,
-    adsr_sustain_rate: u8,
-    adsr_sustain_level: u8,
-    gain_fixed: u8,
-    gain_rate: u8,
-    gain_mode: GainMode,
-    envelope: u8,
-    sample_out: u8,
-    raw_bytes: [u8;10],
+pub struct Registers {
+    lchannel_volume: Cell<i8>,
+    rchannel_volume: Cell<i8>,
+    pitch: Cell<u16>,
+    sample_source: Cell<u8>,
+    adsr_enable: Cell<bool>,
+    adsr_attack: Cell<u8>,
+    adsr_decay: Cell<u8>,
+    adsr_sustain_rate: Cell<u8>,
+    adsr_sustain_level: Cell<u8>,
+    gain_fixed: Cell<u8>,
+    gain_rate: Cell<u8>,
+    gain_mode: Cell<GainMode>,
+    envelope: Cell<u8>,
+    sample_out: Cell<u8>,
+    raw_bytes: [Cell<u8>; 10],
 }
 
-impl Voice {
-    pub fn new() -> Self {
-        Voice {
-            lchannel_volume: 0,
-            rchannel_volume: 0,
-            pitch: 0,
-            sample_source: 0,
-            adsr_enable: false,
-            adsr_attack: 0,
-            adsr_decay: 0,
-            adsr_sustain_rate: 0,
-            adsr_sustain_level: 0,
-            gain_fixed: 0,
-            gain_rate: 0,
-            gain_mode: GainMode::Fixed,
-            envelope: 0,
-            sample_out: 0,
-            raw_bytes: [0;10],
+impl Registers {
+    pub fn new() -> Registers {
+        Registers {
+            lchannel_volume: Cell::new(0),
+            rchannel_volume: Cell::new(0),
+            pitch: Cell::new(0),
+            sample_source: Cell::new(0),
+            adsr_enable: Cell::new(false),
+            adsr_attack: Cell::new(0),
+            adsr_decay: Cell::new(0),
+            adsr_sustain_rate: Cell::new(0),
+            adsr_sustain_level: Cell::new(0),
+            gain_fixed: Cell::new(0),
+            gain_rate: Cell::new(0),
+            gain_mode: Cell::new(GainMode::Fixed),
+            envelope: Cell::new(0),
+            sample_out: Cell::new(0),
+            raw_bytes: [
+                Cell::new(0), Cell::new(0), Cell::new(0), Cell::new(0), Cell::new(0),
+                Cell::new(0), Cell::new(0), Cell::new(0), Cell::new(0), Cell::new(0),
+            ],
         }
     }
 
-    pub fn read_voice_reg(&self, addr: u8) -> u8 {
-        self.raw_bytes[addr as usize]
+    pub fn read(&self, address: u8) -> u8 {
+        self.raw_bytes[address as usize].get()
     }
 
-    pub fn write_voice_reg(&mut self, addr: u8, data: u8) {
-        self.raw_bytes[addr as usize] = data;
+    pub fn write(&self, address: u8, data: u8) {
+        self.raw_bytes[address as usize].set(data);
 
-        match addr {
-            0 => self.lchannel_volume = data as i8,
-            1 => self.rchannel_volume = data as i8,
+        match address {
+            0 => self.lchannel_volume.set(data as i8),
+            1 => self.rchannel_volume.set(data as i8),
             2 => self.pitch.set_lo(data),
             3 => {
                 self.pitch.set_hi(data & 0x3F);
-                self.raw_bytes[addr as usize] = data & 0x3F;
+                self.raw_bytes[address as usize].set(data & 0x3F);
             }
-            4 => self.sample_source = data,
+            4 => self.sample_source.set(data),
             5 => {
-                self.adsr_enable = data.bit_en(7);
-                self.adsr_decay = (data >> 4) & 0x07;
-                self.adsr_attack = data & 0x0F;
+                self.adsr_enable.set(data.bit_en(7));
+                self.adsr_decay.set((data >> 4) & 0x07);
+                self.adsr_attack.set(data & 0x0F);
             }
             6 => {
-                self.adsr_sustain_level = data >> 5;
-                self.adsr_sustain_rate = data & 0x1F;
+                self.adsr_sustain_level.set(data >> 5);
+                self.adsr_sustain_rate.set(data & 0x1F);
             }
             7 => {
                 if data.bit_en(7) {
-                    self.gain_mode = match (data >> 5) & 0x03 {
-                        0 => GainMode::Decrease,
-                        1 => GainMode::ExpDecrease,
-                        2 => GainMode::Increase,
-                        3 => GainMode::BentIncrease,
-                        _ => unreachable!("Improper gain mode"),
-                    }
+                    self.gain_mode.set(
+                        match (data >> 5) & 0x03 {
+                            0 => GainMode::Decrease,
+                            1 => GainMode::ExpDecrease,
+                            2 => GainMode::Increase,
+                            3 => GainMode::BentIncrease,
+                            _ => unreachable!("Improper gain mode"),
+                        }
+                    );
                 } else {
-                    self.gain_mode = GainMode::Fixed;
-                    self.gain_rate = data;
+                    self.gain_mode.set(GainMode::Fixed);
+                    self.gain_rate.set(data);
                 }
             }
             8 => {},
             9 => {},
-            _ => unreachable!(),
+            _ => unreachable!("Should never be called with other address"),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct Voice {
+    registers: Rc<Registers>
+}
+
+impl Voice {
+    pub fn new(voice_regs: Rc<Registers>) -> Self {
+        Voice {
+            registers: voice_regs,
         }
     }
 }

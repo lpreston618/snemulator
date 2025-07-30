@@ -51,11 +51,10 @@ struct SnemulatorCore {
     pixel_format: ActiveFormat<RGB565>,
     rendering_mode: SoftwareRenderEnabled,
     audio_buffer: Vec<i16>,
-    sample_cnt: usize,
 
     snem_cpu: scpu::Cpu65c816,
     snem_ppu: ppu::Ppu5C7x,
-    snem_apu: ssmp::Spc700,
+    snem_smp: ssmp::Ssmp,
 
     p1_controller: SnemController,
     p2_controller: SnemController,
@@ -155,14 +154,14 @@ impl SnemulatorCore {
             self.snem_ppu.clock(&mut self.frame_buffer);
 
             for _ in 0..ppu_clocks {
-                self.snem_apu.clock(&mut self.audio_buffer);
+                self.snem_smp.clock(&mut self.audio_buffer);
             }
         } else {
             self.snem_ppu.remove_clocks(cpu_clocks);
             self.snem_cpu.clock(self.frame_count as usize);
             
             for _ in 0..cpu_clocks {
-                self.snem_apu.clock(&mut self.audio_buffer);
+                self.snem_smp.clock(&mut self.audio_buffer);
             }
 
             if self.snem_cpu.poll_controllers {
@@ -236,7 +235,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         let snem_ppu = ppu::Ppu5C7x::new(
             ppu_data.clone(),
             logger.clone());
-        let snem_apu = ssmp::Spc700::new(
+        let snem_smp = ssmp::Ssmp::new(
             apuio_regs.clone(), 
             logger.clone()
         );
@@ -247,11 +246,10 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
             pixel_format,
             rendering_mode,
             audio_buffer: Vec::with_capacity(AUDIO_BUFFER_SAMPLES * 2),
-            sample_cnt: 0,
 
             snem_cpu,
             snem_ppu,
-            snem_apu,
+            snem_smp,
 
             p1_controller: SnemController::new(),
             p2_controller: SnemController::new(),
