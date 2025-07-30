@@ -1,9 +1,14 @@
 mod disassembler;
 mod sdsp;
+mod channel;
+mod voices;
 
 use std::{cell::Cell, rc::Rc};
 
-use crate::{log::{LogLevel, SnemLogger}, system::ssmp::sdsp::SuperDSP, utils::{GetBits, GetBytes}};
+use crate::log::{LogLevel, SnemLogger};
+use crate::system::ssmp::sdsp::SuperDSP;
+use crate::utils::{GetBits, GetBytes};
+use crate::libretro::AUDIO_FREQ;
 
 // TIMER2 runs at 64kHz, which translates to one tick per every 48 DSP clocks.
 // Timers 0 and 1 each run at 1/8th that speed (8kHz), so we keep a secondary
@@ -15,6 +20,8 @@ const MASTER_CLOCK_HZ: usize = 21477300;
 const MASTER_CLOCK_PERIOD: f32 = 1.0 / MASTER_CLOCK_HZ as f32;
 const SDSP_CLOCK_HZ: usize = 3072000;
 const SDSP_CLOCK_PERIOD: f32 = 1.0 / SDSP_CLOCK_HZ as f32;
+
+const TIME_PER_SAMPLE: f32 = 1.0 / AUDIO_FREQ as f32;
 
 const ARAM_SIZE: usize = 0x10000; // 64 KiB of Audio RAM
 
@@ -74,7 +81,7 @@ pub struct Spc700 {
 
     aram: Vec<u8>,
 
-    secs_since_last_clock: f32,
+    emulated_time_since_clock: f32,
     sdsp_clocks: usize,
     spc_clocks_until_instr: usize,
 
@@ -122,6 +129,9 @@ pub struct Spc700 {
 
     slow_timer_clocks: u8,
 
+    last_sample: std::time::Instant,
+    start_time: std::time::Instant,
+
     logger: Rc<SnemLogger>,
 }
 
@@ -149,7 +159,7 @@ impl Spc700 {
 
             aram: vec![0; ARAM_SIZE],
 
-            secs_since_last_clock: 0.0,
+            emulated_time_since_clock: 0.0,
             sdsp_clocks: 0,
             spc_clocks_until_instr: 0,
 
@@ -175,6 +185,9 @@ impl Spc700 {
 
             slow_timer_clocks: 0,
 
+            last_sample: std::time::Instant::now(),
+            start_time: std::time::Instant::now(),
+
             logger,
         }
     }
@@ -185,11 +198,21 @@ impl Spc700 {
         self.timer2_en = false;
     }
 
-    pub fn clock(&mut self, master_clocks_elapsed: usize) {
-        self.secs_since_last_clock += MASTER_CLOCK_PERIOD * master_clocks_elapsed as f32;
+    pub fn clock(&mut self, audio_buffer: &mut Vec<i16>) {
+        let time_since_last_sample = self.last_sample.elapsed().as_secs_f32();
 
-        while self.secs_since_last_clock > SDSP_CLOCK_PERIOD {
-            self.secs_since_last_clock -= SDSP_CLOCK_PERIOD;
+        if time_since_last_sample > TIME_PER_SAMPLE {
+            self.last_sample = std::time::Instant::now();
+
+            let time = self.start_time.elapsed().as_secs_f32();
+
+            self.sdsp.generate_sample(audio_buffer, time);
+        }
+
+        self.emulated_time_since_clock += MASTER_CLOCK_PERIOD;
+
+        while self.emulated_time_since_clock > SDSP_CLOCK_PERIOD {
+            self.emulated_time_since_clock -= SDSP_CLOCK_PERIOD;
 
             // 3.072 MHz
             self.sdsp.clock();
@@ -281,7 +304,7 @@ impl Spc700 {
     fn read_sound_regs(&mut self, address: u16) -> u8 {
         match address & 0xF {
             0x2 => self.sdsp_addr,
-            0x3 => self.sdsp.read_regs(self.sdsp_addr),
+            0x3 => self.sdsp.read_reg(self.sdsp_addr),
             0x4 => self.apuio_regs.cpuio0.get(),
             0x5 => self.apuio_regs.cpuio1.get(),
             0x6 => self.apuio_regs.cpuio2.get(),
@@ -349,7 +372,7 @@ impl Spc700 {
             }
             0x3 => {
                 if !self.sdsp_read_only {
-                    self.sdsp.write_regs(self.sdsp_addr, data);
+                    self.sdsp.write_reg(self.sdsp_addr, data);
                 }
             }
             0x4 => { self.apuio_regs.apuio0.set(data); }
