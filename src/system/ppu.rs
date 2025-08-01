@@ -20,9 +20,12 @@ const HBLANK_START_DOT: usize = 278;
 const HBLANK_DISABLE_SCANLINE: usize = VBLANK_START_SCANLINE-1;
 const SCANLINE_END_DOT: usize = 340;
 
-const VRAM_SIZE: usize = 32 * 1024;  // 64 KiB (32 Ki-Word)
-const CGRAM_SIZE: usize = 256;       // 512 Bytes (256 Words)
-const OAM_SIZE: usize = 544;         // 544 Bytes
+/// 64 KiB (32 Ki-Word) or Video RAM
+const VRAM_SIZE: usize = 32 * 1024;
+/// 512 Bytes (256 Words) of Character-Graphics RAM
+const CGRAM_SIZE: usize = 256;
+/// 544 Bytes of Object Attribute Memory
+const OAM_SIZE: usize = 544;
 
 #[derive(Clone, Copy, Debug)]
 pub enum HVTimerIRQ {
@@ -149,7 +152,9 @@ enum VideoType {
     Pal,
 }
 
-pub(crate) struct PpuData {
+/// Contains all of the shared data (registers, memory, etc.) between the S-CPU
+/// and S-PPU.
+pub struct PpuData {
     scanline: Cell<usize>,
     dot: Cell<usize>,
 
@@ -1585,6 +1590,7 @@ impl PpuData {
     pub fn clear_cpu_vblank_nmi(&self) { self.cpu_vblank_nmi.set(false); }
 }
 
+/// Contains all the relavent information about a sprite to be rendered
 #[derive(Debug)]
 struct OAMSprite {
     x: u16,
@@ -1596,7 +1602,6 @@ struct OAMSprite {
     priority: u8,
     flip_x: bool,
     flip_y: bool,
-    size: ObjectSize,
     width: usize,
     height: usize,
 }
@@ -1649,28 +1654,6 @@ impl Ppu5C7x {
         if !self.in_vblank() && !self.in_hblank() && self.scanline != 0 {
             self.dot(frame_buffer);
         }
-
-        // if self.frame == 1200 && self.scanline == 0 && self.dot == 0 {
-        //     let mut oam_clone = Vec::new();
-        //     for word in &self.registers.oam[..] {
-        //         oam_clone.push(word.get());
-        //     }
-        //     crate::tools::hexdump::hexdump8_raw(&oam_clone, "oam_dump.bin");
-
-        //     let mut cgram_clone = Vec::new();
-        //     for word in &self.registers.cgram[..] {
-        //         cgram_clone.push(word.get());
-        //     }
-        //     crate::tools::hexdump::hexdump16_to_file(&cgram_clone, 0, "cgram_dump.txt");
-
-        //     let mut vram_clone = Vec::new();
-        //     for word in &self.registers.vram[..] {
-        //         vram_clone.push(word.get());
-        //     }
-        //     crate::tools::hexdump::hexdump16_to_file(&vram_clone, 0, "vram_dump.txt");
-
-        //     std::process::exit(0);
-        // }
 
         self.update_dot_and_scanline();
 
@@ -1837,7 +1820,6 @@ impl Ppu5C7x {
                     priority: (spr_data[3].get() >> 4) & 3,
                     flip_x: (spr_data[3].get() & 0x40) != 0,
                     flip_y: (spr_data[3].get() & 0x80) != 0,
-                    size: spr_size,
                     width: spr_w,
                     height: spr_h,
                 };

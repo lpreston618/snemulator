@@ -7,6 +7,7 @@ use crate::system::ssmp;
 use crate::system::ssmp::voices::{self, Voice};
 use crate::utils::GetBits;
 
+/// Contains all S-DSP registers accessible by the S-DSP or the SPC700.
 pub(super) struct Registers {
     lchannel_volume: Cell<i8>,
     rchannel_volume: Cell<i8>,
@@ -124,6 +125,8 @@ impl Registers {
     }
 }
 
+/// Implementation of the S-DSP. Responsible for generating sound samples to
+/// add to the audio buffer.
 pub(super) struct SuperDSP {
     voices: Vec<Voice>,
     registers: Rc<Registers>,
@@ -147,7 +150,7 @@ impl SuperDSP {
        }
     }
 
-    pub fn clock(&mut self, time: f32) {
+    pub fn clock(&mut self) {
         
     }
 

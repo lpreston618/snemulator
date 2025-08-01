@@ -42,6 +42,7 @@ pub(super) enum TransferPattern {
     Pattern7,
 }
 
+/// A single DMA/H-DMA channel
 #[derive(Default, Clone)]
 pub(super) struct DmaChannel {
     pub params_raw: u8,
@@ -60,10 +61,9 @@ pub(super) struct DmaChannel {
     pub hdma_indirect_table_bank: u8,
     pub hdma_table_start_addr: u32,
     pub hdma_table_addr: u16,
-    pub hdma_reload: bool,
     pub scanlines_left: u8,
     pub unused: u8,
-    pub repeat: bool,
+    pub hdma_repeat: bool,
     pub bytes_written: usize, // needed to keep track of B bus increment patterns
 }
 

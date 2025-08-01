@@ -57,6 +57,8 @@ impl SnemulatorCore {
     pub fn render_audio(&mut self, callbacks: &mut impl Callbacks) {
         callbacks.upload_audio_frame(&self.audio_buffer);
 
+        println!("Rendered {} samples, status = {:?}", self.audio_buffer.len(), self.audio_buffer_status);
+
         self.audio_buffer.clear()
     }
 
@@ -142,10 +144,10 @@ impl SnemulatorCore {
             }
         }
 
-        if self.audio_buffer.len() < audio::MAX_AUDIO_BUFFER_SIZE
-            || self.audio_buffer_status.underrun_likely {
-            self.snem_smp.clock(&mut self.audio_buffer);
-        }
+        let generate_sample = self.audio_buffer.len() < audio::MAX_AUDIO_BUFFER_SIZE
+            || self.audio_buffer_status.underrun_likely;
+
+        self.snem_smp.clock(&mut self.audio_buffer, generate_sample);
     }
 
     /// Clocks all components of the SNES until the PPU reports that the frame 
@@ -159,7 +161,7 @@ impl SnemulatorCore {
         // clocking in self.cycle(), fill the audio buffer to a larger size just
         // to be safe. Doesn't eliminate all possibility of crackling, but
         // reduces it greatly.
-        if self.audio_buffer_status.occupancy < audio::MIN_AUDIO_BUFFER_STATUS {
+        if self.audio_buffer_status.occupancy < audio::MIN_AUDIO_BUFFER_OCCUPANCY {
             let num_samples = audio::AUDIO_BUFFER_PANIC_FILL_SIZE
                 .checked_sub(self.audio_buffer.len())
                 .unwrap_or(0);
@@ -326,7 +328,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         todo!("Reset Core");
     }
 
-    fn unload_game(mut self, _env: &mut impl retro::env::UnloadGame) -> Self::Init {
+    fn unload_game(self, _env: &mut impl retro::env::UnloadGame) -> Self::Init {
         self.logger.log(LogLevel::Info, "unloading game");
     }
 

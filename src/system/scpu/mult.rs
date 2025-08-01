@@ -1,5 +1,6 @@
 use crate::utils::{GetBytes, SetBytes};
 
+/// Implementation of the S-CPU's contained multiplication and division circuit.
 pub struct Mult5A22 {
     mult_factor1: u8,
     div_numer: u16,

@@ -100,8 +100,6 @@ pub struct Cpu65c816 {
     joypad_auto_read: bool,
 
     logger: Rc<SnemLogger>,
-    
-    debug_cnt: usize,
 }
 
 // SNES System Functionality
@@ -158,8 +156,6 @@ impl Cpu65c816 {
             p1_auto_read: 0,
             p2_auto_read: 0,
             joypad_auto_read: false,
-
-            debug_cnt: 0,
         }
     }
 
@@ -540,7 +536,7 @@ impl Cpu65c816 {
             0x4308 => { dma_channel.hdma_table_addr.get_lo() }
             0x4309 => { dma_channel.hdma_table_addr.get_hi() }
             0x430A => {
-                (dma_channel.scanlines_left - 1) | (dma_channel.repeat as u8) << 7
+                (dma_channel.scanlines_left - 1) | (dma_channel.hdma_repeat as u8) << 7
             }
             0x430B => { dma_channel.unused }
             _ => 0,
@@ -601,7 +597,7 @@ impl Cpu65c816 {
             0x4309 => { dma_channel.hdma_table_addr.set_hi(data); }
             0x430A => {
                 dma_channel.scanlines_left = (data & 0x7F) + 1;
-                dma_channel.repeat = data.bit_en(7);
+                dma_channel.hdma_repeat = data.bit_en(7);
             }
             0x430B => { dma_channel.unused = data; }
             _ => {}
@@ -704,8 +700,7 @@ impl Cpu65c816 {
         if (address.bank() & 0x7F) < 0x80 && 0x6000 <= address.bank_addr()
             && address.bank_addr() <= 0x7FFF && self.has_sram {
 
-            let _sram_addr = (address - 0x6000) & 0xFFFF;
-            let data = data;
+            let sram_addr = (address - 0x6000) & 0xFFFF;
 
             todo!("Read SRAM");
         }
@@ -724,140 +719,11 @@ impl Cpu65c816 {
     }
 
     fn read_exhirom(&self, address: u32) -> (u8, usize) {
-        // let data: u8;
-        // let clocks: usize;
-
-        // match (address.bank(), address.bank_addr()) {
-        //     // Lower half of ROM (stored in the upper part of memory, hence ExHiROM).
-        //     // Fast ROM region.
-        //     (bank @ 0xC0..=0xFF, bank_addr) => {
-        //         data = self.rom[(address as usize) & self.rom_mirror];
-        //         clocks = if self.fast_rom_en {
-        //             Cpu65c816::ONE_CYCLE_SLOW
-        //         } else {
-        //             Cpu65c816::ONE_CYCLE
-        //         };
-        //     }
-        //     // Upper half of ROM (stored lower in memory: bank 0x40 directly follows bank 0xFF).
-        //     // Slow ROM region.
-        //     (bank @ 0x40..=0x7D, bank_addr) => {
-        //         let addr = (address as usize + 0x40000) & self.rom_mirror;
-        //         data = self.rom[addr];
-        //         clocks = Cpu65c816::ONE_CYCLE_SLOW;
-        //     }
-        //     // Very last bit of ROM - and of course, it's the lowest in memory.
-        //     // Only fills the upper half of banks 3E and 3F.
-        //     (bank @ 0x3E..=0x3F, bank_addr @ 0x8000..=0xFFFF) => {
-        //         let addr = (address as usize + 0x80000) & self.rom_mirror;
-        //         data = self.rom[addr];
-        //         clocks = Cpu65c816::ONE_CYCLE_SLOW;
-        //     }
-        //     // Mirror of ROM banks 0xC0-0xFF.
-        //     // Fast ROM region.
-        //     (bank @ 0x80..=0xBF, bank_addr @ 0x8000..=0xFFFF) => {
-        //         let addr = (bank as usize + 0x40) << 8 | bank_addr as usize;
-        //         data = self.rom[addr & self.rom_mirror];
-
-        //         clocks = if self.fast_rom_en {
-        //             Cpu65c816::ONE_CYCLE_SLOW
-        //         } else {
-        //             Cpu65c816::ONE_CYCLE
-        //         };
-        //     }
-        //     // Mirror of ROM banks 0x40-0x7D
-        //     (bank @ 0x00..=0x3D, bank_addr @ 0x8000..=0xFFFF) => {
-        //         let addr = (bank as usize + 0x40) << 8 | bank_addr as usize;
-        //         data = self.rom[addr & self.rom_mirror];
-
-        //         clocks = if self.fast_rom_en {
-        //             Cpu65c816::ONE_CYCLE_SLOW
-        //         } else {
-        //             Cpu65c816::ONE_CYCLE
-        //         };
-        //     }
-        //     // LoRAM mirrors
-        //     (bank @ 0x00..=0x3F, bank_addr @ 0x0000..=0x1FFF)
-        //     | (bank @ 0x80..=0xBF, bank_addr @ 0x0000..=0x1FFF) => {
-        //         data = self.wram[bank_addr as usize];
-        //         clocks = Cpu65c816::ONE_CYCLE_SLOW;
-        //     }
-        //     // Save RAM
-        //     (bank @ 0x80..=0xBF, bank_addr @ 0x6000..=0x7FFF) => {
-        //         data = 0;
-        //         clocks = 0;
-        //         // TODO: implement SRAM
-        //     }
-        //     _ => {
-        //         data = 0;
-        //         clocks = 0;
-        //     }
-        // }
-
-        // (data, clocks)
-        (0, Cpu65c816::ONE_CYCLE_SLOW)
+        todo!("Read ExHiROM");
     }
 
-    fn write_exhirom(&mut self, _address: u32, _data: u8) -> usize {
-        // let clocks: usize;
-
-        // match (address.bank(), address.bank_addr()) {
-        //     // Lower half of ROM (stored in the upper part of memory, hence ExHiROM).
-        //     // Fast ROM region.
-        //     (bank @ 0xC0..=0xFF, bank_addr) => {
-        //         clocks = if self.fast_rom_en {
-        //             Cpu65c816::ONE_CYCLE_SLOW
-        //         } else {
-        //             Cpu65c816::ONE_CYCLE
-        //         };
-        //     }
-        //     // Upper half of ROM (stored lower in memory: bank 0x40 directly follows bank 0xFF).
-        //     // Slow ROM region.
-        //     (bank @ 0x40..=0x7D, bank_addr) => {
-        //         clocks = Cpu65c816::ONE_CYCLE_SLOW;
-        //     }
-        //     // Very last bit of ROM - and of course, it's the lowest in memory.
-        //     // Only fills the upper half of banks 3E and 3F.
-        //     (bank @ 0x3E..=0x3F, bank_addr @ 0x8000..=0xFFFF) => {
-        //         clocks = Cpu65c816::ONE_CYCLE_SLOW;
-        //     }
-        //     // Mirror of ROM banks 0xC0-0xFF.
-        //     // Fast ROM region.
-        //     (bank @ 0x80..=0xBF, bank_addr @ 0x8000..=0xFFFF) => {
-        //         clocks = if self.fast_rom_en {
-        //             Cpu65c816::ONE_CYCLE_SLOW
-        //         } else {
-        //             Cpu65c816::ONE_CYCLE
-        //         };
-        //     }
-        //     // Mirror of ROM banks 0x40-0x7D
-        //     (bank @ 0x00..=0x3D, bank_addr @ 0x8000..=0xFFFF) => {
-        //         clocks = if self.fast_rom_en {
-        //             Cpu65c816::ONE_CYCLE_SLOW
-        //         } else {
-        //             Cpu65c816::ONE_CYCLE
-        //         };
-        //     }
-        //     // LoRAM mirrors
-        //     (bank @ 0x00..=0x3F, bank_addr @ 0x0000..=0x1FFF)
-        //     | (bank @ 0x80..=0xBF, bank_addr @ 0x0000..=0x1FFF) => {
-        //         self.wram[bank_addr as usize] = data;
-        //         clocks = Cpu65c816::ONE_CYCLE_SLOW;
-        //     }
-        //     // Save RAM
-        //     (bank @ 0x80..=0xBF, bank_addr @ 0x6000..=0x7FFF) => {
-        //         if self.has_sram {
-        //             todo!("implement SRAM");
-        //         }
-        //         clocks = 0;
-        //     }
-        //     _ => {
-        //         clocks = 0;
-        //     }
-        // }
-
-        // clocks
-
-        Cpu65c816::ONE_CYCLE_SLOW
+    fn write_exhirom(&mut self, address: u32, data: u8) -> usize {
+        todo!("Write ExHiROM");
     }
 
     fn read_hdma_table(&mut self, ch_idx: usize) -> u8 {
@@ -2779,7 +2645,7 @@ impl Cpu65c816 {
 
         self.dma_channels[ch_idx].bytes_written = 0;
 
-        if !self.dma_channels[ch_idx].table_started || self.dma_channels[ch_idx].repeat {
+        if !self.dma_channels[ch_idx].table_started || self.dma_channels[ch_idx].hdma_repeat {
             let indirect = self.dma_channels[ch_idx].indirect;
 
             let bytes_written = match self.dma_channels[ch_idx].transfer_pattern {
@@ -2922,10 +2788,10 @@ impl Cpu65c816 {
 
         if table_start == 0x80 {
             self.dma_channels[ch_idx].scanlines_left = 1;
-            self.dma_channels[ch_idx].repeat = false;
+            self.dma_channels[ch_idx].hdma_repeat = false;
         } else {
             self.dma_channels[ch_idx].scanlines_left = table_start & 0x7F;
-            self.dma_channels[ch_idx].repeat = table_start.bit_en(7);
+            self.dma_channels[ch_idx].hdma_repeat = table_start.bit_en(7);
         }
         
         self.dma_channels[ch_idx].table_started = false;

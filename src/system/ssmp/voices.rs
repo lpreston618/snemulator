@@ -11,6 +11,7 @@ enum GainMode {
     BentIncrease,
 }
 
+/// Contains all registers controlling a single voice of the S-DSP
 #[derive(Clone)]
 pub struct Registers {
     lchannel_volume: Cell<i8>,
@@ -102,6 +103,8 @@ impl Registers {
     }
 }
 
+/// A single voice in the S-DSP. Produces an output sample based on the voice's
+/// settings set via the voice registers.
 #[derive(Clone)]
 pub struct Voice {
     registers: Rc<Registers>
