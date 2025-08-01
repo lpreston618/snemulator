@@ -388,7 +388,7 @@ impl SuperDSP {
 
         let brr_sample = self.brr_sample_groups[voice_idx].read_sample();
 
-        let sample = self.filter_brr_sample(brr_sample.sample, voice_idx);
+        self.filter_brr_sample(brr_sample.sample, voice_idx);
 
         let voice_regs = &self.smp_data.sdsp_regs.voice_regs[voice_idx];
         let brr_group = &mut self.brr_sample_groups[voice_idx];
@@ -434,7 +434,7 @@ impl SuperDSP {
         }
     }
 
-    fn filter_brr_sample(&mut self, sample: u8, voice_idx: usize) -> u16 {
+    fn filter_brr_sample(&mut self, sample: u8, voice_idx: usize) {
         let brr_group = &mut self.brr_sample_groups[voice_idx];
 
         let sample = ((sample as u16) << brr_group.left_shift) >> 1;
@@ -472,8 +472,6 @@ impl SuperDSP {
         self.surrounding_brr_samples[voice_idx][1] = self.surrounding_brr_samples[voice_idx][2];
         self.surrounding_brr_samples[voice_idx][2] = self.surrounding_brr_samples[voice_idx][3];
         self.surrounding_brr_samples[voice_idx][3] = filtered_sample;
-
-        filtered_sample
     }
 
     pub fn finish(&mut self) {
