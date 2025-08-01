@@ -79,8 +79,12 @@ impl Ssmp {
         }
     }
 
-    pub fn finish(&mut self) {
-        self.sdsp.finish();
+    /// Used to purely generate samples in case of audio buffer underrun, i.e.,
+    /// the S-DSP is not clocked.
+    pub fn generate_samples(&mut self, audio_buffer: &mut Vec<i16>, num_samples: usize) {
+        for _ in 0..num_samples {
+            self.sdsp.generate_sample(audio_buffer);
+        }
     }
 
     pub fn clock(&mut self, audio_buffer: &mut Vec<i16>) {

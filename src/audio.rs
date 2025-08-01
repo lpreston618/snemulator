@@ -1,6 +1,8 @@
 pub const AUDIO_FREQ: usize = 44100;
 const IDEAL_FRAME_SAMPLES: usize = AUDIO_FREQ / 60;
 pub const MAX_AUDIO_BUFFER_SIZE: usize = (IDEAL_FRAME_SAMPLES + 100) * 2;
+pub const MIN_AUDIO_BUFFER_STATUS: usize = 5;
+pub const AUDIO_BUFFER_PANIC_FILL_SIZE: usize = 4096;
 
 #[derive(Debug)]
 pub struct AudioBufferStatus {

@@ -57,10 +57,6 @@ impl SnemulatorCore {
     pub fn render_audio(&mut self, callbacks: &mut impl Callbacks) {
         callbacks.upload_audio_frame(&self.audio_buffer);
 
-        if self.audio_buffer.len() > audio::MAX_AUDIO_BUFFER_SIZE {
-            println!("Rendered {} samples", self.audio_buffer.len());
-        }
-
         self.audio_buffer.clear()
     }
 
@@ -157,6 +153,21 @@ impl SnemulatorCore {
     fn cycle_frame(&mut self) {
         while !self.snem_ppu.frame_finished {
             self.cycle();
+        }
+
+        // If we are likely to underrun the audio buffer even with the extra
+        // clocking in self.cycle(), fill the audio buffer to a larger size just
+        // to be safe. Doesn't eliminate all possibility of crackling, but
+        // reduces it greatly.
+        if self.audio_buffer_status.occupancy < audio::MIN_AUDIO_BUFFER_STATUS {
+            let num_samples = audio::AUDIO_BUFFER_PANIC_FILL_SIZE
+                .checked_sub(self.audio_buffer.len())
+                .unwrap_or(0);
+
+            self.snem_smp.generate_samples(
+                &mut self.audio_buffer,
+                num_samples,
+            );
         }
 
         self.snem_ppu.frame_finished = false;
@@ -316,8 +327,6 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
     }
 
     fn unload_game(mut self, _env: &mut impl retro::env::UnloadGame) -> Self::Init {
-        self.snem_smp.finish();
-
         self.logger.log(LogLevel::Info, "unloading game");
     }
 

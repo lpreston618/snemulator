@@ -129,8 +129,6 @@ pub(super) struct SuperDSP {
     registers: Rc<Registers>,
     aram: Rc<Vec<Cell<u8>>>,
     samples_generated: usize,
-    writer: Option<hound::WavWriter<BufWriter<File>>>,
-    outf: Option<File>,
 }
 
 impl SuperDSP {
@@ -141,34 +139,16 @@ impl SuperDSP {
             voice_vec.push(voices::Voice::new(regs.clone()));
         }
 
-        let wav_spec = hound::WavSpec {
-            channels: 1,
-            sample_rate: ssmp::AUDIO_FREQ as u32,
-            sample_format: hound::SampleFormat::Int,
-            bits_per_sample: 16
-        };
-        let writer = hound::WavWriter::create("sine.wav", wav_spec).unwrap();
-
-        let outf = std::fs::File::create("samples.txt").unwrap();
-
         SuperDSP { 
             voices: voice_vec,
             registers: sdsp_regs,
             aram,
             samples_generated: 0,
-            writer: Some(writer),
-            outf: Some(outf),
        }
     }
 
     pub fn clock(&mut self, time: f32) {
         
-    }
-
-    pub fn finish(&mut self) {
-        if let Some(writer) = self.writer.take() {
-            writer.finalize().unwrap();
-        }
     }
 
     pub fn generate_sample(&mut self, audio_buffer: &mut Vec<i16>) {
@@ -177,18 +157,6 @@ impl SuperDSP {
         let time = ssmp::TIME_PER_SAMPLE * self.samples_generated as f32;
 
         let sample = ((time * SAMPLE_FREQ * std::f32::consts::TAU).sin() * i16::MAX as f32) as i16;
-
-        if let Some(mut writer) = self.writer.take() {
-            writer.write_sample(sample).unwrap();
-            self.writer = Some(writer);
-        }
-
-        if time < 1.0 {
-            if let Some(mut outf) = self.outf.take() {
-                outf.write(format!("{} {}\n", time, sample).as_bytes()).unwrap();
-                self.outf = Some(outf);
-            }
-        }
 
         self.samples_generated += 1;
 
