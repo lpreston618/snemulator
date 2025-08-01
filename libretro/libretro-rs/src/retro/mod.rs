@@ -1,4 +1,5 @@
 pub mod av;
+pub mod audio;
 pub use cores::*;
 pub mod device;
 pub mod env;

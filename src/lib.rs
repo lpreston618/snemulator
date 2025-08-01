@@ -4,3 +4,4 @@ mod libretro;
 mod tools;
 mod utils;
 mod controller;
+mod audio;

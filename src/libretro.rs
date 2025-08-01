@@ -1,5 +1,6 @@
 use std::rc::Rc;
 
+use crate::audio;
 use crate::controller::SnemController;
 use crate::log::{LogLevel, SnemLogger};
 use crate::system::cartridge::Cartridge;
@@ -30,26 +31,15 @@ use retro::framebuf::ResizableFrameBuffer;
 const SNES_FRAME_WIDTH: usize = 512;
 const SNES_FRAME_HEIGHT: usize = 448;
 const FRAME_BUF_SIZE: usize = SNES_FRAME_WIDTH * SNES_FRAME_HEIGHT;
-const MAX_AUDIO_BUFFER_SIZE: usize = 2048;
-
-macro_rules! set_button {
-    ($cb:expr, $controller:expr, $port:expr, $button:expr) => {
-        $controller.update_button_state($button,
-            $cb.is_joypad_button_pressed(
-                $port,
-                $button.into()
-            )
-        );
-    }
-}
-
 
 struct SnemulatorCore {
     logger: Rc<SnemLogger>,
     frame_buffer: ResizableFrameBuffer<RGB565, FRAME_BUF_SIZE>,
     pixel_format: ActiveFormat<RGB565>,
     rendering_mode: SoftwareRenderEnabled,
+
     audio_buffer: Vec<i16>,
+    audio_buffer_status: audio::AudioBufferStatus,
 
     snem_cpu: scpu::Cpu65c816,
     snem_ppu: ppu::Ppu5C7x,
@@ -67,7 +57,9 @@ impl SnemulatorCore {
     pub fn render_audio(&mut self, callbacks: &mut impl Callbacks) {
         callbacks.upload_audio_frame(&self.audio_buffer);
 
-        println!("Rendered {} audio samples", self.audio_buffer.len());
+        if self.audio_buffer.len() > audio::MAX_AUDIO_BUFFER_SIZE {
+            println!("Rendered {} samples", self.audio_buffer.len());
+        }
 
         self.audio_buffer.clear()
     }
@@ -77,36 +69,47 @@ impl SnemulatorCore {
     }
 
     pub fn update_input(&mut self, callbacks: &mut impl Callbacks) -> InputsPolled {
+        macro_rules! set_button {
+            ($controller:expr, $port:expr, $button:expr) => {
+                $controller.update_button_state($button,
+                    callbacks.is_joypad_button_pressed(
+                        $port,
+                        $button.into()
+                    )
+                )
+            }
+        }
+
         let inputs_polled = callbacks.poll_inputs();
 
         let p1_port = retro::device::DevicePort::new(0);
         let p2_port = retro::device::DevicePort::new(1);
 
-        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::A);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::B);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::X);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::Y);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::Up);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::Down);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::Left);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::Right);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::Select);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::Start);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::L1);
-        set_button!(callbacks, &mut self.p1_controller, p1_port, JoypadButton::R1);
+        set_button!(self.p1_controller, p1_port, JoypadButton::A);
+        set_button!(self.p1_controller, p1_port, JoypadButton::B);
+        set_button!(self.p1_controller, p1_port, JoypadButton::X);
+        set_button!(self.p1_controller, p1_port, JoypadButton::Y);
+        set_button!(self.p1_controller, p1_port, JoypadButton::Up);
+        set_button!(self.p1_controller, p1_port, JoypadButton::Down);
+        set_button!(self.p1_controller, p1_port, JoypadButton::Left);
+        set_button!(self.p1_controller, p1_port, JoypadButton::Right);
+        set_button!(self.p1_controller, p1_port, JoypadButton::Select);
+        set_button!(self.p1_controller, p1_port, JoypadButton::Start);
+        set_button!(self.p1_controller, p1_port, JoypadButton::L1);
+        set_button!(self.p1_controller, p1_port, JoypadButton::R1);
 
-        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::A);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::B);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::X);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::Y);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::Up);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::Down);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::Left);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::Right);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::Select);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::Start);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::L1);
-        set_button!(callbacks, &mut self.p2_controller, p2_port, JoypadButton::R1);
+        set_button!(self.p2_controller, p2_port, JoypadButton::A);
+        set_button!(self.p2_controller, p2_port, JoypadButton::B);
+        set_button!(self.p2_controller, p2_port, JoypadButton::X);
+        set_button!(self.p2_controller, p2_port, JoypadButton::Y);
+        set_button!(self.p2_controller, p2_port, JoypadButton::Up);
+        set_button!(self.p2_controller, p2_port, JoypadButton::Down);
+        set_button!(self.p2_controller, p2_port, JoypadButton::Left);
+        set_button!(self.p2_controller, p2_port, JoypadButton::Right);
+        set_button!(self.p2_controller, p2_port, JoypadButton::Select);
+        set_button!(self.p2_controller, p2_port, JoypadButton::Start);
+        set_button!(self.p2_controller, p2_port, JoypadButton::L1);
+        set_button!(self.p2_controller, p2_port, JoypadButton::R1);
 
         inputs_polled
     }
@@ -143,7 +146,8 @@ impl SnemulatorCore {
             }
         }
 
-        if self.audio_buffer.len() < MAX_AUDIO_BUFFER_SIZE {
+        if self.audio_buffer.len() < audio::MAX_AUDIO_BUFFER_SIZE
+            || self.audio_buffer_status.underrun_likely {
             self.snem_smp.clock(&mut self.audio_buffer);
         }
     }
@@ -170,7 +174,16 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         )
     }
 
-    fn init(_env: &mut impl retro::env::Init) -> Self::Init {}
+    fn init(env: &mut impl retro::env::Init) -> Self::Init {
+        unsafe {
+            env.cmd::<u32, retro::audio::AudioBufferStatusCallback, retro::audio::AudioBufferStatusCallback>(
+                libretro_rs::ffi::RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK,
+                retro::audio::AudioBufferStatusCallback::new(
+                    Some(crate::audio::audio_buffer_status_cb),
+                )
+            ).unwrap()
+        };
+    }
 
     fn load_without_content<E: retro::env::LoadGame>(
         args: LoadGameExtraArgs<'a, '_, E, Self::Init>,
@@ -209,7 +222,9 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
             frame_buffer,
             pixel_format,
             rendering_mode,
+
             audio_buffer: Vec::new(),
+            audio_buffer_status: audio::get_audio_buffer_status(),
 
             snem_cpu,
             snem_ppu,
@@ -278,6 +293,8 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
     fn run(&mut self, _env: &mut impl retro::env::Run,
         callbacks: &mut impl Callbacks) -> InputsPolled {
 
+        self.audio_buffer_status = audio::get_audio_buffer_status();
+
         let inputs_polled = self.update_input(callbacks);
 
         self.cycle_frame();
@@ -285,7 +302,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         self.render_audio(callbacks);
         self.render_video(callbacks);
 
-        println!("fps: {}", 1.0 / self.last_frame.elapsed().as_secs_f32());
+        // println!("fps: {}", 1.0 / self.last_frame.elapsed().as_secs_f32());
 
         self.frame_count += 1;
         self.last_frame = std::time::Instant::now();

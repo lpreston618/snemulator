@@ -8,11 +8,12 @@ mod timer;
 use std::{cell::Cell, rc::Rc};
 
 use crate::log::{LogLevel, SnemLogger};
+use crate::audio::AUDIO_FREQ;
 
 const SDSP_CLOCK_HZ: usize = 3072000;
 const SDSP_CLOCK_PERIOD: f32 = 1.0 / SDSP_CLOCK_HZ as f32;
 
-const AUDIO_FREQ: usize = 44100;
+const MAGIC: f32 = 5e-6;
 const TIME_PER_SAMPLE: f32 = 1.0 / AUDIO_FREQ as f32;
 const SAMPLE_DROP_TIME: f32 = TIME_PER_SAMPLE * 100.0;
 
@@ -91,7 +92,7 @@ impl Ssmp {
         }
 
         if time >= self.next_sample {
-            self.next_sample += TIME_PER_SAMPLE;
+            self.next_sample += TIME_PER_SAMPLE - MAGIC;
 
             self.sdsp.generate_sample(audio_buffer);
         }
