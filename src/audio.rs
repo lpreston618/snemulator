@@ -1,6 +1,7 @@
-pub const AUDIO_FREQ: usize = 44100;
+/// SNES produces a 32 KHz sound wave
+pub const AUDIO_FREQ: usize = 32000;
 const IDEAL_FRAME_SAMPLES: usize = AUDIO_FREQ / 60;
-pub const MAX_AUDIO_BUFFER_SIZE: usize = (IDEAL_FRAME_SAMPLES + 200) * 2;
+pub const MAX_AUDIO_BUFFER_SIZE: usize = (IDEAL_FRAME_SAMPLES + 100) * 2;
 pub const MIN_AUDIO_BUFFER_OCCUPANCY: usize = 10;
 pub const AUDIO_BUFFER_PANIC_FILL_SIZE: usize = 4096;
 
@@ -16,7 +17,6 @@ static mut BUFFER_STATUS: AudioBufferStatus = AudioBufferStatus {
     occupancy: 0,
     underrun_likely: false,
 };
-
 
 pub unsafe extern "C" fn audio_buffer_status_cb(active: bool, occupancy: libretro_rs::ffi::c_uint, underrun_likely: bool) {
     BUFFER_STATUS.active = active;

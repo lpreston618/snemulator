@@ -1,9 +1,11 @@
 mod disassembler;
 mod sdsp;
 mod channel;
-mod voices;
 mod spc;
 mod timer;
+mod state;
+
+pub use state::SmpData;
 
 use std::{cell::Cell, rc::Rc};
 
@@ -11,19 +13,19 @@ use crate::log::{LogLevel, SnemLogger};
 use crate::audio::AUDIO_FREQ;
 
 const SDSP_CLOCK_HZ: usize = 3072000;
-const SDSP_CLOCK_PERIOD: f32 = 1.0 / SDSP_CLOCK_HZ as f32;
+const SDSP_CLOCK_PERIOD: f64 = 1.0 / SDSP_CLOCK_HZ as f64;
 
 /// Magic number used to increase the speed at which samples are generated 
 /// faster than they are played to ensure we always have enough to play.
-const MAGIC: f32 = 1e-5;
+const MAGIC: f64 = 1e-5;
 
 /// Time (in seconds) between playing each sample.
-const TIME_PER_SAMPLE: f32 = 1.0 / AUDIO_FREQ as f32;
+const TIME_PER_SAMPLE: f64 = 1.0 / AUDIO_FREQ as f64;
 
 /// How long to wait between generating samples before deciding to drop all the
 /// samples we are behind by. This is useful when the emulator is paused, for
 /// example, so we don't try to generate millions of samples at once.
-const SAMPLE_DROP_TIME: f32 = TIME_PER_SAMPLE * 100.0;
+const SAMPLE_DROP_TIME: f64 = TIME_PER_SAMPLE * 100.0;
 
 /// 64 KiB of Audio RAM
 const ARAM_SIZE: usize = 0x10000;
@@ -70,7 +72,7 @@ pub struct Ssmp {
     sdsp: sdsp::SuperDSP,
     sdsp_clocks: usize,
 
-    next_sample: f32,
+    next_sample: f64,
     last_sdsp_clock: std::time::Instant,
     start_time: std::time::Instant,
 
@@ -79,12 +81,11 @@ pub struct Ssmp {
 
 impl Ssmp {
     pub fn new(apuio_regs: Rc<ApuIORegs>, logger: Rc<SnemLogger>) -> Ssmp {
-        let aram = Rc::new(vec![Cell::new(0); ARAM_SIZE]);
-        let sdsp_regs = Rc::new(sdsp::Registers::new());
+        let smp_data = Rc::new(SmpData::new());
 
         Ssmp {
-            spc: spc::Spc700::new(apuio_regs, aram.clone(), sdsp_regs.clone(), logger.clone()),
-            sdsp: sdsp::SuperDSP::new(aram, sdsp_regs),
+            spc: spc::Spc700::new(apuio_regs, smp_data.clone(), logger.clone()),
+            sdsp: sdsp::SuperDSP::new(smp_data),
             sdsp_clocks: 0,
             
             next_sample: 0.0,
@@ -93,6 +94,10 @@ impl Ssmp {
 
             logger,
         }
+    }
+
+    pub fn finish(&mut self) {
+        self.sdsp.finish();
     }
 
     /// Used to purely generate samples in case of audio buffer underrun, i.e.,
@@ -106,7 +111,7 @@ impl Ssmp {
     /// Clocks the sound processor, checking if it is time to generate a new
     /// sample and/or clock the S-DSP and SPC700 processors.
     pub fn clock(&mut self, audio_buffer: &mut Vec<i16>, generate_sample: bool) {
-        let time = self.start_time.elapsed().as_secs_f32();
+        let time = self.start_time.elapsed().as_secs_f64();
 
         // If we are too far behind, drop the missing samples
         if (time - self.next_sample).abs() >= SAMPLE_DROP_TIME {
@@ -119,7 +124,7 @@ impl Ssmp {
             self.sdsp.generate_sample(audio_buffer);
         }
 
-        let time_since_sdsp_clock = self.last_sdsp_clock.elapsed().as_secs_f32();
+        let time_since_sdsp_clock = self.last_sdsp_clock.elapsed().as_secs_f64();
 
         if time_since_sdsp_clock >= SDSP_CLOCK_PERIOD {
             self.last_sdsp_clock = std::time::Instant::now();

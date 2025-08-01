@@ -10,7 +10,7 @@ use crate::system::ssmp;
 
 use libretro_rs::c_utf8::c_utf8;
 use libretro_rs::retro::av::{
-    GameGeometry, SoftwareRenderEnabled, SystemAVInfo,
+    GameGeometry, SoftwareRenderEnabled, SystemAVInfo, SystemTiming,
 };
 use libretro_rs::retro::device::JoypadButton;
 use libretro_rs::retro::env::GetAvInfo;
@@ -57,7 +57,7 @@ impl SnemulatorCore {
     pub fn render_audio(&mut self, callbacks: &mut impl Callbacks) {
         callbacks.upload_audio_frame(&self.audio_buffer);
 
-        println!("Rendered {} samples, status = {:?}", self.audio_buffer.len(), self.audio_buffer_status);
+        // println!("Rendered {} samples, status = {:?}", self.audio_buffer.len(), self.audio_buffer_status);
 
         self.audio_buffer.clear()
     }
@@ -297,10 +297,16 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
     }
 
     fn get_system_av_info(&self, _env: &mut impl GetAvInfo) -> SystemAVInfo {
-        SystemAVInfo::default_timings(GameGeometry::fixed(
-            SNES_FRAME_WIDTH as u16,
-            SNES_FRAME_HEIGHT as u16,
-        ))
+        SystemAVInfo::new(
+            GameGeometry::fixed(
+                SNES_FRAME_WIDTH as u16,
+                SNES_FRAME_HEIGHT as u16,
+            ),
+            SystemTiming::new(
+                60.0,
+                audio::AUDIO_FREQ as f64,
+            ),
+        )
     }
 
     fn run(&mut self, _env: &mut impl retro::env::Run,
@@ -328,7 +334,9 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         todo!("Reset Core");
     }
 
-    fn unload_game(self, _env: &mut impl retro::env::UnloadGame) -> Self::Init {
+    fn unload_game(mut self, _env: &mut impl retro::env::UnloadGame) -> Self::Init {
+        self.snem_smp.finish();
+
         self.logger.log(LogLevel::Info, "unloading game");
     }
 

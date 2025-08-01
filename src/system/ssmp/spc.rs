@@ -1,7 +1,7 @@
 use std::{cell::Cell, rc::Rc};
 
 use crate::log::SnemLogger;
-use crate::system::ssmp;
+use crate::system::ssmp::{self, SmpData};
 use crate::system::ssmp::sdsp;
 use crate::system::ssmp::timer::Timer;
 use crate::utils::{GetBits, GetBytes};
@@ -40,9 +40,9 @@ pub struct Spc700 {
 
     spc_clocks_until_instr: usize,
 
-    aram: Rc<Vec<Cell<u8>>>,
     apuio_regs: Rc<ssmp::ApuIORegs>,
-    sdsp_regs: Rc<sdsp::Registers>,
+
+    smp_data: Rc<ssmp::SmpData>,
 
     ipl_read: bool,
 
@@ -70,7 +70,7 @@ impl Spc700 {
         0x00, 0x00, 0xC0, 0xFF,
     ];
 
-    pub fn new(apuio_regs: Rc<ssmp::ApuIORegs>, aram: Rc<Vec<Cell<u8>>>, sdsp_regs: Rc<sdsp::Registers>, logger: Rc<SnemLogger>) -> Spc700 {
+    pub fn new(apuio_regs: Rc<ssmp::ApuIORegs>, smp_data: Rc<SmpData>, logger: Rc<SnemLogger>) -> Spc700 {
         Spc700 {
             pc: 0xFFC0,
             sp: 0,
@@ -84,9 +84,8 @@ impl Spc700 {
 
             spc_clocks_until_instr: 0,
 
-            aram,
             apuio_regs,
-            sdsp_regs,
+            smp_data,
 
             ipl_read: true,
             sdsp_read_only: false,
@@ -127,27 +126,27 @@ impl Spc700 {
         match address {
             (0x00F0..=0x00FF) => self.read_sound_regs(address),
             (0xFFC0..=0xFFFF) if self.ipl_read => Spc700::IPL_ROM[(address & 0x3F) as usize],
-            _ => self.aram[address as usize].get(),
+            _ => self.smp_data.aram[address as usize].get(),
         }
     }
 
     fn write(&mut self, address: u16, data: u8) {
         match address {
             (0xF0..=0xFF) => self.write_sound_regs(address, data),
-            _ => self.aram[address as usize].set(data),
+            _ => self.smp_data.aram[address as usize].set(data),
         }
     }
 
     fn read_sound_regs(&mut self, address: u16) -> u8 {
         match address & 0xF {
             0x2 => self.sdsp_addr,
-            0x3 => self.sdsp_regs.read(self.sdsp_addr),
+            0x3 => self.smp_data.sdsp_regs.read(self.sdsp_addr),
             0x4 => self.apuio_regs.cpuio0.get(),
             0x5 => self.apuio_regs.cpuio1.get(),
             0x6 => self.apuio_regs.cpuio2.get(),
             0x7 => self.apuio_regs.cpuio3.get(),
-            0x8 => self.aram[0xFF08].get(),
-            0x9 => self.aram[0xFF09].get(),
+            0x8 => self.smp_data.aram[0xFF08].get(),
+            0x9 => self.smp_data.aram[0xFF09].get(),
             0xA => self.timer0.get_target(),
             0xB => self.timer1.get_target(),
             0xC => self.timer2.get_target(),
@@ -182,15 +181,15 @@ impl Spc700 {
             }
             0x3 => {
                 if !self.sdsp_read_only {
-                    self.sdsp_regs.write(self.sdsp_addr, data);
+                    self.smp_data.sdsp_regs.write(self.sdsp_addr, data);
                 }
             }
             0x4 => { self.apuio_regs.apuio0.set(data); }
             0x5 => { self.apuio_regs.apuio1.set(data); }
             0x6 => { self.apuio_regs.apuio2.set(data); }
             0x7 => { self.apuio_regs.apuio3.set(data); }
-            0x8 => { self.aram[0xFF08].set(data); }
-            0x9 => { self.aram[0xFF09].set(data); }
+            0x8 => { self.smp_data.aram[0xFF08].set(data); }
+            0x9 => { self.smp_data.aram[0xFF09].set(data); }
             0xA => { self.timer0.set_target(data); }
             0xB => { self.timer1.set_target(data); }
             0xC => { self.timer2.set_target(data); }
