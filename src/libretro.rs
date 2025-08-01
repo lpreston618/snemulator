@@ -30,8 +30,7 @@ use retro::framebuf::ResizableFrameBuffer;
 const SNES_FRAME_WIDTH: usize = 512;
 const SNES_FRAME_HEIGHT: usize = 448;
 const FRAME_BUF_SIZE: usize = SNES_FRAME_WIDTH * SNES_FRAME_HEIGHT;
-pub const AUDIO_FREQ: usize = 44100;
-const AUDIO_BUFFER_SAMPLES: usize = AUDIO_FREQ / 60;
+const MAX_AUDIO_BUFFER_SIZE: usize = 2048;
 
 macro_rules! set_button {
     ($cb:expr, $controller:expr, $port:expr, $button:expr) => {
@@ -68,7 +67,7 @@ impl SnemulatorCore {
     pub fn render_audio(&mut self, callbacks: &mut impl Callbacks) {
         callbacks.upload_audio_frame(&self.audio_buffer);
 
-        println!("Rendered {} audio samples, FPS: {}", self.audio_buffer.len(), 1.0 / self.last_frame.elapsed().as_secs_f32());
+        println!("Rendered {} audio samples", self.audio_buffer.len());
 
         self.audio_buffer.clear()
     }
@@ -119,51 +118,12 @@ impl SnemulatorCore {
         let ppu_clocks = self.snem_ppu.sys_clocks_left();
         let cpu_clocks = self.snem_cpu.sys_clocks_left();
 
-        // if ppu_clocks == 0 {
-        //     self.snem_ppu.clock(&mut self.frame_buffer);
-        // }
-        // if cpu_clocks == 0 {
-        //     self.snem_cpu.clock(self.frame_count as usize);
-
-        //     if self.snem_cpu.poll_controllers {
-        //         self.snem_cpu.latch_controller_states(
-        //             self.p1_controller.state_as_u16(),
-        //             self.p2_controller.state_as_u16()
-        //         );
-
-        //         self.snem_cpu.poll_controllers = false;
-        //     }
-
-        //     if self.snem_cpu.auto_read_controllers {
-        //         self.snem_cpu.do_joypad_auto_read(
-        //             self.p1_controller.state_as_u16(),
-        //             self.p2_controller.state_as_u16()
-        //         );
-
-        //         self.snem_cpu.auto_read_controllers = false;
-        //     }
-        // }
-
-        // self.snem_apu.clock(&mut self.audio_buffer, 1);
-
-        // self.snem_cpu.remove_clocks(1);
-        // self.snem_ppu.remove_clocks(1);
-
         if ppu_clocks < cpu_clocks {
             self.snem_cpu.remove_clocks(ppu_clocks);
             self.snem_ppu.clock(&mut self.frame_buffer);
-
-            for _ in 0..ppu_clocks {
-                self.snem_smp.clock(&mut self.audio_buffer);
-            }
         } else {
             self.snem_ppu.remove_clocks(cpu_clocks);
             self.snem_cpu.clock(self.frame_count as usize);
-            
-            for _ in 0..cpu_clocks {
-                self.snem_smp.clock(&mut self.audio_buffer);
-            }
-
             if self.snem_cpu.poll_controllers {
                 self.snem_cpu.latch_controller_states(
                     self.p1_controller.state_as_u16(),
@@ -181,6 +141,10 @@ impl SnemulatorCore {
 
                 self.snem_cpu.auto_read_controllers = false;
             }
+        }
+
+        if self.audio_buffer.len() < MAX_AUDIO_BUFFER_SIZE {
+            self.snem_smp.clock(&mut self.audio_buffer);
         }
     }
 
@@ -245,7 +209,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
             frame_buffer,
             pixel_format,
             rendering_mode,
-            audio_buffer: Vec::with_capacity(AUDIO_BUFFER_SAMPLES * 2),
+            audio_buffer: Vec::new(),
 
             snem_cpu,
             snem_ppu,
@@ -321,6 +285,8 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         self.render_audio(callbacks);
         self.render_video(callbacks);
 
+        println!("fps: {}", 1.0 / self.last_frame.elapsed().as_secs_f32());
+
         self.frame_count += 1;
         self.last_frame = std::time::Instant::now();
 
@@ -332,7 +298,9 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
         todo!("Reset Core");
     }
 
-    fn unload_game(self, _env: &mut impl retro::env::UnloadGame) -> Self::Init {
+    fn unload_game(mut self, _env: &mut impl retro::env::UnloadGame) -> Self::Init {
+        self.snem_smp.finish();
+
         self.logger.log(LogLevel::Info, "unloading game");
     }
 

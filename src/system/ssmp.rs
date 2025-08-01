@@ -8,14 +8,16 @@ mod timer;
 use std::{cell::Cell, rc::Rc};
 
 use crate::log::{LogLevel, SnemLogger};
-use crate::libretro::AUDIO_FREQ;
 
 const SDSP_CLOCK_HZ: usize = 3072000;
 const SDSP_CLOCK_PERIOD: f32 = 1.0 / SDSP_CLOCK_HZ as f32;
 
+const AUDIO_FREQ: usize = 44100;
 const TIME_PER_SAMPLE: f32 = 1.0 / AUDIO_FREQ as f32;
+const SAMPLE_DROP_TIME: f32 = TIME_PER_SAMPLE * 100.0;
 
 const ARAM_SIZE: usize = 0x10000; // 64 KiB of Audio RAM
+
 
 pub struct ApuIORegs {
     // APU -> CPU regs
@@ -51,7 +53,7 @@ pub struct Ssmp {
     sdsp: sdsp::SuperDSP,
     sdsp_clocks: usize,
 
-    last_sample: std::time::Instant,
+    next_sample: f32,
     last_sdsp_clock: std::time::Instant,
     start_time: std::time::Instant,
 
@@ -68,7 +70,7 @@ impl Ssmp {
             sdsp: sdsp::SuperDSP::new(aram, sdsp_regs),
             sdsp_clocks: 0,
             
-            last_sample: std::time::Instant::now(),
+            next_sample: 0.0,
             last_sdsp_clock: std::time::Instant::now(),
             start_time: std::time::Instant::now(),
 
@@ -76,15 +78,22 @@ impl Ssmp {
         }
     }
 
+    pub fn finish(&mut self) {
+        self.sdsp.finish();
+    }
+
     pub fn clock(&mut self, audio_buffer: &mut Vec<i16>) {
-        let time_since_last_sample = self.last_sample.elapsed().as_secs_f32();
+        let time = self.start_time.elapsed().as_secs_f32();
 
-        if time_since_last_sample >= TIME_PER_SAMPLE {
-            self.last_sample = std::time::Instant::now();
+        // If we are too far behind, drop the missing samples
+        if (time - self.next_sample).abs() >= SAMPLE_DROP_TIME {
+            self.next_sample = time;
+        }
 
-            let time = self.start_time.elapsed().as_secs_f32();
+        if time >= self.next_sample {
+            self.next_sample += TIME_PER_SAMPLE;
 
-            self.sdsp.generate_sample(audio_buffer, time);
+            self.sdsp.generate_sample(audio_buffer);
         }
 
         let time_since_sdsp_clock = self.last_sdsp_clock.elapsed().as_secs_f32();
