@@ -325,7 +325,6 @@ pub struct SuperDSP {
 
 impl SuperDSP {
     const GAUSS_LOOKUP: [i16; 512] = [
-    const GAUSS_LOOKUP: [i16; 512] = [
         0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,
         0x001,0x001,0x001,0x001,0x001,0x001,0x001,0x001,0x001,0x001,0x001,0x002,0x002,0x002,0x002,0x002,
         0x002,0x002,0x003,0x003,0x003,0x003,0x003,0x004,0x004,0x004,0x004,0x004,0x005,0x005,0x005,0x005,
@@ -512,11 +511,11 @@ impl SuperDSP {
     }
 
     fn generate_voice_brr_sample(&mut self, voice: usize) -> u16 {
-        let voice_data = self.smp_data.sdsp_regs.voice_regs[voice];
+        let voice_data = &self.smp_data.sdsp_regs.voice_regs[voice];
         // Pitch is stored as a 14-bit fixed width number. 
         // We convert it to a float by dividing by the fixed-width representation
         // of 1.
-        let pitch_factor: f64 = (1.0 / 0x1000 as f64) * voice_data.pitch;
+        let pitch_factor: f64 = (1.0 / 0x1000 as f64) * voice_data.pitch.get() as f64;
         let time_step = ssmp::TIME_PER_SAMPLE * pitch_factor;
         let brr_sample_advance = time_step + self.voice_intermediate_time_step[voice];
         let steps = brr_sample_advance as usize;
@@ -540,7 +539,7 @@ impl SuperDSP {
         0 // for now
     }
 
-    pub fn generate_sample(&mut self, audio_buffer: &mut Vec<i16>) {
+    pub fn generate_sample(&mut self, audio_buffer: &mut Vec<i16>, time: f64) {
         // const SAMPLE_FREQ: f64 = 440.0;
         //
         // let time = ssmp::TIME_PER_SAMPLE * self.samples_generated as f64;
