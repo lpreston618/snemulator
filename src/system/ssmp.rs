@@ -15,17 +15,13 @@ use crate::audio::AUDIO_FREQ;
 const SDSP_CLOCK_HZ: usize = 3072000;
 const SDSP_CLOCK_PERIOD: f64 = 1.0 / SDSP_CLOCK_HZ as f64;
 
-/// Magic number used to increase the speed at which samples are generated 
-/// faster than they are played to ensure we always have enough to play.
-const MAGIC: f64 = 1e-5;
-
 /// Time (in seconds) between playing each sample.
 const TIME_PER_SAMPLE: f64 = 1.0 / AUDIO_FREQ as f64;
 
 /// How long to wait between generating samples before deciding to drop all the
 /// samples we are behind by. This is useful when the emulator is paused, for
 /// example, so we don't try to generate millions of samples at once.
-const SAMPLE_DROP_TIME: f64 = TIME_PER_SAMPLE * 100.0;
+const SAMPLE_DROP_TIME: f64 = TIME_PER_SAMPLE * 64.0;
 
 /// 64 KiB of Audio RAM
 const ARAM_SIZE: usize = 0x10000;
@@ -74,7 +70,10 @@ pub struct Ssmp {
 
     next_sample: f64,
     last_sdsp_clock: std::time::Instant,
-    start_time: std::time::Instant,
+    last_sdsp_noise_shift: std::time::Instant,
+    frame_start: std::time::Instant,
+
+    samples_generated: usize,
 
     logger: Rc<SnemLogger>
 }
@@ -90,7 +89,10 @@ impl Ssmp {
             
             next_sample: 0.0,
             last_sdsp_clock: std::time::Instant::now(),
-            start_time: std::time::Instant::now(),
+            last_sdsp_noise_shift: std::time::Instant::now(),
+            frame_start: std::time::Instant::now(),
+
+            samples_generated: 0,
 
             logger,
         }
@@ -102,26 +104,41 @@ impl Ssmp {
 
     /// Used to purely generate samples in case of audio buffer underrun, i.e.,
     /// the S-DSP is not clocked.
-    pub fn generate_samples(&mut self, audio_buffer: &mut Vec<i16>, num_samples: usize) {
-        for _ in 0..num_samples {
-            self.sdsp.generate_sample(audio_buffer);
-        }
+    // pub fn generate_samples(&mut self, audio_buffer: &mut Vec<i16>, num_samples: usize) {
+    //     for _ in 0..num_samples {
+    //         self.sdsp.generate_sample(audio_buffer);
+    //     }
+    // }
+
+    pub fn start_frame(&mut self) {
+        self.next_sample = 0.0;
+        self.frame_start = std::time::Instant::now();
     }
 
     /// Clocks the sound processor, checking if it is time to generate a new
     /// sample and/or clock the S-DSP and SPC700 processors.
-    pub fn clock(&mut self, audio_buffer: &mut Vec<i16>, generate_sample: bool) {
-        let time = self.start_time.elapsed().as_secs_f64();
+    pub fn clock(&mut self, audio_buffer: &mut Vec<i16>) {
+        let time = self.frame_start.elapsed().as_secs_f64();
 
-        // If we are too far behind, drop the missing samples
-        if (time - self.next_sample).abs() >= SAMPLE_DROP_TIME {
-            self.next_sample = time;
+        if time >= self.next_sample {
+            // If we are too far behind, drop the missing samples
+            if (time - self.next_sample).abs() >= SAMPLE_DROP_TIME {
+                self.next_sample = time;
+            }
+
+            self.next_sample += TIME_PER_SAMPLE - 3e-6;
+
+            let emulated_time = TIME_PER_SAMPLE * self.samples_generated as f64;
+
+            self.sdsp.generate_sample(audio_buffer, emulated_time);
+
+            self.samples_generated += 1;
         }
 
-        if generate_sample && time >= self.next_sample {
-            self.next_sample += TIME_PER_SAMPLE - MAGIC;
+        if self.last_sdsp_noise_shift.elapsed().as_secs_f64() > self.sdsp.noise_shift_period() {
+            self.last_sdsp_noise_shift = std::time::Instant::now();
 
-            self.sdsp.generate_sample(audio_buffer);
+            self.sdsp.clock_noise_generator();
         }
 
         let time_since_sdsp_clock = self.last_sdsp_clock.elapsed().as_secs_f64();

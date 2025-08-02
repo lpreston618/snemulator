@@ -7,6 +7,13 @@ use crate::utils::{GetBits, SetCellBytes};
 
 use crate::system::ssmp::{self, SmpData};
 
+enum ADSRStage {
+    Attack,
+    Decay,
+    Sustain,
+    Release,
+}
+
 #[derive(Clone, Copy, Debug)]
 enum GainMode {
     Fixed,
@@ -306,17 +313,18 @@ impl SdspRegisters {
 /// add to the audio buffer.
 pub struct SuperDSP {
     smp_data: Rc<SmpData>,
-    samples_generated: usize,
+
+    noise_output: u16,
 
     writer: Option<hound::WavWriter<BufWriter<File>>>,
 
     brr_sample_groups: [BrrSampleGroup; 8],
-    surrounding_brr_samples: [[u16; 4]; 8],
+    surrounding_brr_samples: [[i16; 4]; 8],
     voice_sample_time: [f64; 8],
 }
 
 impl SuperDSP {
-    const GAUSS_LOOKUP: [u16; 512] = [
+    const GAUSS_LOOKUP: [i16; 512] = [
         0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,
         0x001,0x001,0x001,0x001,0x001,0x001,0x001,0x001,0x001,0x001,0x001,0x002,0x002,0x002,0x002,0x002,
         0x002,0x002,0x003,0x003,0x003,0x003,0x003,0x004,0x004,0x004,0x004,0x004,0x005,0x005,0x005,0x005,
@@ -350,6 +358,11 @@ impl SuperDSP {
         0x502,0x503,0x504,0x506,0x507,0x508,0x50A,0x50B,0x50C,0x50D,0x50E,0x50F,0x510,0x511,0x511,0x512,
         0x513,0x514,0x514,0x515,0x516,0x516,0x517,0x517,0x517,0x518,0x518,0x518,0x518,0x518,0x519,0x519,
     ];
+    
+    const PERIOD_LOOKUP: [usize; 32] = [
+        0, 2048, 1536, 1280, 1024, 768, 640, 512, 384, 320, 256, 192, 160, 
+        128, 96, 80, 64, 48, 40, 32, 24, 20, 16, 12, 10, 8, 6, 5, 4, 3, 2, 1,
+    ];
 
     pub fn new(smp_data: Rc<SmpData>) -> SuperDSP {
         let wav_spec = hound::WavSpec {
@@ -362,7 +375,8 @@ impl SuperDSP {
 
         SuperDSP {
             smp_data,
-            samples_generated: 0,
+
+            noise_output: 0x4000,
 
             brr_sample_groups: [
                 BrrSampleGroup::default(), BrrSampleGroup::default(),
@@ -379,6 +393,22 @@ impl SuperDSP {
 
     pub fn clock(&mut self) {
         
+    }
+
+    pub fn clock_noise_generator(&mut self) {
+        let b0 = (self.noise_output >> 0) & 1;
+        let b1 = (self.noise_output >> 1) & 1;
+
+        self.noise_output |= (b0 ^ b1) << 15;
+        self.noise_output >>= 1;
+    }
+
+    pub fn noise_shift_period(&self) -> f64 {
+        if self.smp_data.sdsp_regs.noise_freq.get() == 0 {
+            f64::INFINITY
+        } else {
+            1.0 / (SuperDSP::PERIOD_LOOKUP[self.smp_data.sdsp_regs.noise_freq.get() as usize] as f64)
+        }
     }
 
     fn read_voice_brr_sample(&mut self, voice_idx: usize) {
@@ -437,7 +467,11 @@ impl SuperDSP {
     fn filter_brr_sample(&mut self, sample: u8, voice_idx: usize) {
         let brr_group = &mut self.brr_sample_groups[voice_idx];
 
-        let sample = ((sample as u16) << brr_group.left_shift) >> 1;
+        let sign = if sample.bit_en(3) { -1 } else { 1 };
+
+        let sample = (((sample & 7) as i16) << brr_group.left_shift) >> 1;
+
+        let sample = sample * sign;
 
         let filtered_sample = match brr_group.filter {
             BrrFilter::Filter0 => sample,
@@ -478,18 +512,14 @@ impl SuperDSP {
         self.writer.take().unwrap().finalize().unwrap();
     }
 
-    pub fn generate_sample(&mut self, audio_buffer: &mut Vec<i16>) {
+    pub fn generate_sample(&mut self, audio_buffer: &mut Vec<i16>, time: f64) {
         const SAMPLE_FREQ: f64 = 440.0;
-
-        let time = ssmp::TIME_PER_SAMPLE * self.samples_generated as f64;
 
         let sample = ((time * SAMPLE_FREQ * std::f64::consts::TAU).sin() * i16::MAX as f64) as i16;
 
-        let mut writer = self.writer.take().unwrap();
-        writer.write_sample(sample).unwrap();
-        self.writer = Some(writer);
-
-        self.samples_generated += 1;
+        // let mut writer = self.writer.take().unwrap();
+        // writer.write_sample(sample).unwrap();
+        // self.writer = Some(writer);
 
         audio_buffer.push(sample);
         audio_buffer.push(sample);

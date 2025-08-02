@@ -1,9 +1,15 @@
+use crate::libretro::IDEAL_FPS;
+
 /// SNES produces a 32 KHz sound wave
 pub const AUDIO_FREQ: usize = 32000;
-const IDEAL_FRAME_SAMPLES: usize = AUDIO_FREQ / 60;
-pub const MAX_AUDIO_BUFFER_SIZE: usize = (IDEAL_FRAME_SAMPLES + 100) * 2;
-pub const MIN_AUDIO_BUFFER_OCCUPANCY: usize = 10;
-pub const AUDIO_BUFFER_PANIC_FILL_SIZE: usize = 4096;
+pub const IDEAL_FRAME_SAMPLES: usize = AUDIO_FREQ / IDEAL_FPS + 1;
+// pub const MIN_AUDIO_BUFFER_OCCUPANCY: usize = 10;
+
+pub const MAX_AUDIO_BUFFER_SIZE: usize = IDEAL_FRAME_SAMPLES * 4;
+
+/// How many samples we want in the frontend's audio buffer at all times
+/// to avoid buffer underrun.
+pub const FRONTEND_AUDIO_BUFFER_TARGET: usize = IDEAL_FRAME_SAMPLES * 10;
 
 #[derive(Debug)]
 pub struct AudioBufferStatus {

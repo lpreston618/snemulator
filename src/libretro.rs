@@ -32,6 +32,8 @@ const SNES_FRAME_WIDTH: usize = 512;
 const SNES_FRAME_HEIGHT: usize = 448;
 const FRAME_BUF_SIZE: usize = SNES_FRAME_WIDTH * SNES_FRAME_HEIGHT;
 
+pub const IDEAL_FPS: usize = 60;
+
 struct SnemulatorCore {
     logger: Rc<SnemLogger>,
     frame_buffer: ResizableFrameBuffer<RGB565, FRAME_BUF_SIZE>,
@@ -40,6 +42,9 @@ struct SnemulatorCore {
 
     audio_buffer: Vec<i16>,
     audio_buffer_status: audio::AudioBufferStatus,
+    occupancy_delta: usize,
+    max_occupancy: usize,
+    occupancy_percent_samples: usize,
 
     snem_cpu: scpu::Cpu65c816,
     snem_ppu: ppu::Ppu5C7x,
@@ -55,9 +60,9 @@ struct SnemulatorCore {
 
 impl SnemulatorCore {
     pub fn render_audio(&mut self, callbacks: &mut impl Callbacks) {
-        callbacks.upload_audio_frame(&self.audio_buffer);
+        callbacks.upload_audio_frame(self.audio_buffer.as_slice());
 
-        // println!("Rendered {} samples, status = {:?}", self.audio_buffer.len(), self.audio_buffer_status);
+        println!("Rendered {} samples, status = {:?}", self.audio_buffer.len(), self.audio_buffer_status);
 
         self.audio_buffer.clear()
     }
@@ -112,9 +117,22 @@ impl SnemulatorCore {
         inputs_polled
     }
 
+    fn update_audio_buffer_status(&mut self) {
+        let occupancy = self.audio_buffer_status.occupancy;
+        
+        self.audio_buffer_status = audio::get_audio_buffer_status();
+
+        self.occupancy_delta = occupancy.checked_sub(self.audio_buffer_status.occupancy).unwrap_or(0);
+
+        if self.audio_buffer_status.occupancy > self.max_occupancy {
+            self.max_occupancy = self.audio_buffer_status.occupancy;
+
+            self.occupancy_percent_samples = audio::FRONTEND_AUDIO_BUFFER_TARGET / self.max_occupancy;
+        }
+    }
+
     /// Clocks the PPU or the CPU a single time, depending on which one is
-    /// supposed to be clocked next. Also clocks the APU as many times as 
-    /// necessary for it to catch up.
+    /// supposed to be clocked next. Clocks the S-SMP as well.
     fn cycle(&mut self) {
         let ppu_clocks = self.snem_ppu.sys_clocks_left();
         let cpu_clocks = self.snem_cpu.sys_clocks_left();
@@ -144,35 +162,42 @@ impl SnemulatorCore {
             }
         }
 
-        let generate_sample = self.audio_buffer.len() < audio::MAX_AUDIO_BUFFER_SIZE
-            || self.audio_buffer_status.underrun_likely;
-
-        self.snem_smp.clock(&mut self.audio_buffer, generate_sample);
+        if self.audio_buffer.len() < audio::MAX_AUDIO_BUFFER_SIZE
+            || self.audio_buffer_status.underrun_likely {
+            self.snem_smp.clock(&mut self.audio_buffer);
+        }
     }
 
     /// Clocks all components of the SNES until the PPU reports that the frame 
     /// is finished.
     fn cycle_frame(&mut self) {
+        self.snem_smp.start_frame();
+
         while !self.snem_ppu.frame_finished {
             self.cycle();
         }
 
-        // If we are likely to underrun the audio buffer even with the extra
-        // clocking in self.cycle(), fill the audio buffer to a larger size just
-        // to be safe. Doesn't eliminate all possibility of crackling, but
-        // reduces it greatly.
-        if self.audio_buffer_status.occupancy < audio::MIN_AUDIO_BUFFER_OCCUPANCY {
-            let num_samples = audio::AUDIO_BUFFER_PANIC_FILL_SIZE
-                .checked_sub(self.audio_buffer.len())
-                .unwrap_or(0);
-
-            self.snem_smp.generate_samples(
-                &mut self.audio_buffer,
-                num_samples,
-            );
-        }
-
         self.snem_ppu.frame_finished = false;
+
+        // // How much of the audio buffer we lost due to lag last frame, capped
+        // // at half a frame's worth of audio.
+        // let num_samples_lost = self.occupancy_delta * self.occupancy_percent_samples;
+        // // let num_samples_lost = num_samples_lost.min(audio::IDEAL_FRAME_SAMPLES / 2);
+
+        // let num_samples = if self.max_occupancy > 0 {
+        //     // How many samples we are short of the frontend audio buffer
+        //     // target, capped at half a frame's worth of audio.
+        //     let num_samples_short = (self.max_occupancy - self.audio_buffer_status.occupancy) * self.occupancy_percent_samples;
+        //     // let num_samples_short = num_samples_short.min(audio::IDEAL_FRAME_SAMPLES / 2);
+            
+        //     num_samples_lost + num_samples_short
+        // } else {
+        //     num_samples_lost
+        // };
+
+        // let num_samples = num_samples.min(audio::IDEAL_FRAME_SAMPLES);
+
+        // self.snem_smp.generate_samples(&mut self.audio_buffer, num_samples);
     }
 }
 
@@ -201,6 +226,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
     fn load_without_content<E: retro::env::LoadGame>(
         args: LoadGameExtraArgs<'a, '_, E, Self::Init>,
     ) -> Result<Self, retro::error::CoreError> {
+
         let logger = Rc::new(
             SnemLogger::new(args.env.get_log_interface()?)
         );
@@ -238,6 +264,9 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
 
             audio_buffer: Vec::new(),
             audio_buffer_status: audio::get_audio_buffer_status(),
+            occupancy_delta: 0,
+            max_occupancy: 0,
+            occupancy_percent_samples: 0,
 
             snem_cpu,
             snem_ppu,
@@ -303,7 +332,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
                 SNES_FRAME_HEIGHT as u16,
             ),
             SystemTiming::new(
-                60.0,
+                IDEAL_FPS as f64,
                 audio::AUDIO_FREQ as f64,
             ),
         )
@@ -312,16 +341,16 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
     fn run(&mut self, _env: &mut impl retro::env::Run,
         callbacks: &mut impl Callbacks) -> InputsPolled {
 
-        self.audio_buffer_status = audio::get_audio_buffer_status();
+        self.update_audio_buffer_status();
 
         let inputs_polled = self.update_input(callbacks);
 
         self.cycle_frame();
-
+        
         self.render_audio(callbacks);
         self.render_video(callbacks);
 
-        // println!("fps: {}", 1.0 / self.last_frame.elapsed().as_secs_f32());
+        println!("fps: {}, delta = {}, max = {}", 1.0 / self.last_frame.elapsed().as_secs_f32(), self.occupancy_delta, self.max_occupancy);
 
         self.frame_count += 1;
         self.last_frame = std::time::Instant::now();
