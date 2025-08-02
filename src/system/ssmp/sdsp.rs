@@ -311,12 +311,12 @@ pub struct SuperDSP {
     writer: Option<hound::WavWriter<BufWriter<File>>>,
 
     brr_sample_groups: [BrrSampleGroup; 8],
-    surrounding_brr_samples: [[u16; 4]; 8],
-    voice_sample_time: [f64; 8],
+    surrounding_brr_samples: [[i16; 4]; 8],
+    voice_intermediate_time_step: [f64; 8],
 }
 
 impl SuperDSP {
-    const GAUSS_LOOKUP: [u16; 512] = [
+    const GAUSS_LOOKUP: [i16; 512] = [
         0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,
         0x001,0x001,0x001,0x001,0x001,0x001,0x001,0x001,0x001,0x001,0x001,0x002,0x002,0x002,0x002,0x002,
         0x002,0x002,0x003,0x003,0x003,0x003,0x003,0x004,0x004,0x004,0x004,0x004,0x005,0x005,0x005,0x005,
@@ -371,7 +371,7 @@ impl SuperDSP {
                 BrrSampleGroup::default(), BrrSampleGroup::default(),
             ],
             surrounding_brr_samples: [[0; 4]; 8],
-            voice_sample_time: [0.0; 8],
+            voice_intermediate_time_step: [0.0; 8],
 
             writer: Some(writer),
        }
@@ -434,23 +434,25 @@ impl SuperDSP {
         }
     }
 
-    fn filter_brr_sample(&mut self, sample: u8, voice_idx: usize) {
-        let brr_group = &mut self.brr_sample_groups[voice_idx];
+    fn filter_brr_sample(&mut self, sample: u8, voice: usize) {
+        let brr_group = &mut self.brr_sample_groups[voice];
 
-        let sample = ((sample as u16) << brr_group.left_shift) >> 1;
+        let sign = if sample.bit_en(3) {-1} else {1};
+        let sample = (((sample & 7) as i16) << brr_group.left_shift) >> 1;
+        let sample = sample * sign;
 
         let filtered_sample = match brr_group.filter {
             BrrFilter::Filter0 => sample,
             BrrFilter::Filter1 => {
-                let old = self.surrounding_brr_samples[voice_idx][3];
+                let old = self.surrounding_brr_samples[voice][3];
 
                 let offset = (old * 15) / 16;
 
                 sample + offset
             },
             BrrFilter::Filter2 => {
-                let old = self.surrounding_brr_samples[voice_idx][3];
-                let older = self.surrounding_brr_samples[voice_idx][2];
+                let old = self.surrounding_brr_samples[voice][3];
+                let older = self.surrounding_brr_samples[voice][2];
 
                 let offset1 = (old * 61) / 32;
                 let offset2 = (older * 15) / 16;
@@ -458,8 +460,8 @@ impl SuperDSP {
                 sample + offset1 + offset2
             }
             BrrFilter::Filter3 => {
-                let old = self.surrounding_brr_samples[voice_idx][3];
-                let older = self.surrounding_brr_samples[voice_idx][2];
+                let old = self.surrounding_brr_samples[voice][3];
+                let older = self.surrounding_brr_samples[voice][2];
 
                 let offset1 = (old * 115) / 64;
                 let offset2 = (older * 13) / 16;
@@ -468,30 +470,63 @@ impl SuperDSP {
             }
         };
 
-        self.surrounding_brr_samples[voice_idx][0] = self.surrounding_brr_samples[voice_idx][1];
-        self.surrounding_brr_samples[voice_idx][1] = self.surrounding_brr_samples[voice_idx][2];
-        self.surrounding_brr_samples[voice_idx][2] = self.surrounding_brr_samples[voice_idx][3];
-        self.surrounding_brr_samples[voice_idx][3] = filtered_sample;
+        self.surrounding_brr_samples[voice][0] = self.surrounding_brr_samples[voice][1];
+        self.surrounding_brr_samples[voice][1] = self.surrounding_brr_samples[voice][2];
+        self.surrounding_brr_samples[voice][2] = self.surrounding_brr_samples[voice][3];
+        self.surrounding_brr_samples[voice][3] = filtered_sample;
     }
 
     pub fn finish(&mut self) {
         self.writer.take().unwrap().finalize().unwrap();
     }
 
+    fn generate_voice_brr_sample(&mut self, voice: usize) -> u16 {
+        let voice_data = self.smp_data.sdsp_regs.voice_regs[voice];
+        // Pitch is stored as a 14-bit fixed width number. 
+        // We convert it to a float by dividing by the fixed-width representation
+        // of 1.
+        let pitch_factor: f64 = (1.0 / 0x1000 as f64) * voice_data.pitch;
+        let time_step = ssmp::TIME_PER_SAMPLE * pitch_factor;
+        let brr_sample_advance = time_step + self.voice_intermediate_time_step[voice];
+        let steps = brr_sample_advance as usize;
+        self.voice_intermediate_time_step[voice] = brr_sample_advance - steps as f64;
+
+
+        for _ in 0..steps {
+            self.read_voice_brr_sample(voice);
+        }
+
+        let gauss_lookup_idx = (self.voice_intermediate_time_step[voice] * 256.0) as usize;
+
+        let samples = self.surrounding_brr_samples[voice];
+        let sample1 = (samples[0] as i32 * SuperDSP::GAUSS_LOOKUP[255 - gauss_lookup_idx] as i32) >> 10;
+        let sample2 = (samples[1] as i32 * SuperDSP::GAUSS_LOOKUP[511 - gauss_lookup_idx] as i32) >> 10;
+        let sample3 = (samples[2] as i32 * SuperDSP::GAUSS_LOOKUP[256 + gauss_lookup_idx] as i32) >> 10;
+        let sample4 = (samples[3] as i32 * SuperDSP::GAUSS_LOOKUP[gauss_lookup_idx] as i32) >> 10;
+
+        let final_sample = ((sample1 + sample2 + sample3 + sample4) >> 1) as i16;
+
+        0 // for now
+    }
+
     pub fn generate_sample(&mut self, audio_buffer: &mut Vec<i16>) {
-        const SAMPLE_FREQ: f64 = 440.0;
+        // const SAMPLE_FREQ: f64 = 440.0;
+        //
+        // let time = ssmp::TIME_PER_SAMPLE * self.samples_generated as f64;
+        //
+        // let sample = ((time * SAMPLE_FREQ * std::f64::consts::TAU).sin() * i16::MAX as f64) as i16;
+        //
+        // let mut writer = self.writer.take().unwrap();
+        // writer.write_sample(sample).unwrap();
+        // self.writer = Some(writer);
+        //
+        // self.samples_generated += 1;
+        //
+        // audio_buffer.push(sample);
+        // audio_buffer.push(sample);
+        //
 
-        let time = ssmp::TIME_PER_SAMPLE * self.samples_generated as f64;
 
-        let sample = ((time * SAMPLE_FREQ * std::f64::consts::TAU).sin() * i16::MAX as f64) as i16;
-
-        let mut writer = self.writer.take().unwrap();
-        writer.write_sample(sample).unwrap();
-        self.writer = Some(writer);
-
-        self.samples_generated += 1;
-
-        audio_buffer.push(sample);
-        audio_buffer.push(sample);
+        
     }
 }
