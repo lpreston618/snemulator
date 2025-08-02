@@ -162,9 +162,11 @@ impl SnemulatorCore {
             }
         }
 
+        let master_clocks = cpu_clocks.min(ppu_clocks);
+
         if self.audio_buffer.len() < audio::MAX_AUDIO_BUFFER_SIZE
             || self.audio_buffer_status.underrun_likely {
-            self.snem_smp.clock(&mut self.audio_buffer);
+            self.snem_smp.clock(&mut self.audio_buffer, master_clocks);
         }
     }
 

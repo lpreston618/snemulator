@@ -1895,8 +1895,11 @@ impl Ppu5C7x {
         let screen_x = self.screen_x();
         let screen_y = self.screen_y();
 
-        if self.in_fblank() {
+        let brightness = self.registers.screen_brightness.get();
+
+        if self.in_fblank() || brightness == 0 {
             frame_buffer[screen_y * 256 + screen_x] = RGB565::new_with_raw_value(0);
+            return;
         }
 
         // All bg modes need spr_col
@@ -1913,6 +1916,11 @@ impl Ppu5C7x {
             // BgMode::Mode7 => self.bg_mode7_dot(frame_buffer, spr_col),
             _ => 0,
         };
+
+        if brightness == 15 {
+            frame_buffer[screen_y * 256 + screen_x] = RGB565::new_with_raw_value(dot_col);
+            return;
+        }
 
         let (r, g, b) = rgb565_to_parts(dot_col);
 

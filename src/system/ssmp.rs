@@ -13,7 +13,9 @@ use crate::log::{LogLevel, SnemLogger};
 use crate::audio::AUDIO_FREQ;
 
 const SDSP_CLOCK_HZ: usize = 3072000;
-const SDSP_CLOCK_PERIOD: f64 = 1.0 / SDSP_CLOCK_HZ as f64;
+const SMP_CLOCK_HZ: usize = SDSP_CLOCK_HZ / 3;
+// const SMP_CLOCK_PERIOD: f64 = 1.0 / SDSP_CLOCK_HZ as f64;
+const SMP_CLOCK_PERIOD: f64 = 1.0 / SMP_CLOCK_HZ as f64;
 
 /// Time (in seconds) between playing each sample.
 const TIME_PER_SAMPLE: f64 = 1.0 / AUDIO_FREQ as f64;
@@ -66,12 +68,12 @@ impl ApuIORegs {
 pub struct Ssmp {
     spc: spc::Spc700,
     sdsp: sdsp::SuperDSP,
-    sdsp_clocks: usize,
 
     next_sample: f64,
-    last_sdsp_clock: std::time::Instant,
-    last_sdsp_noise_shift: std::time::Instant,
-    frame_start: std::time::Instant,
+    next_smp_clock: f64,
+    frame_time: f64,
+    last_smp_clock: std::time::Instant,
+    start_time: std::time::Instant,
 
     samples_generated: usize,
 
@@ -85,12 +87,12 @@ impl Ssmp {
         Ssmp {
             spc: spc::Spc700::new(apuio_regs, smp_data.clone(), logger.clone()),
             sdsp: sdsp::SuperDSP::new(smp_data),
-            sdsp_clocks: 0,
             
             next_sample: 0.0,
-            last_sdsp_clock: std::time::Instant::now(),
-            last_sdsp_noise_shift: std::time::Instant::now(),
-            frame_start: std::time::Instant::now(),
+            next_smp_clock: 0.0,
+            frame_time: 0.0,
+            last_smp_clock: std::time::Instant::now(),
+            start_time: std::time::Instant::now(),
 
             samples_generated: 0,
 
@@ -112,21 +114,24 @@ impl Ssmp {
 
     pub fn start_frame(&mut self) {
         self.next_sample = 0.0;
-        self.frame_start = std::time::Instant::now();
+        self.frame_time = 0.0;
+        self.next_smp_clock = 0.0;
     }
 
     /// Clocks the sound processor, checking if it is time to generate a new
     /// sample and/or clock the S-DSP and SPC700 processors.
-    pub fn clock(&mut self, audio_buffer: &mut Vec<i16>) {
-        let time = self.frame_start.elapsed().as_secs_f64();
+    pub fn clock(&mut self, audio_buffer: &mut Vec<i16>, master_clocks: usize) {
+        self.frame_time += SMP_CLOCK_PERIOD * master_clocks as f64;
 
-        if time >= self.next_sample {
+        if self.frame_time >= self.next_sample {
+            self.sdsp.clock_noise_generator();
+
             // If we are too far behind, drop the missing samples
-            if (time - self.next_sample).abs() >= SAMPLE_DROP_TIME {
-                self.next_sample = time;
-            }
+            // if (time - self.next_sample).abs() >= SAMPLE_DROP_TIME {
+            //     self.next_sample = time;
+            // }
 
-            self.next_sample += TIME_PER_SAMPLE - 3e-6;
+            self.next_sample += TIME_PER_SAMPLE - 1e-6;
 
             let emulated_time = TIME_PER_SAMPLE * self.samples_generated as f64;
 
@@ -135,28 +140,10 @@ impl Ssmp {
             self.samples_generated += 1;
         }
 
-        if self.last_sdsp_noise_shift.elapsed().as_secs_f64() > self.sdsp.noise_shift_period() {
-            self.last_sdsp_noise_shift = std::time::Instant::now();
+        if self.frame_time >= self.next_smp_clock {
+            self.next_smp_clock += SMP_CLOCK_PERIOD;
 
-            self.sdsp.clock_noise_generator();
-        }
-
-        let time_since_sdsp_clock = self.last_sdsp_clock.elapsed().as_secs_f64();
-
-        if time_since_sdsp_clock >= SDSP_CLOCK_PERIOD {
-            self.last_sdsp_clock = std::time::Instant::now();
-
-            // 3.072 MHz
-            self.sdsp.clock();
-
-            self.sdsp_clocks += 1;
-
-            // Spc700 clocks every 3 S-DSP cycles
-            if self.sdsp_clocks == 3 {
-                self.sdsp_clocks = 0;
-
-                self.spc.clock();
-            }
+            self.spc.clock();
         }
     }
 }
