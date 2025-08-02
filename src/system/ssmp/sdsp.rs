@@ -540,23 +540,15 @@ impl SuperDSP {
     }
 
     pub fn generate_sample(&mut self, audio_buffer: &mut Vec<i16>, time: f64) {
-        // const SAMPLE_FREQ: f64 = 440.0;
-        //
-        // let time = ssmp::TIME_PER_SAMPLE * self.samples_generated as f64;
-        //
-        // let sample = ((time * SAMPLE_FREQ * std::f64::consts::TAU).sin() * i16::MAX as f64) as i16;
-        //
+        const SAMPLE_FREQ: f64 = 440.0;
+        
+        let sample = ((time * SAMPLE_FREQ * std::f64::consts::TAU).sin() * i16::MAX as f64) as i16;
+        
         // let mut writer = self.writer.take().unwrap();
         // writer.write_sample(sample).unwrap();
         // self.writer = Some(writer);
-        //
-        // self.samples_generated += 1;
-        //
-        // audio_buffer.push(sample);
-        // audio_buffer.push(sample);
-        //
-
-
         
+        audio_buffer.push(sample);
+        audio_buffer.push(sample);
     }
 }
