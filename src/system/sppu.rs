@@ -2,7 +2,7 @@ mod utils;
 
 use utils::{xbgr0555_to_rgb565, rgb565_to_xbgr0555, Togglable, ToggleState};
 
-use crate::system::ppu::utils::{rgb565_from_parts, rgb565_to_parts};
+use crate::system::sppu::utils::{rgb565_from_parts, rgb565_to_parts};
 use crate::utils::{GetBits, SetCellBytes};
 use crate::log::{SnemLogger, LogLevel};
 

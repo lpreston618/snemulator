@@ -8,7 +8,7 @@ use utils::{CpuAddress, is_mmio_addr};
 
 use crate::log::{LogLevel, SnemLogger};
 use crate::system::cartridge::{MappingMode, Cartridge};
-use crate::system::ppu::{self, PpuData};
+use crate::system::sppu::{self, PpuData};
 use crate::system::scpu::dma::TransferPattern;
 use crate::system::scpu::mult::Mult5A22;
 use crate::system::ssmp::ApuIORegs;
@@ -392,10 +392,10 @@ impl Cpu65c816 {
                 self.vblank_nmi_ignore = !data.bit_en(7);
                 self.ppu_data.hv_timer_irq_mode.set(
                     match (data >> 4) & 3 {
-                        0 => ppu::HVTimerIRQ::None,
-                        1 => ppu::HVTimerIRQ::HTimer,
-                        2 => ppu::HVTimerIRQ::VTimer,
-                        3 => ppu::HVTimerIRQ::Both,
+                        0 => sppu::HVTimerIRQ::None,
+                        1 => sppu::HVTimerIRQ::HTimer,
+                        2 => sppu::HVTimerIRQ::VTimer,
+                        3 => sppu::HVTimerIRQ::Both,
                         _ => unreachable!(),
                     }
                 );

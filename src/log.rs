@@ -23,12 +23,14 @@ impl Into<retro_log_level> for LogLevel {
 }
 
 pub struct SnemLogger {
-    logger: Cell<Option<PlatformLogger>>
+    logger: Cell<Option<PlatformLogger>>,
 }
 
 impl SnemLogger {
-    pub fn new(logger: PlatformLogger) -> Self {
-        SnemLogger { logger: Cell::new(Some(logger)) }
+    pub fn new(logger: Option<PlatformLogger>) -> Self {
+        SnemLogger {
+            logger: Cell::new(logger),
+        }
     }
 
     pub fn log(&self, level: LogLevel, message: &str) {

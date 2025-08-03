@@ -316,7 +316,7 @@ pub struct SuperDSP {
 
     noise_output: u16,
 
-    writer: Option<hound::WavWriter<BufWriter<File>>>,
+    // writer: Option<hound::WavWriter<BufWriter<File>>>,
 
     brr_sample_groups: [BrrSampleGroup; 8],
     surrounding_brr_samples: [[i16; 4]; 8],
@@ -365,13 +365,13 @@ impl SuperDSP {
     ];
 
     pub fn new(smp_data: Rc<SmpData>) -> SuperDSP {
-        let wav_spec = hound::WavSpec {
-            channels: 1,
-            sample_rate: 32000,
-            sample_format: hound::SampleFormat::Int,
-            bits_per_sample: 16,
-        };
-        let writer = hound::WavWriter::create("sound.wav", wav_spec).unwrap();
+        // let wav_spec = hound::WavSpec {
+        //     channels: 1,
+        //     sample_rate: 32000,
+        //     sample_format: hound::SampleFormat::Int,
+        //     bits_per_sample: 16,
+        // };
+        // let writer = hound::WavWriter::create("sound.wav", wav_spec).unwrap();
 
         SuperDSP {
             smp_data,
@@ -387,7 +387,7 @@ impl SuperDSP {
             surrounding_brr_samples: [[0; 4]; 8],
             voice_intermediate_time_step: [0.0; 8],
 
-            writer: Some(writer),
+            // writer: Some(writer),
        }
     }
 
@@ -507,7 +507,7 @@ impl SuperDSP {
     }
 
     pub fn finish(&mut self) {
-        self.writer.take().unwrap().finalize().unwrap();
+        // self.writer.take().unwrap().finalize().unwrap();
     }
 
     fn generate_voice_brr_sample(&mut self, voice: usize) -> u16 {

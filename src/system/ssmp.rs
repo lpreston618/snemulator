@@ -131,7 +131,7 @@ impl Ssmp {
             //     self.next_sample = time;
             // }
 
-            self.next_sample += TIME_PER_SAMPLE - 1e-6;
+            self.next_sample += TIME_PER_SAMPLE;
 
             let emulated_time = TIME_PER_SAMPLE * self.samples_generated as f64;
 

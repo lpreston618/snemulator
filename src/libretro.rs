@@ -1,11 +1,12 @@
+use std::fs::File;
+use std::io::Write;
 use std::rc::Rc;
 
 use crate::audio;
 use crate::controller::SnemController;
 use crate::log::{LogLevel, SnemLogger};
 use crate::system::cartridge::Cartridge;
-use crate::system::scpu;
-use crate::system::ppu;
+use crate::system::{scpu, sppu};
 use crate::system::ssmp;
 
 use libretro_rs::c_utf8::c_utf8;
@@ -41,14 +42,14 @@ struct SnemulatorCore {
     rendering_mode: SoftwareRenderEnabled,
 
     audio_buffer: Vec<i16>,
-    audio_buffer_status: audio::AudioBufferStatus,
+    // audio_buffer_status: audio::AudioBufferStatus,
     occupancy_delta: usize,
     max_occupancy: usize,
     occupancy_percent_samples: usize,
 
-    snem_cpu: scpu::Cpu65c816,
-    snem_ppu: ppu::Ppu5C7x,
-    snem_smp: ssmp::Ssmp,
+    snem_cpu: Option<scpu::Cpu65c816>,
+    snem_ppu: Option<sppu::Ppu5C7x>,
+    snem_smp: Option<ssmp::Ssmp>,
 
     p1_controller: SnemController,
     p2_controller: SnemController,
@@ -62,7 +63,7 @@ impl SnemulatorCore {
     pub fn render_audio(&mut self, callbacks: &mut impl Callbacks) {
         callbacks.upload_audio_frame(self.audio_buffer.as_slice());
 
-        println!("Rendered {} samples, status = {:?}", self.audio_buffer.len(), self.audio_buffer_status);
+        // println!("Rendered {} samples, status = {:?}", self.audio_buffer.len(), self.audio_buffer_status);
 
         self.audio_buffer.clear()
     }
@@ -117,69 +118,68 @@ impl SnemulatorCore {
         inputs_polled
     }
 
-    fn update_audio_buffer_status(&mut self) {
-        let occupancy = self.audio_buffer_status.occupancy;
+    // fn update_audio_buffer_status(&mut self) {
+    //     let occupancy = self.audio_buffer_status.occupancy;
         
-        self.audio_buffer_status = audio::get_audio_buffer_status();
+    //     self.audio_buffer_status = audio::get_audio_buffer_status();
 
-        self.occupancy_delta = occupancy.checked_sub(self.audio_buffer_status.occupancy).unwrap_or(0);
+    //     self.occupancy_delta = occupancy.checked_sub(self.audio_buffer_status.occupancy).unwrap_or(0);
 
-        if self.audio_buffer_status.occupancy > self.max_occupancy {
-            self.max_occupancy = self.audio_buffer_status.occupancy;
+    //     if self.audio_buffer_status.occupancy > self.max_occupancy {
+    //         self.max_occupancy = self.audio_buffer_status.occupancy;
 
-            self.occupancy_percent_samples = audio::FRONTEND_AUDIO_BUFFER_TARGET / self.max_occupancy;
-        }
-    }
+    //         self.occupancy_percent_samples = audio::FRONTEND_AUDIO_BUFFER_TARGET / self.max_occupancy;
+    //     }
+    // }
 
     /// Clocks the PPU or the CPU a single time, depending on which one is
     /// supposed to be clocked next. Clocks the S-SMP as well.
-    fn cycle(&mut self) {
-        let ppu_clocks = self.snem_ppu.sys_clocks_left();
-        let cpu_clocks = self.snem_cpu.sys_clocks_left();
+    fn cycle(&mut self, cpu: &mut scpu::Cpu65c816, ppu: &mut sppu::Ppu5C7x, smp: &mut ssmp::Ssmp) {
+        let ppu_clocks = ppu.sys_clocks_left();
+        let cpu_clocks = cpu.sys_clocks_left();
 
         if ppu_clocks < cpu_clocks {
-            self.snem_cpu.remove_clocks(ppu_clocks);
-            self.snem_ppu.clock(&mut self.frame_buffer);
+            cpu.remove_clocks(ppu_clocks);
+            ppu.clock(&mut self.frame_buffer);
         } else {
-            self.snem_ppu.remove_clocks(cpu_clocks);
-            self.snem_cpu.clock(self.frame_count as usize);
-            if self.snem_cpu.poll_controllers {
-                self.snem_cpu.latch_controller_states(
+            ppu.remove_clocks(cpu_clocks);
+            cpu.clock(self.frame_count as usize);
+            if cpu.poll_controllers {
+                cpu.latch_controller_states(
                     self.p1_controller.state_as_u16(),
                     self.p2_controller.state_as_u16()
                 );
 
-                self.snem_cpu.poll_controllers = false;
+                cpu.poll_controllers = false;
             }
 
-            if self.snem_cpu.auto_read_controllers {
-                self.snem_cpu.do_joypad_auto_read(
+            if cpu.auto_read_controllers {
+                cpu.do_joypad_auto_read(
                     self.p1_controller.state_as_u16(),
                     self.p2_controller.state_as_u16()
                 );
 
-                self.snem_cpu.auto_read_controllers = false;
+                cpu.auto_read_controllers = false;
             }
         }
 
         let master_clocks = cpu_clocks.min(ppu_clocks);
 
-        if self.audio_buffer.len() < audio::MAX_AUDIO_BUFFER_SIZE
-            || self.audio_buffer_status.underrun_likely {
-            self.snem_smp.clock(&mut self.audio_buffer, master_clocks);
+        if self.audio_buffer.len() < audio::MAX_AUDIO_BUFFER_SIZE {
+            smp.clock(&mut self.audio_buffer, master_clocks);
         }
     }
 
     /// Clocks all components of the SNES until the PPU reports that the frame 
     /// is finished.
-    fn cycle_frame(&mut self) {
-        self.snem_smp.start_frame();
+    fn cycle_frame(&mut self, cpu: &mut scpu::Cpu65c816, ppu: &mut sppu::Ppu5C7x, smp: &mut ssmp::Ssmp) {
+        smp.start_frame();
 
-        while !self.snem_ppu.frame_finished {
-            self.cycle();
+        while !ppu.frame_finished {
+            self.cycle(cpu, ppu, smp);
         }
 
-        self.snem_ppu.frame_finished = false;
+        ppu.frame_finished = false;
 
         // // How much of the audio buffer we lost due to lag last frame, capped
         // // at half a frame's worth of audio.
@@ -215,42 +215,45 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
     }
 
     fn init(env: &mut impl retro::env::Init) -> Self::Init {
-        unsafe {
-            env.cmd::<u32, retro::audio::AudioBufferStatusCallback, retro::audio::AudioBufferStatusCallback>(
-                libretro_rs::ffi::RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK,
-                retro::audio::AudioBufferStatusCallback::new(
-                    Some(crate::audio::audio_buffer_status_cb),
-                )
-            ).unwrap()
-        };
+        // audio::set_audio_buffer_status_callback(env);
     }
 
     fn load_without_content<E: retro::env::LoadGame>(
         args: LoadGameExtraArgs<'a, '_, E, Self::Init>,
     ) -> Result<Self, retro::error::CoreError> {
 
-        let logger = Rc::new(
-            SnemLogger::new(args.env.get_log_interface()?)
-        );
+        let log_result = args.env.get_log_interface();
+        let log_option = if let Ok(platform_logger) = log_result {
+            Some(platform_logger)
+        } else {
+            None
+        };
+
+        let logger = Rc::new(SnemLogger::new(log_option));
 
         logger.log(LogLevel::Info, "loading Snemulator core with no content");
-
-        args.env.set_hw_render_none()?;
 
         let mut frame_buffer = ResizableFrameBuffer::new();
         frame_buffer
             .resize(SNES_FRAME_WIDTH as u16 / 2, SNES_FRAME_HEIGHT as u16 / 2)
             .unwrap();
-        let pixel_format = args.env.set_pixel_format_rgb565(args.pixel_format)?;
         let rendering_mode = args.rendering_mode;
+        let pixel_format = args.env.set_pixel_format_rgb565(args.pixel_format);
 
-        let ppu_data = Rc::new( ppu::PpuData::new(logger.clone()) );
+        if pixel_format.is_err() {
+            logger.log(LogLevel::Error, "Failed to load core: could not set pixel format to rgb565");
+            return Err(retro::error::CoreError::new());
+        }
+
+        let pixel_format = pixel_format.unwrap();
+
+        let ppu_data = Rc::new( sppu::PpuData::new(logger.clone()) );
         let apuio_regs = Rc::new( ssmp::ApuIORegs::new() );
         let snem_cpu = scpu::Cpu65c816::new(
             ppu_data.clone(),
             apuio_regs.clone(),
             logger.clone());
-        let snem_ppu = ppu::Ppu5C7x::new(
+        let snem_ppu = sppu::Ppu5C7x::new(
             ppu_data.clone(),
             logger.clone());
         let snem_smp = ssmp::Ssmp::new(
@@ -265,14 +268,14 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
             rendering_mode,
 
             audio_buffer: Vec::new(),
-            audio_buffer_status: audio::get_audio_buffer_status(),
+            // audio_buffer_status: audio::get_audio_buffer_status(),
             occupancy_delta: 0,
             max_occupancy: 0,
             occupancy_percent_samples: 0,
 
-            snem_cpu,
-            snem_ppu,
-            snem_smp,
+            snem_cpu: Some(snem_cpu),
+            snem_ppu: Some(snem_ppu),
+            snem_smp: Some(snem_smp),
 
             p1_controller: SnemController::new(),
             p2_controller: SnemController::new(),
@@ -321,8 +324,8 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
             format!("loaded ROM with {:?} memory mapping", cart.mapping_mode()).as_str()
         );
 
-        core.snem_cpu.load_cart(cart);
-        core.snem_cpu.initialize();
+        core.snem_cpu.as_mut().unwrap().load_cart(cart);
+        core.snem_cpu.as_mut().unwrap().initialize();
 
         Ok(core)
     }
@@ -343,16 +346,24 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
     fn run(&mut self, _env: &mut impl retro::env::Run,
         callbacks: &mut impl Callbacks) -> InputsPolled {
 
-        self.update_audio_buffer_status();
+        // self.update_audio_buffer_status();
 
         let inputs_polled = self.update_input(callbacks);
 
-        self.cycle_frame();
+        if let (Some(mut cpu), Some(mut ppu), Some(mut smp))
+            = (self.snem_cpu.take(), self.snem_ppu.take(), self.snem_smp.take()) {
+
+            self.cycle_frame(&mut cpu, &mut ppu, &mut smp);
+
+            self.snem_cpu = Some(cpu);
+            self.snem_ppu = Some(ppu);
+            self.snem_smp = Some(smp);
+        }
         
         self.render_audio(callbacks);
         self.render_video(callbacks);
 
-        println!("fps: {}, delta = {}, max = {}", 1.0 / self.last_frame.elapsed().as_secs_f32(), self.occupancy_delta, self.max_occupancy);
+        // println!("fps: {}", 1.0 / self.last_frame.elapsed().as_secs_f32());
 
         self.frame_count += 1;
         self.last_frame = std::time::Instant::now();
@@ -366,7 +377,9 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
     }
 
     fn unload_game(mut self, _env: &mut impl retro::env::UnloadGame) -> Self::Init {
-        self.snem_smp.finish();
+        if let Some(smp) = &mut self.snem_smp {
+            smp.finish();
+        }
 
         self.logger.log(LogLevel::Info, "unloading game");
     }
