@@ -7,6 +7,15 @@ pub(crate) trait GetBits {
     fn bit_en(self, bit: Self) -> bool;
 }
 
+macro_rules! get_bits_impl {
+    ($type:ty) => {
+        impl GetBits for $type {
+            fn get_bit(self, bit: Self) -> Self { (self >> bit) & 1 }
+            fn bit_en(self, bit: Self) -> bool { (self >> bit) & 1 != 0 }
+        }
+    };
+}
+
 pub(crate) trait GetBytes {
     fn get_hi(self) -> u8;
     fn get_lo(self) -> u8;
@@ -22,15 +31,17 @@ pub(crate) trait SetCellBytes {
     fn set_lo(&self, lo: u8);
 }
 
-impl GetBits for u8 {
-    fn get_bit(self, bit: Self) -> Self { (self >> bit) & 1 }
-    fn bit_en(self, bit: Self) -> bool { (self >> bit) & 1 != 0 }
-}
+get_bits_impl!(u8);
+get_bits_impl!(u16);
+get_bits_impl!(u32);
+get_bits_impl!(u64);
+get_bits_impl!(usize);
 
-impl GetBits for u16 {
-    fn get_bit(self, bit: Self) -> Self { (self >> bit) & 1 }
-    fn bit_en(self, bit: Self) -> bool { (self >> bit) & 1 != 0 }
-}
+get_bits_impl!(i8);
+get_bits_impl!(i16);
+get_bits_impl!(i32);
+get_bits_impl!(i64);
+get_bits_impl!(isize);
 
 impl GetBytes for u16 {
     fn get_hi(self) -> u8 { (self >> 8) as u8 }

@@ -1,10 +1,15 @@
-a = [
-        0, 2048, 1536, 1280, 1024, 768, 640, 512, 384, 320, 256, 192, 160, 
-        128, 96, 80, 64, 48, 40, 32, 24, 20, 16, 12, 10, 8, 6, 5, 4, 3, 2, 1,
-    ]
+lines = []
+with open("aram_disassembly.txt", "r") as f:
+    lines = f.readlines()
 
-for n in a:
-    if n == 0:
-        print("infinity")
-    else:
-        print(round(32000 / n))
+c = 0
+for line in lines:
+    if line.strip() == "":
+        continue
+
+    c += 1
+
+    print(f"0x{line[1:5]}, ", end="")
+
+    if c % 16 == 0:
+        print()

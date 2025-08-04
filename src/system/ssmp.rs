@@ -102,6 +102,8 @@ impl Ssmp {
 
     pub fn finish(&mut self) {
         self.sdsp.finish();
+
+        self.logger.log(LogLevel::Info, "S-Smp finishing.");
     }
 
     /// Used to purely generate samples in case of audio buffer underrun, i.e.,
@@ -124,20 +126,11 @@ impl Ssmp {
         self.frame_time += SMP_CLOCK_PERIOD * master_clocks as f64;
 
         if self.frame_time >= self.next_sample {
-            self.sdsp.clock_noise_generator();
-
-            // If we are too far behind, drop the missing samples
-            // if (time - self.next_sample).abs() >= SAMPLE_DROP_TIME {
-            //     self.next_sample = time;
-            // }
-
             self.next_sample += TIME_PER_SAMPLE;
-
-            let emulated_time = TIME_PER_SAMPLE * self.samples_generated as f64;
-
-            self.sdsp.generate_sample(audio_buffer, emulated_time);
-
             self.samples_generated += 1;
+            
+            self.sdsp.clock_envelopes();
+            self.sdsp.generate_sample(audio_buffer);
         }
 
         if self.frame_time >= self.next_smp_clock {

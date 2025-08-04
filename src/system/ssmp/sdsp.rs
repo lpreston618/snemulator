@@ -7,6 +7,7 @@ use crate::utils::{GetBits, SetCellBytes};
 
 use crate::system::ssmp::{self, SmpData};
 
+#[derive(Clone, Copy, PartialEq)]
 enum ADSRStage {
     Attack,
     Decay,
@@ -14,7 +15,7 @@ enum ADSRStage {
     Release,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum GainMode {
     Fixed,
     Decrease,
@@ -91,23 +92,24 @@ impl BrrSampleGroup {
 /// Contains all registers controlling a single voice of the S-DSP
 #[derive(Clone)]
 pub struct VoiceRegisters {
-    lchannel_volume: Cell<i8>,
-    rchannel_volume: Cell<i8>,
+    lchannel_volume: Cell<u8>,
+    rchannel_volume: Cell<u8>,
     pitch: Cell<u16>,
     sample_source: Cell<u8>,
     adsr_enable: Cell<bool>,
     adsr_attack: Cell<u8>,
     adsr_decay: Cell<u8>,
     adsr_sustain_rate: Cell<u8>,
-    adsr_sustain_level: Cell<u8>,
-    gain_fixed: Cell<u8>,
+    adsr_sustain_level: Cell<u16>,
+    gain_fixed: Cell<u16>,
     gain_rate: Cell<u8>,
     gain_mode: Cell<GainMode>,
-    envelope: Cell<u8>,
+    envelope: Cell<u16>,
     sample_out: Cell<u8>,
     raw_bytes: [Cell<u8>; 10],
 
-    brr_enable: Cell<bool>,
+    brr_start: Cell<bool>,
+    adsr_stage: Cell<ADSRStage>,
 }
 
 impl VoiceRegisters {
@@ -131,20 +133,24 @@ impl VoiceRegisters {
                 Cell::new(0), Cell::new(0), Cell::new(0), Cell::new(0), Cell::new(0),
                 Cell::new(0), Cell::new(0), Cell::new(0), Cell::new(0), Cell::new(0),
             ],
-            brr_enable: Cell::new(false),
+            brr_start: Cell::new(false),
+            adsr_stage: Cell::new(ADSRStage::Attack),
         }
     }
 
     pub fn read(&self, address: u8) -> u8 {
-        self.raw_bytes[address as usize].get()
+        match address {
+            8 => (self.envelope.get() >> 4) as u8,
+            _ => self.raw_bytes[address as usize].get(),
+        }
     }
 
     pub fn write(&self, address: u8, data: u8) {
         self.raw_bytes[address as usize].set(data);
 
         match address {
-            0 => self.lchannel_volume.set(data as i8),
-            1 => self.rchannel_volume.set(data as i8),
+            0 => self.lchannel_volume.set(data),
+            1 => self.rchannel_volume.set(data),
             2 => self.pitch.set_lo(data),
             3 => {
                 self.pitch.set_hi(data & 0x3F);
@@ -157,7 +163,7 @@ impl VoiceRegisters {
                 self.adsr_attack.set(data & 0x0F);
             }
             6 => {
-                self.adsr_sustain_level.set(data >> 5);
+                self.adsr_sustain_level.set((((data as u16) >> 5) + 1) << 8);
                 self.adsr_sustain_rate.set(data & 0x1F);
             }
             7 => {
@@ -171,9 +177,10 @@ impl VoiceRegisters {
                             _ => unreachable!("Improper gain mode"),
                         }
                     );
+                    self.gain_rate.set(data & 0x1F);
                 } else {
                     self.gain_mode.set(GainMode::Fixed);
-                    self.gain_rate.set(data);
+                    self.gain_fixed.set((data as u16) << 4);
                 }
             }
             8 => {},
@@ -185,8 +192,8 @@ impl VoiceRegisters {
 
 /// Contains all S-DSP registers accessible by the S-DSP or the SPC700.
 pub struct SdspRegisters {
-    lchannel_volume: Cell<i8>,
-    rchannel_volume: Cell<i8>,
+    lchannel_volume: Cell<u8>,
+    rchannel_volume: Cell<u8>,
     lecho_volume: Cell<i8>,
     recho_volume: Cell<i8>,
     key_on: Cell<u8>,
@@ -194,7 +201,7 @@ pub struct SdspRegisters {
     soft_reset: Cell<bool>,
     mute_all: Cell<bool>,
     echo_disable: Cell<bool>,
-    noise_freq: Cell<u8>,
+    noise_period: Cell<u8>,
     
     echo_feedback: Cell<i8>,
     unused: Cell<u8>,
@@ -223,7 +230,7 @@ impl SdspRegisters {
             soft_reset: Cell::new(false),
             mute_all: Cell::new(false),
             echo_disable: Cell::new(false),
-            noise_freq: Cell::new(0),
+            noise_period: Cell::new(0),
             echo_feedback: Cell::new(0),
             unused: Cell::new(0),
             voice_pitchmod_enable: Cell::new(0),
@@ -251,8 +258,8 @@ impl SdspRegisters {
             (voice @ 0..=7, addr @ 0..=9) => {
                 self.voice_regs[voice as usize].read(addr)
             }
-            (0, 0xC) => self.lchannel_volume.get() as u8,
-            (1, 0xC) => self.rchannel_volume.get() as u8,
+            (0, 0xC) => self.lchannel_volume.get(),
+            (1, 0xC) => self.rchannel_volume.get(),
             (2, 0xC) => self.lecho_volume.get() as u8,
             (3, 0xC) => self.recho_volume.get() as u8,
             (4, 0xC) => self.key_on.get(),
@@ -261,9 +268,9 @@ impl SdspRegisters {
                 let r = self.soft_reset.get() as u8;
                 let m = self.mute_all.get() as u8;
                 let e = self.echo_disable.get() as u8;
-                (r << 7) | (m << 6) | (e << 5) | self.noise_freq.get()
+                (r << 7) | (m << 6) | (e << 5) | self.noise_period.get()
             }
-            (7, 0xC) => todo!("Voice Sample ends"),
+            (7, 0xC) => self.endx.get(),
             (0, 0xD) => self.echo_feedback.get() as u8,
             (1, 0xD) => self.unused.get(),
             (2, 0xD) => self.voice_pitchmod_enable.get(),
@@ -280,19 +287,43 @@ impl SdspRegisters {
     pub fn write(&self, address: u8, data: u8) {
         match (address >> 4, address & 0xF) {
             (voice @ 0..=7, addr @ 0..=9) => {
+                println!("Write to voice {voice} reg {addr} w/ data {data:02X}");
+
                 self.voice_regs[voice as usize].write(addr, data);
             }
-            (0, 0xC) => self.lchannel_volume.set(data as i8),
-            (1, 0xC) => self.rchannel_volume.set(data as i8),
+            (0, 0xC) => self.lchannel_volume.set(data),
+            (1, 0xC) => self.rchannel_volume.set(data),
             (2, 0xC) => self.lecho_volume.set(data as i8),
             (3, 0xC) => self.recho_volume.set(data as i8),
-            (4, 0xC) => self.key_on.set(data), // maybe do more stuff here
-            (5, 0xC) => self.key_off.set(data),
+            (4, 0xC) => {
+                println!("Write to KEYON w/ {data:02X}");
+
+                self.key_on.set(data);
+
+                self.endx.set(self.endx.get() & !data);
+
+                for voice in 0..8 {
+                    if data.bit_en(voice as u8) {
+                        self.voice_regs[voice].envelope.set(0);
+                        self.voice_regs[voice].adsr_stage.set(ADSRStage::Attack);
+                        self.voice_regs[voice].brr_start.set(true);
+                    }
+                }
+            }
+            (5, 0xC) => {
+                self.key_off.set(data);
+
+                for voice in 0..8 {
+                    if data.bit_en(voice as u8) {
+                        self.voice_regs[voice].adsr_stage.set(ADSRStage::Release);
+                    }
+                }
+            }
             (6, 0xC) => {
                 self.soft_reset.set(data.bit_en(7));
                 self.mute_all.set(data.bit_en(6));
                 self.echo_disable.set(data.bit_en(5));
-                self.noise_freq.set(data & 0x1F);
+                self.noise_period.set(data & 0x1F);
             }
             (7, 0xC) => {},
             (0, 0xD) => self.echo_feedback.set(data as i8),
@@ -314,17 +345,19 @@ impl SdspRegisters {
 pub struct SuperDSP {
     smp_data: Rc<SmpData>,
 
+    envelope_cnt: usize,
+
     noise_output: u16,
 
-    // writer: Option<hound::WavWriter<BufWriter<File>>>,
+    writer: Option<hound::WavWriter<BufWriter<File>>>,
 
     brr_sample_groups: [BrrSampleGroup; 8],
-    surrounding_brr_samples: [[i16; 4]; 8],
+    surrounding_brr_samples: [[u16; 4]; 8],
     voice_intermediate_time_step: [f64; 8],
 }
 
 impl SuperDSP {
-    const GAUSS_LOOKUP: [i16; 512] = [
+    const GAUSS_LOOKUP: [u16; 512] = [
         0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,0x000,
         0x001,0x001,0x001,0x001,0x001,0x001,0x001,0x001,0x001,0x001,0x001,0x002,0x002,0x002,0x002,0x002,
         0x002,0x002,0x003,0x003,0x003,0x003,0x003,0x004,0x004,0x004,0x004,0x004,0x005,0x005,0x005,0x005,
@@ -364,17 +397,21 @@ impl SuperDSP {
         128, 96, 80, 64, 48, 40, 32, 24, 20, 16, 12, 10, 8, 6, 5, 4, 3, 2, 1,
     ];
 
+    const PERIOD_OFFSET_LOOKUP: [usize; 3] = [536, 0, 1040];
+
     pub fn new(smp_data: Rc<SmpData>) -> SuperDSP {
-        // let wav_spec = hound::WavSpec {
-        //     channels: 1,
-        //     sample_rate: 32000,
-        //     sample_format: hound::SampleFormat::Int,
-        //     bits_per_sample: 16,
-        // };
-        // let writer = hound::WavWriter::create("sound.wav", wav_spec).unwrap();
+        let wav_spec = hound::WavSpec {
+            channels: 2,
+            sample_rate: 32000,
+            sample_format: hound::SampleFormat::Int,
+            bits_per_sample: 16,
+        };
+        let writer = hound::WavWriter::create("sound.wav", wav_spec).unwrap();
 
         SuperDSP {
             smp_data,
+
+            envelope_cnt: 0,
 
             noise_output: 0x4000,
 
@@ -387,140 +424,286 @@ impl SuperDSP {
             surrounding_brr_samples: [[0; 4]; 8],
             voice_intermediate_time_step: [0.0; 8],
 
-            // writer: Some(writer),
+            writer: Some(writer),
        }
     }
 
-    pub fn clock(&mut self) {
-        
-    }
+    pub fn clock_envelopes(&mut self) {
+        self.clock_noise_generator();
 
-    pub fn clock_noise_generator(&mut self) {
-        let b0 = (self.noise_output >> 0) & 1;
-        let b1 = (self.noise_output >> 1) & 1;
+        for voice in 0..8 {
+            let voice_regs = &self.smp_data.sdsp_regs.voice_regs[voice];
 
-        self.noise_output |= (b0 ^ b1) << 15;
-        self.noise_output >>= 1;
-    }
+            // Release decreases envelope by 8 regardles of VxADSR and VxGAIN settings
+            if voice_regs.adsr_stage.get() == ADSRStage::Release {
+                let envelope_val = voice_regs.envelope.get()
+                    .checked_sub(8)
+                    .unwrap_or(0);
 
-    pub fn noise_shift_period(&self) -> f64 {
-        if self.smp_data.sdsp_regs.noise_freq.get() == 0 {
-            f64::INFINITY
-        } else {
-            1.0 / (SuperDSP::PERIOD_LOOKUP[self.smp_data.sdsp_regs.noise_freq.get() as usize] as f64)
+                voice_regs.envelope.set(envelope_val);
+            } else {
+                if voice_regs.adsr_enable.get() {
+                    self.clock_adsr_envelope(voice);
+                } else {
+                    self.clock_gain_envelope(voice);
+                }
+            }
         }
+
+        self.envelope_cnt = self.envelope_cnt.checked_sub(1).unwrap_or(0x77FF);
     }
 
-    fn read_voice_brr_sample(&mut self, voice_idx: usize) {
-        if !self.smp_data.sdsp_regs.voice_regs[voice_idx].brr_enable.get() {
+    fn should_do_envelope_op(&self, period_idx: usize) -> bool {
+        let period = SuperDSP::PERIOD_LOOKUP[period_idx];
+        let period_offset = SuperDSP::PERIOD_OFFSET_LOOKUP[period_idx % 3];
+
+        (self.envelope_cnt + period_offset) % period == 0
+    }
+
+    fn clock_noise_generator(&mut self) {
+        let noise_period_idx = self.smp_data.sdsp_regs.noise_period.get() as usize;
+
+        if noise_period_idx == 0 {
             return;
         }
 
-        let brr_sample = self.brr_sample_groups[voice_idx].read_sample();
-
-        self.filter_brr_sample(brr_sample.sample, voice_idx);
-
-        let voice_regs = &self.smp_data.sdsp_regs.voice_regs[voice_idx];
-        let brr_group = &mut self.brr_sample_groups[voice_idx];
-
-        if brr_sample.is_last_sample_in_group {
-            if brr_group.end_flag {
-                if brr_group.loop_flag {
-                    let directory_page = (self.smp_data.sdsp_regs.sample_page.get() as usize) << 8;
-                    let directory_addr = directory_page + ((voice_regs.sample_source.get() as usize) << 2);
-
-                    let loop_addr = u16::from_le_bytes([
-                        self.smp_data.aram[directory_addr + 0].get(),
-                        self.smp_data.aram[directory_addr + 1].get(),
-                    ]);
-
-                    *brr_group = BrrSampleGroup::from_aram_slice(
-                        &self.smp_data.aram[(loop_addr as usize)..(loop_addr + 9) as usize],
-                        loop_addr,
-                    );
-
-                    let endx_bit = if brr_group.end_flag { 1 << voice_idx } else { 0 };
-
-                    self.smp_data.sdsp_regs.endx.set(
-                        self.smp_data.sdsp_regs.endx.get() | endx_bit
-                    );
-                } else {
-                    voice_regs.brr_enable.set(false);
-                }
-            } else {
-                let group_addr = brr_group.group_addr + 9;
-
-                *brr_group = BrrSampleGroup::from_aram_slice(
-                    &self.smp_data.aram[(group_addr as usize)..(group_addr + 9) as usize],
-                    group_addr,
-                );
-
-                let endx_bit = if brr_group.end_flag { 1 << voice_idx } else { 0 };
-
-                self.smp_data.sdsp_regs.endx.set(
-                    self.smp_data.sdsp_regs.endx.get() | endx_bit
-                );
-            }
+        if self.should_do_envelope_op(noise_period_idx) {
+            let b0 = (self.noise_output >> 0) & 1;
+            let b1 = (self.noise_output >> 1) & 1;
+    
+            self.noise_output |= (b0 ^ b1) << 15;
+            self.noise_output >>= 1;
         }
     }
 
-    fn filter_brr_sample(&mut self, sample: u8, voice: usize) {
-        let brr_group = &mut self.brr_sample_groups[voice];
+    fn clock_adsr_envelope(&mut self, voice: usize) {
+        let voice_regs = &self.smp_data.sdsp_regs.voice_regs[voice];
 
-        let sign = if sample.bit_en(3) {-1} else {1};
-        let sample = (((sample & 7) as i16) << brr_group.left_shift) >> 1;
-        let sample = sample * sign;
+        match voice_regs.adsr_stage.get() {
+            ADSRStage::Attack => {
+                let attack_period_idx = voice_regs.adsr_attack.get() as usize;
 
-        let filtered_sample = match brr_group.filter {
-            BrrFilter::Filter0 => sample,
-            BrrFilter::Filter1 => {
-                let old = self.surrounding_brr_samples[voice][3];
+                if self.should_do_envelope_op(attack_period_idx) {
+                    let attack_rate = if attack_period_idx == 15 { 1024 } else { 32 };
 
-                let offset = (old * 15) / 16;
+                    let envelope_val = (voice_regs.envelope.get() + attack_rate).min(0x7FF);
 
-                sample + offset
-            },
-            BrrFilter::Filter2 => {
-                let old = self.surrounding_brr_samples[voice][3];
-                let older = self.surrounding_brr_samples[voice][2];
-
-                let offset1 = (old * 61) / 32;
-                let offset2 = (older * 15) / 16;
-
-                sample + offset1 + offset2
+                    if envelope_val >= 0x7E0 {
+                        voice_regs.adsr_stage.set(ADSRStage::Decay);
+                    }
+                    
+                    voice_regs.envelope.set(envelope_val + attack_rate);
+                }
             }
-            BrrFilter::Filter3 => {
-                let old = self.surrounding_brr_samples[voice][3];
-                let older = self.surrounding_brr_samples[voice][2];
+            ADSRStage::Decay => {
+                let decay_period_idx = voice_regs.adsr_decay.get() as usize;
 
-                let offset1 = (old * 115) / 64;
-                let offset2 = (older * 13) / 16;
+                if self.should_do_envelope_op(decay_period_idx) {
+                    let mut envelope_val = voice_regs.envelope.get();
 
-                sample + offset1 + offset2
+                    // Don't need underflow check bc we start w/ envelope > 0,
+                    // and adsr sustain level is >= 0, so if envelope == 0 after
+                    // this calculation, we are guarenteed to transition to
+                    // the sustain stage.
+                    envelope_val = (envelope_val - 1) - (envelope_val >> 8);
+
+                    if envelope_val <= voice_regs.adsr_sustain_level.get() as u16 {
+                        voice_regs.adsr_stage.set(ADSRStage::Sustain);
+                    }
+                    
+                    voice_regs.envelope.set(envelope_val);
+                }
+            }
+            ADSRStage::Sustain => {
+                let sustain_period_idx = voice_regs.adsr_sustain_rate.get() as usize;
+
+                if self.should_do_envelope_op(sustain_period_idx) {
+                    let mut envelope_val = voice_regs.envelope.get();
+
+                    // This calculation underflows the envelope if it is 0, but
+                    // it gets clamped back to 0 afterwards, resulting in no
+                    // change.
+                    if envelope_val > 0 {
+                        envelope_val = (envelope_val - 1) - (envelope_val >> 8);
+    
+                        voice_regs.envelope.set(envelope_val);
+                    }
+                }
+            }
+            ADSRStage::Release => unreachable!(), // Handled in clock_envelopes
+        }
+    }
+
+    fn clock_gain_envelope(&mut self, voice: usize) {
+        let voice_regs = &self.smp_data.sdsp_regs.voice_regs[voice];
+
+        if voice_regs.gain_mode.get() == GainMode::Fixed {
+            voice_regs.envelope.set(voice_regs.gain_fixed.get());
+            return;
+        }
+
+        let gain_period_idx = voice_regs.gain_rate.get() as usize;
+
+        if !self.should_do_envelope_op(gain_period_idx) {
+            return;
+        }
+
+        let new_envelope = match voice_regs.gain_mode.get() {
+            GainMode::Fixed => { unreachable!() }
+            GainMode::Decrease => {
+                voice_regs.envelope.get() - 32
+            }
+            GainMode::ExpDecrease => {
+                let envelope_val = voice_regs.envelope.get();
+                (envelope_val - 1) - (envelope_val >> 8)
+            }
+            GainMode::Increase => {
+                voice_regs.envelope.get() + 32
+            }
+            GainMode::BentIncrease => {
+                if voice_regs.envelope.get() < 0x600 {
+                    voice_regs.envelope.get() + 32
+                } else {
+                    voice_regs.envelope.get() + 8
+                }
             }
         };
+
+        let wrapped_envelope = if new_envelope <= 0x7FF {
+            new_envelope
+        } else if new_envelope <= 0x1000 {
+            0x7FF
+        } else {
+            0
+        };
+
+        voice_regs.envelope.set(wrapped_envelope);
+    }
+
+    /// Reads the next BRR sample into the surrounding_brr_samples array, shifting
+    /// the previously read samples into the preceding position, and the 0th sample
+    /// out of the array.
+    fn read_voice_brr_sample(&mut self, voice: usize) {
+        if self.smp_data.sdsp_regs.voice_regs[voice].brr_start.get() {
+            let voice_regs = &self.smp_data.sdsp_regs.voice_regs[voice];
+
+            voice_regs.brr_start.set(false);
+
+            let directory_page = (self.smp_data.sdsp_regs.sample_page.get() as usize) << 8;
+            let directory_addr = directory_page + ((voice_regs.sample_source.get() as usize) << 2);
+
+            let group_addr = u16::from_le_bytes([
+                self.smp_data.aram[directory_addr + 0].get(),
+                self.smp_data.aram[directory_addr + 1].get(),
+            ]);
+
+            self.brr_sample_groups[voice] = self.read_next_voice_brr_group(voice, group_addr);
+            
+            return;
+        }
+
+        let brr_sample = self.brr_sample_groups[voice].read_sample();
+
+        let filtered_sample = self.filter_brr_sample(brr_sample.sample, voice);
 
         self.surrounding_brr_samples[voice][0] = self.surrounding_brr_samples[voice][1];
         self.surrounding_brr_samples[voice][1] = self.surrounding_brr_samples[voice][2];
         self.surrounding_brr_samples[voice][2] = self.surrounding_brr_samples[voice][3];
         self.surrounding_brr_samples[voice][3] = filtered_sample;
+
+        let voice_regs = &self.smp_data.sdsp_regs.voice_regs[voice];
+        let brr_group = &mut self.brr_sample_groups[voice];
+
+        if brr_sample.is_last_sample_in_group {
+            if brr_group.end_flag {
+                if !brr_group.loop_flag {
+                    voice_regs.adsr_stage.set(ADSRStage::Release);
+                    voice_regs.envelope.set(0);   
+                }
+
+                let directory_page = (self.smp_data.sdsp_regs.sample_page.get() as usize) << 8;
+                let directory_addr = directory_page + ((voice_regs.sample_source.get() as usize) << 2);
+
+                let loop_addr = u16::from_le_bytes([
+                    self.smp_data.aram[directory_addr + 2].get(),
+                    self.smp_data.aram[directory_addr + 3].get(),
+                ]);
+
+                self.brr_sample_groups[voice] = self.read_next_voice_brr_group(voice, loop_addr);
+            } else {
+                let group_addr = brr_group.group_addr + 9;
+
+                self.brr_sample_groups[voice] = self.read_next_voice_brr_group(voice, group_addr);
+            }
+        }
+    }
+
+    fn read_next_voice_brr_group(&mut self, voice: usize, group_addr: u16) -> BrrSampleGroup {
+        let brr_group = BrrSampleGroup::from_aram_slice(
+            &self.smp_data.aram[(group_addr as usize)..(group_addr + 9) as usize],
+            group_addr,
+        );
+
+        let endx_bit = if brr_group.end_flag { 1 << voice } else { 0 };
+
+        self.smp_data.sdsp_regs.endx.set(
+            self.smp_data.sdsp_regs.endx.get() | endx_bit
+        );
+
+        brr_group
+    }
+
+    fn filter_brr_sample(&mut self, sample: u8, voice: usize) -> u16 {
+        let brr_group = &mut self.brr_sample_groups[voice];
+
+        let sample = ((sample as u16) << brr_group.left_shift) >> 1;
+
+        let filtered_sample = match brr_group.filter {
+            BrrFilter::Filter0 => sample,
+            BrrFilter::Filter1 => {
+                let old = self.surrounding_brr_samples[voice][1];
+
+                let offset = old - (old >> 4);
+
+                sample + offset
+            },
+            BrrFilter::Filter2 => {
+                let old = self.surrounding_brr_samples[voice][1];
+                let older = self.surrounding_brr_samples[voice][0];
+
+                let offset1 = (old * 2) - (((old as u32) * 3) >> 5) as u16;
+                let offset2 = older - (older >> 4);
+
+                sample + offset1 - offset2
+            }
+            BrrFilter::Filter3 => {
+                let old = self.surrounding_brr_samples[voice][1];
+                let older = self.surrounding_brr_samples[voice][0];
+
+                let offset1 = (old * 2) - ((old as u32 * 13) >> 6) as u16;
+                let offset2 = older - (((older as u32) * 3) >> 4) as u16;
+
+                sample + offset1 - offset2
+            }
+        };
+
+        let filtered_sample = if filtered_sample > 0x7FFF { 0x7FFF } else { filtered_sample };
+
+        filtered_sample
     }
 
     pub fn finish(&mut self) {
-        // self.writer.take().unwrap().finalize().unwrap();
+        self.writer.take().unwrap().finalize().unwrap();
     }
 
     fn generate_voice_brr_sample(&mut self, voice: usize) -> u16 {
         let voice_data = &self.smp_data.sdsp_regs.voice_regs[voice];
-        // Pitch is stored as a 14-bit fixed width number. 
-        // We convert it to a float by dividing by the fixed-width representation
-        // of 1.
+        // Converting a 14 bit (2.12) fixed-width number into a float
         let pitch_factor: f64 = (1.0 / 0x1000 as f64) * voice_data.pitch.get() as f64;
         let time_step = ssmp::TIME_PER_SAMPLE * pitch_factor;
         let brr_sample_advance = time_step + self.voice_intermediate_time_step[voice];
         let steps = brr_sample_advance as usize;
         self.voice_intermediate_time_step[voice] = brr_sample_advance - steps as f64;
-
 
         for _ in 0..steps {
             self.read_voice_brr_sample(voice);
@@ -529,26 +712,76 @@ impl SuperDSP {
         let gauss_lookup_idx = (self.voice_intermediate_time_step[voice] * 256.0) as usize;
 
         let samples = self.surrounding_brr_samples[voice];
-        let sample1 = (samples[0] as i32 * SuperDSP::GAUSS_LOOKUP[255 - gauss_lookup_idx] as i32) >> 10;
-        let sample2 = (samples[1] as i32 * SuperDSP::GAUSS_LOOKUP[511 - gauss_lookup_idx] as i32) >> 10;
-        let sample3 = (samples[2] as i32 * SuperDSP::GAUSS_LOOKUP[256 + gauss_lookup_idx] as i32) >> 10;
-        let sample4 = (samples[3] as i32 * SuperDSP::GAUSS_LOOKUP[gauss_lookup_idx] as i32) >> 10;
+        
+        let mut final_sample: u32 = 0;
+        final_sample += (samples[0] as u32 * SuperDSP::GAUSS_LOOKUP[255 - gauss_lookup_idx] as u32) >> 10;
+        final_sample += (samples[1] as u32 * SuperDSP::GAUSS_LOOKUP[511 - gauss_lookup_idx] as u32) >> 10;
+        final_sample += (samples[2] as u32 * SuperDSP::GAUSS_LOOKUP[256 + gauss_lookup_idx] as u32) >> 10;
+        final_sample += (samples[3] as u32 * SuperDSP::GAUSS_LOOKUP[  0 + gauss_lookup_idx] as u32) >> 10;
+        let final_sample = (final_sample >> 1) as u16;
 
-        let final_sample = ((sample1 + sample2 + sample3 + sample4) >> 1) as i16;
-
-        0 // for now
+        final_sample
     }
 
-    pub fn generate_sample(&mut self, audio_buffer: &mut Vec<i16>, time: f64) {
-        const SAMPLE_FREQ: f64 = 440.0;
-        
-        let sample = ((time * SAMPLE_FREQ * std::f64::consts::TAU).sin() * i16::MAX as f64) as i16;
-        
-        // let mut writer = self.writer.take().unwrap();
-        // writer.write_sample(sample).unwrap();
-        // self.writer = Some(writer);
-        
-        audio_buffer.push(sample);
-        audio_buffer.push(sample);
+    fn generate_voice_samples(&mut self, voice: usize) -> (u16, u16) {
+        let noise_en = self.smp_data.sdsp_regs.voice_noise_enable.get().bit_en(voice as u8);
+
+        let voice_out = if noise_en {
+            self.noise_output
+        } else {
+            self.generate_voice_brr_sample(voice)
+        };
+
+        let voice_regs = &self.smp_data.sdsp_regs.voice_regs[voice];
+
+        let voice_envelope = voice_regs.envelope.get();
+
+        let voice_out = sized_mul::<15, 11>(voice_out, voice_envelope);
+
+        voice_regs.sample_out.set((voice_out >> 7) as u8);
+
+        let lvolume = voice_regs.lchannel_volume.get() as u16;
+        let rvolume = voice_regs.rchannel_volume.get() as u16;
+
+        let lsample = sized_mul::<15, 8>(voice_out, lvolume);
+        let rsample = sized_mul::<15, 8>(voice_out, rvolume);
+
+        (lsample, rsample)
     }
+
+    pub fn generate_sample(&mut self, audio_buffer: &mut Vec<i16>) {
+        let mut lsum = 0;
+        let mut rsum = 0;
+        
+        for voice in 0..8 {
+            let (lsample, rsample) =  self.generate_voice_samples(voice);
+
+            lsum = (lsum + lsample) & 0x7FFF;
+            rsum = (rsum + rsample) & 0x7FFF;
+        }
+
+        let lvolume = self.smp_data.sdsp_regs.lchannel_volume.get() as u16;
+        let rvolume = self.smp_data.sdsp_regs.rchannel_volume.get() as u16;
+
+        let lsample = sized_mul::<15, 8>(lsum, lvolume);
+        let rsample = sized_mul::<15, 8>(rsum, rvolume);
+        
+        let lsample = (lsample << 1) as i16;
+        let rsample = (rsample << 1) as i16;
+        
+        if let Some(mut writer) = self.writer.take() {
+            writer.write_sample(lsample).unwrap();
+            writer.write_sample(rsample).unwrap();
+            self.writer = Some(writer);
+        }
+
+        audio_buffer.push(lsample);
+        audio_buffer.push(rsample);
+    }
+}
+
+/// Multiplies lhs by rhs where lhs is of bit width LW and rhs is of bit width 
+/// RW. The result will be of same bit width as lhs.
+const fn sized_mul<const LW: usize, const RW: usize>(lhs: u16, rhs: u16) -> u16 {
+    ((((lhs as u32) * (rhs as u32)) >> RW) as u16) & ((1 << (LW - 1)) - 1)
 }

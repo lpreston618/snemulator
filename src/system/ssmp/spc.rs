@@ -1,10 +1,11 @@
+use std::io::Write;
 use std::{cell::Cell, rc::Rc};
 
-use crate::log::SnemLogger;
-use crate::system::ssmp::{self, SmpData};
+use crate::log::{LogLevel, SnemLogger};
+use crate::system::ssmp::{self, disassembler, SmpData};
 use crate::system::ssmp::sdsp;
 use crate::system::ssmp::timer::Timer;
-use crate::utils::{GetBits, GetBytes};
+use crate::utils::{inc_low_byte, GetBits, GetBytes};
 
 // TIMER2 runs at 64kHz, which translates to one tick per every 48 DSP clocks.
 // The Spc700 clocks every 3, DSP clocks, so TIMER2 is clocked once every 48/3,
@@ -57,7 +58,11 @@ pub struct Spc700 {
     timer1: Timer<SLOW_TIMER_CLOCK_PERIOD>,
     timer2: Timer<FAST_TIMER_CLOCK_PERIOD>,
 
+    debug_flag: bool,
+
     logger: Rc<SnemLogger>,
+
+    logfile: Option<std::fs::File>,
 }
 
 impl Spc700 {
@@ -71,6 +76,8 @@ impl Spc700 {
     ];
 
     pub fn new(apuio_regs: Rc<ssmp::ApuIORegs>, smp_data: Rc<SmpData>, logger: Rc<SnemLogger>) -> Spc700 {
+        let logf = std::fs::File::create("log.txt").unwrap();
+
         Spc700 {
             pc: 0xFFC0,
             sp: 0,
@@ -95,7 +102,11 @@ impl Spc700 {
             timer1: Timer::new(),
             timer2: Timer::new(),
 
+            debug_flag: false,
+
             logger,
+
+            logfile: Some(logf),
         }
     }
 
@@ -203,7 +214,7 @@ impl Spc700 {
     fn read_word(&mut self, address: u16) -> u16 {
         u16::from_le_bytes([
             self.read(address),
-            self.read((address & 0xFF00) | ((address + 1) & 0x00FF)),
+            self.read(inc_low_byte(address)),
         ])
     }
 
@@ -235,9 +246,38 @@ impl Spc700 {
     }
 
     fn exec_instr(&mut self) {
+        // if self.pc < 0xFFC0 {
+        //     self.debug_flag = true;
+        // }
+
+        // if self.pc == 0xd44 {
+        //     println!("At pc = $0D44, x = {:02X}, y = {:02X}, a = {:02X}, dir_page = {:03X}, sp = {:02X}",
+        //         self.x, self.y, self.acc, self.dir_page, self.sp);
+                
+        //     drop(self.logfile.take());
+
+        //     std::process::exit(0);
+        // }
+
         let cycles: usize;
         let opcode = self.read_prg();
         self.branch_taken = false;
+
+        // if self.pc < 0xFFC0 {
+        //     // crate::tools::hexdump::hexdump8_raw(&aram_clone, "aram_dump.bin");
+
+        //     disassembler::disassemble_block(&self.smp_data.aram[0x12f2..0x1350], 0x12f2, "aram_disassembly2.txt");
+
+        //     std::process::exit(0);
+        // }
+
+        // if self.pc <= 0xFFC0 {
+        //     self.logfile.as_mut().unwrap().write(
+        //         format!("{}\n",
+        //             disassembler::disassembly_string(self.pc-1, &self.smp_data.aram)
+        //         ).as_bytes()
+        //     ).unwrap();
+        // }
 
         // if self.apuio_regs.debug_flag.get() {
         //     let prg_data = if self.pc-1 >= 0xFFC0 {
@@ -1514,6 +1554,12 @@ impl Spc700 {
 
 // Addressing Modes
 impl Spc700 {
+    fn immediate(&mut self) -> u16 {
+        let addr = self.pc;
+        self.pc += 1;
+        addr
+    }
+
     fn direct(&mut self) -> u16 {
         (self.read_prg() as u16) | self.dir_page
     }
@@ -1600,27 +1646,20 @@ impl Spc700 {
 
     fn x_indirect(&mut self) -> u16 {
         let ptr_addr = self.x_direct();
-        let data_addr = self.read(ptr_addr) as u16;
 
-        data_addr
+        self.read_word(ptr_addr)
     }
 
     fn indirect_y(&mut self) -> u16 {
-        let immediate_data = self.read_prg() as u16;
+        let ptr_addr = self.direct();
 
-        self.read_word(immediate_data) + self.y as u16
+        self.read_word(ptr_addr) + self.y as u16
     }
 
     fn relative(&mut self) -> u16 {
         let offset = ((self.read_prg() as i8) as i16) as u16;
 
         self.pc + offset
-    }
-
-    fn immediate(&mut self) -> u16 {
-        let addr = self.pc;
-        self.pc += 1;
-        addr
     }
 }
 
@@ -1638,7 +1677,7 @@ impl Spc700 {
         // Set V flag if acc and data are same sign, but result is different sign
         let a = arg1.bit_en(15);
         let d = arg2.bit_en(15);
-        let r = (result & 0x8000) != 0;
+        let r = result.bit_en(15);
         self.set_flag_to_bool(Flag::FlagV, !(a ^ d) & (a ^ r));
 
         result as u16
@@ -1895,7 +1934,7 @@ impl Spc700 {
         self.dir_page = 0;
     }
 
-    // CLRV - clear carry flag (and half carry)
+    // CLRV - clear overflow flag (and half carry)
     fn clrv(&mut self) {
         self.clear_flag(Flag::FlagV);
         self.clear_flag(Flag::FlagH);
@@ -1960,7 +1999,7 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
 
-    // DBNZ - Decrement and Branch if Not Zero (y register)
+    // DBNZ - Decrement and Branch if Not Zero (Y register)
     fn dbnz_y(&mut self, branch_addr: u16) {
         self.y -= 1;
 
@@ -2233,9 +2272,7 @@ impl Spc700 {
     fn pcall(&mut self, address: u16) {
         let call_addr = 0xFF00 | self.read(address) as u16;
 
-        self.push_word(self.pc);
-
-        self.pc = call_addr;
+        self.call(call_addr);
     }
 
     fn pop_acc(&mut self) {
@@ -2315,7 +2352,6 @@ impl Spc700 {
 
     fn ror_acc(&mut self) {
         let new_c = self.acc.bit_en(0);
-
 
         self.acc >>= 1;
         self.acc |= if self.is_flag_set(Flag::FlagC) {
@@ -2438,7 +2474,7 @@ impl Spc700 {
     fn tclr1(&mut self, address: u16) {
         let data = self.read(address);
 
-        self.set_flag_to_bool(Flag::FlagN, (self.acc - data) & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, (self.acc - data).bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, (self.acc - data) == 0);
         
         self.write(address, data & !self.acc);
@@ -2447,7 +2483,7 @@ impl Spc700 {
     fn tset1(&mut self, address: u16) {
         let data = self.read(address);
 
-        self.set_flag_to_bool(Flag::FlagN, (self.acc - data) & 0x80 != 0);
+        self.set_flag_to_bool(Flag::FlagN, (self.acc - data).bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, (self.acc - data) == 0);
         
         self.write(address, data | self.acc);
