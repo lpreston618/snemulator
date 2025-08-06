@@ -1,9 +1,7 @@
-use std::io::Write;
-use std::{cell::Cell, rc::Rc};
+use std::rc::Rc;
 
 use crate::log::{LogLevel, SnemLogger};
 use crate::system::ssmp::{self, disassembler, SmpData};
-use crate::system::ssmp::sdsp;
 use crate::system::ssmp::timer::Timer;
 use crate::utils::{inc_low_byte, GetBits, GetBytes};
 
@@ -220,7 +218,7 @@ impl Spc700 {
 
     fn write_word(&mut self, address: u16, word: u16) {
         self.write(address, word.get_lo());
-        self.write((address & 0xFF00) | ((address + 1) & 0x00FF), word.get_hi());
+        self.write(inc_low_byte(address), word.get_hi());
     }
 
     fn pop(&mut self) -> u8 {
@@ -271,12 +269,13 @@ impl Spc700 {
         //     std::process::exit(0);
         // }
 
-        // if self.pc <= 0xFFC0 {
-        //     self.logfile.as_mut().unwrap().write(
-        //         format!("{}\n",
-        //             disassembler::disassembly_string(self.pc-1, &self.smp_data.aram)
-        //         ).as_bytes()
-        //     ).unwrap();
+        // if self.apuio_regs.debug_flag.get() {
+        //     self.logger.log(
+        //         LogLevel::Info,
+        //         format!("{}",
+        //             disassembler::disassembly_string(self.pc - 1, &self.smp_data.aram[..])
+        //         ).as_str()
+        //     );
         // }
 
         // if self.apuio_regs.debug_flag.get() {

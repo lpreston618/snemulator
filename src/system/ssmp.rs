@@ -4,6 +4,7 @@ mod channel;
 mod spc;
 mod timer;
 mod state;
+mod utils;
 
 pub use state::SmpData;
 
@@ -12,6 +13,8 @@ use std::{cell::Cell, rc::Rc};
 use crate::log::{LogLevel, SnemLogger};
 use crate::audio::AUDIO_FREQ;
 
+const MASTER_CLOCK_HZ: usize = 21477300;
+const MASTER_CLOCK_PERIOD: f64 = 1.0 / MASTER_CLOCK_HZ as f64;
 const SDSP_CLOCK_HZ: usize = 3072000;
 const SMP_CLOCK_HZ: usize = SDSP_CLOCK_HZ / 3;
 // const SMP_CLOCK_PERIOD: f64 = 1.0 / SDSP_CLOCK_HZ as f64;
@@ -123,7 +126,7 @@ impl Ssmp {
     /// Clocks the sound processor, checking if it is time to generate a new
     /// sample and/or clock the S-DSP and SPC700 processors.
     pub fn clock(&mut self, audio_buffer: &mut Vec<i16>, master_clocks: usize) {
-        self.frame_time += SMP_CLOCK_PERIOD * master_clocks as f64;
+        self.frame_time += MASTER_CLOCK_PERIOD * master_clocks as f64;
 
         if self.frame_time >= self.next_sample {
             self.next_sample += TIME_PER_SAMPLE;

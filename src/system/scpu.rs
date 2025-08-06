@@ -100,6 +100,8 @@ pub struct Cpu65c816 {
     joypad_auto_read: bool,
 
     logger: Rc<SnemLogger>,
+
+    debug_flag: bool,
 }
 
 // SNES System Functionality
@@ -156,6 +158,8 @@ impl Cpu65c816 {
             p1_auto_read: 0,
             p2_auto_read: 0,
             joypad_auto_read: false,
+
+            debug_flag: false,
         }
     }
 
@@ -2855,6 +2859,29 @@ impl Cpu65c816 {
     fn exec_instr(&mut self, frame: usize) {
         let opcode = self.read_prg();
         let extra_clocks: usize;
+
+        // if self.debug_flag {
+        //     let (prg_data, prg_mirror) = if self.prg_bank == 0x7e || self.prg_bank == 0x7f {
+        //         (&self.wram[..], self.wram.len()-1)
+        //     } else {
+        //         (&self.rom[..], self.rom_mirror as usize)
+        //     };
+
+        //     self.logger.log(
+        //         LogLevel::Info,
+        //         format!("{}",
+        //             disassembler::instr_disassembly(
+        //                 self.prg_bank,
+        //                 self.pc,
+        //                 prg_data,
+        //                 prg_mirror,
+        //                 self.is_flag_set(Flag::FlagM), 
+        //                 self.is_flag_set(Flag::FlagX),
+        //                 self.mode == CpuMode::Emulation,
+        //             )
+        //         ).as_str()
+        //     );
+        // }
 
         // if self.prg_bank == 0x00 && self.pc == 0x9f5b && self.wram[0x100] == 0x0C {
         //     self.debug_flag = true;

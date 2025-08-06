@@ -169,12 +169,12 @@ impl VoiceRegisters {
             7 => {
                 if data.bit_en(7) {
                     self.gain_mode.set(
-                        match (data >> 5) & 0x03 {
+                        match (data >> 5) & 3 {
                             0 => GainMode::Decrease,
                             1 => GainMode::ExpDecrease,
                             2 => GainMode::Increase,
                             3 => GainMode::BentIncrease,
-                            _ => unreachable!("Improper gain mode"),
+                            _ => unreachable!(), // &3 ensures 0..=3
                         }
                     );
                     self.gain_rate.set(data & 0x1F);
@@ -185,7 +185,7 @@ impl VoiceRegisters {
             }
             8 => {},
             9 => {},
-            _ => unreachable!("Should never be called with other address"),
+            _ => {},
         }
     }
 }
@@ -287,8 +287,6 @@ impl SdspRegisters {
     pub fn write(&self, address: u8, data: u8) {
         match (address >> 4, address & 0xF) {
             (voice @ 0..=7, addr @ 0..=9) => {
-                println!("Write to voice {voice} reg {addr} w/ data {data:02X}");
-
                 self.voice_regs[voice as usize].write(addr, data);
             }
             (0, 0xC) => self.lchannel_volume.set(data),
@@ -296,8 +294,6 @@ impl SdspRegisters {
             (2, 0xC) => self.lecho_volume.set(data as i8),
             (3, 0xC) => self.recho_volume.set(data as i8),
             (4, 0xC) => {
-                println!("Write to KEYON w/ {data:02X}");
-
                 self.key_on.set(data);
 
                 self.endx.set(self.endx.get() & !data);
@@ -399,6 +395,8 @@ impl SuperDSP {
 
     const PERIOD_OFFSET_LOOKUP: [usize; 3] = [536, 0, 1040];
 
+    const RELEASE_PERIOD_IDX: usize = 31;
+
     pub fn new(smp_data: Rc<SmpData>) -> SuperDSP {
         let wav_spec = hound::WavSpec {
             channels: 2,
@@ -435,18 +433,10 @@ impl SuperDSP {
             let voice_regs = &self.smp_data.sdsp_regs.voice_regs[voice];
 
             // Release decreases envelope by 8 regardles of VxADSR and VxGAIN settings
-            if voice_regs.adsr_stage.get() == ADSRStage::Release {
-                let envelope_val = voice_regs.envelope.get()
-                    .checked_sub(8)
-                    .unwrap_or(0);
-
-                voice_regs.envelope.set(envelope_val);
+            if voice_regs.adsr_enable.get() || voice_regs.adsr_stage.get() == ADSRStage::Release {
+                self.clock_adsr_envelope(voice);
             } else {
-                if voice_regs.adsr_enable.get() {
-                    self.clock_adsr_envelope(voice);
-                } else {
-                    self.clock_gain_envelope(voice);
-                }
+                self.clock_gain_envelope(voice);
             }
         }
 
@@ -457,7 +447,11 @@ impl SuperDSP {
         let period = SuperDSP::PERIOD_LOOKUP[period_idx];
         let period_offset = SuperDSP::PERIOD_OFFSET_LOOKUP[period_idx % 3];
 
-        (self.envelope_cnt + period_offset) % period == 0
+        if period == 0 {
+            false
+        } else {
+            (self.envelope_cnt + period_offset) % period == 0
+        }
     }
 
     fn clock_noise_generator(&mut self) {
@@ -481,7 +475,8 @@ impl SuperDSP {
 
         match voice_regs.adsr_stage.get() {
             ADSRStage::Attack => {
-                let attack_period_idx = voice_regs.adsr_attack.get() as usize;
+                let adsr_attack = voice_regs.adsr_attack.get() as usize;
+                let attack_period_idx = 2 * adsr_attack + 1;
 
                 if self.should_do_envelope_op(attack_period_idx) {
                     let attack_rate = if attack_period_idx == 15 { 1024 } else { 32 };
@@ -496,7 +491,8 @@ impl SuperDSP {
                 }
             }
             ADSRStage::Decay => {
-                let decay_period_idx = voice_regs.adsr_decay.get() as usize;
+                let adsr_decay = voice_regs.adsr_decay.get() as usize;
+                let decay_period_idx = 2 * adsr_decay + 16;
 
                 if self.should_do_envelope_op(decay_period_idx) {
                     let mut envelope_val = voice_regs.envelope.get();
@@ -530,7 +526,15 @@ impl SuperDSP {
                     }
                 }
             }
-            ADSRStage::Release => unreachable!(), // Handled in clock_envelopes
+            ADSRStage::Release => {
+                if self.should_do_envelope_op(SuperDSP::RELEASE_PERIOD_IDX) {
+                    let envelope_val = voice_regs.envelope.get()
+                        .checked_sub(8)
+                        .unwrap_or(0);
+    
+                    voice_regs.envelope.set(envelope_val);
+                }
+            }
         }
     }
 
@@ -549,7 +553,6 @@ impl SuperDSP {
         }
 
         let new_envelope = match voice_regs.gain_mode.get() {
-            GainMode::Fixed => { unreachable!() }
             GainMode::Decrease => {
                 voice_regs.envelope.get() - 32
             }
@@ -567,44 +570,29 @@ impl SuperDSP {
                     voice_regs.envelope.get() + 8
                 }
             }
+            GainMode::Fixed => unreachable!(), // Handled above match
         };
 
-        let wrapped_envelope = if new_envelope <= 0x7FF {
-            new_envelope
-        } else if new_envelope <= 0x1000 {
-            0x7FF
-        } else {
-            0
-        };
+        let clipped_envelope = new_envelope & 0x7FF;
 
-        voice_regs.envelope.set(wrapped_envelope);
+        voice_regs.envelope.set(clipped_envelope);
     }
 
     /// Reads the next BRR sample into the surrounding_brr_samples array, shifting
     /// the previously read samples into the preceding position, and the 0th sample
     /// out of the array.
     fn read_voice_brr_sample(&mut self, voice: usize) {
-        if self.smp_data.sdsp_regs.voice_regs[voice].brr_start.get() {
-            let voice_regs = &self.smp_data.sdsp_regs.voice_regs[voice];
-
-            voice_regs.brr_start.set(false);
-
-            let directory_page = (self.smp_data.sdsp_regs.sample_page.get() as usize) << 8;
-            let directory_addr = directory_page + ((voice_regs.sample_source.get() as usize) << 2);
-
-            let group_addr = u16::from_le_bytes([
-                self.smp_data.aram[directory_addr + 0].get(),
-                self.smp_data.aram[directory_addr + 1].get(),
-            ]);
-
-            self.brr_sample_groups[voice] = self.read_next_voice_brr_group(voice, group_addr);
-            
-            return;
-        }
-
         let brr_sample = self.brr_sample_groups[voice].read_sample();
 
         let filtered_sample = self.filter_brr_sample(brr_sample.sample, voice);
+
+        // if voice == 0 {
+        //     if let Some(mut writer) = self.writer.take() {
+        //         writer.write_sample(sign_extend::<15>(filtered_sample as i32) as i16).unwrap();
+        //         writer.write_sample(sign_extend::<15>(filtered_sample as i32) as i16).unwrap();
+        //         self.writer = Some(writer);
+        //     }
+        // }
 
         self.surrounding_brr_samples[voice][0] = self.surrounding_brr_samples[voice][1];
         self.surrounding_brr_samples[voice][1] = self.surrounding_brr_samples[voice][2];
@@ -656,40 +644,62 @@ impl SuperDSP {
     fn filter_brr_sample(&mut self, sample: u8, voice: usize) -> u16 {
         let brr_group = &mut self.brr_sample_groups[voice];
 
-        let sample = ((sample as u16) << brr_group.left_shift) >> 1;
+        let signed_sample = sign_extend::<4>(sample as i32);
 
-        let filtered_sample = match brr_group.filter {
-            BrrFilter::Filter0 => sample,
-            BrrFilter::Filter1 => {
-                let old = self.surrounding_brr_samples[voice][1];
-
-                let offset = old - (old >> 4);
-
-                sample + offset
-            },
-            BrrFilter::Filter2 => {
-                let old = self.surrounding_brr_samples[voice][1];
-                let older = self.surrounding_brr_samples[voice][0];
-
-                let offset1 = (old * 2) - (((old as u32) * 3) >> 5) as u16;
-                let offset2 = older - (older >> 4);
-
-                sample + offset1 - offset2
-            }
-            BrrFilter::Filter3 => {
-                let old = self.surrounding_brr_samples[voice][1];
-                let older = self.surrounding_brr_samples[voice][0];
-
-                let offset1 = (old * 2) - ((old as u32 * 13) >> 6) as u16;
-                let offset2 = older - (((older as u32) * 3) >> 4) as u16;
-
-                sample + offset1 - offset2
-            }
+        let shifted_sample = if brr_group.left_shift > 12 {
+            (signed_sample >> 3) << 11
+        } else {
+            (signed_sample << brr_group.left_shift) >> 1
         };
 
-        let filtered_sample = if filtered_sample > 0x7FFF { 0x7FFF } else { filtered_sample };
+        let (a, b) = match brr_group.filter {
+            BrrFilter::Filter0 => (0., 0.),
+            BrrFilter::Filter1 => (0.9375, 0.),
+            BrrFilter::Filter2 => (1.90625, -0.9375),
+            BrrFilter::Filter3 => (1.796875, -0.8125)
+        };
 
-        filtered_sample
+        let s3 = sign_extend::<15>(self.surrounding_brr_samples[voice][3] as i32);
+        let s2 = sign_extend::<15>(self.surrounding_brr_samples[voice][2] as i32);
+
+        let filtered_sample = (
+            (shifted_sample as f64)
+            + a * (s3 as f64)
+            + b * (s2 as f64)
+        ) as i32;
+
+        let clamped_sample = if filtered_sample < -0x8000 {
+            0x8000u16
+        } else if filtered_sample > 0x7FFF {
+            0x7FFFu16
+        } else {
+            filtered_sample as u16
+        };
+
+        let clipped_sample = clamped_sample & 0x7FFF;
+
+        clipped_sample
+    }
+
+    fn start_voice_brr(&mut self, voice: usize) {
+        let voice_regs = &self.smp_data.sdsp_regs.voice_regs[voice];
+
+        let directory_page = (self.smp_data.sdsp_regs.sample_page.get() as usize) << 8;
+        let directory_addr = directory_page + ((voice_regs.sample_source.get() as usize) << 2);
+
+        let group_addr = u16::from_le_bytes([
+            self.smp_data.aram[directory_addr + 0].get(),
+            self.smp_data.aram[directory_addr + 1].get(),
+        ]);
+
+        self.brr_sample_groups[voice] = self.read_next_voice_brr_group(voice, group_addr);
+
+        // read the first 4 BRR samples into the surrounding brr samples array
+        for _ in 0..4 {
+            self.read_voice_brr_sample(voice);
+        }
+
+        self.voice_intermediate_time_step[voice] = 0.0;
     }
 
     pub fn finish(&mut self) {
@@ -697,11 +707,22 @@ impl SuperDSP {
     }
 
     fn generate_voice_brr_sample(&mut self, voice: usize) -> u16 {
+        // Multiplied to a 14 bit (2.12) fixed-width number to convert to a float
+        const PITCH_MULT: f64 = 1.0 / 0x1000 as f64;
+        
         let voice_data = &self.smp_data.sdsp_regs.voice_regs[voice];
-        // Converting a 14 bit (2.12) fixed-width number into a float
-        let pitch_factor: f64 = (1.0 / 0x1000 as f64) * voice_data.pitch.get() as f64;
-        let time_step = ssmp::TIME_PER_SAMPLE * pitch_factor;
-        let brr_sample_advance = time_step + self.voice_intermediate_time_step[voice];
+
+        // If we haven't yet read the first BRR sample group, do so
+        if voice_data.brr_start.get() {
+            voice_data.brr_start.set(false);
+
+            self.start_voice_brr(voice);
+        }
+        
+        let voice_data = &self.smp_data.sdsp_regs.voice_regs[voice];
+        
+        let pitch_factor = PITCH_MULT * voice_data.pitch.get() as f64;
+        let brr_sample_advance = pitch_factor + self.voice_intermediate_time_step[voice];
         let steps = brr_sample_advance as usize;
         self.voice_intermediate_time_step[voice] = brr_sample_advance - steps as f64;
 
@@ -710,15 +731,18 @@ impl SuperDSP {
         }
 
         let gauss_lookup_idx = (self.voice_intermediate_time_step[voice] * 256.0) as usize;
-
-        let samples = self.surrounding_brr_samples[voice];
         
-        let mut final_sample: u32 = 0;
-        final_sample += (samples[0] as u32 * SuperDSP::GAUSS_LOOKUP[255 - gauss_lookup_idx] as u32) >> 10;
-        final_sample += (samples[1] as u32 * SuperDSP::GAUSS_LOOKUP[511 - gauss_lookup_idx] as u32) >> 10;
-        final_sample += (samples[2] as u32 * SuperDSP::GAUSS_LOOKUP[256 + gauss_lookup_idx] as u32) >> 10;
-        final_sample += (samples[3] as u32 * SuperDSP::GAUSS_LOOKUP[  0 + gauss_lookup_idx] as u32) >> 10;
-        let final_sample = (final_sample >> 1) as u16;
+        let s0 = sign_extend::<15>(self.surrounding_brr_samples[voice][0] as i32);
+        let s1 = sign_extend::<15>(self.surrounding_brr_samples[voice][1] as i32);
+        let s2 = sign_extend::<15>(self.surrounding_brr_samples[voice][2] as i32);
+        let s3 = sign_extend::<15>(self.surrounding_brr_samples[voice][3] as i32);
+    
+        let sample0 = (s0 * SuperDSP::GAUSS_LOOKUP[255 - gauss_lookup_idx] as i32) >> 10;
+        let sample1 = (s1 * SuperDSP::GAUSS_LOOKUP[511 - gauss_lookup_idx] as i32) >> 10;
+        let sample2 = (s2 * SuperDSP::GAUSS_LOOKUP[256 + gauss_lookup_idx] as i32) >> 10;
+        let sample3 = (s3 * SuperDSP::GAUSS_LOOKUP[  0 + gauss_lookup_idx] as i32) >> 10;
+
+        let final_sample = ((sample0 + sample1 + sample2 + sample3) as u16) >> 1;
 
         final_sample
     }
@@ -726,25 +750,27 @@ impl SuperDSP {
     fn generate_voice_samples(&mut self, voice: usize) -> (u16, u16) {
         let noise_en = self.smp_data.sdsp_regs.voice_noise_enable.get().bit_en(voice as u8);
 
+        let brr_sample = self.generate_voice_brr_sample(voice);
+
         let voice_out = if noise_en {
-            self.noise_output
+            sign_extend::<15>(self.noise_output as i32)
         } else {
-            self.generate_voice_brr_sample(voice)
+            sign_extend::<15>(brr_sample as i32)
         };
 
         let voice_regs = &self.smp_data.sdsp_regs.voice_regs[voice];
 
-        let voice_envelope = voice_regs.envelope.get();
+        let voice_envelope = voice_regs.envelope.get() as i32;
 
-        let voice_out = sized_mul::<15, 11>(voice_out, voice_envelope);
+        let voice_out = (voice_out * voice_envelope) >> 11;
 
-        voice_regs.sample_out.set((voice_out >> 7) as u8);
+        voice_regs.sample_out.set(((voice_out >> 8) as u8) & 0x7F);
 
-        let lvolume = voice_regs.lchannel_volume.get() as u16;
-        let rvolume = voice_regs.rchannel_volume.get() as u16;
+        let lvolume = sign_extend::<8>(voice_regs.lchannel_volume.get() as i32);
+        let rvolume = sign_extend::<8>(voice_regs.rchannel_volume.get() as i32);
 
-        let lsample = sized_mul::<15, 8>(voice_out, lvolume);
-        let rsample = sized_mul::<15, 8>(voice_out, rvolume);
+        let lsample = (((voice_out * lvolume) >> 7) as u16) & 0x7FFF;
+        let rsample = (((voice_out * rvolume) >> 7) as u16) & 0x7FFF;
 
         (lsample, rsample)
     }
@@ -760,28 +786,28 @@ impl SuperDSP {
             rsum = (rsum + rsample) & 0x7FFF;
         }
 
-        let lvolume = self.smp_data.sdsp_regs.lchannel_volume.get() as u16;
-        let rvolume = self.smp_data.sdsp_regs.rchannel_volume.get() as u16;
+        // if let Some(mut writer) = self.writer.take() {
+        //     writer.write_sample(sign_extend::<15>(lsum as i32) as i16).unwrap();
+        //     writer.write_sample(sign_extend::<15>(rsum as i32) as i16).unwrap();
+        //     self.writer = Some(writer);
+        // }
 
-        let lsample = sized_mul::<15, 8>(lsum, lvolume);
-        let rsample = sized_mul::<15, 8>(rsum, rvolume);
+        let lvolume = sign_extend::<8>(self.smp_data.sdsp_regs.lchannel_volume.get() as i32);
+        let rvolume = sign_extend::<8>(self.smp_data.sdsp_regs.rchannel_volume.get() as i32);
+
+        let lsample = sign_extend::<15>(lsum as i32) * lvolume;
+        let rsample = sign_extend::<15>(rsum as i32) * rvolume;
         
-        let lsample = (lsample << 1) as i16;
-        let rsample = (rsample << 1) as i16;
-        
-        if let Some(mut writer) = self.writer.take() {
-            writer.write_sample(lsample).unwrap();
-            writer.write_sample(rsample).unwrap();
-            self.writer = Some(writer);
-        }
+        let lsample = (lsample >> 7) as i16;
+        let rsample = (rsample >> 7) as i16;
 
         audio_buffer.push(lsample);
         audio_buffer.push(rsample);
     }
 }
 
-/// Multiplies lhs by rhs where lhs is of bit width LW and rhs is of bit width 
-/// RW. The result will be of same bit width as lhs.
-const fn sized_mul<const LW: usize, const RW: usize>(lhs: u16, rhs: u16) -> u16 {
-    ((((lhs as u32) * (rhs as u32)) >> RW) as u16) & ((1 << (LW - 1)) - 1)
+pub const fn sign_extend<const WIDTH: usize>(n: i32) -> i32 {
+    let shift = 32 - WIDTH;
+    (n << shift) >> shift
 }
+
