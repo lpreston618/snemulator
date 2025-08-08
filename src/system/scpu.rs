@@ -2850,31 +2850,31 @@ impl Cpu65c816 {
         let opcode = self.read_prg();
         let extra_clocks: usize;
 
-        // self.debug_flag = true;
+        self.debug_flag = true;
 
-        // if self.debug_flag {
-        //     let (prg_data, prg_mirror) = if self.prg_bank == 0x7e || self.prg_bank == 0x7f {
-        //         (&self.wram[..], self.wram.len()-1)
-        //     } else {
-        //         (&self.rom[..], self.rom_mirror as usize)
-        //     };
+        if self.debug_flag {
+            let (prg_data, prg_mirror) = if self.prg_bank == 0x7e || self.prg_bank == 0x7f {
+                (&self.wram[..], self.wram.len()-1)
+            } else {
+                (&self.rom[..], self.rom_mirror as usize)
+            };
 
-        //     self.logger.log(
-        //         LogLevel::Info,
-        //         format!("{}",
-        //             disassembler::instr_disassembly(
-        //                 self.prg_bank,
-        //                 self.pc,
-        //                 prg_data,
-        //                 prg_mirror,
-        //                 self.is_flag_set(Flag::FlagM), 
-        //                 self.is_flag_set(Flag::FlagX),
-        //                 self.mode == CpuMode::Emulation,
-        //                 self.mapping_mode,
-        //             )
-        //         ).as_str()
-        //     );
-        // }
+            self.logger.log(
+                LogLevel::Info,
+                format!("{}",
+                    disassembler::instr_disassembly(
+                        self.prg_bank,
+                        self.pc,
+                        prg_data,
+                        prg_mirror,
+                        self.is_flag_set(Flag::FlagM), 
+                        self.is_flag_set(Flag::FlagX),
+                        self.mode == CpuMode::Emulation,
+                        self.mapping_mode,
+                    )
+                ).as_str()
+            );
+        }
 
         match (opcode, self.mode, self.acc_size(), self.idx_size()) {
             // brk, imp
@@ -4159,7 +4159,7 @@ impl Cpu65c816 {
 
             // jmp, long
             (0x5C, ..) => {
-                let addr = self.absolute8();
+                let addr = self.absolute_long8();
                 self.jmp_long_all(addr);
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
