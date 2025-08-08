@@ -1652,7 +1652,7 @@ impl Ppu5C7x {
         self.sys_clocks_until_clock = 0;
 
         if !self.in_vblank() && !self.in_hblank() && self.scanline != 0 {
-            self.dot(frame_buffer);
+            self.draw_dot(frame_buffer);
         }
 
         self.update_dot_and_scanline();
@@ -1890,7 +1890,7 @@ impl Ppu5C7x {
         }
     }
 
-    fn dot(&mut self, frame_buffer: &mut [RGB565]) {
+    fn draw_dot(&mut self, frame_buffer: &mut [RGB565]) {
         let screen_x = self.screen_x();
         let screen_y = self.screen_y();
 
@@ -1923,11 +1923,11 @@ impl Ppu5C7x {
 
         let (r, g, b) = rgb565_to_parts(dot_col);
 
-        let brightness = (self.registers.screen_brightness.get() as f32) / 15.0;
+        let brightness = self.registers.screen_brightness.get() as u16;
 
-        let r = ((r as f32) * brightness) as u16;
-        let g = ((g as f32) * brightness) as u16;
-        let b = ((b as f32) * brightness) as u16;
+        let r = (r * brightness) / 15;
+        let g = (g * brightness) / 15;
+        let b = (b * brightness) / 15;
 
         let dot_col = rgb565_from_parts(r, g, b);
 
