@@ -801,6 +801,9 @@ impl SuperDSP {
         let lsample = (lsample >> 7) as i16;
         let rsample = (rsample >> 7) as i16;
 
+        let lsample = lsample * 2;
+        let rsample = rsample * 2;
+
         audio_buffer.push(lsample);
         audio_buffer.push(rsample);
     }
