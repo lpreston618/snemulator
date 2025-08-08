@@ -47,3 +47,15 @@ impl CpuAddress for u32 {
 pub(super) fn is_mmio_addr(address: u32) -> bool {
     address.bank() & 0x7F < 0x40 && (0x2000 <= address.bank_addr() && address.bank_addr() < 0x6000)
 }
+
+pub fn map_lorom_addr(address: u32) -> u32 {
+    ((address & 0x7F0000) >> 1) | (address & 0x007FFF)
+}
+
+pub fn map_hirom_addr(address: u32) -> u32 {
+    address & 0x3FFFFF
+}
+
+pub fn map_exhirom_addr(address: u32) -> u32 {
+    (((address & 0x800000) ^ 0x800000) >> 1) | (address & 0x3FFFFF)
+}

@@ -8,6 +8,7 @@ use utils::{CpuAddress, is_mmio_addr};
 
 use crate::log::{LogLevel, SnemLogger};
 use crate::system::cartridge::{MappingMode, Cartridge};
+use crate::system::scpu::utils::{map_hirom_addr, map_lorom_addr};
 use crate::system::sppu::{self, PpuData};
 use crate::system::scpu::dma::TransferPattern;
 use crate::system::scpu::mult::Mult5A22;
@@ -71,10 +72,11 @@ pub struct Cpu65c816 {
     awaiting_interrupt: bool,
     sys_clocks_until_clock: usize,
 
-    wram: [u8; WRAM_SIZE],
+    wram: Vec<u8>,
     rom: Vec<u8>,
     rom_mirror: usize,
     has_sram: bool,
+    sram: Option<Vec<u8>>,
 
     dma_status: DmaStatus,
     dma_channels: Vec<DmaChannel>,
@@ -132,10 +134,11 @@ impl Cpu65c816 {
             awaiting_interrupt: false,
             sys_clocks_until_clock: 0,
 
-            wram: [0; WRAM_SIZE],
+            wram: vec![0; WRAM_SIZE],
             rom: Vec::new(),
             rom_mirror: 0,
             has_sram: false,
+            sram: None,
 
             dma_status: DmaStatus::Off,
             dma_channels: vec![DmaChannel::default(); 8],
@@ -161,6 +164,10 @@ impl Cpu65c816 {
 
             debug_flag: false,
         }
+    }
+
+    pub fn load_sram(&mut self, sram: Vec<u8>) {
+        self.sram = Some(sram);
     }
 
     /// Sets the CPU to its proper initial state. Can be triggered by an interrupt.
@@ -258,6 +265,14 @@ impl Cpu65c816 {
     fn _write(&mut self, address: u32, data: u8) -> usize {
         // if address == 0x000100 {
         //     println!("Set game mode to 0x{data:02X} on prg_addr = ${:02X}{:04X}", self.prg_bank, self.pc);
+        // }
+
+        // if address == 0x1931 {
+        //     println!("Write to $1931 w/ 0x{data:02X} on pc = ${:02X}{:04X}", self.prg_bank, self.pc);
+        // }
+
+        // if address == 0x192B {
+        //     println!("Write to $192B w/ 0x{data:02X} on pc = ${:02X}{:04X}", self.prg_bank, self.pc);
         // }
 
         let clocks = match (address.bank(), address.bank_addr()) {
@@ -373,7 +388,7 @@ impl Cpu65c816 {
             0x4300..=0x43FF if ((mmio_address >> 4) & 0xF) < 8 => self.read_dma_regs(mmio_address),
 
             _ => {
-                println!("Read from MMIO reg ${mmio_address:04X}");
+                // println!("Read from MMIO reg ${mmio_address:04X}");
 
                 0
             },
@@ -517,7 +532,7 @@ impl Cpu65c816 {
             }
 
             _ => {
-                println!("Write to MMIO reg ${mmio_address:04X} w/ 0x{data:02x}");
+                // println!("Write to MMIO reg ${mmio_address:04X} w/ 0x{data:02x}");
             }
         }
     }
@@ -608,18 +623,6 @@ impl Cpu65c816 {
         }
     }
 
-    fn map_lorom_addr(&self, address: u32) -> u32 {
-        ((address & 0x7F0000) >> 1) | (address & 0x007FFF)
-    }
-
-    fn map_hirom_addr(&self, address: u32) -> u32 {
-        address & 0x3FFFFF
-    }
-
-    fn map_exhirom_addr(&self, address: u32) -> u32 {
-        (((address & 0x800000) ^ 0x800000) >> 1) | (address & 0x3FFFFF)
-    }
-
     /// Read from ROM (or SRAM) in LoROM mapping mode
     /// Memory map diagram here: https://snes.nesdev.org/wiki/Memory_map#LoROM
     fn read_lorom(&self, address: u32) -> (u8, usize) {
@@ -634,7 +637,7 @@ impl Cpu65c816 {
         };
 
         // 0 if mapped_addr > rom.len() ? or mirror ?
-        let mapped_addr = (self.map_lorom_addr(mirror_addr) as usize) & self.rom_mirror;
+        let mapped_addr = (map_lorom_addr(mirror_addr) as usize) & self.rom_mirror;
 
         let data = self.rom[mapped_addr];
 
@@ -680,10 +683,7 @@ impl Cpu65c816 {
             todo!("Read SRAM");
         }
 
-        let mirror_addr = address | 0xC00000;
-
-        // 0 if mapped_addr > rom.len() ? or mirror ?
-        let mapped_addr = (self.map_hirom_addr(mirror_addr) as usize) & self.rom_mirror;
+        let mapped_addr = (map_hirom_addr(address) as usize) & self.rom_mirror;
 
         let data = self.rom[mapped_addr];
 
@@ -2385,7 +2385,7 @@ impl Cpu65c816 {
     fn tdc_all(&mut self) {
         self.acc = self.direct_page;
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
 
@@ -2860,28 +2860,31 @@ impl Cpu65c816 {
         let opcode = self.read_prg();
         let extra_clocks: usize;
 
-        // if self.debug_flag {
-        //     let (prg_data, prg_mirror) = if self.prg_bank == 0x7e || self.prg_bank == 0x7f {
-        //         (&self.wram[..], self.wram.len()-1)
-        //     } else {
-        //         (&self.rom[..], self.rom_mirror as usize)
-        //     };
+        self.debug_flag = true;
 
-        //     self.logger.log(
-        //         LogLevel::Info,
-        //         format!("{}",
-        //             disassembler::instr_disassembly(
-        //                 self.prg_bank,
-        //                 self.pc,
-        //                 prg_data,
-        //                 prg_mirror,
-        //                 self.is_flag_set(Flag::FlagM), 
-        //                 self.is_flag_set(Flag::FlagX),
-        //                 self.mode == CpuMode::Emulation,
-        //             )
-        //         ).as_str()
-        //     );
-        // }
+        if self.debug_flag {
+            let (prg_data, prg_mirror) = if self.prg_bank == 0x7e || self.prg_bank == 0x7f {
+                (&self.wram[..], self.wram.len()-1)
+            } else {
+                (&self.rom[..], self.rom_mirror as usize)
+            };
+
+            self.logger.log(
+                LogLevel::Info,
+                format!("{}",
+                    disassembler::instr_disassembly(
+                        self.prg_bank,
+                        self.pc,
+                        prg_data,
+                        prg_mirror,
+                        self.is_flag_set(Flag::FlagM), 
+                        self.is_flag_set(Flag::FlagX),
+                        self.mode == CpuMode::Emulation,
+                        self.mapping_mode,
+                    )
+                ).as_str()
+            );
+        }
 
         // if self.prg_bank == 0x00 && self.pc == 0x9f5b && self.wram[0x100] == 0x0C {
         //     self.debug_flag = true;

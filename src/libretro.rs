@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::rc::Rc;
 
 use crate::audio;
@@ -34,6 +34,11 @@ const SNES_FRAME_HEIGHT: usize = 448;
 const FRAME_BUF_SIZE: usize = SNES_FRAME_WIDTH * SNES_FRAME_HEIGHT;
 
 pub const IDEAL_FPS: usize = 60;
+
+static mut SAVE_DIRECTORY: Option<String> = None;
+
+fn set_save_dir_path_str(path: &str) { unsafe { SAVE_DIRECTORY = Some(path.to_string()); } }
+fn get_save_dir_path_str() -> Option<String> { unsafe { SAVE_DIRECTORY.clone() } }
 
 struct SnemulatorCore {
     logger: Rc<SnemLogger>,
@@ -215,7 +220,11 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
     }
 
     fn init(env: &mut impl retro::env::Init) -> Self::Init {
-        // audio::set_audio_buffer_status_callback(env);
+        if let Ok(Some(cstr)) = env.get_save_directory() {
+            if let Ok(valid_str) = cstr.to_str() {
+                set_save_dir_path_str(valid_str);
+            }
+        }
     }
 
     fn load_without_content<E: retro::env::LoadGame>(
@@ -323,6 +332,44 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
             LogLevel::Info, 
             format!("loaded ROM with {:?} memory mapping", cart.mapping_mode()).as_str()
         );
+
+        if let Some(mut save_path) = get_save_dir_path_str() {
+            let file_name = game_path.file_stem().unwrap();
+
+            save_path.extend(file_name.to_str());
+            save_path.push_str(".srm");
+
+            let save_path = std::path::Path::new(&save_path);
+
+            if let Ok(mut save_file) = std::fs::File::open(save_path) {
+                let mut sram = Vec::new();
+
+                match save_file.read_to_end(&mut sram) {
+                    Ok(_) => {
+                        core.snem_cpu.as_mut().unwrap().load_sram(sram);
+                        core.logger.log(
+                            LogLevel::Info, 
+                            format!("loaded save file from '{}'", save_path.to_str().unwrap()).as_str()
+                        );
+                    },
+                    Err(_) => {
+                        core.logger.log(
+                            LogLevel::Error, 
+                            format!("failed to load save file from '{}'", save_path.to_str().unwrap()).as_str()
+                        );
+                    }
+                }
+            }
+            core.logger.log(
+                LogLevel::Error, 
+                format!("failed to load save file from '{}'", save_path.to_str().unwrap()).as_str()
+            );
+        } else {
+            core.logger.log(
+                LogLevel::Info, 
+                format!("no save directory provided by frontend").as_str()
+            );
+        }
 
         core.snem_cpu.as_mut().unwrap().load_cart(cart);
         core.snem_cpu.as_mut().unwrap().initialize();

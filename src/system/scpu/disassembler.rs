@@ -1,4 +1,8 @@
-pub(super) fn instr_disassembly(prg_bank: u8, pc: u16, rom: &[u8], rom_mirror: usize, m8: bool, x8: bool, e: bool) -> String {
+use crate::system::{cartridge::MappingMode, scpu::utils::{map_exhirom_addr, map_hirom_addr, map_lorom_addr}};
+
+pub(super) fn instr_disassembly(
+    prg_bank: u8, pc: u16, rom: &[u8], rom_mirror: usize, 
+    m8: bool, x8: bool, e: bool, mapping_mode: MappingMode) -> String {
     // "${Bank}{PC}:  {Op} {B1?} {B2?} {B3?}  {instr} [addrmode_data]  (e={e}, x8={x8}, m8={m8})"
     let mut pc = pc;
 
@@ -6,8 +10,12 @@ pub(super) fn instr_disassembly(prg_bank: u8, pc: u16, rom: &[u8], rom_mirror: u
     let opcode_addr = pc;
 
     let mut read_prg = || -> u8 {
-        let prg_addr = ((prg_bank as usize) << 16) | pc as usize;
-        let mapped_addr = ((prg_addr & 0x7F0000) >> 1) | (prg_addr & 0x007FFF);
+        let prg_addr = ((prg_bank as u32) << 16) | pc as u32;
+        let mapped_addr = match mapping_mode {
+            MappingMode::LoROM => map_lorom_addr(prg_addr),
+            MappingMode::HiROM => map_hirom_addr(prg_addr),
+            MappingMode::ExHiROM => map_exhirom_addr(prg_addr)
+        } as usize;
         let data = rom[mapped_addr & rom_mirror];
         pc += 1;
         data

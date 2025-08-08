@@ -859,7 +859,7 @@ impl PpuData {
                 }
                 
                 if internal_oam_addr >= 0x200 {
-                    self.oam[internal_oam_addr].set(data);
+                    self.oam[internal_oam_addr % OAM_SIZE].set(data); // this is lazy, doesn't actually work with mod
                 }
 
                 self.internal_oam_addr.set((internal_oam_addr as u16 + 1) % OAM_SIZE as u16);
@@ -1847,7 +1847,7 @@ impl Ppu5C7x {
 //     }
 // }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum ColorLayer {
     Bg1,
     Bg2,
@@ -1864,6 +1864,7 @@ struct ColorData {
     transparent: bool,
 }
 
+#[derive(Debug)]
 struct TileData {
     tile_addr: u16,
     tile_row: u8,
@@ -2524,11 +2525,76 @@ impl Ppu5C7x {
         
         let tile_data = self.bg_tile_idx(screen_x, screen_y, bg_layer);
 
+        // if screen_y == 111 && screen_x == 240 && bg_layer == ColorLayer::Bg1 {
+            // println!("({screen_x}, {screen_y}): addr: ${:04X}, row: {}, col: {}, size: {:?}",
+            //     tile_data.tile_addr,
+            //     tile_data.tile_row,
+            //     tile_data.tile_col,
+            //     tile_data.tile_size,
+            // );
+
+            // if tile_data.tile_addr == 0x2CB5 {
+            //     let mut vram_clone = Vec::new();
+
+            //     for w in self.registers.vram.iter() {
+            //         vram_clone.push(w.get());
+            //     }
+
+            //     crate::tools::hexdump::hexdump16_to_file(&vram_clone, 0, "vram_dump.txt");
+
+            //     std::process::exit(0);
+            // }
+        // }
+
         let col = match color_depth {
             ColorDepth::Bpp2 => self.bg_col_2bpp(tile_data, bg_chr_base_addr, bg_cgram_base_addr),
             ColorDepth::Bpp4 =>  self.bg_col_4bpp(tile_data, bg_chr_base_addr, bg_cgram_base_addr),
             _ => todo!("8bpp and direct color not implemented yet"),
         };
+
+        // let col = match bg_layer {
+        //     ColorLayer::Bg1 => {
+        //         let (x, col) = (screen_x / 8, screen_x % 8);
+        //         let (y, row) = (screen_y / 8, screen_y % 8);
+
+        //         let chr_data = ChrData {
+        //             chr_idx: (y*16 + x) as u16,
+        //             chr_col: col as u8,
+        //             chr_row: row as u8,
+        //             chr_pal: 0,
+        //             chr_priority: 0,
+        //         };
+
+        //         let base_chr_addr = (((self.frame / 15) * 0x100) & (VRAM_SIZE-1)) as u16;
+
+        //         let tile_chr_addr = base_chr_addr + (chr_data.chr_idx << 4) + chr_data.chr_row as u16;
+
+        //         let bp01 = self.vram_read(tile_chr_addr + 0);
+        //         let bp23 = self.vram_read(tile_chr_addr + 8);
+
+        //         let b0 = ((bp01 >> (7-chr_data.chr_col)) & 1) as u8;
+        //         let b1 = ((bp01 >> (15-chr_data.chr_col)) & 1) as u8;
+        //         let b2 = ((bp23 >> (7-chr_data.chr_col)) & 1) as u8;
+        //         let b3 = ((bp23 >> (15-chr_data.chr_col)) & 1) as u8;
+
+        //         let pal_idx = (b3 << 3) | (b2 << 2) | (b1 << 1) | b0;
+                
+        //         let cgram_addr = bg_cgram_base_addr | (chr_data.chr_pal << 4) | pal_idx;
+
+        //         let raw_color = if pal_idx == 0 {
+        //             self.transparent_color()
+        //         } else {
+        //             self.registers.cgram[cgram_addr as usize].get()
+        //         };
+
+        //         ColorData {
+        //             raw_color,
+        //             priority: chr_data.chr_priority,
+        //             transparent: pal_idx == 0,
+        //         }
+        //     }
+        //     _ => self.transparent_color_data()
+        // };
 
         col
     }
