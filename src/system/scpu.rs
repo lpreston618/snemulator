@@ -75,8 +75,10 @@ pub struct Cpu65c816 {
     wram: Vec<u8>,
     rom: Vec<u8>,
     rom_mirror: usize,
+
     has_sram: bool,
-    sram: Option<Vec<u8>>,
+    sram: Vec<u8>,
+    sram_mirror: usize,
 
     dma_status: DmaStatus,
     dma_channels: Vec<DmaChannel>,
@@ -137,8 +139,10 @@ impl Cpu65c816 {
             wram: vec![0; WRAM_SIZE],
             rom: Vec::new(),
             rom_mirror: 0,
+
             has_sram: false,
-            sram: None,
+            sram: Vec::new(),
+            sram_mirror: 0,
 
             dma_status: DmaStatus::Off,
             dma_channels: vec![DmaChannel::default(); 8],
@@ -166,8 +170,13 @@ impl Cpu65c816 {
         }
     }
 
-    pub fn load_sram(&mut self, sram: Vec<u8>) {
-        self.sram = Some(sram);
+    pub fn load_sram(&mut self, mut sram: Vec<u8>) {
+        sram.resize(self.sram.len(), 0);
+        self.sram.copy_from_slice(&sram);
+    }
+
+    pub fn get_sram_as_slice(&self) -> &[u8] {
+        &self.sram
     }
 
     /// Sets the CPU to its proper initial state. Can be triggered by an interrupt.
@@ -183,6 +192,9 @@ impl Cpu65c816 {
     }
 
     pub fn load_cart(&mut self, cart: Cartridge) {
+        self.has_sram = cart.has_ram();
+        self.sram = vec![0; cart.ram_size()];
+        self.sram_mirror = cart.ram_size() - 1;
         self.mapping_mode = cart.mapping_mode();
         self.rom = cart.rom_data();
         self.rom_mirror = self.rom.len() - 1;
@@ -263,18 +275,6 @@ impl Cpu65c816 {
     }
 
     fn _write(&mut self, address: u32, data: u8) -> usize {
-        // if address == 0x000100 {
-        //     println!("Set game mode to 0x{data:02X} on prg_addr = ${:02X}{:04X}", self.prg_bank, self.pc);
-        // }
-
-        // if address == 0x1931 {
-        //     println!("Write to $1931 w/ 0x{data:02X} on pc = ${:02X}{:04X}", self.prg_bank, self.pc);
-        // }
-
-        // if address == 0x192B {
-        //     println!("Write to $192B w/ 0x{data:02X} on pc = ${:02X}{:04X}", self.prg_bank, self.pc);
-        // }
-
         let clocks = match (address.bank(), address.bank_addr()) {
             // Mirror of low RAM
             (0..=0x3F, bank_addr @ 0..=0x1FFF) | (0x80..=0xBF, bank_addr @ 0..=0x1FFF) => {
@@ -294,7 +294,7 @@ impl Cpu65c816 {
 
             // MMIO Registers
             (0..=0x3F, bank_addr @ 0x2000..=0x5FFF)
-            | (0x80..=0xBF, bank_addr @ 0x2000..=0x7FFF) => {
+            | (0x80..=0xBF, bank_addr @ 0x2000..=0x5FFF) => {
                 self.write_mmio_regs(bank_addr, data);
 
                 Cpu65c816::ONE_CYCLE_SLOW
@@ -460,18 +460,11 @@ impl Cpu65c816 {
                 self.dma_channels[7].bytes_written = 0;
 
                 self.active_dma_channel_idx = data.trailing_zeros() as usize;
-
-                // println!("Wrote to DMA enable with 0x{data:02X}, active channel = {}, vram_addr: ${:04X}", self.active_dma_channel_idx, self.ppu_data.vram_addr.get());
-                // println!("  Ch. 0 active: {}", self.dma_channels[0].dma_enable);
-                // println!("  Ch. 1 active: {}", self.dma_channels[1].dma_enable);
-                // println!("  Ch. 2 active: {}", self.dma_channels[2].dma_enable);
-                // println!("  Ch. 3 active: {}", self.dma_channels[3].dma_enable);
-                // println!("  Ch. 4 active: {}", self.dma_channels[4].dma_enable);
-                // println!("  Ch. 5 active: {}", self.dma_channels[5].dma_enable);
-                // println!("  Ch. 6 active: {}", self.dma_channels[6].dma_enable);
-                // println!("  Ch. 7 active: {}", self.dma_channels[7].dma_enable);
             }
             0x420C => {
+                // so we don't try to start hblank immediately
+                self.ppu_data.hblank_start.set(false);
+
                 if data != 0 {
                     self.dma_status = match self.dma_status {
                         DmaStatus::Off => DmaStatus::InactiveHDMA,
@@ -496,8 +489,6 @@ impl Cpu65c816 {
                 // Read first bytes of all enabled tables, setting active idx to lowest valid table
                 for i in (0..8).rev() {
                     if self.dma_channels[i].hdma_enable {
-                        // println!("Ch. {i} enabled w/ indirect = {}", self.dma_channels[i].indirect);
-
                         self.dma_channels[i].table_started = false;
                         self.dma_channels[i].hdma_table_addr = self.dma_channels[i].hdma_table_start_addr as u16;
 
@@ -506,8 +497,6 @@ impl Cpu65c816 {
                         if self.dma_channels[i].hdma_enable {
                             self.active_hdma_channel_idx = i;
                         }
-                    } else {
-                        // println!("Ch. {i} disabled");
                     }
                 }
 
@@ -521,10 +510,6 @@ impl Cpu65c816 {
                         _ => DmaStatus::Off,
                     }
                 }
-
-                // if data != 0 {
-                //     println!("Write to HDMAEN with 0x{data:02X}, active channel = {}, prg_addr = ${:02X}{:04X}", self.active_hdma_channel_idx, self.prg_bank, self.pc);
-                // }
             }
 
             0x4300..=0x43FF if ((mmio_address >> 4) & 0xF) < 8 => {
@@ -627,7 +612,12 @@ impl Cpu65c816 {
     /// Memory map diagram here: https://snes.nesdev.org/wiki/Memory_map#LoROM
     fn read_lorom(&self, address: u32) -> (u8, usize) {
         if 0xF0 <= (address.bank() | 0x80) && address.bank_addr() <= 0x7FFF && self.has_sram {
-            todo!("Read SRAM");
+            let sram_addr = (((address & 0x0F0000) >> 1) | (address & 0x7FFF)) as usize;
+
+            let data = self.sram[sram_addr & self.sram_mirror];
+            let clocks = Cpu65c816::ONE_CYCLE_SLOW;
+
+            return (data, clocks);
         }
 
         let mirror_addr = if (address & 0x00FFFF) >= 0x8000 {
@@ -658,7 +648,11 @@ impl Cpu65c816 {
     /// Memory map diagram here: https://snes.nesdev.org/wiki/Memory_map#LoROM
     fn write_lorom(&mut self, address: u32, data: u8) -> usize {
         if 0xF0 <= (address.bank() | 0x80) && address.bank_addr() <= 0x7FFF && self.has_sram {
-            todo!("Write SRAM");
+            let sram_addr = (((address & 0x0F0000) >> 1) | (address & 0x7FFF)) as usize;
+
+            self.sram[sram_addr & self.sram_mirror] = data;
+
+            return Cpu65c816::ONE_CYCLE_SLOW;
         }
 
         let clocks = if address.bank() >= 0x80 {
@@ -675,12 +669,18 @@ impl Cpu65c816 {
     }
 
     fn read_hirom(&self, address: u32) -> (u8, usize) {
-        if (address.bank() & 0x7F) < 0x80 && 0x6000 <= address.bank_addr()
+        if (address.bank() & 0x7F) < 0x40 && 0x6000 <= address.bank_addr()
             && address.bank_addr() <= 0x7FFF && self.has_sram {
 
-            let _sram_addr = (address - 0x6000) & 0xFFFF;
+            let bank = (address.bank() & 0xF) as usize;
+            let bank_addr = ((address.bank_addr() - 0x6000) & 0x1FFF) as usize;
 
-            todo!("Read SRAM");
+            let sram_addr = bank * 0x2000 + bank_addr;
+
+            let data = self.sram[sram_addr & self.sram_mirror];
+            let clocks = Cpu65c816::ONE_CYCLE_SLOW;
+
+            return (data, clocks);
         }
 
         let mapped_addr = (map_hirom_addr(address) as usize) & self.rom_mirror;
@@ -701,12 +701,17 @@ impl Cpu65c816 {
     }
 
     fn write_hirom(&mut self, address: u32, data: u8) -> usize {
-        if (address.bank() & 0x7F) < 0x80 && 0x6000 <= address.bank_addr()
+        if (address.bank() & 0x7F) < 0x40 && 0x6000 <= address.bank_addr()
             && address.bank_addr() <= 0x7FFF && self.has_sram {
 
-            let sram_addr = (address - 0x6000) & 0xFFFF;
+            let bank = (address.bank() & 0xF) as usize;
+            let bank_addr = ((address.bank_addr() - 0x6000) & 0x1FFF) as usize;
 
-            todo!("Read SRAM");
+            let sram_addr = bank * 0x2000 + bank_addr;
+
+            self.sram[sram_addr & self.sram_mirror] = data;
+
+            return Cpu65c816::ONE_CYCLE_SLOW;
         }
 
         let clocks = if address.bank() >= 0x80 {
@@ -2597,14 +2602,6 @@ impl Cpu65c816 {
         dma_channel.byte_count -= 1;
 
         if dma_channel.byte_count == 0 {
-            // println!("Finished DMA of {} bytes on channel {}. A: ${:06X}, B: $21{:02X}, Dir: {:?}",
-            //     dma_channel.bytes_written, 
-            //     self.active_dma_channel_idx,
-            //     dma_channel.a_bus_addr(),
-            //     dma_channel.b_bus_addr,
-            //     dma_channel.direction,
-            // );
-
             dma_channel.dma_enable = false;
             dma_channel.bytes_written = 0;
 
@@ -2645,6 +2642,8 @@ impl Cpu65c816 {
     }
 
     fn do_hdma(&mut self) {
+        self.ppu_data.hblank_start.set(false);
+
         let ch_idx = self.active_hdma_channel_idx;
 
         self.dma_channels[ch_idx].bytes_written = 0;
@@ -2800,8 +2799,6 @@ impl Cpu65c816 {
         
         self.dma_channels[ch_idx].table_started = false;
 
-        // println!("Table started for ch. {ch_idx}, s = {}, r = {}", self.dma_channels[ch_idx].scanlines_left, self.dma_channels[ch_idx].repeat);
-
         if table_start == 0 {
             // println!("Finished H-DMA ch. {ch_idx}");
             self.dma_channels[ch_idx].hdma_enable = false;
@@ -2811,13 +2808,6 @@ impl Cpu65c816 {
 
             self.dma_channels[ch_idx].byte_count.set_lo(addr_lo);
             self.dma_channels[ch_idx].byte_count.set_hi(addr_hi);
-
-            // println!("Started Indirect H-DMA table, indirect addr = ${:02X}{:04X}, dst addr = $21{:02X}, pattern = {:?}", 
-            //     self.dma_channels[ch_idx].hdma_indirect_table_bank, 
-            //     self.dma_channels[ch_idx].byte_count,
-            //     self.dma_channels[ch_idx].b_bus_addr,
-            //     self.dma_channels[ch_idx].transfer_pattern,
-            // );
         }
     }
 
@@ -2860,40 +2850,9 @@ impl Cpu65c816 {
         let opcode = self.read_prg();
         let extra_clocks: usize;
 
-        self.debug_flag = true;
+        // self.debug_flag = true;
 
-        if self.debug_flag {
-            let (prg_data, prg_mirror) = if self.prg_bank == 0x7e || self.prg_bank == 0x7f {
-                (&self.wram[..], self.wram.len()-1)
-            } else {
-                (&self.rom[..], self.rom_mirror as usize)
-            };
-
-            self.logger.log(
-                LogLevel::Info,
-                format!("{}",
-                    disassembler::instr_disassembly(
-                        self.prg_bank,
-                        self.pc,
-                        prg_data,
-                        prg_mirror,
-                        self.is_flag_set(Flag::FlagM), 
-                        self.is_flag_set(Flag::FlagX),
-                        self.mode == CpuMode::Emulation,
-                        self.mapping_mode,
-                    )
-                ).as_str()
-            );
-        }
-
-        // if self.prg_bank == 0x00 && self.pc == 0x9f5b && self.wram[0x100] == 0x0C {
-        //     self.debug_flag = true;
-        //     println!("HERE ============================= ");
-        //     // crate::tools::hexdump::hexdump8_raw(&self.wram[0x4a0..0x660], format!("wram_dumps/wram_dump{}.bin", self.debug_cnt).as_str());
-        //     // self.debug_cnt += 1;
-        // }
-
-        // if self.apuio_regs.debug_flag.get() {
+        // if self.debug_flag {
         //     let (prg_data, prg_mirror) = if self.prg_bank == 0x7e || self.prg_bank == 0x7f {
         //         (&self.wram[..], self.wram.len()-1)
         //     } else {
@@ -2911,6 +2870,7 @@ impl Cpu65c816 {
         //                 self.is_flag_set(Flag::FlagM), 
         //                 self.is_flag_set(Flag::FlagX),
         //                 self.mode == CpuMode::Emulation,
+        //                 self.mapping_mode,
         //             )
         //         ).as_str()
         //     );

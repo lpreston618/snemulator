@@ -893,14 +893,14 @@ impl PpuData {
                     }
                 );
 
-                // println!("Set Bg Mode to {:?} and bg3 priority to {}, bg tile sizes to bg1: {:?}, bg2: {:?}, bg3: {:?}, bg4: {:?}",
-                //     self.bg_mode.get(),
-                //     self.bg3_mode1_priority.get(),
-                //     self.bg1_char_size.get(),
-                //     self.bg2_char_size.get(),
-                //     self.bg3_char_size.get(),
-                //     self.bg4_char_size.get(),
-                // );
+                println!("Set Bg Mode to {:?} and bg3 priority to {}, bg tile sizes to bg1: {:?}, bg2: {:?}, bg3: {:?}, bg4: {:?}",
+                    self.bg_mode.get(),
+                    self.bg3_mode1_priority.get(),
+                    self.bg1_char_size.get(),
+                    self.bg2_char_size.get(),
+                    self.bg3_char_size.get(),
+                    self.bg4_char_size.get(),
+                );
             }
 
             0x06 => {
@@ -1679,39 +1679,37 @@ impl Ppu5C7x {
             }
         }
 
-       match (self.dot, self.scanline) {
-            // End of v-blank, scanline 0 is not visible
-            (0, 0) => {
-                self.registers.in_vblank.set(false);
-                self.registers.vblank_start.set(false);
-                self.registers.cpu_vblank_nmi.set(false);
-            }
-            // Start of visible scanline, end of h-blank
-            (HBLANK_END_DOT, _) => {
-                self.registers.in_hblank.set(false);
+        // End of v-blank, scanline 0 is not visible
+        if self.dot == 0 && self.scanline == 0 {
+            self.registers.in_vblank.set(false);
+            self.registers.vblank_start.set(false);
+            self.registers.cpu_vblank_nmi.set(false);
+        }
 
-                if self.screen_y() < VBLANK_START_SCANLINE {
-                    self.find_scanline_sprites();
-                }
+        // End of h-blank
+        if self.dot == HBLANK_END_DOT {
+            self.registers.in_hblank.set(false);
+            self.registers.hblank_start.set(false);
+
+            // Start of visible scanline
+            if 0 < self.scanline && self.scanline < VBLANK_START_SCANLINE {
+                self.find_scanline_sprites();
             }
-            // End of scanline, start of h-blank
-            (HBLANK_START_DOT, 0..VBLANK_START_SCANLINE) => {
-                self.registers.in_hblank.set(true);
-                self.registers.hblank_start.set(true);
-            }
-            // Dot after hblank start
-            (286, 0..VBLANK_START_SCANLINE) => {
-                self.registers.hblank_start.set(false);
-            }
-            // Start of v-blank
-            (0, VBLANK_START_SCANLINE) => {
-                self.registers.in_vblank.set(true);
-                self.registers.vblank_start.set(true);
-                self.registers.cpu_vblank_nmi.set(true);
-                self.frame_finished = true;
-                self.frame += 1;
-            }
-            _ => {}
+        }
+
+        // Start of h-blank
+        if self.dot == HBLANK_START_DOT && self.scanline < VBLANK_START_SCANLINE {
+            self.registers.in_hblank.set(true);
+            self.registers.hblank_start.set(true);
+        }
+
+        // Start of v-blank
+        if self.dot == 0 && self.scanline == VBLANK_START_SCANLINE {
+            self.registers.in_vblank.set(true);
+            self.registers.vblank_start.set(true);
+            self.registers.cpu_vblank_nmi.set(true);
+            self.frame_finished = true;
+            self.frame += 1;
         }
 
         self.update_hv_timers();

@@ -74,14 +74,14 @@ impl Cartridge {
             }
         };
         (self.extra_ram, self.battery, self.coprocessor) = match bytes[0x16] & 0x0F {
-            0 => (false, false, false), // $00 - ROM only
-            1 => (true, false, false),  // $01 - ROM + RAM
-            2 => (true, true, false),   // $02 - ROM + RAM + battery
-            3 => (false, false, true),  // $x3 - ROM + coprocessor
-            4 => (true, false, true),   // $x4 - ROM + coprocessor + RAM
-            5 => (true, true, true),    // $x5 - ROM + coprocessor + RAM + battery
-            6 => (false, true, true),   // $x6 - ROM + coprocessor + battery
-            _ => (false, false, false), // Should not happen
+            0 => (false, false, false),  // $00 - ROM only
+            1 => ( true, false, false),  // $01 - ROM + RAM
+            2 => ( true,  true, false),  // $02 - ROM + RAM + battery
+            3 => (false, false,  true),  // $x3 - ROM + coprocessor
+            4 => ( true, false,  true),  // $x4 - ROM + coprocessor + RAM
+            5 => ( true,  true,  true),  // $x5 - ROM + coprocessor + RAM + battery
+            6 => (false,  true,  true),  // $x6 - ROM + coprocessor + battery
+            _ => (false, false, false),  // Should not happen?
         };
         self.coprocessor_id = bytes[0x16] >> 4;
         self.rom_size = bytes[0x17];
@@ -200,6 +200,18 @@ impl Cartridge {
 
     pub fn rom_data(self) -> Vec<u8> {
         self.cart_rom.unwrap()
+    }
+
+    pub fn has_battery(&self) -> bool {
+        self.battery
+    }
+
+    pub fn ram_size(&self) -> usize {
+        (1 << self.ram_size) * 1024
+    }
+
+    pub fn has_ram(&self) -> bool {
+        self.extra_ram
     }
 }
 

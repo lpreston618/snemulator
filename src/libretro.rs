@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::{Read, Write};
+use std::ops::Deref;
 use std::rc::Rc;
 
 use crate::audio;
@@ -35,10 +36,12 @@ const FRAME_BUF_SIZE: usize = SNES_FRAME_WIDTH * SNES_FRAME_HEIGHT;
 
 pub const IDEAL_FPS: usize = 60;
 
-static mut SAVE_DIRECTORY: Option<String> = None;
+const SAVE_FILE_EXT: &str = ".srm";
 
-fn set_save_dir_path_str(path: &str) { unsafe { SAVE_DIRECTORY = Some(path.to_string()); } }
-fn get_save_dir_path_str() -> Option<String> { unsafe { SAVE_DIRECTORY.clone() } }
+static mut SAVE_DIRECTORY: Option<std::path::PathBuf> = None;
+
+fn set_save_dir_path_str(path: std::path::PathBuf) { unsafe { SAVE_DIRECTORY = Some(path); } }
+fn get_save_dir_path_str() -> Option<std::path::PathBuf> { unsafe { SAVE_DIRECTORY.clone() } }
 
 struct SnemulatorCore {
     logger: Rc<SnemLogger>,
@@ -48,9 +51,9 @@ struct SnemulatorCore {
 
     audio_buffer: Vec<i16>,
     // audio_buffer_status: audio::AudioBufferStatus,
-    occupancy_delta: usize,
-    max_occupancy: usize,
-    occupancy_percent_samples: usize,
+
+    save_to_file: bool,
+    save_data_path_str: Option<std::path::PathBuf>,
 
     snem_cpu: Option<scpu::Cpu65c816>,
     snem_ppu: Option<sppu::Ppu5C7x>,
@@ -185,26 +188,81 @@ impl SnemulatorCore {
         }
 
         ppu.frame_finished = false;
+    }
 
-        // // How much of the audio buffer we lost due to lag last frame, capped
-        // // at half a frame's worth of audio.
-        // let num_samples_lost = self.occupancy_delta * self.occupancy_percent_samples;
-        // // let num_samples_lost = num_samples_lost.min(audio::IDEAL_FRAME_SAMPLES / 2);
+    fn try_load_sram(&mut self, game_path: &std::path::Path) {
+        if let Some(mut dir_path) = get_save_dir_path_str() {
+            let file_name = game_path.file_stem()
+                .unwrap().to_str()
+                .unwrap().to_owned();
 
-        // let num_samples = if self.max_occupancy > 0 {
-        //     // How many samples we are short of the frontend audio buffer
-        //     // target, capped at half a frame's worth of audio.
-        //     let num_samples_short = (self.max_occupancy - self.audio_buffer_status.occupancy) * self.occupancy_percent_samples;
-        //     // let num_samples_short = num_samples_short.min(audio::IDEAL_FRAME_SAMPLES / 2);
-            
-        //     num_samples_lost + num_samples_short
-        // } else {
-        //     num_samples_lost
-        // };
+            dir_path = dir_path.join(format!("{file_name}{SAVE_FILE_EXT}").as_str());
 
-        // let num_samples = num_samples.min(audio::IDEAL_FRAME_SAMPLES);
+            self.save_data_path_str = Some(dir_path);
 
-        // self.snem_smp.generate_samples(&mut self.audio_buffer, num_samples);
+            let save_path = std::path::Path::new(self.save_data_path_str.as_ref().unwrap());
+
+            let save_file = if save_path.exists() {
+                Some(std::fs::File::open(save_path).unwrap())
+            } else {
+                None
+            };
+
+            if let Some(mut save_file) = save_file {
+                let mut sram = Vec::new();
+
+                let path_str = self.save_data_path_str.as_ref().unwrap().to_str().unwrap();
+
+                match save_file.read_to_end(&mut sram) {
+                    Ok(_) => {
+                        self.snem_cpu.as_mut().unwrap().load_sram(sram);
+                        self.logger.log(
+                            LogLevel::Info, 
+                            format!("loaded save file from '{path_str}'").as_str()
+                        );
+                    },
+                    Err(_) => {
+                        self.logger.log(
+                            LogLevel::Error, 
+                            format!("failed to load save file from '{path_str}'").as_str()
+                        );
+                    }
+                }
+            } else {
+                self.logger.log(
+                    LogLevel::Error, 
+                    format!("failed to load save file from '{}'", save_path.to_str().unwrap()).as_str()
+                );
+            }
+        } else {
+            self.logger.log(
+                LogLevel::Info, 
+                "no save directory provided by frontend"
+            );
+        }
+    }
+
+    fn try_save_sram(&mut self) {
+        let save_path = self.save_data_path_str.as_ref().unwrap();
+
+        if let Ok(mut save_file) = std::fs::File::create(save_path) {
+            let sram = self.snem_cpu.as_ref().unwrap().get_sram_as_slice();
+
+            match save_file.write(sram) {
+                Ok(_) => {
+                    self.logger.log(
+                        LogLevel::Info, 
+                        format!("saved game to '{}'", save_path.to_str().unwrap()).as_str()
+                    );
+                },
+                Err(_) => {
+                    self.logger.log(
+                        LogLevel::Error, 
+                        format!("failed to load save file from '{}'", save_path.to_str().unwrap()).as_str()
+                    );
+                }
+            }
+        }
     }
 }
 
@@ -222,7 +280,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
     fn init(env: &mut impl retro::env::Init) -> Self::Init {
         if let Ok(Some(cstr)) = env.get_save_directory() {
             if let Ok(valid_str) = cstr.to_str() {
-                set_save_dir_path_str(valid_str);
+                set_save_dir_path_str(std::path::Path::new(valid_str).to_path_buf());
             }
         }
     }
@@ -278,9 +336,9 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
 
             audio_buffer: Vec::new(),
             // audio_buffer_status: audio::get_audio_buffer_status(),
-            occupancy_delta: 0,
-            max_occupancy: 0,
-            occupancy_percent_samples: 0,
+            
+            save_to_file: false,
+            save_data_path_str: None,
 
             snem_cpu: Some(snem_cpu),
             snem_ppu: Some(snem_ppu),
@@ -328,47 +386,20 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
 
         let cart = cart_res.unwrap();
 
+        core.save_to_file = cart.has_battery();
+
         core.logger.log(
             LogLevel::Info, 
             format!("loaded ROM with {:?} memory mapping", cart.mapping_mode()).as_str()
         );
 
-        if let Some(mut save_path) = get_save_dir_path_str() {
-            let file_name = game_path.file_stem().unwrap();
-
-            save_path.extend(file_name.to_str());
-            save_path.push_str(".srm");
-
-            let save_path = std::path::Path::new(&save_path);
-
-            if let Ok(mut save_file) = std::fs::File::open(save_path) {
-                let mut sram = Vec::new();
-
-                match save_file.read_to_end(&mut sram) {
-                    Ok(_) => {
-                        core.snem_cpu.as_mut().unwrap().load_sram(sram);
-                        core.logger.log(
-                            LogLevel::Info, 
-                            format!("loaded save file from '{}'", save_path.to_str().unwrap()).as_str()
-                        );
-                    },
-                    Err(_) => {
-                        core.logger.log(
-                            LogLevel::Error, 
-                            format!("failed to load save file from '{}'", save_path.to_str().unwrap()).as_str()
-                        );
-                    }
-                }
-            }
-            core.logger.log(
-                LogLevel::Error, 
-                format!("failed to load save file from '{}'", save_path.to_str().unwrap()).as_str()
-            );
+        if core.save_to_file {
+            core.try_load_sram(game_path);
         } else {
             core.logger.log(
-                LogLevel::Info, 
-                format!("no save directory provided by frontend").as_str()
-            );
+                LogLevel::Info,
+                "game has no save RAM on cart"
+            )
         }
 
         core.snem_cpu.as_mut().unwrap().load_cart(cart);
@@ -376,6 +407,7 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
 
         Ok(core)
     }
+
 
     fn get_system_av_info(&self, _env: &mut impl GetAvInfo) -> SystemAVInfo {
         SystemAVInfo::new(
@@ -424,11 +456,15 @@ impl<'a> retro::Core<'a> for SnemulatorCore {
     }
 
     fn unload_game(mut self, _env: &mut impl retro::env::UnloadGame) -> Self::Init {
-        if let Some(smp) = &mut self.snem_smp {
-            smp.finish();
-        }
-
         self.logger.log(LogLevel::Info, "unloading game");
+        
+        if self.save_to_file {
+            self.try_save_sram();
+            self.save_to_file = false;
+            self.save_data_path_str = None;
+        }
+        
+        self.snem_smp.as_mut().unwrap().finish();
     }
 
     fn set_environment(env: &mut impl retro::env::SetEnvironment) {
