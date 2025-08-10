@@ -107,7 +107,6 @@ pub struct Cpu65c816 {
 
     debug_flag: bool,
     debug_cnt: usize,
-    debug_nmi: u8,
 }
 
 // SNES System Functionality
@@ -170,7 +169,6 @@ impl Cpu65c816 {
 
             debug_flag: false,
             debug_cnt: 0,
-            debug_nmi: 0,
         }
     }
 
@@ -782,7 +780,7 @@ impl Cpu65c816 {
         u16::from_le_bytes([self.pop8_n(), self.pop8_n()])
     }
     fn pop8_e(&mut self) -> u8 {
-        self.stk_ptr = inc_low_byte(self.stk_ptr);
+        self.stk_ptr = 0x100 | ((self.stk_ptr + 1) & 0xFF);
         self.read(self.stk_ptr as u32)
     }
     fn pop16_e(&mut self) -> u16 {
@@ -799,7 +797,7 @@ impl Cpu65c816 {
     }
     fn push8_e(&mut self, data: u8) {
         self.write(self.stk_ptr as u32, data);
-        self.stk_ptr = dec_low_byte(self.stk_ptr);
+        self.stk_ptr = 0x100 | ((self.stk_ptr - 1) & 0xFF);
     }
     fn push16_e(&mut self, data: u16) {
         self.push8_e((data >> 8) as u8);
@@ -885,8 +883,8 @@ impl Cpu65c816 {
             }
 
             CpuMode::Emulation => {
-                self.push16_e(self.pc);
-                self.push8_e(self.status);
+                self.push16_n(self.pc);
+                self.push8_n(self.status);
 
                 (vector_lo, vector_hi) = match interrupt {
                     CpuInterrupt::IRQ => (0x00FFFE, 0x00FFFF),
@@ -969,14 +967,12 @@ impl Cpu65c816 {
     }
 
     fn long_x8(&mut self) -> u32 {
-        (self.long8() + self.x as u32) & 0xFFFFFF
+        self.long8().wrapping_add24(self.x as u32)
     }
     fn long_x16(&mut self) -> (u32, u32) {
-        let (address_lo, address_hi) = self.long16();
-        (
-            (address_lo + self.x as u32) & 0xFFFFFF,
-            (address_hi + self.x as u32) & 0xFFFFFF,
-        )
+        let address_lo = self.long_x8();
+        let address_hi = address_lo.wrapping_add24(1);
+        (address_lo, address_hi)
     }
 
     fn indirect(&mut self) -> u32 {
@@ -1681,16 +1677,13 @@ impl Cpu65c816 {
         self.pc = address.bank_addr();
     }
 
-    fn jsl_n(&mut self, address: u32) {
+    fn jsl_all(&mut self, address: u32) {
         self.push8_n(self.prg_bank);
         self.push16_n(self.pc - 1);
 
-        self.pc = address.bank_addr();
-        self.prg_bank = address.bank();
-    }
-    fn jsl_e(&mut self, address: u32) {
-        self.push8_e(self.prg_bank);
-        self.push16_e(self.pc - 1);
+        if self.mode == CpuMode::Emulation {
+            self.stk_ptr = 0x100 | (self.stk_ptr & 0xFF);
+        }
 
         self.pc = address.bank_addr();
         self.prg_bank = address.bank();
@@ -1851,26 +1844,24 @@ impl Cpu65c816 {
         self.acc = result;
     }
 
-    fn pex_n(&mut self, (address_lo, address_hi): (u32, u32)) {
+    fn pex_all(&mut self, (address_lo, address_hi): (u32, u32)) {
         let data = self.read16(address_lo, address_hi);
 
         self.push16_n(data);
-    }
-    fn pex_e(&mut self, (address_lo, address_hi): (u32, u32)) {
-        let data = self.read16(address_lo, address_hi);
 
-        self.push16_e(data);
+        if self.mode == CpuMode::Emulation {
+            self.stk_ptr = 0x100 | (self.stk_ptr & 0xFF);
+        }
     }
 
-    fn per_n(&mut self, (address_lo, address_hi): (u32, u32)) {
+    fn per_all(&mut self, (address_lo, address_hi): (u32, u32)) {
         let offset = self.read16(address_lo, address_hi);
 
         self.push16_n(self.pc + offset);
-    }
-    fn per_e(&mut self, (address_lo, address_hi): (u32, u32)) {
-        let offset = self.read16(address_lo, address_hi);
 
-        self.push16_e(self.pc + offset);
+        if self.mode == CpuMode::Emulation {
+            self.stk_ptr = 0x100 | (self.stk_ptr & 0xFF);
+        }
     }
 
     // fn pex_n(&mut self, address: u32) {
@@ -1897,11 +1888,12 @@ impl Cpu65c816 {
         self.push8_e(self.data_bank);
     }
 
-    fn phd_n(&mut self) {
+    fn phd_all(&mut self) {
         self.push16_n(self.direct_page);
-    }
-    fn phd_e(&mut self) {
-        self.push16_e(self.direct_page);
+
+        if self.mode == CpuMode::Emulation {
+            self.stk_ptr = 0x100 | (self.stk_ptr & 0xFF);
+        }
     }
 
     fn phk_n(&mut self) {
@@ -1972,14 +1964,12 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagZ, self.data_bank == 0);
     }
 
-    fn pld_n(&mut self) {
+    fn pld_all(&mut self) {
         self.direct_page = self.pop16_n();
 
-        self.set_flag_to_bool(Flag::FlagN, self.direct_page.bit_en(15));
-        self.set_flag_to_bool(Flag::FlagZ, self.direct_page == 0);
-    }
-    fn pld_e(&mut self) {
-        self.direct_page = self.pop16_e();
+        if self.mode == CpuMode::Emulation {
+            self.stk_ptr = 0x100 | (self.stk_ptr & 0xFF);
+        }
 
         self.set_flag_to_bool(Flag::FlagN, self.direct_page.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.direct_page == 0);
@@ -2149,13 +2139,13 @@ impl Cpu65c816 {
         self.pc = self.pop16_e();
     }
 
-    fn rtl_n(&mut self) {
+    fn rtl_all(&mut self) {
         self.pc = self.pop16_n() + 1;
         self.prg_bank = self.pop8_n();
-    }
-    fn rtl_e(&mut self) {
-        self.pc = self.pop16_e() + 1;
-        self.prg_bank = self.pop8_e();
+
+        if self.mode == CpuMode::Emulation {
+            self.stk_ptr = 0x100 | (self.stk_ptr & 0xFF);
+        }
     }
 
     fn rts_n(&mut self) {
@@ -2793,41 +2783,25 @@ impl Cpu65c816 {
         let opcode = self.read_prg();
         let extra_clocks: usize;
 
-        if self.pc == 0x8CD1 && self.prg_bank == 0x02 {
-            self.debug_flag = true;
+        // if self.pc == 0x8B49 && self.prg_bank == 0x03 {
+        //     self.debug_flag = true;
 
-            self.debug_cnt = 1;
+        //     self.debug_cnt = 1;
 
-            println!("BEFORE:");
+        //     println!("BEFORE OP 0x{opcode:02X}:");
 
-            self.print_state_str();   
+        //     self.print_state_str();   
 
-            println!("($7f7000) = {:02X}", self._read(0x7f7000).0);
-            println!("($7f7001) = {:02X}", self._read(0x7f7001).0);
-            println!("($7f7002) = {:02X}", self._read(0x7f7002).0);
-            println!("($7f7003) = {:02X}", self._read(0x7f7003).0);
-            println!("($7f7004) = {:02X}", self._read(0x7f7004).0);
-            println!("($0000fe) = {:02X}", self._read(0x0000fe).0);
-            println!("($0000ff) = {:02X}", self._read(0x0000ff).0);
-            println!("($000100) = {:02X}", self._read(0x000100).0);
-        }
+        //     println!("($000200) = {:02X}", self._read(0x000200).0);
+        // }
 
-        if self.pc == 0x8CD5 && self.prg_bank == 0x02 {
-            self.debug_flag = false;
+        // if self.pc == 0x8B4A && self.prg_bank == 0x03 {
+        //     println!("AFTER:");
 
-            println!("AFTER:");
+        //     self.print_state_str();   
 
-            self.print_state_str();           
-
-            println!("($7f7000) = {:02X}", self._read(0x7f7000).0);
-            println!("($7f7001) = {:02X}", self._read(0x7f7001).0);
-            println!("($7f7002) = {:02X}", self._read(0x7f7002).0);
-            println!("($7f7003) = {:02X}", self._read(0x7f7003).0);
-            println!("($7f7004) = {:02X}", self._read(0x7f7004).0);
-            println!("($0000fe) = {:02X}", self._read(0x0000fe).0);
-            println!("($0000ff) = {:02X}", self._read(0x0000ff).0);
-            println!("($000100) = {:02X}", self._read(0x000100).0);
-        }
+        //     println!("($000200) = {:02X}", self._read(0x000200).0);
+        // }
 
         if self.debug_cnt == 1 {
             let (prg_data, prg_mirror) = if self.prg_bank == 0x7e || self.prg_bank == 0x7f {
@@ -2981,12 +2955,8 @@ impl Cpu65c816 {
             }
 
             // phd, imp
-            (0x0B, CpuMode::Emulation, ..) => {
-                self.phd_e();
-                extra_clocks = Cpu65c816::ONE_CYCLE;
-            }
-            (0x0B, CpuMode::Native, ..) => {
-                self.phd_n();
+            (0x0B, ..) => {
+                self.phd_all();
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -3264,14 +3234,9 @@ impl Cpu65c816 {
             }
 
             // jsl, long
-            (0x22, CpuMode::Emulation, ..) => {
+            (0x22, ..) => {
                 let addr = self.long8();
-                self.jsl_e(addr);
-                extra_clocks = Cpu65c816::TWO_CYCLE;
-            }
-            (0x22, CpuMode::Native, ..) => {
-                let addr = self.long8();
-                self.jsl_n(addr);
+                self.jsl_all(addr);
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -3368,12 +3333,8 @@ impl Cpu65c816 {
             }
 
             // pld, imp
-            (0x2B, CpuMode::Emulation, ..) => {
-                self.pld_e();
-                extra_clocks = Cpu65c816::TWO_CYCLE;
-            }
-            (0x2B, CpuMode::Native, ..) => {
-                self.pld_n();
+            (0x2B, ..) => {
+                self.pld_all();
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -4020,14 +3981,9 @@ impl Cpu65c816 {
             }
 
             // per, imm
-            (0x62, CpuMode::Emulation, ..) => {
+            (0x62, ..) => {
                 let addr = self.immediate16();
-                self.per_e(addr);
-                extra_clocks = Cpu65c816::ONE_CYCLE;
-            }
-            (0x62, CpuMode::Native, ..) => {
-                let addr = self.immediate16();
-                self.per_n(addr);
+                self.per_all(addr);
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -4128,12 +4084,8 @@ impl Cpu65c816 {
             }
 
             // rtl, imp
-            (0x6B, CpuMode::Emulation, ..) => {
-                self.rtl_e();
-                extra_clocks = Cpu65c816::THREE_CYCLE;
-            }
-            (0x6B, CpuMode::Native, ..) => {
-                self.rtl_n();
+            (0x6B, ..) => {
+                self.rtl_all();
                 extra_clocks = Cpu65c816::THREE_CYCLE;
             }
 
@@ -4446,6 +4398,16 @@ impl Cpu65c816 {
             }
             (0x86, _, _, RegSize::TwoBytes) => {
                 let addr = self.direct16();
+
+                // if addr.0 == 0x10 {
+                //     // println!("Test num = 0x{:04X}", self.x);
+
+                //     if self.x == 0x061a {
+                //         self.debug_cnt = 1;
+                //         self.debug_flag = true;
+                //     }
+                // }
+
                 self.stx_x16(addr);
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
@@ -5362,14 +5324,9 @@ impl Cpu65c816 {
             }
 
             // pex, dir
-            (0xD4, CpuMode::Emulation, ..) => {
+            (0xD4, ..) => {
                 let addr = self.direct16();
-                self.pex_e(addr);
-                extra_clocks = Cpu65c816::ONE_CYCLE;
-            }
-            (0xD4, CpuMode::Native, ..) => {
-                let addr = self.direct16();
-                self.pex_n(addr);
+                self.pex_all(addr);
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -5731,14 +5688,9 @@ impl Cpu65c816 {
             }
 
             // pex, imm
-            (0xF4, CpuMode::Emulation, ..) => {
+            (0xF4, ..) => {
                 let addr = self.immediate16();
-                self.pex_e(addr);
-                extra_clocks = 0;
-            }
-            (0xF4, CpuMode::Native, ..) => {
-                let addr = self.immediate16();
-                self.pex_n(addr);
+                self.pex_all(addr);
                 extra_clocks = 0;
             }
 
@@ -5827,7 +5779,8 @@ impl Cpu65c816 {
             // jsr, (abs,X)
             (0xFC, CpuMode::Emulation, ..) => {
                 let addr = self.x_indirect8();
-                self.jsr_e(addr);
+                self.jsr_n(addr);
+                self.stk_ptr = 0x100 | (self.stk_ptr & 0xFF);
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xFC, CpuMode::Native, ..) => {
@@ -6063,261 +6016,3 @@ impl Cpu65c816 {
 //         )
 //     }
 // }
-
-#[cfg(test)]
-mod tests {
-    use std::path::Path;
-
-    use libretro_rs::retro::{
-        framebuf::ResizableFrameBuffer, log::PlatformLogger, pixel::format::{RGB565, XRGB8888},
-    };
-
-    // Note this useful idiom: importing names from outer (for mod tests) scope.
-    use super::*;
-    use crate::system::{cartridge::Cartridge, sppu::Ppu5C7x};
-
-    /// Prints out a slice of bytes in hex and ASCII format, side by side. When
-    /// startval is specified, indices beginning at the startval will be printed
-    /// before each line. If startval is unspecified, indeces start at 0.
-    pub fn hexdump_at(bytes: &[u8], startval: usize) {
-        const CHUNK_SIZE: usize = 16;
-
-        let mut index = startval;
-        println!();
-        for chunk in bytes.chunks(CHUNK_SIZE) {
-            let l = chunk.len();
-            print!("{:08X}: ", index);
-            for b in chunk.iter() {
-                print!("{b:02X} ");
-            }
-
-            print!("{:>width$} ", "|", width = (CHUNK_SIZE - l) * 3 + 1);
-            for b in chunk.iter() {
-                match b {
-                    32..=126 => print!("{}", *b as char),
-                    _ => print!("."),
-                }
-            }
-            println!();
-            index += CHUNK_SIZE;
-        }
-    }
-
-    /// Prints out a slice of bytes in hex and ASCII format, side by side. When
-    /// startval is specified, indeces beginning at the startval will be printed
-    /// before each line. If startval is unspecified, indeces start at 0.
-    pub fn hexdump(bytes: &[u8]) {
-        hexdump_at(bytes, 0);
-    }
-
-    /// Find the subvector "needle" in the vector "haystack"
-    fn find_subvec(haystack: &Vec<u8>, needle: &Vec<u8>) -> Option<usize> {
-        (0..haystack.len() - needle.len() + 1)
-            .filter(|&i| haystack[i..i + needle.len()] == needle[..])
-            .next()
-    }
-
-    fn cpu_status_str(cpu: &Cpu65c816) -> String {
-        let mut status_str = String::new();
-        status_str.push(if cpu.is_flag_set(Flag::FlagN) {
-            'N'
-        } else {
-            'n'
-        });
-        status_str.push(if cpu.is_flag_set(Flag::FlagV) {
-            'V'
-        } else {
-            'v'
-        });
-        if cpu.mode == CpuMode::Emulation {
-            status_str.push('1');
-            status_str.push(if cpu.is_flag_set(Flag::FlagX) {
-                'B'
-            } else {
-                'b'
-            });
-        } else {
-            status_str.push(if cpu.is_flag_set(Flag::FlagM) {
-                'M'
-            } else {
-                'm'
-            });
-            status_str.push(if cpu.is_flag_set(Flag::FlagX) {
-                'X'
-            } else {
-                'x'
-            });
-        }
-        status_str.push(if cpu.is_flag_set(Flag::FlagD) {
-            'D'
-        } else {
-            'd'
-        });
-        status_str.push(if cpu.is_flag_set(Flag::FlagI) {
-            'I'
-        } else {
-            'i'
-        });
-        status_str.push(if cpu.is_flag_set(Flag::FlagZ) {
-            'Z'
-        } else {
-            'z'
-        });
-        status_str.push(if cpu.is_flag_set(Flag::FlagC) {
-            'C'
-        } else {
-            'c'
-        });
-
-        status_str
-    }
-
-    fn lemon_cpu_str(cpu: &Cpu65c816) -> String {
-        format!(
-            "{:02x}{:04x} A:{:04x} X:{:04x} Y:{:04x} S:{:04x} D:{:04x} DB:{:02x} {} ",
-            cpu.prg_bank,
-            cpu.pc,
-            cpu.acc,
-            cpu.x,
-            cpu.y,
-            cpu.stk_ptr,
-            cpu.direct_page,
-            cpu.data_bank,
-            cpu_status_str(cpu)
-        )
-    }
-
-    fn clock_system_until_cpu_instr(cpu: &mut Cpu65c816, ppu: &mut Ppu5C7x, frame_buf: &mut [RGB565]) {
-        let start_pc = cpu.pc;
-
-        while cpu.pc == start_pc {
-            let ppu_clocks = ppu.sys_clocks_left();
-            let cpu_clocks = cpu.sys_clocks_left();
-    
-            if ppu_clocks < cpu_clocks {
-                cpu.remove_clocks(ppu_clocks);
-                ppu.clock(frame_buf);
-            } else {
-                ppu.remove_clocks(cpu_clocks);
-                cpu.clock(0);
-            }
-        }
-    }
-
-    const INSTR_NAMES: [&str; 256] = [
-        "BRK", "ORA", "COP", "ORA", "TSB", "ORA", "ASL", "ORA", "PHP", "ORA", "ASL", "PHD", "TSB",
-        "ORA", "ASL", "ORA", "BPL", "ORA", "ORA", "ORA", "TRB", "ORA", "ASL", "ORA", "CLC", "ORA",
-        "INC", "TCS", "TRB", "ORA", "ASL", "ORA", "JSR", "AND", "JSL", "AND", "BIT", "AND", "ROL",
-        "AND", "PLP", "AND", "ROL", "PLD", "BIT", "AND", "ROL", "AND", "BMI", "AND", "AND", "AND",
-        "BIT", "AND", "ROL", "AND", "SEC", "AND", "DEC", "TSC", "BIT", "AND", "ROL", "AND", "RTI",
-        "EOR", "WDM", "EOR", "MVP", "EOR", "LSR", "EOR", "PHA", "EOR", "LSR", "PHK", "JMP", "EOR",
-        "LSR", "EOR", "BVC", "EOR", "EOR", "EOR", "MVN", "EOR", "LSR", "EOR", "CLI", "EOR", "PHY",
-        "TCD", "JMP", "EOR", "LSR", "EOR", "RTS", "ADC", "PEX", "ADC", "STZ", "ADC", "ROR", "ADC",
-        "PLA", "ADC", "ROR", "RTL", "JMP", "ADC", "ROR", "ADC", "BVS", "ADC", "ADC", "ADC", "STZ",
-        "ADC", "ROR", "ADC", "SEI", "ADC", "PLY", "TDC", "JMP", "ADC", "ROR", "ADC", "BRA", "STA",
-        "BRA", "STA", "STY", "STA", "STX", "STA", "DEY", "BIT", "TXA", "PHB", "STY", "STA", "STX",
-        "STA", "BCC", "STA", "STA", "STA", "STY", "STA", "STX", "STA", "TYA", "STA", "TXS", "TXY",
-        "STZ", "STA", "STZ", "STA", "LDY", "LDA", "LDX", "LDA", "LDY", "LDA", "LDX", "LDA", "TAY",
-        "LDA", "TAX", "PLB", "LDY", "LDA", "LDX", "LDA", "BCS", "LDA", "LDA", "LDA", "LDY", "LDA",
-        "LDX", "LDA", "CLV", "LDA", "TSX", "TYX", "LDY", "LDA", "LDX", "LDA", "CPY", "CMP", "REP",
-        "CMP", "CPY", "CMP", "DEC", "CMP", "INY", "CMP", "DEX", "WAI", "CPY", "CMP", "DEC", "CMP",
-        "BNE", "CMP", "CMP", "CMP", "PEX", "CMP", "DEC", "CMP", "CLD", "CMP", "PHX", "STP", "JMP",
-        "CMP", "DEC", "CMP", "CPX", "SBC", "SEP", "SBC", "CPX", "SBC", "INC", "SBC", "INX", "SBC",
-        "NOP", "XBA", "CPX", "SBC", "INC", "SBC", "BEQ", "SBC", "SBC", "SBC", "PEX", "SBC", "INC",
-        "SBC", "SED", "SBC", "PLX", "XCE", "JSR", "SBC", "INC", "SBC",
-    ];
-
-    #[test]
-    fn test_lorom_title() {
-        let test_path = Path::new("tests/blarggs/test_adc_sbc/test_adc.smc");
-        let cart = Cartridge::from_path(test_path).unwrap();
-
-        let apuio_regs = Rc::new(ApuIORegs::new());
-        let logger = Rc::new(SnemLogger::new(None));
-        let ppu_data = Rc::new(PpuData::new(logger.clone()));
-        let mut cpu = Cpu65c816::new(ppu_data, apuio_regs, logger);
-
-        cpu.load_cart(cart);
-
-        hexdump_at(&cpu.rom[0x8000..0x8000 + 0x1000], 0x8000);
-    }
-
-    fn run_lemon_test(test_name: &str) {
-        let test_path_str = format!("testroms/lemons/CPUTest/{test_name}.sfc");
-        let test_path = Path::new(&test_path_str);
-        let cart = Cartridge::from_path(test_path).unwrap();
-
-        let log_path_str = format!("testroms/lemons/CPUTest/{test_name}-trace_compare.log");
-        let log_path = Path::new(&log_path_str);
-        let log_lines: Vec<String> = std::fs::read_to_string(log_path)
-            .unwrap()
-            .lines()
-            .map(String::from)
-            .collect();
-
-        let apuio_regs = Rc::new(ApuIORegs::new());
-        let logger = Rc::new(SnemLogger::new(None));
-        let ppu_data = Rc::new(PpuData::new(logger.clone()));
-        let mut ppu = Ppu5C7x::new(ppu_data.clone(), logger.clone());
-        let mut cpu = Cpu65c816::new(ppu_data, apuio_regs, logger);
-        cpu.load_cart(cart);
-        
-        let mut dummy_frame_buffer = vec![RGB565::ZERO; 512*448];
-
-        cpu.stk_ptr = 0x1ff;
-        cpu.status = 0x34;
-
-        cpu.rom_mirror = cpu.rom.len() - 1;
-
-        cpu.pc = 0x8000;
-
-        cpu.wram[0] = 0xb5;
-
-        for (i, line) in log_lines.iter().enumerate() {
-            let instr_addr = ((cpu.prg_bank as u32) << 16) | (cpu.pc as u32);
-
-            let opcode = cpu._read(instr_addr).0;
-            let val1 = cpu._read(instr_addr.wrapping_add16(1)).0;
-            let val2 = cpu._read(instr_addr.wrapping_add16(2)).0;
-
-            // Quick hack for running this test
-            if opcode == 0x2C && val1 == 0x10 && val2 == 0x42 {
-                cpu.debug_nmi = if log_lines[i + 1].as_bytes()[48] == b'N' {
-                    0xc2
-                } else {
-                    0x42
-                }
-            }
-
-            assert_eq!(*line, lemon_cpu_str(&cpu));
-
-            println!("{}", *line);
-
-            cpu.dma_status = DmaStatus::Off;
-            cpu.exec_instr(0);
-            // clock_system_until_cpu_instr(&mut cpu, &mut ppu, &mut dummy_frame_buffer[..]);
-        }
-    }
-
-    #[test]
-    fn test_lemon_all() {
-        let paths = std::fs::read_dir("./testroms/lemons/CPUTest").unwrap();
-
-        for path in paths {
-            if let Ok(path) = path {
-                let file_name = String::from(path.file_name().to_str().unwrap());
-
-                if let Some(test_name) = file_name.strip_suffix(".sfc") {
-                    if test_name == "CPUMSC" {
-                        println!("cpumsc [[SKIPPED - PPU Dependent]]");
-                        continue;
-                    }
-
-                    run_lemon_test(test_name);
-
-                    println!("{} [[PASSED]]", test_name.to_lowercase());
-                }
-            }
-        }
-    }
-}
