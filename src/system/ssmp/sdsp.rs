@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use crate::utils::{GetBits, SetCellBytes};
 
-use crate::system::ssmp::{self, SmpData};
+use crate::system::ssmp::{self, SmpData, ARAM_SIZE};
 
 #[derive(Clone, Copy, PartialEq)]
 enum ADSRStage {
@@ -51,12 +51,12 @@ struct BrrSample {
 }
 
 impl BrrSampleGroup {
-    fn from_aram_slice(bytes: &[Cell<u8>], group_addr: u16) -> BrrSampleGroup {
-        let header = bytes[0].get();
+    fn from_aram_slice(bytes: &[u8], group_addr: u16) -> BrrSampleGroup {
+        let header = bytes[0];
         let mut samples = [0; 16];
 
         for i in 0..8 {
-            let data = bytes[i + 1].get();
+            let data = bytes[i + 1];
 
             samples[i + 0] = data >> 4;
             samples[i + 1] = data & 0xF;
@@ -627,8 +627,14 @@ impl SuperDSP {
     }
 
     fn read_next_voice_brr_group(&mut self, voice: usize, group_addr: u16) -> BrrSampleGroup {
+        let mut brr_bytes = [0u8; 9];
+
+        for i in 0..9 {
+            brr_bytes[i] = self.smp_data.aram[(group_addr as usize + i) % ARAM_SIZE].get()
+        }
+
         let brr_group = BrrSampleGroup::from_aram_slice(
-            &self.smp_data.aram[(group_addr as usize)..(group_addr + 9) as usize],
+            &brr_bytes,
             group_addr,
         );
 

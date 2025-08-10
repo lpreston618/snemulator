@@ -106,6 +106,8 @@ pub struct Cpu65c816 {
     logger: Rc<SnemLogger>,
 
     debug_flag: bool,
+    debug_cnt: usize,
+    debug_nmi: u8,
 }
 
 // SNES System Functionality
@@ -167,6 +169,8 @@ impl Cpu65c816 {
             joypad_auto_read: false,
 
             debug_flag: false,
+            debug_cnt: 0,
+            debug_nmi: 0,
         }
     }
 
@@ -215,6 +219,9 @@ impl Cpu65c816 {
         self.p1_auto_read = p1_controller_state.reverse_bits();
         self.p2_auto_read = p2_controller_state.reverse_bits();
     }
+
+    pub fn set_debug(&mut self) { self.debug_flag = true; }
+    pub fn clear_debug(&mut self) { self.debug_flag = false; }
 }
 
 // Internal Helper Functions / Bus Behavior
@@ -437,7 +444,7 @@ impl Cpu65c816 {
                     self.dma_status = match self.dma_status {
                         DmaStatus::Off => DmaStatus::DMA,
                         DmaStatus::InactiveHDMA => DmaStatus::InactiveLayeredHDMA,
-                        _ => unreachable!(),
+                        _ => unreachable!(), // Cannot write here from active DMA
                     };
                 }
 
@@ -755,7 +762,9 @@ impl Cpu65c816 {
     }
 
     fn read_prg(&mut self) -> u8 {
-        self.read(((self.prg_bank as u32) << 16) | (self.pc as u32))
+        let data = self.read(((self.prg_bank as u32) << 16) | (self.pc as u32));
+        self.pc += 1;
+        data
     }
     fn read16(&mut self, address_lo: u32, address_hi: u32) -> u16 {
         u16::from_le_bytes([self.read(address_lo), self.read(address_hi)])
@@ -896,50 +905,32 @@ impl Cpu65c816 {
 
 // Addressing Modes
 impl Cpu65c816 {
+    fn immediate8(&mut self) -> u32 {
+        let addr = ((self.prg_bank as u32) << 16) | (self.pc as u32);
+        self.pc += 1;
+        addr
+    }
+
+    fn immediate16(&mut self) -> (u32, u32) {
+        let address_lo = self.immediate8();
+        let address_hi = self.immediate8();
+        (address_lo, address_hi)
+    }
+
     fn absolute8(&mut self) -> u32 {
-        let (lo, hi) = self.immediate16();
-        let address_lo = self.read(lo);
-        let address_hi = self.read(hi);
-        u32::from_parts(self.data_bank, address_hi, address_lo)
+        let lo = self.read_prg();
+        let hi = self.read_prg();
+        u32::from_parts(self.data_bank, hi, lo)
     }
     fn absolute16(&mut self) -> (u32, u32) {
         let address_lo = self.absolute8();
-        (address_lo, (address_lo + 1) & 0xFFFFFF)
-    }
-
-    fn absolute_long8(&mut self) -> u32 {
-        let (lo, mi) = self.immediate16();
-        let hi = (mi + 1).with_bank(mi.bank());
-        let address_lo = self.read(lo);
-        let address_mi = self.read(mi);
-        let address_hi = self.read(hi);
-        u32::from_parts(address_hi, address_mi, address_lo)
-    }
-    fn absolute_long16(&mut self) -> (u32, u32) {
-        let (lo, mi) = self.immediate16();
-        let hi = (mi + 1).with_bank(mi.bank());
-        let address_lo = self.read(lo);
-        let address_mi = self.read(mi);
-        let address_hi = self.read(hi);
-
-        let addr = u32::from_parts(address_hi, address_mi, address_lo);
-        (addr, (addr + 1) & 0xFFFFFF)
-    }
-
-    fn absolute_long_x8(&mut self) -> u32 {
-        (self.absolute_long8() + self.x as u32) & 0xFFFFFF
-    }
-    fn absolute_long_x16(&mut self) -> (u32, u32) {
-        let (address_lo, address_hi) = self.absolute_long16();
-        (
-            (address_lo + self.x as u32) & 0xFFFFFF,
-            (address_hi + self.x as u32) & 0xFFFFFF,
-        )
+        let addess_hi = address_lo.wrapping_add24(1);
+        (address_lo, addess_hi)
     }
 
     fn absolute_x8(&mut self) -> u32 {
         let original_addr = self.absolute8();
-        let indexed_addr = (original_addr + self.x as u32) & 0xFFFFFF;
+        let indexed_addr = original_addr.wrapping_add24(self.x as u32);
 
         self.page_crossed = original_addr.page() != indexed_addr.page();
 
@@ -947,12 +938,13 @@ impl Cpu65c816 {
     }
     fn absolute_x16(&mut self) -> (u32, u32) {
         let address_lo = self.absolute_x8();
-        (address_lo, (address_lo + 1) & 0xFFFFFF)
+        let addess_hi = address_lo.wrapping_add24(1);
+        (address_lo, addess_hi)
     }
 
     fn absolute_y8(&mut self) -> u32 {
         let original_addr = self.absolute8();
-        let indexed_addr = (original_addr + self.y as u32) & 0xFFFFFF;
+        let indexed_addr = original_addr.wrapping_add24(self.y as u32);
 
         self.page_crossed = original_addr.page() != indexed_addr.page();
 
@@ -960,40 +952,57 @@ impl Cpu65c816 {
     }
     fn absolute_y16(&mut self) -> (u32, u32) {
         let address_lo = self.absolute_y8();
-        (address_lo, (address_lo + 1) & 0xFFFFFF)
+        let addess_hi = address_lo.wrapping_add24(1);
+        (address_lo, addess_hi)
     }
 
-    fn absolute_indirect(&mut self) -> u32 {
+    fn long8(&mut self) -> u32 {
+        let lo = self.read_prg();
+        let mi = self.read_prg();
+        let hi = self.read_prg();
+        u32::from_parts(hi, mi, lo)
+    }
+    fn long16(&mut self) -> (u32, u32) {
+        let address_lo = self.long8();
+        let address_hi = address_lo.wrapping_add24(1);
+        (address_lo, address_hi)
+    }
+
+    fn long_x8(&mut self) -> u32 {
+        (self.long8() + self.x as u32) & 0xFFFFFF
+    }
+    fn long_x16(&mut self) -> (u32, u32) {
+        let (address_lo, address_hi) = self.long16();
+        (
+            (address_lo + self.x as u32) & 0xFFFFFF,
+            (address_hi + self.x as u32) & 0xFFFFFF,
+        )
+    }
+
+    fn indirect(&mut self) -> u32 {
         let (ptr_lo, ptr_hi) = self.absolute16();
         let address_lo = self.read(ptr_lo.with_bank(0));
         let address_hi = self.read(ptr_hi.with_bank(0));
         u32::from_parts(self.prg_bank, address_hi, address_lo)
     }
-    fn absolute_indirect_long(&mut self) -> u32 {
-        let (ptr_lo, ptr_mi) = self.absolute16();
-        let ptr_hi = ptr_mi + 1;
-        let address_lo = self.read(ptr_lo.with_bank(0));
-        let address_mi = self.read(ptr_mi.with_bank(0));
-        let address_hi = self.read(ptr_hi.with_bank(0));
+    fn indirect_long(&mut self) -> u32 {
+        let lo = self.read_prg();
+        let hi = self.read_prg();
+        let ptr_lo = u32::from_parts(0, hi, lo);
+        let ptr_mi = ptr_lo.wrapping_add16(1);
+        let ptr_hi = ptr_mi.wrapping_add16(1);
+        let address_lo = self.read(ptr_lo);
+        let address_mi = self.read(ptr_mi);
+        let address_hi = self.read(ptr_hi);
         u32::from_parts(address_hi, address_mi, address_lo)
     }
 
-    fn absolute_x_indirect8(&mut self) -> u32 {
+    fn x_indirect8(&mut self) -> u32 {
         let ptr_lo = self.absolute_x8().with_bank(self.prg_bank);
-        let ptr_hi = (ptr_lo + 1).with_bank(self.prg_bank); // Wrap on bank
+        let ptr_hi = ptr_lo.wrapping_add16(1);
         let address_lo = self.read(ptr_lo);
         let address_hi = self.read(ptr_hi);
         u32::from_parts(self.prg_bank, address_hi, address_lo)
-    }
-
-    fn immediate8(&self) -> u32 {
-        ((self.prg_bank as u32) << 16) | (self.pc + 1) as u32
-    }
-    fn immediate16(&self) -> (u32, u32) {
-        (
-            ((self.prg_bank as u32) << 16) | (self.pc + 1) as u32,
-            ((self.prg_bank as u32) << 16) | (self.pc + 2) as u32,
-        )
     }
 
     fn direct8(&mut self) -> u32 {
@@ -1002,168 +1011,122 @@ impl Cpu65c816 {
             self.add_clocks(Cpu65c816::ONE_CYCLE);
         }
 
-        (self.direct_page + self.read(self.immediate8()) as u16) as u32
+        let offset = self.read_prg() as u16;
+
+        (self.direct_page + offset) as u32
     }
     fn direct16(&mut self) -> (u32, u32) {
-        let direct = self.direct8();
-        ((direct) as u32, (direct + 1) as u32)
+        let address_lo = self.direct8();
+        let address_hi = address_lo.wrapping_add16(1);
+        (address_lo, address_hi)
     }
 
     fn direct_x8(&mut self) -> u32 {
-        match self.mode {
-            CpuMode::Emulation => {
-                let addr = self.direct8();
-
-                if self.direct_page & 0xFF == 0 {
-                    addr.with_page_addr(addr.page_addr() + self.x.get_lo())
-                } else {
-                    (addr + self.x as u32).with_bank(0)
-                }
-            }
-
-            CpuMode::Native => (self.direct8() + self.x as u32).with_bank(0),
+        let base_address = self.direct8();
+        
+        if self.mode == CpuMode::Emulation && self.direct_page.get_lo() == 0 {
+            base_address.wrapping_add8(self.x.get_lo())
+        } else {
+            base_address.wrapping_add16(self.x)
         }
     }
     fn direct_x16(&mut self) -> (u32, u32) {
-        let addr = (self.direct8() + self.x as u32).with_bank(0);
-        (addr, (addr + 1).with_bank(0))
+        let address_lo = self.direct_x8();
+        let address_hi = address_lo.wrapping_add16(1);
+        (address_lo, address_hi)
     }
 
     fn direct_y8(&mut self) -> u32 {
-        match self.mode {
-            CpuMode::Emulation => {
-                let addr = self.direct8();
-
-                if self.direct_page & 0xFF == 0 {
-                    addr.with_page_addr(addr.page_addr() + self.y.get_lo())
-                } else {
-                    (addr + self.y as u32).with_bank(0)
-                }
-            }
-
-            CpuMode::Native => (self.direct8() + self.y as u32).with_bank(0),
+        let base_address = self.direct8();
+        
+        if self.mode == CpuMode::Emulation && self.direct_page.get_lo() == 0 {
+            base_address.wrapping_add8(self.y.get_lo())
+        } else {
+            base_address.wrapping_add16(self.y)
         }
     }
     fn direct_y16(&mut self) -> (u32, u32) {
-        let addr = (self.direct8() + self.y as u32).with_bank(0);
-        (addr, (addr + 1).with_bank(0))
+        let address_lo = self.direct_y8();
+        let address_hi = address_lo.wrapping_add16(1);
+        (address_lo, address_hi)
     }
 
     fn direct_indirect8(&mut self) -> u32 {
         let ptr_lo = self.direct8();
-        let ptr_hi = match self.mode {
-            CpuMode::Native => (ptr_lo + 1).with_bank(0),
-            CpuMode::Emulation => ptr_lo.with_page_addr(ptr_lo.page_addr() + 1),
+        let ptr_hi = if self.mode == CpuMode::Emulation && self.direct_page.get_lo() == 0 {
+            ptr_lo.wrapping_add8(1)
+        } else {
+            ptr_lo.wrapping_add16(1)
         };
 
-        u32::from_parts(self.data_bank, self.read(ptr_hi), self.read(ptr_lo))
+        let address_lo = self.read(ptr_lo);
+        let address_hi = self.read(ptr_hi);
+
+        u32::from_parts(self.data_bank, address_hi, address_lo)
     }
     fn direct_indirect16(&mut self) -> (u32, u32) {
-        let ptr_lo = self.direct8();
-        let ptr_hi = (ptr_lo + 1).with_bank(0);
-
-        let address_lo = u32::from_parts(self.data_bank, self.read(ptr_hi), self.read(ptr_lo));
-        let address_hi = (address_lo + 1) & 0xFFFFFF;
-
+        let address_lo = self.direct_indirect8();
+        let address_hi = address_lo.wrapping_add24(1);
         (address_lo, address_hi)
     }
 
     fn direct_indirect_long8(&mut self) -> u32 {
         let ptr_lo = self.direct8();
-        let ptr_mi = (ptr_lo + 1).with_bank(0);
-        let ptr_hi = (ptr_lo + 2).with_bank(0);
-
-        u32::from_parts(self.read(ptr_hi), self.read(ptr_mi), self.read(ptr_lo))
+        let ptr_mi = ptr_lo.wrapping_add16(1);
+        let ptr_hi = ptr_mi.wrapping_add16(1);
+        let address_lo = self.read(ptr_lo);
+        let address_mi = self.read(ptr_mi);
+        let address_hi = self.read(ptr_hi);
+        u32::from_parts(address_hi, address_mi, address_lo)
     }
     fn direct_indirect_long16(&mut self) -> (u32, u32) {
-        let ptr_lo = self.direct8();
-        let ptr_mi = (ptr_lo + 1).with_bank(0);
-        let ptr_hi = (ptr_lo + 2).with_bank(0);
-
-        let address_lo = u32::from_parts(self.read(ptr_hi), self.read(ptr_mi), self.read(ptr_lo));
-        let address_hi = (address_lo + 1) & 0xFFFFFF;
-
+        let address_lo = self.direct_indirect_long8();
+        let address_hi = address_lo.wrapping_add24(1);
         (address_lo, address_hi)
     }
 
     fn direct_x_indirect8(&mut self) -> u32 {
         let ptr_lo = self.direct_x8();
-        let ptr_hi = match self.mode {
-            CpuMode::Native => (ptr_lo + 1).with_bank(0),
-            CpuMode::Emulation => ptr_lo.with_page_addr(ptr_lo.page_addr() + 1),
+        let ptr_hi = if self.mode == CpuMode::Emulation {// && self.direct_page.get_lo() == 0 {
+            ptr_lo.wrapping_add8(1)
+        } else {
+            ptr_lo.wrapping_add16(1)
         };
 
-        let address_hi = self.read(ptr_hi);
         let address_lo = self.read(ptr_lo);
+        let address_hi = self.read(ptr_hi);
 
         u32::from_parts(self.data_bank, address_hi, address_lo)
     }
     fn direct_x_indirect16(&mut self) -> (u32, u32) {
-        let ptr_lo = self.direct_x8();
-        let ptr_hi = match self.mode {
-            CpuMode::Native => (ptr_lo + 1).with_bank(0),
-            CpuMode::Emulation => ptr_lo.with_page_addr(ptr_lo.page_addr() + 1),
-        };
-
-        let address_hi = self.read(ptr_hi);
-        let address_lo = self.read(ptr_lo);
-
-        let addr = u32::from_parts(self.data_bank, address_hi, address_lo);
-
-        (addr, (addr + 1) & 0xFFFFFF)
+        let address_lo = self.direct_x_indirect8();
+        let address_hi = address_lo.wrapping_add24(1);
+        (address_lo, address_hi)
     }
 
     fn direct_indirect_y8(&mut self) -> u32 {
-        let ptr_lo = self.direct8();
-        let ptr_hi = match self.mode {
-            CpuMode::Native => (ptr_lo + 1).with_bank(0),
-            CpuMode::Emulation => ptr_lo.with_page_addr(ptr_lo.page_addr() + 1),
-        };
-
-        let original_addr = u32::from_parts(self.data_bank, self.read(ptr_hi), self.read(ptr_lo));
-        let indexed_addr = (original_addr + self.y as u32) & 0xFFFFFF;
-
-        self.page_crossed = original_addr.page() != indexed_addr.page();
-
-        indexed_addr
+        self.direct_indirect8().wrapping_add24(self.y as u32)
     }
     fn direct_indirect_y16(&mut self) -> (u32, u32) {
-        let ptr_lo = self.direct8();
-        let ptr_hi = match self.mode {
-            CpuMode::Native => (ptr_lo + 1).with_bank(0),
-            CpuMode::Emulation => ptr_lo.with_page_addr(ptr_lo.page_addr() + 1),
-        };
-
-        let addr = (u32::from_parts(self.data_bank, self.read(ptr_hi), self.read(ptr_lo))
-            + self.y as u32)
-            & 0xFFFFFF;
-
-        (addr, (addr + 1) & 0xFFFFFF)
+        let (address_lo, address_hi) = self.direct_indirect16();
+        let address_lo = address_lo.wrapping_add24(self.y as u32);
+        let address_hi = address_hi.wrapping_add24(self.y as u32);
+        (address_lo, address_hi)
     }
 
     fn direct_indirect_long_y8(&mut self) -> u32 {
-        let ptr_lo = self.direct8();
-        let ptr_mi = (ptr_lo + 1).with_bank(0);
-        let ptr_hi = (ptr_lo + 2).with_bank(0);
-
-        (u32::from_parts(self.read(ptr_hi), self.read(ptr_mi), self.read(ptr_lo)) + self.y as u32)
-            & 0xFFFFFF
+        self.direct_indirect_long8().wrapping_add24(self.y as u32)
     }
     fn direct_indirect_long_y16(&mut self) -> (u32, u32) {
-        let ptr_lo = self.direct8();
-        let ptr_mi = (ptr_lo + 1).with_bank(0);
-        let ptr_hi = (ptr_lo + 2).with_bank(0);
-
-        let addr = (u32::from_parts(self.read(ptr_hi), self.read(ptr_mi), self.read(ptr_lo))
-            + self.y as u32)
-            & 0xFFFFFF;
-
-        (addr, (addr + 1) & 0xFFFFFF)
+        let (address_lo, address_hi) = self.direct_indirect_long16();
+        let address_lo = address_lo.wrapping_add24(self.y as u32);
+        let address_hi = address_hi.wrapping_add24(self.y as u32);
+        (address_lo, address_hi)
     }
 
     fn relative8(&mut self) -> u32 {
-        let offset = (self.read(self.immediate8()) as i8) as u16;
-        let new_pc = self.pc + 2 + offset;
+        let offset = (self.read_prg() as i8) as u16;
+        let new_pc = self.pc + offset;
         let relative_addr = (new_pc as u32).with_bank(self.prg_bank);
 
         self.page_crossed = relative_addr.page() != relative_addr.page();
@@ -1171,32 +1134,29 @@ impl Cpu65c816 {
         relative_addr
     }
     fn relative16(&mut self) -> u32 {
-        let (offset_lo, offset_hi) = self.immediate16();
-        let offset = self.read16(offset_lo, offset_hi);
-        ((self.pc + offset + 3) as u32).with_bank(self.prg_bank)
+        let offset_lo = self.read_prg();
+        let offset_hi = self.read_prg();
+        let offset = ((offset_hi as u16) << 8) | (offset_lo as u16);
+        ((self.pc + offset) as u32).with_bank(self.prg_bank)
     }
 
     fn src_dst(&mut self) -> (u32, u32) {
-        let (address_src, address_dst) = self.immediate16();
-
-        let src_bank = self.read(address_src);
+        let dst_bank = self.read_prg();
+        let src_bank = self.read_prg();
         let src = (self.x as u32).with_bank(src_bank);
-
-        let dst_bank = self.read(address_dst);
         let dst = (self.y as u32).with_bank(dst_bank);
-
         (src, dst)
     }
 
     fn stack_s8(&mut self) -> u32 {
-        let val = self.read(self.immediate8()) as u16;
+        let val = self.read_prg() as u16;
 
         (val + self.stk_ptr) as u32
     }
     fn stack_s16(&mut self) -> (u32, u32) {
-        let val = self.read(self.immediate8()) as u16;
-
-        ((val + self.stk_ptr) as u32, (val + self.stk_ptr + 1) as u32)
+        let address_lo = self.stack_s8();
+        let address_hi = address_lo.wrapping_add16(1);
+        (address_lo, address_hi)
     }
 
     fn stack_indirect_y8(&mut self) -> u32 {
@@ -1207,20 +1167,12 @@ impl Cpu65c816 {
 
         let addr = u32::from_parts(self.data_bank, address_hi, address_lo);
 
-        (addr + self.y as u32) & 0xFFFFFF
+        addr.wrapping_add24(self.y as u32)
     }
     fn stack_indirect_y16(&mut self) -> (u32, u32) {
-        let (ptr_lo, ptr_hi) = self.stack_s16();
-
-        let address_lo = self.read(ptr_lo);
-        let address_hi = self.read(ptr_hi);
-
-        let addr = u32::from_parts(self.data_bank, address_hi, address_lo);
-
-        (
-            (addr + self.y as u32) & 0xFFFFFF,
-            (addr + self.y as u32 + 1) & 0xFFFFFF,
-        )
+        let address_lo = self.stack_indirect_y8();
+        let address_hi = address_lo.wrapping_add24(1);
+        (address_lo, address_hi)
     }
 }
 
@@ -1327,7 +1279,7 @@ impl Cpu65c816 {
     fn and_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let result = self.acc & self.read16(address_lo, address_hi);
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
 
         self.acc = result;
@@ -1343,11 +1295,11 @@ impl Cpu65c816 {
     }
 
     fn asl_acc_m16(&mut self) {
-        self.set_flag_to_bool(Flag::FlagC, self.acc & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagC, self.acc.bit_en(15));
 
         self.acc <<= 1;
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
 
@@ -1367,11 +1319,11 @@ impl Cpu65c816 {
         let data = self.read16(address_lo, address_hi);
         let result = data << 1;
 
-        self.set_flag_to_bool(Flag::FlagC, data & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagC, data.bit_en(15));
 
         self.write16(address_lo, address_hi, result);
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
@@ -1401,15 +1353,15 @@ impl Cpu65c816 {
         let result = self.acc.get_lo() & data;
 
         self.set_flag_to_bool(Flag::FlagN, data.bit_en(7));
-        self.set_flag_to_bool(Flag::FlagV, data & 0x40 != 0);
+        self.set_flag_to_bool(Flag::FlagV, data.bit_en(6));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
     fn bit_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let data = self.read16(address_lo, address_hi);
         let result = self.acc & data;
 
-        self.set_flag_to_bool(Flag::FlagN, data & 0x8000 != 0);
-        self.set_flag_to_bool(Flag::FlagV, data & 0x4000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, data.bit_en(15));
+        self.set_flag_to_bool(Flag::FlagV, data.bit_en(14));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
     fn bit_imm_m8(&mut self, address: u32) {
@@ -1453,7 +1405,7 @@ impl Cpu65c816 {
 
     fn brk_n(&mut self) {
         self.push8_n(self.prg_bank);
-        self.push16_n(self.pc + 2); // push the address of the brk instruction + 2
+        self.push16_n(self.pc + 1);
         self.push8_n(self.status);
         self.set_flag(Flag::FlagI);
         self.clear_flag(Flag::FlagD);
@@ -1464,7 +1416,7 @@ impl Cpu65c816 {
         self.pc = self.read16(N_BRK_VECTOR_LO, N_BRK_VECTOR_HI);
     }
     fn brk_e(&mut self) {
-        self.push16_e(self.pc + 2); // push the address of the brk instruction + 2
+        self.push16_e(self.pc + 1);
         self.push8_e(self.status | Flag::FlagX as u8); // Pushes status to the stack with B flag (same place as X flag) set
         self.set_flag(Flag::FlagI);
         self.clear_flag(Flag::FlagD);
@@ -1518,7 +1470,7 @@ impl Cpu65c816 {
         let result = self.acc - data;
 
         self.set_flag_to_bool(Flag::FlagC, self.acc >= data);
-        self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
@@ -1526,7 +1478,7 @@ impl Cpu65c816 {
         let _ = self.read(address); // read is discarded here
 
         self.push8_n(self.prg_bank);
-        self.push16_n(self.pc + 2); // push the address of the COP instruction + 2
+        self.push16_n(self.pc);
         self.push8_n(self.status);
         self.set_flag(Flag::FlagI);
         self.clear_flag(Flag::FlagD);
@@ -1539,7 +1491,7 @@ impl Cpu65c816 {
     fn cop_e(&mut self, address: u32) {
         let _ = self.read(address); // read is discarded here
 
-        self.push16_e(self.pc + 2); // push the address of the COP instruction + 2
+        self.push16_e(self.pc);
         self.push8_e(self.status);
         self.set_flag(Flag::FlagI);
         self.clear_flag(Flag::FlagD);
@@ -1563,7 +1515,7 @@ impl Cpu65c816 {
         let result = self.x - data;
 
         self.set_flag_to_bool(Flag::FlagC, self.x >= data);
-        self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
@@ -1580,7 +1532,7 @@ impl Cpu65c816 {
         let result = self.y - data;
 
         self.set_flag_to_bool(Flag::FlagC, self.y >= data);
-        self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
@@ -1593,7 +1545,7 @@ impl Cpu65c816 {
     fn dec_acc_m16(&mut self) {
         self.acc -= 1;
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
     fn dec_mem_m8(&mut self, address: u32) {
@@ -1609,7 +1561,7 @@ impl Cpu65c816 {
 
         self.write16(address_lo, address_hi, result);
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
@@ -1622,7 +1574,7 @@ impl Cpu65c816 {
     fn dex_x16(&mut self) {
         self.x -= 1;
 
-        self.set_flag_to_bool(Flag::FlagN, self.x & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.x.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
     }
 
@@ -1635,7 +1587,7 @@ impl Cpu65c816 {
     fn dey_x16(&mut self) {
         self.y -= 1;
 
-        self.set_flag_to_bool(Flag::FlagN, self.y & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.y.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
     }
 
@@ -1650,7 +1602,7 @@ impl Cpu65c816 {
     fn eor_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let result = self.acc ^ self.read16(address_lo, address_hi);
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
 
         self.acc = result;
@@ -1660,12 +1612,12 @@ impl Cpu65c816 {
         self.acc = inc_low_byte(self.acc);
 
         self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(7));
-        self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
     fn inc_acc_m16(&mut self) {
         self.acc += 1;
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
     fn inc_mem_m8(&mut self, address: u32) {
@@ -1681,7 +1633,7 @@ impl Cpu65c816 {
 
         self.write16(address_lo, address_hi, result);
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
@@ -1689,12 +1641,12 @@ impl Cpu65c816 {
         self.x = inc_low_byte(self.x);
 
         self.set_flag_to_bool(Flag::FlagN, self.x.bit_en(7));
-        self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.x.get_lo() == 0);
     }
     fn inx_x16(&mut self) {
         self.x += 1;
 
-        self.set_flag_to_bool(Flag::FlagN, self.x & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.x.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
     }
 
@@ -1702,12 +1654,12 @@ impl Cpu65c816 {
         self.y = inc_low_byte(self.y);
 
         self.set_flag_to_bool(Flag::FlagN, self.y.bit_en(7));
-        self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
+        self.set_flag_to_bool(Flag::FlagZ, self.y.get_lo() == 0);
     }
     fn iny_x16(&mut self) {
         self.y += 1;
 
-        self.set_flag_to_bool(Flag::FlagN, self.y & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.y.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
     }
 
@@ -1721,24 +1673,24 @@ impl Cpu65c816 {
     }
 
     fn jsr_n(&mut self, address: u32) {
-        self.push16_n(self.pc + 2); // push the address of the brk instruction + 2
+        self.push16_n(self.pc - 1);
         self.pc = address.bank_addr();
     }
     fn jsr_e(&mut self, address: u32) {
-        self.push16_e(self.pc + 2); // push the address of the brk instruction + 2
+        self.push16_e(self.pc - 1);
         self.pc = address.bank_addr();
     }
 
     fn jsl_n(&mut self, address: u32) {
         self.push8_n(self.prg_bank);
-        self.push16_n(self.pc + 3);
+        self.push16_n(self.pc - 1);
 
         self.pc = address.bank_addr();
         self.prg_bank = address.bank();
     }
     fn jsl_e(&mut self, address: u32) {
         self.push8_e(self.prg_bank);
-        self.push16_e(self.pc + 3);
+        self.push16_e(self.pc - 1);
 
         self.pc = address.bank_addr();
         self.prg_bank = address.bank();
@@ -1754,7 +1706,7 @@ impl Cpu65c816 {
     fn lda_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         self.acc = self.read16(address_lo, address_hi);
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
 
@@ -1767,7 +1719,7 @@ impl Cpu65c816 {
     fn ldx_x16(&mut self, (address_lo, address_hi): (u32, u32)) {
         self.x = self.read16(address_lo, address_hi);
 
-        self.set_flag_to_bool(Flag::FlagN, self.x & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.x.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
     }
 
@@ -1781,7 +1733,7 @@ impl Cpu65c816 {
     fn ldy_x16(&mut self, (address_lo, address_hi): (u32, u32)) {
         self.y = self.read16(address_lo, address_hi);
 
-        self.set_flag_to_bool(Flag::FlagN, self.y & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.y.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
     }
 
@@ -1831,6 +1783,11 @@ impl Cpu65c816 {
         self.x += 1;
         self.y += 1;
 
+        if self.is_flag_set(Flag::FlagX) {
+            self.x &= 0x00FF;
+            self.y &= 0x00FF;
+        }
+
         let data = self.read(src_address);
         self.write(dest_address, data);
 
@@ -1853,6 +1810,11 @@ impl Cpu65c816 {
         // to the source address.
         self.x -= 1;
         self.y -= 1;
+
+        if self.is_flag_set(Flag::FlagX) {
+            self.x &= 0x00FF;
+            self.y &= 0x00FF;
+        }
 
         let data = self.read(src_address);
         self.write(dest_address, data);
@@ -1883,7 +1845,7 @@ impl Cpu65c816 {
     fn ora_m16(&mut self, (address_lo, address_hi): (u32, u32)) {
         let result = self.acc | self.read16(address_lo, address_hi);
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
 
         self.acc = result;
@@ -1903,12 +1865,12 @@ impl Cpu65c816 {
     fn per_n(&mut self, (address_lo, address_hi): (u32, u32)) {
         let offset = self.read16(address_lo, address_hi);
 
-        self.push16_n(self.pc + offset + 3);
+        self.push16_n(self.pc + offset);
     }
     fn per_e(&mut self, (address_lo, address_hi): (u32, u32)) {
         let offset = self.read16(address_lo, address_hi);
 
-        self.push16_e(self.pc + offset + 3);
+        self.push16_e(self.pc + offset);
     }
 
     // fn pex_n(&mut self, address: u32) {
@@ -1986,7 +1948,7 @@ impl Cpu65c816 {
     fn pla_m16(&mut self) {
         self.acc = self.pop16_n();
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
     fn pla_e(&mut self) {
@@ -2013,13 +1975,13 @@ impl Cpu65c816 {
     fn pld_n(&mut self) {
         self.direct_page = self.pop16_n();
 
-        self.set_flag_to_bool(Flag::FlagN, self.direct_page & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.direct_page.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.direct_page == 0);
     }
     fn pld_e(&mut self) {
         self.direct_page = self.pop16_e();
 
-        self.set_flag_to_bool(Flag::FlagN, self.direct_page & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.direct_page.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.direct_page == 0);
     }
 
@@ -2043,7 +2005,7 @@ impl Cpu65c816 {
     fn plx_x16(&mut self) {
         self.x = self.pop16_n();
 
-        self.set_flag_to_bool(Flag::FlagN, self.x & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.x.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
     }
     fn plx_e(&mut self) {
@@ -2064,7 +2026,7 @@ impl Cpu65c816 {
     fn ply_x16(&mut self) {
         self.y = self.pop16_n();
 
-        self.set_flag_to_bool(Flag::FlagN, self.y & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.y.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
     }
     fn ply_e(&mut self) {
@@ -2096,12 +2058,12 @@ impl Cpu65c816 {
     }
     fn rol_acc_m16(&mut self) {
         let c = self.is_flag_set(Flag::FlagC);
-        self.set_flag_to_bool(Flag::FlagC, self.acc & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagC, self.acc.bit_en(15));
 
         self.acc <<= 1;
         self.acc |= bool2byte!(c);
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
     fn rol_mem_m8(&mut self, address: u32) {
@@ -2121,32 +2083,31 @@ impl Cpu65c816 {
         let data = self.read16(address_lo, address_hi);
         let result = (data << 1) | bool2byte!(c);
 
-        self.set_flag_to_bool(Flag::FlagC, data & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagC, data.bit_en(15));
 
         self.write16(address_lo, address_hi, result);
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
     fn ror_acc_m8(&mut self) {
         let c = self.is_flag_set(Flag::FlagC);
-        self.set_flag_to_bool(Flag::FlagC, self.acc & 1 != 0);
+        self.set_flag_to_bool(Flag::FlagC, self.acc.bit_en(0));
 
-        self.acc >>= 1;
-        self.acc |= bool2byte!(c) << 7;
+        self.acc.set_lo((self.acc.get_lo() >> 1) | (bool2byte!(c) << 7));
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo().bit_en(7));
+        self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
     }
     fn ror_acc_m16(&mut self) {
         let c = self.is_flag_set(Flag::FlagC);
-        self.set_flag_to_bool(Flag::FlagC, self.acc & 1 != 0);
+        self.set_flag_to_bool(Flag::FlagC, self.acc.bit_en(0));
 
         self.acc >>= 1;
         self.acc |= bool2byte!(c) << 15;
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
     fn ror_mem_m8(&mut self, address: u32) {
@@ -2155,7 +2116,7 @@ impl Cpu65c816 {
         let data = self.read(address);
         let result = (data >> 1) | (bool2byte!(c) << 7);
 
-        self.set_flag_to_bool(Flag::FlagC, data & 1 != 0);
+        self.set_flag_to_bool(Flag::FlagC, data.bit_en(0));
 
         self.write(address, result);
 
@@ -2168,11 +2129,11 @@ impl Cpu65c816 {
         let data = self.read16(address_lo, address_hi);
         let result = (data >> 1) | (bool2byte!(c) << 15);
 
-        self.set_flag_to_bool(Flag::FlagC, data & 1 != 0);
+        self.set_flag_to_bool(Flag::FlagC, data.bit_en(0));
 
         self.write16(address_lo, address_hi, result);
 
-        self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, result.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
@@ -2306,12 +2267,9 @@ impl Cpu65c816 {
     fn sep_all(&mut self, address: u32) {
         self.status |= self.read(address);
 
-        match self.idx_size() {
-            RegSize::Byte => {
-                self.x.set_hi(0);
-                self.y.set_hi(0);
-            }
-            _ => {}
+        if self.is_flag_set(Flag::FlagX) {
+            self.x &= 0x00FF;
+            self.y &= 0x00FF;
         }
     }
 
@@ -2356,7 +2314,7 @@ impl Cpu65c816 {
     fn tax_x16(&mut self) {
         self.x = self.acc;
 
-        self.set_flag_to_bool(Flag::FlagN, self.x & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.x.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
     }
 
@@ -2369,14 +2327,14 @@ impl Cpu65c816 {
     fn tay_x16(&mut self) {
         self.y = self.acc;
 
-        self.set_flag_to_bool(Flag::FlagN, self.y & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.y.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
     }
 
     fn tcd_all(&mut self) {
         self.direct_page = self.acc;
 
-        self.set_flag_to_bool(Flag::FlagN, self.direct_page & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.direct_page.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.direct_page == 0);
     }
 
@@ -2428,26 +2386,11 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
-    fn tsc_m8(&mut self) {
-        self.acc.set_lo(self.stk_ptr as u8);
-
-        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo().bit_en(7));
-        // self.clear_flag(Flag::FlagN); // the value transfered is always positive
-        self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
-    }
-    fn tsc_m16(&mut self) {
+    fn tsc_all(&mut self) {
         self.acc = self.stk_ptr;
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
-    }
-    fn tsc_e(&mut self) {
-        self.acc.set_lo(self.stk_ptr as u8);
-
-        self.set_flag_to_bool(Flag::FlagN, self.acc.get_lo().bit_en(7));
-        self.set_flag_to_bool(Flag::FlagZ, self.acc.get_lo() == 0);
-        // self.clear_flag(Flag::FlagN); // the value transfered is always positive
-        // self.clear_flag(Flag::FlagZ); // the value transfered is always non-zero
     }
 
     fn tsx_x8(&mut self) {
@@ -2459,7 +2402,7 @@ impl Cpu65c816 {
     fn tsx_x16(&mut self) {
         self.x = self.stk_ptr;
 
-        self.set_flag_to_bool(Flag::FlagN, self.x & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.x.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
     }
 
@@ -2472,7 +2415,7 @@ impl Cpu65c816 {
     fn txa_m16(&mut self) {
         self.acc = self.x;
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
 
@@ -2492,7 +2435,7 @@ impl Cpu65c816 {
     fn txy_x16(&mut self) {
         self.y = self.x;
 
-        self.set_flag_to_bool(Flag::FlagN, self.y & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.y.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
     }
 
@@ -2505,7 +2448,7 @@ impl Cpu65c816 {
     fn tya_m16(&mut self) {
         self.acc = self.y;
 
-        self.set_flag_to_bool(Flag::FlagN, self.acc & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.acc.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.acc == 0);
     }
 
@@ -2518,7 +2461,7 @@ impl Cpu65c816 {
     fn tyx_x16(&mut self) {
         self.x = self.y;
 
-        self.set_flag_to_bool(Flag::FlagN, self.x & 0x8000 != 0);
+        self.set_flag_to_bool(Flag::FlagN, self.x.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
     }
 
@@ -2850,9 +2793,43 @@ impl Cpu65c816 {
         let opcode = self.read_prg();
         let extra_clocks: usize;
 
-        self.debug_flag = true;
+        if self.pc == 0x8CD1 && self.prg_bank == 0x02 {
+            self.debug_flag = true;
 
-        if self.debug_flag {
+            self.debug_cnt = 1;
+
+            println!("BEFORE:");
+
+            self.print_state_str();   
+
+            println!("($7f7000) = {:02X}", self._read(0x7f7000).0);
+            println!("($7f7001) = {:02X}", self._read(0x7f7001).0);
+            println!("($7f7002) = {:02X}", self._read(0x7f7002).0);
+            println!("($7f7003) = {:02X}", self._read(0x7f7003).0);
+            println!("($7f7004) = {:02X}", self._read(0x7f7004).0);
+            println!("($0000fe) = {:02X}", self._read(0x0000fe).0);
+            println!("($0000ff) = {:02X}", self._read(0x0000ff).0);
+            println!("($000100) = {:02X}", self._read(0x000100).0);
+        }
+
+        if self.pc == 0x8CD5 && self.prg_bank == 0x02 {
+            self.debug_flag = false;
+
+            println!("AFTER:");
+
+            self.print_state_str();           
+
+            println!("($7f7000) = {:02X}", self._read(0x7f7000).0);
+            println!("($7f7001) = {:02X}", self._read(0x7f7001).0);
+            println!("($7f7002) = {:02X}", self._read(0x7f7002).0);
+            println!("($7f7003) = {:02X}", self._read(0x7f7003).0);
+            println!("($7f7004) = {:02X}", self._read(0x7f7004).0);
+            println!("($0000fe) = {:02X}", self._read(0x0000fe).0);
+            println!("($0000ff) = {:02X}", self._read(0x0000ff).0);
+            println!("($000100) = {:02X}", self._read(0x000100).0);
+        }
+
+        if self.debug_cnt == 1 {
             let (prg_data, prg_mirror) = if self.prg_bank == 0x7e || self.prg_bank == 0x7f {
                 (&self.wram[..], self.wram.len()-1)
             } else {
@@ -2864,7 +2841,7 @@ impl Cpu65c816 {
                 format!("{}",
                     disassembler::instr_disassembly(
                         self.prg_bank,
-                        self.pc,
+                        self.pc-1,
                         prg_data,
                         prg_mirror,
                         self.is_flag_set(Flag::FlagM), 
@@ -2891,13 +2868,11 @@ impl Cpu65c816 {
             (0x01, _, RegSize::Byte, _) => {
                 let addr = self.direct_x_indirect8();
                 self.ora_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x01, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x_indirect16();
                 self.ora_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -2917,13 +2892,11 @@ impl Cpu65c816 {
             (0x03, _, RegSize::Byte, _) => {
                 let addr = self.stack_s8();
                 self.ora_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x03, _, RegSize::TwoBytes, _) => {
                 let addr = self.stack_s16();
                 self.ora_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -2931,13 +2904,11 @@ impl Cpu65c816 {
             (0x04, _, RegSize::Byte, _) => {
                 let addr = self.direct8();
                 self.tsb_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x04, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct16();
                 self.tsb_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -2945,13 +2916,11 @@ impl Cpu65c816 {
             (0x05, _, RegSize::Byte, _) => {
                 let addr = self.direct8();
                 self.ora_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x05, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct16();
                 self.ora_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -2959,13 +2928,11 @@ impl Cpu65c816 {
             (0x06, _, RegSize::Byte, _) => {
                 let addr = self.direct8();
                 self.asl_mem_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x06, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct16();
                 self.asl_mem_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -2973,25 +2940,21 @@ impl Cpu65c816 {
             (0x07, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_long8();
                 self.ora_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x07, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_long16();
                 self.ora_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // php, imp
             (0x08, CpuMode::Emulation, ..) => {
                 self.php_e();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x08, CpuMode::Native, ..) => {
                 self.php_n();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -2999,37 +2962,31 @@ impl Cpu65c816 {
             (0x09, _, RegSize::Byte, _) => {
                 let addr = self.immediate8();
                 self.ora_m8(addr);
-                self.pc += 2;
                 extra_clocks = 0;
             }
             (0x09, _, RegSize::TwoBytes, _) => {
                 let addr = self.immediate16();
                 self.ora_m16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
             // asl, acc
             (0x0A, _, RegSize::Byte, _) => {
                 self.asl_acc_m8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x0A, _, RegSize::TwoBytes, _) => {
                 self.asl_acc_m16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // phd, imp
             (0x0B, CpuMode::Emulation, ..) => {
                 self.phd_e();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x0B, CpuMode::Native, ..) => {
                 self.phd_n();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -3037,13 +2994,11 @@ impl Cpu65c816 {
             (0x0C, _, RegSize::Byte, _) => {
                 let addr = self.absolute8();
                 self.tsb_m8(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x0C, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute16();
                 self.tsb_m16(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -3051,13 +3006,11 @@ impl Cpu65c816 {
             (0x0D, _, RegSize::Byte, _) => {
                 let addr = self.absolute8();
                 self.ora_m8(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
             (0x0D, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute16();
                 self.ora_m16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
@@ -3065,34 +3018,29 @@ impl Cpu65c816 {
             (0x0E, _, RegSize::Byte, _) => {
                 let addr = self.absolute8();
                 self.asl_mem_m8(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x0E, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute16();
                 self.asl_mem_m16(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // ora, long
             (0x0F, _, RegSize::Byte, _) => {
-                let addr = self.absolute_long8();
+                let addr = self.long8();
                 self.ora_m8(addr);
-                self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x0F, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute_long16();
+                let addr = self.long16();
                 self.ora_m16(addr);
-                self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // bpl, rel8
             (0x10, ..) => {
                 let addr = self.relative8();
-                self.pc += 2;
                 self.bpl_all(addr);
                 extra_clocks = 0;
             }
@@ -3101,8 +3049,6 @@ impl Cpu65c816 {
             (0x11, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_y8();
                 self.ora_m8(addr);
-                self.pc += 2;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = Cpu65c816::ONE_CYCLE;
                 } else {
@@ -3112,8 +3058,6 @@ impl Cpu65c816 {
             (0x11, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_y16();
                 self.ora_m16(addr);
-                self.pc += 2;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = Cpu65c816::ONE_CYCLE;
                 } else {
@@ -3125,13 +3069,11 @@ impl Cpu65c816 {
             (0x12, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect8();
                 self.ora_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x12, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect16();
                 self.ora_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -3139,13 +3081,11 @@ impl Cpu65c816 {
             (0x13, _, RegSize::Byte, _) => {
                 let addr = self.stack_indirect_y8();
                 self.ora_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x13, _, RegSize::TwoBytes, _) => {
                 let addr = self.stack_indirect_y16();
                 self.ora_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -3153,13 +3093,11 @@ impl Cpu65c816 {
             (0x14, _, RegSize::Byte, _) => {
                 let addr = self.direct8();
                 self.trb_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x14, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct16();
                 self.trb_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -3167,13 +3105,11 @@ impl Cpu65c816 {
             (0x15, _, RegSize::Byte, _) => {
                 let addr = self.direct_x8();
                 self.ora_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x15, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x16();
                 self.ora_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -3181,13 +3117,11 @@ impl Cpu65c816 {
             (0x16, _, RegSize::Byte, _) => {
                 let addr = self.direct_x8();
                 self.asl_mem_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::THREE_CYCLE;
             }
             (0x16, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x16();
                 self.asl_mem_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::THREE_CYCLE;
             }
 
@@ -3195,20 +3129,17 @@ impl Cpu65c816 {
             (0x17, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_long_y8();
                 self.ora_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x17, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_long_y16();
                 self.ora_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // clc, imp
             (0x18, ..) => {
                 self.clc_all();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -3216,8 +3147,6 @@ impl Cpu65c816 {
             (0x19, _, RegSize::Byte, _) => {
                 let addr = self.absolute_y8();
                 self.ora_m8(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -3227,8 +3156,6 @@ impl Cpu65c816 {
             (0x19, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_y16();
                 self.ora_m16(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -3239,24 +3166,20 @@ impl Cpu65c816 {
             // inc, acc
             (0x1A, _, RegSize::Byte, _) => {
                 self.inc_acc_m8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x1A, _, RegSize::TwoBytes, _) => {
                 self.inc_acc_m16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // tcs, imp
             (0x1B, CpuMode::Emulation, ..) => {
                 self.tcs_e();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x1B, CpuMode::Native, ..) => {
                 self.tcs_n();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -3264,13 +3187,11 @@ impl Cpu65c816 {
             (0x1C, _, RegSize::Byte, _) => {
                 let addr = self.absolute8();
                 self.trb_m8(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x1C, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute16();
                 self.trb_m16(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -3278,8 +3199,6 @@ impl Cpu65c816 {
             (0x1D, _, RegSize::Byte, _) => {
                 let addr = self.absolute_x8();
                 self.ora_m8(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -3289,8 +3208,6 @@ impl Cpu65c816 {
             (0x1D, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_x16();
                 self.ora_m16(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -3302,27 +3219,23 @@ impl Cpu65c816 {
             (0x1E, _, RegSize::Byte, _) => {
                 let addr = self.absolute_x8();
                 self.asl_mem_m8(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x1E, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_x16();
                 self.asl_mem_m16(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
             // ora, long,X
             (0x1F, _, RegSize::Byte, _) => {
-                let addr = self.absolute_long_x8();
+                let addr = self.long_x8();
                 self.ora_m8(addr);
-                self.pc += 4;
                 extra_clocks = 0;
             }
             (0x1F, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute_long_x16();
+                let addr = self.long_x16();
                 self.ora_m16(addr);
-                self.pc += 4;
                 extra_clocks = 0;
             }
 
@@ -3342,24 +3255,22 @@ impl Cpu65c816 {
             (0x21, _, RegSize::Byte, _) => {
                 let addr = self.direct_x_indirect8();
                 self.and_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x21, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x_indirect16();
                 self.and_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
             // jsl, long
             (0x22, CpuMode::Emulation, ..) => {
-                let addr = self.absolute_long8();
+                let addr = self.long8();
                 self.jsl_e(addr);
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x22, CpuMode::Native, ..) => {
-                let addr = self.absolute_long8();
+                let addr = self.long8();
                 self.jsl_n(addr);
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
@@ -3368,13 +3279,11 @@ impl Cpu65c816 {
             (0x23, _, RegSize::Byte, _) => {
                 let addr = self.stack_s8();
                 self.and_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x23, _, RegSize::TwoBytes, _) => {
                 let addr = self.stack_s16();
                 self.and_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -3382,13 +3291,11 @@ impl Cpu65c816 {
             (0x24, _, RegSize::Byte, _) => {
                 let addr = self.direct8();
                 self.bit_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x24, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct16();
                 self.bit_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -3396,13 +3303,11 @@ impl Cpu65c816 {
             (0x25, _, RegSize::Byte, _) => {
                 let addr = self.direct8();
                 self.and_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x25, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct16();
                 self.and_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -3410,13 +3315,11 @@ impl Cpu65c816 {
             (0x26, _, RegSize::Byte, _) => {
                 let addr = self.direct8();
                 self.rol_mem_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x26, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct16();
                 self.rol_mem_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -3424,25 +3327,21 @@ impl Cpu65c816 {
             (0x27, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_long8();
                 self.and_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x27, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_long16();
                 self.and_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // plp, imp
             (0x28, CpuMode::Emulation, ..) => {
                 self.plp_e();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x28, CpuMode::Native, ..) => {
                 self.plp_n();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -3450,37 +3349,31 @@ impl Cpu65c816 {
             (0x29, _, RegSize::Byte, _) => {
                 let addr = self.immediate8();
                 self.and_m8(addr);
-                self.pc += 2;
                 extra_clocks = 0;
             }
             (0x29, _, RegSize::TwoBytes, _) => {
                 let addr = self.immediate16();
                 self.and_m16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
             // rol, acc
             (0x2A, _, RegSize::Byte, _) => {
                 self.rol_acc_m8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x2A, _, RegSize::TwoBytes, _) => {
                 self.rol_acc_m16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // pld, imp
             (0x2B, CpuMode::Emulation, ..) => {
                 self.pld_e();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x2B, CpuMode::Native, ..) => {
                 self.pld_n();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -3488,13 +3381,11 @@ impl Cpu65c816 {
             (0x2C, _, RegSize::Byte, _) => {
                 let addr = self.absolute8();
                 self.bit_m8(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
             (0x2C, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute16();
                 self.bit_m16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
@@ -3502,13 +3393,11 @@ impl Cpu65c816 {
             (0x2D, _, RegSize::Byte, _) => {
                 let addr = self.absolute8();
                 self.and_m8(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
             (0x2D, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute16();
                 self.and_m16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
@@ -3516,34 +3405,29 @@ impl Cpu65c816 {
             (0x2E, _, RegSize::Byte, _) => {
                 let addr = self.absolute8();
                 self.rol_mem_m8(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x2E, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute16();
                 self.rol_mem_m16(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // and, long
             (0x2F, _, RegSize::Byte, _) => {
-                let addr = self.absolute_long8();
+                let addr = self.long8();
                 self.and_m8(addr);
-                self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x2F, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute_long16();
+                let addr = self.long16();
                 self.and_m16(addr);
-                self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // bmi, rel8
             (0x30, ..) => {
                 let addr = self.relative8();
-                self.pc += 2;
                 self.bmi_all(addr);
                 extra_clocks = 0;
             }
@@ -3552,8 +3436,6 @@ impl Cpu65c816 {
             (0x31, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_y8();
                 self.and_m8(addr);
-                self.pc += 2;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = Cpu65c816::ONE_CYCLE;
                 } else {
@@ -3563,8 +3445,6 @@ impl Cpu65c816 {
             (0x31, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_y16();
                 self.and_m16(addr);
-                self.pc += 2;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = Cpu65c816::ONE_CYCLE;
                 } else {
@@ -3576,13 +3456,11 @@ impl Cpu65c816 {
             (0x32, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect8();
                 self.and_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x32, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect16();
                 self.and_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -3590,13 +3468,11 @@ impl Cpu65c816 {
             (0x33, _, RegSize::Byte, _) => {
                 let addr = self.stack_indirect_y8();
                 self.and_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x33, _, RegSize::TwoBytes, _) => {
                 let addr = self.stack_indirect_y16();
                 self.and_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -3604,13 +3480,11 @@ impl Cpu65c816 {
             (0x34, _, RegSize::Byte, _) => {
                 let addr = self.direct_x8();
                 self.bit_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x34, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x16();
                 self.bit_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -3618,13 +3492,11 @@ impl Cpu65c816 {
             (0x35, _, RegSize::Byte, _) => {
                 let addr = self.direct_x8();
                 self.and_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x35, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x16();
                 self.and_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -3632,13 +3504,11 @@ impl Cpu65c816 {
             (0x36, _, RegSize::Byte, _) => {
                 let addr = self.direct_x8();
                 self.rol_mem_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::THREE_CYCLE;
             }
             (0x36, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x16();
                 self.rol_mem_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::THREE_CYCLE;
             }
 
@@ -3646,20 +3516,17 @@ impl Cpu65c816 {
             (0x37, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_long_y8();
                 self.and_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x37, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_long_y16();
                 self.and_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // sec, imp
             (0x38, ..) => {
                 self.sec_all();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -3667,8 +3534,6 @@ impl Cpu65c816 {
             (0x39, _, RegSize::Byte, _) => {
                 let addr = self.absolute_y8();
                 self.and_m8(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -3678,8 +3543,6 @@ impl Cpu65c816 {
             (0x39, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_y16();
                 self.and_m16(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -3690,29 +3553,16 @@ impl Cpu65c816 {
             // dec, acc
             (0x3A, _, RegSize::Byte, _) => {
                 self.dec_acc_m8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x3A, _, RegSize::TwoBytes, _) => {
                 self.dec_acc_m16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // tsc, imp
-            (0x3B, CpuMode::Emulation, ..) => {
-                self.tsc_e();
-                self.pc += 1;
-                extra_clocks = Cpu65c816::ONE_CYCLE;
-            }
-            (0x3B, _, RegSize::Byte, _) => {
-                self.tsc_m8();
-                self.pc += 1;
-                extra_clocks = Cpu65c816::ONE_CYCLE;
-            }
-            (0x3B, _, RegSize::TwoBytes, _) => {
-                self.tsc_m16();
-                self.pc += 1;
+            (0x3B, ..) => {
+                self.tsc_all();
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -3720,8 +3570,6 @@ impl Cpu65c816 {
             (0x3C, _, RegSize::Byte, _) => {
                 let addr = self.absolute_x8();
                 self.bit_m8(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -3731,8 +3579,6 @@ impl Cpu65c816 {
             (0x3C, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_x16();
                 self.bit_m16(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -3744,8 +3590,6 @@ impl Cpu65c816 {
             (0x3D, _, RegSize::Byte, _) => {
                 let addr = self.absolute_x8();
                 self.and_m8(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -3755,8 +3599,6 @@ impl Cpu65c816 {
             (0x3D, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_x16();
                 self.and_m16(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -3768,27 +3610,23 @@ impl Cpu65c816 {
             (0x3E, _, RegSize::Byte, _) => {
                 let addr = self.absolute_x8();
                 self.rol_mem_m8(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x3E, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_x16();
                 self.rol_mem_m16(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
             // and, long,X
             (0x3F, _, RegSize::Byte, _) => {
-                let addr = self.absolute_long_x8();
+                let addr = self.long_x8();
                 self.and_m8(addr);
-                self.pc += 4;
                 extra_clocks = 0;
             }
             (0x3F, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute_long_x16();
+                let addr = self.long_x16();
                 self.and_m16(addr);
-                self.pc += 4;
                 extra_clocks = 0;
             }
 
@@ -3806,13 +3644,11 @@ impl Cpu65c816 {
             (0x41, _, RegSize::Byte, _) => {
                 let addr = self.direct_x_indirect8();
                 self.eor_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x41, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x_indirect16();
                 self.eor_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -3820,7 +3656,6 @@ impl Cpu65c816 {
             (0x42, ..) => {
                 let addr = self.immediate8();
                 self.wdm_all(addr);
-                self.pc += 2;
                 extra_clocks = 0;
             }
 
@@ -3828,13 +3663,11 @@ impl Cpu65c816 {
             (0x43, _, RegSize::Byte, _) => {
                 let addr = self.stack_s8();
                 self.eor_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x43, _, RegSize::TwoBytes, _) => {
                 let addr = self.stack_s16();
                 self.eor_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -3842,7 +3675,6 @@ impl Cpu65c816 {
             (0x44, ..) => {
                 let addr = self.src_dst();
                 self.mvp_all(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -3850,13 +3682,11 @@ impl Cpu65c816 {
             (0x45, _, RegSize::Byte, _) => {
                 let addr = self.direct8();
                 self.eor_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x45, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct16();
                 self.eor_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -3864,13 +3694,11 @@ impl Cpu65c816 {
             (0x46, _, RegSize::Byte, _) => {
                 let addr = self.direct8();
                 self.lsr_mem_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x46, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct16();
                 self.lsr_mem_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -3878,30 +3706,25 @@ impl Cpu65c816 {
             (0x47, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_long8();
                 self.eor_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x47, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_long16();
                 self.eor_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // pha, imp
             (0x48, CpuMode::Emulation, ..) => {
                 self.pha_e();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x48, _, RegSize::Byte, _) => {
                 self.pha_m8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x48, _, RegSize::TwoBytes, _) => {
                 self.pha_m16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -3909,37 +3732,31 @@ impl Cpu65c816 {
             (0x49, _, RegSize::Byte, _) => {
                 let addr = self.immediate8();
                 self.eor_m8(addr);
-                self.pc += 2;
                 extra_clocks = 0;
             }
             (0x49, _, RegSize::TwoBytes, _) => {
                 let addr = self.immediate16();
                 self.eor_m16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
             // lsr, acc
             (0x4A, _, RegSize::Byte, _) => {
                 self.lsr_acc_m8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x4A, _, RegSize::TwoBytes, _) => {
                 self.lsr_acc_m16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // phk, imp
             (0x4B, CpuMode::Emulation, ..) => {
                 self.phk_e();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x4B, CpuMode::Native, ..) => {
                 self.phk_n();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -3954,13 +3771,11 @@ impl Cpu65c816 {
             (0x4D, _, RegSize::Byte, _) => {
                 let addr = self.absolute8();
                 self.eor_m8(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
             (0x4D, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute16();
                 self.eor_m16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
@@ -3968,34 +3783,29 @@ impl Cpu65c816 {
             (0x4E, _, RegSize::Byte, _) => {
                 let addr = self.absolute8();
                 self.lsr_mem_m8(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x4E, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute16();
                 self.lsr_mem_m16(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // eor, long
             (0x4F, _, RegSize::Byte, _) => {
-                let addr = self.absolute_long8();
+                let addr = self.long8();
                 self.eor_m8(addr);
-                self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x4F, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute_long16();
+                let addr = self.long16();
                 self.eor_m16(addr);
-                self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // bvc, rel8
             (0x50, ..) => {
                 let addr = self.relative8();
-                self.pc += 2;
                 self.bvc_all(addr);
                 extra_clocks = 0;
             }
@@ -4004,8 +3814,6 @@ impl Cpu65c816 {
             (0x51, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_y8();
                 self.eor_m8(addr);
-                self.pc += 2;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = Cpu65c816::ONE_CYCLE;
                 } else {
@@ -4015,8 +3823,6 @@ impl Cpu65c816 {
             (0x51, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_y16();
                 self.eor_m16(addr);
-                self.pc += 2;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = Cpu65c816::ONE_CYCLE;
                 } else {
@@ -4028,13 +3834,11 @@ impl Cpu65c816 {
             (0x52, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect8();
                 self.eor_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x52, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect16();
                 self.eor_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -4042,13 +3846,11 @@ impl Cpu65c816 {
             (0x53, _, RegSize::Byte, _) => {
                 let addr = self.stack_indirect_y8();
                 self.eor_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x53, _, RegSize::TwoBytes, _) => {
                 let addr = self.stack_indirect_y16();
                 self.eor_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -4056,7 +3858,6 @@ impl Cpu65c816 {
             (0x54, ..) => {
                 let addr = self.src_dst();
                 self.mvn_all(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -4064,13 +3865,11 @@ impl Cpu65c816 {
             (0x55, _, RegSize::Byte, _) => {
                 let addr = self.direct_x8();
                 self.eor_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x55, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x16();
                 self.eor_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -4078,13 +3877,11 @@ impl Cpu65c816 {
             (0x56, _, RegSize::Byte, _) => {
                 let addr = self.direct_x8();
                 self.lsr_mem_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::THREE_CYCLE;
             }
             (0x56, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x16();
                 self.lsr_mem_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::THREE_CYCLE;
             }
 
@@ -4092,20 +3889,17 @@ impl Cpu65c816 {
             (0x57, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_long_y8();
                 self.eor_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x57, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_long_y16();
                 self.eor_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // cli, imp
             (0x58, ..) => {
                 self.cli_all();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -4113,8 +3907,6 @@ impl Cpu65c816 {
             (0x59, _, RegSize::Byte, _) => {
                 let addr = self.absolute_y8();
                 self.eor_m8(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -4124,8 +3916,6 @@ impl Cpu65c816 {
             (0x59, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_y16();
                 self.eor_m16(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -4136,30 +3926,26 @@ impl Cpu65c816 {
             // phy, imp
             (0x5A, CpuMode::Emulation, ..) => {
                 self.phy_e();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x5A, _, _, RegSize::Byte) => {
                 self.phy_x8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x5A, _, _, RegSize::TwoBytes) => {
                 self.phy_x16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // tcd, imp
             (0x5B, ..) => {
                 self.tcd_all();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // jmp, long
             (0x5C, ..) => {
-                let addr = self.absolute_long8();
+                let addr = self.long8();
                 self.jmp_long_all(addr);
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
@@ -4168,8 +3954,6 @@ impl Cpu65c816 {
             (0x5D, _, RegSize::Byte, _) => {
                 let addr = self.absolute_x8();
                 self.eor_m8(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -4179,8 +3963,6 @@ impl Cpu65c816 {
             (0x5D, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_x16();
                 self.eor_m16(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -4192,27 +3974,23 @@ impl Cpu65c816 {
             (0x5E, _, RegSize::Byte, _) => {
                 let addr = self.absolute_x8();
                 self.lsr_mem_m8(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x5E, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_x16();
                 self.lsr_mem_m16(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
             // eor, long,X
             (0x5F, _, RegSize::Byte, _) => {
-                let addr = self.absolute_long_x8();
+                let addr = self.long_x8();
                 self.eor_m8(addr);
-                self.pc += 4;
                 extra_clocks = 0;
             }
             (0x5F, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute_long_x16();
+                let addr = self.long_x16();
                 self.eor_m16(addr);
-                self.pc += 4;
                 extra_clocks = 0;
             }
 
@@ -4229,14 +4007,15 @@ impl Cpu65c816 {
             // adc, (dir,X)
             (0x61, _, RegSize::Byte, _) => {
                 let addr = self.direct_x_indirect8();
+
+                println!("ACD (dir,X) w/ addr = ${addr:06X}, data = 0x{:02X}", self._read(addr).0);
+
                 self.adc_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x61, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x_indirect16();
                 self.adc_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -4244,13 +4023,11 @@ impl Cpu65c816 {
             (0x62, CpuMode::Emulation, ..) => {
                 let addr = self.immediate16();
                 self.per_e(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x62, CpuMode::Native, ..) => {
                 let addr = self.immediate16();
                 self.per_n(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -4258,13 +4035,11 @@ impl Cpu65c816 {
             (0x63, _, RegSize::Byte, _) => {
                 let addr = self.stack_s8();
                 self.adc_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x63, _, RegSize::TwoBytes, _) => {
                 let addr = self.stack_s16();
                 self.adc_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -4272,13 +4047,11 @@ impl Cpu65c816 {
             (0x64, _, RegSize::Byte, _) => {
                 let addr = self.direct8();
                 self.stz_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x64, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct16();
                 self.stz_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -4286,13 +4059,11 @@ impl Cpu65c816 {
             (0x65, _, RegSize::Byte, _) => {
                 let addr = self.direct8();
                 self.adc_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x65, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct16();
                 self.adc_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -4300,13 +4071,11 @@ impl Cpu65c816 {
             (0x66, _, RegSize::Byte, _) => {
                 let addr = self.direct8();
                 self.ror_mem_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x66, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct16();
                 self.ror_mem_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -4314,30 +4083,25 @@ impl Cpu65c816 {
             (0x67, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_long8();
                 self.adc_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x67, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_long16();
                 self.adc_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // pla, imp
             (0x68, CpuMode::Emulation, ..) => {
                 self.pla_e();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x68, _, RegSize::Byte, _) => {
                 self.pla_m8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x68, _, RegSize::TwoBytes, _) => {
                 self.pla_m16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -4345,25 +4109,21 @@ impl Cpu65c816 {
             (0x69, _, RegSize::Byte, _) => {
                 let addr = self.immediate8();
                 self.adc_m8(addr);
-                self.pc += 2;
                 extra_clocks = 0;
             }
             (0x69, _, RegSize::TwoBytes, _) => {
                 let addr = self.immediate16();
                 self.adc_m16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
             // ror, acc
             (0x6A, _, RegSize::Byte, _) => {
                 self.ror_acc_m8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x6A, _, RegSize::TwoBytes, _) => {
                 self.ror_acc_m16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -4379,7 +4139,7 @@ impl Cpu65c816 {
 
             // jmp, (abs)
             (0x6C, ..) => {
-                let addr = self.absolute_indirect();
+                let addr = self.indirect();
                 self.jmp_all(addr);
                 extra_clocks = 0;
             }
@@ -4388,13 +4148,11 @@ impl Cpu65c816 {
             (0x6D, _, RegSize::Byte, _) => {
                 let addr = self.absolute8();
                 self.adc_m8(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
             (0x6D, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute16();
                 self.adc_m16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
@@ -4402,34 +4160,29 @@ impl Cpu65c816 {
             (0x6E, _, RegSize::Byte, _) => {
                 let addr = self.absolute8();
                 self.ror_mem_m8(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x6E, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute16();
                 self.ror_mem_m16(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // adc, long
             (0x6F, _, RegSize::Byte, _) => {
-                let addr = self.absolute_long8();
+                let addr = self.long8();
                 self.adc_m8(addr);
-                self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x6F, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute_long16();
+                let addr = self.long16();
                 self.adc_m16(addr);
-                self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // bvs, rel8
             (0x70, ..) => {
                 let addr = self.relative8();
-                self.pc += 2;
                 self.bvs_all(addr);
                 extra_clocks = 0;
             }
@@ -4438,8 +4191,6 @@ impl Cpu65c816 {
             (0x71, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_y8();
                 self.adc_m8(addr);
-                self.pc += 2;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = Cpu65c816::ONE_CYCLE;
                 } else {
@@ -4449,8 +4200,6 @@ impl Cpu65c816 {
             (0x71, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_y16();
                 self.adc_m16(addr);
-                self.pc += 2;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = Cpu65c816::ONE_CYCLE;
                 } else {
@@ -4462,13 +4211,11 @@ impl Cpu65c816 {
             (0x72, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect8();
                 self.adc_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x72, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect16();
                 self.adc_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -4476,13 +4223,11 @@ impl Cpu65c816 {
             (0x73, _, RegSize::Byte, _) => {
                 let addr = self.stack_indirect_y8();
                 self.adc_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x73, _, RegSize::TwoBytes, _) => {
                 let addr = self.stack_indirect_y16();
                 self.adc_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -4490,13 +4235,11 @@ impl Cpu65c816 {
             (0x74, _, RegSize::Byte, _) => {
                 let addr = self.direct_x8();
                 self.stz_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x74, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x16();
                 self.stz_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -4504,13 +4247,11 @@ impl Cpu65c816 {
             (0x75, _, RegSize::Byte, _) => {
                 let addr = self.direct_x8();
                 self.adc_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x75, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x16();
                 self.adc_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -4518,13 +4259,11 @@ impl Cpu65c816 {
             (0x76, _, RegSize::Byte, _) => {
                 let addr = self.direct_x8();
                 self.ror_mem_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::THREE_CYCLE;
             }
             (0x76, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x16();
                 self.ror_mem_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::THREE_CYCLE;
             }
 
@@ -4532,20 +4271,17 @@ impl Cpu65c816 {
             (0x77, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_long_y8();
                 self.adc_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x77, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_long_y16();
                 self.adc_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // sei, imp
             (0x78, ..) => {
                 self.sei_all();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -4553,8 +4289,6 @@ impl Cpu65c816 {
             (0x79, _, RegSize::Byte, _) => {
                 let addr = self.absolute_y8();
                 self.adc_m8(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -4564,8 +4298,6 @@ impl Cpu65c816 {
             (0x79, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_y16();
                 self.adc_m16(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -4576,30 +4308,26 @@ impl Cpu65c816 {
             // ply, imp
             (0x7A, CpuMode::Emulation, ..) => {
                 self.ply_e();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x7A, _, _, RegSize::Byte) => {
                 self.ply_x8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x7A, _, _, RegSize::TwoBytes) => {
                 self.ply_x16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
             // tdc, imp
             (0x7B, ..) => {
                 self.tdc_all();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // jmp, (abs,X)
             (0x7C, ..) => {
-                let addr = self.absolute_x_indirect8();
+                let addr = self.x_indirect8();
                 self.jmp_all(addr);
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
@@ -4608,8 +4336,6 @@ impl Cpu65c816 {
             (0x7D, _, RegSize::Byte, _) => {
                 let addr = self.absolute_x8();
                 self.adc_m8(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -4619,8 +4345,6 @@ impl Cpu65c816 {
             (0x7D, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_x16();
                 self.adc_m16(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -4632,34 +4356,29 @@ impl Cpu65c816 {
             (0x7E, _, RegSize::Byte, _) => {
                 let addr = self.absolute_x8();
                 self.ror_mem_m8(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x7E, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_x16();
                 self.ror_mem_m16(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
             // adc, long,X
             (0x7F, _, RegSize::Byte, _) => {
-                let addr = self.absolute_long_x8();
+                let addr = self.long_x8();
                 self.adc_m8(addr);
-                self.pc += 4;
                 extra_clocks = 0;
             }
             (0x7F, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute_long_x16();
+                let addr = self.long_x16();
                 self.adc_m16(addr);
-                self.pc += 4;
                 extra_clocks = 0;
             }
 
             // bra, rel8
             (0x80, ..) => {
                 let addr = self.relative8();
-                self.pc += 2;
                 self.bra_all(addr);
                 extra_clocks = 0;
             }
@@ -4668,20 +4387,17 @@ impl Cpu65c816 {
             (0x81, _, RegSize::Byte, _) => {
                 let addr = self.direct_x_indirect8();
                 self.sta_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x81, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x_indirect16();
                 self.sta_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
             // bra, rel16
             (0x82, ..) => {
                 let addr = self.relative16();
-                self.pc += 3;
                 self.bra_all(addr);
                 extra_clocks = 0;
             }
@@ -4690,13 +4406,11 @@ impl Cpu65c816 {
             (0x83, _, RegSize::Byte, _) => {
                 let addr = self.stack_s8();
                 self.sta_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x83, _, RegSize::TwoBytes, _) => {
                 let addr = self.stack_s16();
                 self.sta_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -4704,13 +4418,11 @@ impl Cpu65c816 {
             (0x84, _, _, RegSize::Byte) => {
                 let addr = self.direct8();
                 self.sty_x8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x84, _, _, RegSize::TwoBytes) => {
                 let addr = self.direct16();
                 self.sty_x16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -4718,13 +4430,11 @@ impl Cpu65c816 {
             (0x85, _, RegSize::Byte, _) => {
                 let addr = self.direct8();
                 self.sta_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x85, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct16();
                 self.sta_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -4732,13 +4442,11 @@ impl Cpu65c816 {
             (0x86, _, _, RegSize::Byte) => {
                 let addr = self.direct8();
                 self.stx_x8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x86, _, _, RegSize::TwoBytes) => {
                 let addr = self.direct16();
                 self.stx_x16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -4746,25 +4454,21 @@ impl Cpu65c816 {
             (0x87, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_long8();
                 self.sta_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x87, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_long16();
                 self.sta_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // dey, imp
             (0x88, _, _, RegSize::Byte) => {
                 self.dey_x8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x88, _, _, RegSize::TwoBytes) => {
                 self.dey_x16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -4772,37 +4476,31 @@ impl Cpu65c816 {
             (0x89, _, RegSize::Byte, _) => {
                 let addr = self.immediate8();
                 self.bit_imm_m8(addr);
-                self.pc += 2;
                 extra_clocks = 0;
             }
             (0x89, _, RegSize::TwoBytes, _) => {
                 let addr = self.immediate16();
                 self.bit_imm_m16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
             // txa, imp
             (0x8A, _, RegSize::Byte, _) => {
                 self.txa_m8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x8A, _, RegSize::TwoBytes, _) => {
                 self.txa_m16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // phb, imp
             (0x8B, CpuMode::Emulation, ..) => {
                 self.phb_e();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x8B, CpuMode::Native, ..) => {
                 self.phb_n();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -4810,13 +4508,11 @@ impl Cpu65c816 {
             (0x8C, _, _, RegSize::Byte) => {
                 let addr = self.absolute8();
                 self.sty_x8(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
             (0x8C, _, _, RegSize::TwoBytes) => {
                 let addr = self.absolute16();
                 self.sty_x16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
@@ -4824,13 +4520,11 @@ impl Cpu65c816 {
             (0x8D, _, RegSize::Byte, _) => {
                 let addr = self.absolute8();
                 self.sta_m8(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
             (0x8D, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute16();
                 self.sta_m16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
@@ -4838,34 +4532,29 @@ impl Cpu65c816 {
             (0x8E, _, _, RegSize::Byte) => {
                 let addr = self.absolute8();
                 self.stx_x8(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
             (0x8E, _, _, RegSize::TwoBytes) => {
                 let addr = self.absolute16();
                 self.stx_x16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
             // sta, long
             (0x8F, _, RegSize::Byte, _) => {
-                let addr = self.absolute_long8();
+                let addr = self.long8();
                 self.sta_m8(addr);
-                self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x8F, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute_long16();
+                let addr = self.long16();
                 self.sta_m16(addr);
-                self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // bcc, rel8
             (0x90, ..) => {
                 let addr = self.relative8();
-                self.pc += 2;
                 self.bcc_all(addr);
                 extra_clocks = 0;
             }
@@ -4874,13 +4563,11 @@ impl Cpu65c816 {
             (0x91, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_y8();
                 self.sta_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x91, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_y16();
                 self.sta_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -4888,13 +4575,11 @@ impl Cpu65c816 {
             (0x92, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect8();
                 self.sta_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x92, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect16();
                 self.sta_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -4902,13 +4587,11 @@ impl Cpu65c816 {
             (0x93, _, RegSize::Byte, _) => {
                 let addr = self.stack_indirect_y8();
                 self.sta_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x93, _, RegSize::TwoBytes, _) => {
                 let addr = self.stack_indirect_y16();
                 self.sta_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -4916,13 +4599,11 @@ impl Cpu65c816 {
             (0x94, _, _, RegSize::Byte) => {
                 let addr = self.direct_x8();
                 self.sty_x8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x94, _, _, RegSize::TwoBytes) => {
                 let addr = self.direct_x16();
                 self.sty_x16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -4930,13 +4611,11 @@ impl Cpu65c816 {
             (0x95, _, RegSize::Byte, _) => {
                 let addr = self.direct_x8();
                 self.sta_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x95, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x16();
                 self.sta_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -4944,13 +4623,11 @@ impl Cpu65c816 {
             (0x96, _, _, RegSize::Byte) => {
                 let addr = self.direct_y8();
                 self.stx_x8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0x96, _, _, RegSize::TwoBytes) => {
                 let addr = self.direct_y16();
                 self.stx_x16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -4958,25 +4635,21 @@ impl Cpu65c816 {
             (0x97, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_long_y8();
                 self.sta_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x97, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_long_y16();
                 self.sta_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // tya, imp
             (0x98, _, RegSize::Byte, _) => {
                 self.tya_m8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x98, _, RegSize::TwoBytes, _) => {
                 self.tya_m16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -4984,37 +4657,31 @@ impl Cpu65c816 {
             (0x99, _, RegSize::Byte, _) => {
                 let addr = self.absolute_y8();
                 self.sta_m8(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x99, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_y16();
                 self.sta_m16(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // txs, imp
             (0x9A, CpuMode::Emulation, ..) => {
                 self.txs_e();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x9A, CpuMode::Native, ..) => {
                 self.txs_n();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // txy, imp
             (0x9B, _, _, RegSize::Byte) => {
                 self.txy_x8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x9B, _, _, RegSize::TwoBytes) => {
                 self.txy_x16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -5022,13 +4689,11 @@ impl Cpu65c816 {
             (0x9C, _, RegSize::Byte, _) => {
                 let addr = self.absolute8();
                 self.stz_m8(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
             (0x9C, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute16();
                 self.stz_m16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
@@ -5036,13 +4701,11 @@ impl Cpu65c816 {
             (0x9D, _, RegSize::Byte, _) => {
                 let addr = self.absolute_x8();
                 self.sta_m8(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x9D, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_x16();
                 self.sta_m16(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -5050,27 +4713,23 @@ impl Cpu65c816 {
             (0x9E, _, RegSize::Byte, _) => {
                 let addr = self.absolute_x8();
                 self.stz_m8(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0x9E, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_x16();
                 self.stz_m16(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // sta, long,X
             (0x9F, _, RegSize::Byte, _) => {
-                let addr = self.absolute_long_x8();
+                let addr = self.long_x8();
                 self.sta_m8(addr);
-                self.pc += 4;
                 extra_clocks = 0;
             }
             (0x9F, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute_long_x16();
+                let addr = self.long_x16();
                 self.sta_m16(addr);
-                self.pc += 4;
                 extra_clocks = 0;
             }
 
@@ -5078,13 +4737,11 @@ impl Cpu65c816 {
             (0xA0, _, _, RegSize::Byte) => {
                 let addr = self.immediate8();
                 self.ldy_x8(addr);
-                self.pc += 2;
                 extra_clocks = 0;
             }
             (0xA0, _, _, RegSize::TwoBytes) => {
                 let addr = self.immediate16();
                 self.ldy_x16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
@@ -5092,13 +4749,11 @@ impl Cpu65c816 {
             (0xA1, _, RegSize::Byte, _) => {
                 let addr = self.direct_x_indirect8();
                 self.lda_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0xA1, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x_indirect16();
                 self.lda_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -5106,13 +4761,11 @@ impl Cpu65c816 {
             (0xA2, _, _, RegSize::Byte) => {
                 let addr = self.immediate8();
                 self.ldx_x8(addr);
-                self.pc += 2;
                 extra_clocks = 0;
             }
             (0xA2, _, _, RegSize::TwoBytes) => {
                 let addr = self.immediate16();
                 self.ldx_x16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
@@ -5120,13 +4773,11 @@ impl Cpu65c816 {
             (0xA3, _, RegSize::Byte, _) => {
                 let addr = self.stack_s8();
                 self.lda_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xA3, _, RegSize::TwoBytes, _) => {
                 let addr = self.stack_s16();
                 self.lda_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -5134,13 +4785,11 @@ impl Cpu65c816 {
             (0xA4, _, _, RegSize::Byte) => {
                 let addr = self.direct8();
                 self.ldy_x8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xA4, _, _, RegSize::TwoBytes) => {
                 let addr = self.direct16();
                 self.ldy_x16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -5148,13 +4797,11 @@ impl Cpu65c816 {
             (0xA5, _, RegSize::Byte, _) => {
                 let addr = self.direct8();
                 self.lda_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xA5, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct16();
                 self.lda_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -5162,13 +4809,11 @@ impl Cpu65c816 {
             (0xA6, _, _, RegSize::Byte) => {
                 let addr = self.direct8();
                 self.ldx_x8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xA6, _, _, RegSize::TwoBytes) => {
                 let addr = self.direct16();
                 self.ldx_x16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -5176,25 +4821,21 @@ impl Cpu65c816 {
             (0xA7, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_long8();
                 self.lda_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xA7, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_long16();
                 self.lda_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // tay, imp
             (0xA8, _, _, RegSize::Byte) => {
                 self.tay_x8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xA8, _, _, RegSize::TwoBytes) => {
                 self.tay_x16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -5202,37 +4843,31 @@ impl Cpu65c816 {
             (0xA9, _, RegSize::Byte, _) => {
                 let addr = self.immediate8();
                 self.lda_m8(addr);
-                self.pc += 2;
                 extra_clocks = 0;
             }
             (0xA9, _, RegSize::TwoBytes, _) => {
                 let addr = self.immediate16();
                 self.lda_m16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
             // tax, imp
             (0xAA, _, _, RegSize::Byte) => {
                 self.tax_x8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xAA, _, _, RegSize::TwoBytes) => {
                 self.tax_x16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // plb, imp
             (0xAB, CpuMode::Emulation, ..) => {
                 self.plb_e();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0xAB, CpuMode::Native, ..) => {
                 self.plb_n();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -5240,13 +4875,11 @@ impl Cpu65c816 {
             (0xAC, _, _, RegSize::Byte) => {
                 let addr = self.absolute8();
                 self.ldy_x8(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
             (0xAC, _, _, RegSize::TwoBytes) => {
                 let addr = self.absolute16();
                 self.ldy_x16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
@@ -5254,13 +4887,11 @@ impl Cpu65c816 {
             (0xAD, _, RegSize::Byte, _) => {
                 let addr = self.absolute8();
                 self.lda_m8(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
             (0xAD, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute16();
                 self.lda_m16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
@@ -5268,34 +4899,29 @@ impl Cpu65c816 {
             (0xAE, _, _, RegSize::Byte) => {
                 let addr = self.absolute8();
                 self.ldx_x8(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
             (0xAE, _, _, RegSize::TwoBytes) => {
                 let addr = self.absolute16();
                 self.ldx_x16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
             // lda, long
             (0xAF, _, RegSize::Byte, _) => {
-                let addr = self.absolute_long8();
+                let addr = self.long8();
                 self.lda_m8(addr);
-                self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xAF, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute_long16();
+                let addr = self.long16();
                 self.lda_m16(addr);
-                self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // bcs, rel8
             (0xB0, ..) => {
                 let addr = self.relative8();
-                self.pc += 2;
                 self.bcs_all(addr);
                 extra_clocks = 0;
             }
@@ -5304,8 +4930,6 @@ impl Cpu65c816 {
             (0xB1, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_y8();
                 self.lda_m8(addr);
-                self.pc += 2;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = Cpu65c816::ONE_CYCLE;
                 } else {
@@ -5315,8 +4939,6 @@ impl Cpu65c816 {
             (0xB1, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_y16();
                 self.lda_m16(addr);
-                self.pc += 2;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = Cpu65c816::ONE_CYCLE;
                 } else {
@@ -5328,13 +4950,11 @@ impl Cpu65c816 {
             (0xB2, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect8();
                 self.lda_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xB2, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect16();
                 self.lda_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -5342,13 +4962,11 @@ impl Cpu65c816 {
             (0xB3, _, RegSize::Byte, _) => {
                 let addr = self.stack_indirect_y8();
                 self.lda_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0xB3, _, RegSize::TwoBytes, _) => {
                 let addr = self.stack_indirect_y16();
                 self.lda_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -5356,13 +4974,11 @@ impl Cpu65c816 {
             (0xB4, _, _, RegSize::Byte) => {
                 let addr = self.direct_x8();
                 self.ldy_x8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0xB4, _, _, RegSize::TwoBytes) => {
                 let addr = self.direct_x16();
                 self.ldy_x16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -5370,13 +4986,11 @@ impl Cpu65c816 {
             (0xB5, _, RegSize::Byte, _) => {
                 let addr = self.direct_x8();
                 self.lda_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0xB5, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x16();
                 self.lda_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -5384,13 +4998,11 @@ impl Cpu65c816 {
             (0xB6, _, _, RegSize::Byte) => {
                 let addr = self.direct_y8();
                 self.ldx_x8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0xB6, _, _, RegSize::TwoBytes) => {
                 let addr = self.direct_y16();
                 self.ldx_x16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -5398,20 +5010,17 @@ impl Cpu65c816 {
             (0xB7, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_long_y8();
                 self.lda_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xB7, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_long_y16();
                 self.lda_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // clv, imp
             (0xB8, ..) => {
                 self.clv_all();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -5419,8 +5028,6 @@ impl Cpu65c816 {
             (0xB9, _, RegSize::Byte, _) => {
                 let addr = self.absolute_y8();
                 self.lda_m8(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -5430,8 +5037,6 @@ impl Cpu65c816 {
             (0xB9, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_y16();
                 self.lda_m16(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -5442,24 +5047,20 @@ impl Cpu65c816 {
             // tsx, imp
             (0xBA, _, _, RegSize::Byte) => {
                 self.tsx_x8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xBA, _, _, RegSize::TwoBytes) => {
                 self.tsx_x16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // tyx, imp
             (0xBB, _, _, RegSize::Byte) => {
                 self.tyx_x8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xBB, _, _, RegSize::TwoBytes) => {
                 self.tyx_x16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -5467,8 +5068,6 @@ impl Cpu65c816 {
             (0xBC, _, _, RegSize::Byte) => {
                 let addr = self.absolute_x8();
                 self.ldy_x8(addr);
-                self.pc += 3;
-
                 if self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -5478,7 +5077,6 @@ impl Cpu65c816 {
             (0xBC, _, _, RegSize::TwoBytes) => {
                 let addr = self.absolute_x16();
                 self.ldy_x16(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -5486,8 +5084,6 @@ impl Cpu65c816 {
             (0xBD, _, RegSize::Byte, _) => {
                 let addr = self.absolute_x8();
                 self.lda_m8(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -5497,8 +5093,6 @@ impl Cpu65c816 {
             (0xBD, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_x16();
                 self.lda_m16(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -5510,8 +5104,6 @@ impl Cpu65c816 {
             (0xBE, _, _, RegSize::Byte) => {
                 let addr = self.absolute_y8();
                 self.ldx_x8(addr);
-                self.pc += 3;
-
                 if self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -5521,21 +5113,18 @@ impl Cpu65c816 {
             (0xBE, _, _, RegSize::TwoBytes) => {
                 let addr = self.absolute_y16();
                 self.ldx_x16(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // lda, long,X
             (0xBF, _, RegSize::Byte, _) => {
-                let addr = self.absolute_long_x8();
+                let addr = self.long_x8();
                 self.lda_m8(addr);
-                self.pc += 4;
                 extra_clocks = 0;
             }
             (0xBF, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute_long_x16();
+                let addr = self.long_x16();
                 self.lda_m16(addr);
-                self.pc += 4;
                 extra_clocks = 0;
             }
 
@@ -5543,13 +5132,11 @@ impl Cpu65c816 {
             (0xC0, _, _, RegSize::Byte) => {
                 let addr = self.immediate8();
                 self.cpy_x8(addr);
-                self.pc += 2;
                 extra_clocks = 0;
             }
             (0xC0, _, _, RegSize::TwoBytes) => {
                 let addr = self.immediate16();
                 self.cpy_x16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
@@ -5557,13 +5144,11 @@ impl Cpu65c816 {
             (0xC1, _, RegSize::Byte, _) => {
                 let addr = self.direct_x_indirect8();
                 self.cmp_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0xC1, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x_indirect16();
                 self.cmp_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -5571,13 +5156,11 @@ impl Cpu65c816 {
             (0xC2, CpuMode::Emulation, ..) => {
                 let addr = self.immediate8();
                 self.rep_e(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xC2, CpuMode::Native, ..) => {
                 let addr = self.immediate8();
                 self.rep_n(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -5585,13 +5168,11 @@ impl Cpu65c816 {
             (0xC3, _, RegSize::Byte, _) => {
                 let addr = self.stack_s8();
                 self.cmp_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xC3, _, RegSize::TwoBytes, _) => {
                 let addr = self.stack_s16();
                 self.cmp_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -5599,13 +5180,11 @@ impl Cpu65c816 {
             (0xC4, _, _, RegSize::Byte) => {
                 let addr = self.direct8();
                 self.cpy_x8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xC4, _, _, RegSize::TwoBytes) => {
                 let addr = self.direct16();
                 self.cpy_x16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -5613,13 +5192,11 @@ impl Cpu65c816 {
             (0xC5, _, RegSize::Byte, _) => {
                 let addr = self.direct8();
                 self.cmp_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xC5, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct16();
                 self.cmp_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -5627,13 +5204,11 @@ impl Cpu65c816 {
             (0xC6, _, RegSize::Byte, _) => {
                 let addr = self.direct8();
                 self.dec_mem_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0xC6, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct16();
                 self.dec_mem_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -5641,25 +5216,21 @@ impl Cpu65c816 {
             (0xC7, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_long8();
                 self.cmp_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xC7, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_long16();
                 self.cmp_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // iny, imp
             (0xC8, _, _, RegSize::Byte) => {
                 self.iny_x8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xC8, _, _, RegSize::TwoBytes) => {
                 self.iny_x16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -5667,32 +5238,27 @@ impl Cpu65c816 {
             (0xC9, _, RegSize::Byte, _) => {
                 let addr = self.immediate8();
                 self.cmp_m8(addr);
-                self.pc += 2;
                 extra_clocks = 0;
             }
             (0xC9, _, RegSize::TwoBytes, _) => {
                 let addr = self.immediate16();
                 self.cmp_m16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
             // dex, imp
             (0xCA, _, _, RegSize::Byte) => {
                 self.dex_x8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xCA, _, _, RegSize::TwoBytes) => {
                 self.dex_x16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // wai, imp
             (0xCB, ..) => {
                 self.wai_all();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -5700,13 +5266,11 @@ impl Cpu65c816 {
             (0xCC, _, _, RegSize::Byte) => {
                 let addr = self.absolute8();
                 self.cpy_x8(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
             (0xCC, _, _, RegSize::TwoBytes) => {
                 let addr = self.absolute16();
                 self.cpy_x16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
@@ -5714,13 +5278,11 @@ impl Cpu65c816 {
             (0xCD, _, RegSize::Byte, _) => {
                 let addr = self.absolute8();
                 self.cmp_m8(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
             (0xCD, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute16();
                 self.cmp_m16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
@@ -5728,34 +5290,29 @@ impl Cpu65c816 {
             (0xCE, _, RegSize::Byte, _) => {
                 let addr = self.absolute8();
                 self.dec_mem_m8(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xCE, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute16();
                 self.dec_mem_m16(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // cmp, long
             (0xCF, _, RegSize::Byte, _) => {
-                let addr = self.absolute_long8();
+                let addr = self.long8();
                 self.cmp_m8(addr);
-                self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xCF, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute_long16();
+                let addr = self.long16();
                 self.cmp_m16(addr);
-                self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // bne, rel8
             (0xD0, ..) => {
                 let addr = self.relative8();
-                self.pc += 2;
                 self.bne_all(addr);
                 extra_clocks = 0;
             }
@@ -5764,8 +5321,6 @@ impl Cpu65c816 {
             (0xD1, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_y8();
                 self.cmp_m8(addr);
-                self.pc += 2;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = Cpu65c816::ONE_CYCLE;
                 } else {
@@ -5775,8 +5330,6 @@ impl Cpu65c816 {
             (0xD1, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_y16();
                 self.cmp_m16(addr);
-                self.pc += 2;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = Cpu65c816::ONE_CYCLE;
                 } else {
@@ -5788,13 +5341,11 @@ impl Cpu65c816 {
             (0xD2, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect8();
                 self.cmp_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xD2, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect16();
                 self.cmp_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -5802,13 +5353,11 @@ impl Cpu65c816 {
             (0xD3, _, RegSize::Byte, _) => {
                 let addr = self.stack_indirect_y8();
                 self.cmp_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0xD3, _, RegSize::TwoBytes, _) => {
                 let addr = self.stack_indirect_y16();
                 self.cmp_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -5816,13 +5365,11 @@ impl Cpu65c816 {
             (0xD4, CpuMode::Emulation, ..) => {
                 let addr = self.direct16();
                 self.pex_e(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xD4, CpuMode::Native, ..) => {
                 let addr = self.direct16();
                 self.pex_n(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -5830,13 +5377,11 @@ impl Cpu65c816 {
             (0xD5, _, RegSize::Byte, _) => {
                 let addr = self.direct_x8();
                 self.cmp_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0xD5, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x16();
                 self.cmp_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -5844,13 +5389,11 @@ impl Cpu65c816 {
             (0xD6, _, RegSize::Byte, _) => {
                 let addr = self.direct_x8();
                 self.dec_mem_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::THREE_CYCLE;
             }
             (0xD6, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x16();
                 self.dec_mem_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::THREE_CYCLE;
             }
 
@@ -5858,20 +5401,17 @@ impl Cpu65c816 {
             (0xD7, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_long_y8();
                 self.cmp_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xD7, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_long_y16();
                 self.cmp_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // cld, imp
             (0xD8, ..) => {
                 self.cld_all();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -5879,8 +5419,6 @@ impl Cpu65c816 {
             (0xD9, _, RegSize::Byte, _) => {
                 let addr = self.absolute_y8();
                 self.cmp_m8(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -5890,8 +5428,6 @@ impl Cpu65c816 {
             (0xD9, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_y16();
                 self.cmp_m16(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -5902,30 +5438,26 @@ impl Cpu65c816 {
             // phx, imp
             (0xDA, CpuMode::Emulation, ..) => {
                 self.phx_e();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xDA, _, _, RegSize::Byte) => {
                 self.phx_x8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xDA, _, _, RegSize::TwoBytes) => {
                 self.phx_x16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // stp, imp
             (0xDB, ..) => {
                 self.stp_all();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
             // jmp, [abs]
             (0xDC, ..) => {
-                let addr = self.absolute_indirect_long();
+                let addr = self.indirect_long();
                 self.jmp_long_all(addr);
                 extra_clocks = 0;
             }
@@ -5934,8 +5466,6 @@ impl Cpu65c816 {
             (0xDD, _, RegSize::Byte, _) => {
                 let addr = self.absolute_x8();
                 self.cmp_m8(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -5945,8 +5475,6 @@ impl Cpu65c816 {
             (0xDD, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_x16();
                 self.cmp_m16(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -5958,27 +5486,23 @@ impl Cpu65c816 {
             (0xDE, _, RegSize::Byte, _) => {
                 let addr = self.absolute_x8();
                 self.dec_mem_m8(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0xDE, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_x16();
                 self.dec_mem_m16(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
             // cmp, long,X
             (0xDF, _, RegSize::Byte, _) => {
-                let addr = self.absolute_long_x8();
+                let addr = self.long_x8();
                 self.cmp_m8(addr);
-                self.pc += 4;
                 extra_clocks = 0;
             }
             (0xDF, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute_long_x16();
+                let addr = self.long_x16();
                 self.cmp_m16(addr);
-                self.pc += 4;
                 extra_clocks = 0;
             }
 
@@ -5986,13 +5510,11 @@ impl Cpu65c816 {
             (0xE0, _, _, RegSize::Byte) => {
                 let addr = self.immediate8();
                 self.cpx_x8(addr);
-                self.pc += 2;
                 extra_clocks = 0;
             }
             (0xE0, _, _, RegSize::TwoBytes) => {
                 let addr = self.immediate16();
                 self.cpx_x16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
@@ -6000,13 +5522,11 @@ impl Cpu65c816 {
             (0xE1, _, RegSize::Byte, _) => {
                 let addr = self.direct_x_indirect8();
                 self.sbc_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0xE1, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x_indirect16();
                 self.sbc_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -6014,7 +5534,6 @@ impl Cpu65c816 {
             (0xE2, ..) => {
                 let addr = self.immediate8();
                 self.sep_all(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -6022,13 +5541,11 @@ impl Cpu65c816 {
             (0xE3, _, RegSize::Byte, _) => {
                 let addr = self.stack_s8();
                 self.sbc_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xE3, _, RegSize::TwoBytes, _) => {
                 let addr = self.stack_s16();
                 self.sbc_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -6036,13 +5553,11 @@ impl Cpu65c816 {
             (0xE4, _, _, RegSize::Byte) => {
                 let addr = self.direct8();
                 self.cpx_x8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xE4, _, _, RegSize::TwoBytes) => {
                 let addr = self.direct16();
                 self.cpx_x16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -6050,13 +5565,11 @@ impl Cpu65c816 {
             (0xE5, _, RegSize::Byte, _) => {
                 let addr = self.direct8();
                 self.sbc_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xE5, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct16();
                 self.sbc_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -6064,13 +5577,11 @@ impl Cpu65c816 {
             (0xE6, _, RegSize::Byte, _) => {
                 let addr = self.direct8();
                 self.inc_mem_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0xE6, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct16();
                 self.inc_mem_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -6078,25 +5589,21 @@ impl Cpu65c816 {
             (0xE7, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_long8();
                 self.sbc_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xE7, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_long16();
                 self.sbc_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // inx, imp
             (0xE8, _, _, RegSize::Byte) => {
                 self.inx_x8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xE8, _, _, RegSize::TwoBytes) => {
                 self.inx_x16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -6104,27 +5611,23 @@ impl Cpu65c816 {
             (0xE9, _, RegSize::Byte, _) => {
                 let addr = self.immediate8();
                 self.sbc_m8(addr);
-                self.pc += 2;
                 extra_clocks = 0;
             }
             (0xE9, _, RegSize::TwoBytes, _) => {
                 let addr = self.immediate16();
                 self.sbc_m16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
             // nop, imp
             (0xEA, ..) => {
                 self.nop_all();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // xba, imp
             (0xEB, ..) => {
                 self.xba_all();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -6132,13 +5635,11 @@ impl Cpu65c816 {
             (0xEC, _, _, RegSize::Byte) => {
                 let addr = self.absolute8();
                 self.cpx_x8(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
             (0xEC, _, _, RegSize::TwoBytes) => {
                 let addr = self.absolute16();
                 self.cpx_x16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
@@ -6146,13 +5647,11 @@ impl Cpu65c816 {
             (0xED, _, RegSize::Byte, _) => {
                 let addr = self.absolute8();
                 self.sbc_m8(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
             (0xED, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute16();
                 self.sbc_m16(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
@@ -6160,34 +5659,29 @@ impl Cpu65c816 {
             (0xEE, _, RegSize::Byte, _) => {
                 let addr = self.absolute8();
                 self.inc_mem_m8(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xEE, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute16();
                 self.inc_mem_m16(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // sbc, long
             (0xEF, _, RegSize::Byte, _) => {
-                let addr = self.absolute_long8();
+                let addr = self.long8();
                 self.sbc_m8(addr);
-                self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xEF, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute_long16();
+                let addr = self.long16();
                 self.sbc_m16(addr);
-                self.pc += 4;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // beq, rel8
             (0xF0, ..) => {
                 let addr = self.relative8();
-                self.pc += 2;
                 self.beq_all(addr);
                 extra_clocks = 0;
             }
@@ -6196,8 +5690,6 @@ impl Cpu65c816 {
             (0xF1, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_y8();
                 self.sbc_m8(addr);
-                self.pc += 2;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = Cpu65c816::ONE_CYCLE;
                 } else {
@@ -6207,8 +5699,6 @@ impl Cpu65c816 {
             (0xF1, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_y16();
                 self.sbc_m16(addr);
-                self.pc += 2;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = Cpu65c816::ONE_CYCLE;
                 } else {
@@ -6220,13 +5710,11 @@ impl Cpu65c816 {
             (0xF2, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect8();
                 self.sbc_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xF2, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect16();
                 self.sbc_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -6234,13 +5722,11 @@ impl Cpu65c816 {
             (0xF3, _, RegSize::Byte, _) => {
                 let addr = self.stack_indirect_y8();
                 self.sbc_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0xF3, _, RegSize::TwoBytes, _) => {
                 let addr = self.stack_indirect_y16();
                 self.sbc_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -6248,13 +5734,11 @@ impl Cpu65c816 {
             (0xF4, CpuMode::Emulation, ..) => {
                 let addr = self.immediate16();
                 self.pex_e(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
             (0xF4, CpuMode::Native, ..) => {
                 let addr = self.immediate16();
                 self.pex_n(addr);
-                self.pc += 3;
                 extra_clocks = 0;
             }
 
@@ -6262,13 +5746,11 @@ impl Cpu65c816 {
             (0xF5, _, RegSize::Byte, _) => {
                 let addr = self.direct_x8();
                 self.sbc_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0xF5, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x16();
                 self.sbc_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
@@ -6276,13 +5758,11 @@ impl Cpu65c816 {
             (0xF6, _, RegSize::Byte, _) => {
                 let addr = self.direct_x8();
                 self.inc_mem_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::THREE_CYCLE;
             }
             (0xF6, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_x16();
                 self.inc_mem_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::THREE_CYCLE;
             }
 
@@ -6290,20 +5770,17 @@ impl Cpu65c816 {
             (0xF7, _, RegSize::Byte, _) => {
                 let addr = self.direct_indirect_long_y8();
                 self.sbc_m8(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xF7, _, RegSize::TwoBytes, _) => {
                 let addr = self.direct_indirect_long_y16();
                 self.sbc_m16(addr);
-                self.pc += 2;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // sed, imp
             (0xF8, ..) => {
                 self.sed_all();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
@@ -6311,8 +5788,6 @@ impl Cpu65c816 {
             (0xF9, _, RegSize::Byte, _) => {
                 let addr = self.absolute_y8();
                 self.sbc_m8(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -6322,8 +5797,6 @@ impl Cpu65c816 {
             (0xF9, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_y16();
                 self.sbc_m16(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -6334,35 +5807,31 @@ impl Cpu65c816 {
             // plx, imp
             (0xFA, CpuMode::Emulation, ..) => {
                 self.plx_e();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0xFA, _, _, RegSize::Byte) => {
                 self.plx_x8();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0xFA, _, _, RegSize::TwoBytes) => {
                 self.plx_x16();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
             // xce, imp
             (0xFB, ..) => {
                 self.xce_all();
-                self.pc += 1;
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
 
             // jsr, (abs,X)
             (0xFC, CpuMode::Emulation, ..) => {
-                let addr = self.absolute_x_indirect8();
+                let addr = self.x_indirect8();
                 self.jsr_e(addr);
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
             (0xFC, CpuMode::Native, ..) => {
-                let addr = self.absolute_x_indirect8();
+                let addr = self.x_indirect8();
                 self.jsr_n(addr);
                 extra_clocks = Cpu65c816::ONE_CYCLE;
             }
@@ -6371,8 +5840,6 @@ impl Cpu65c816 {
             (0xFD, _, RegSize::Byte, _) => {
                 let addr = self.absolute_x8();
                 self.sbc_m8(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -6382,8 +5849,6 @@ impl Cpu65c816 {
             (0xFD, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_x16();
                 self.sbc_m16(addr);
-                self.pc += 3;
-
                 if (self.idx_size() == RegSize::Byte) && !self.page_crossed {
                     extra_clocks = 0;
                 } else {
@@ -6395,31 +5860,27 @@ impl Cpu65c816 {
             (0xFE, _, RegSize::Byte, _) => {
                 let addr = self.absolute_x8();
                 self.inc_mem_m8(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
             (0xFE, _, RegSize::TwoBytes, _) => {
                 let addr = self.absolute_x16();
                 self.inc_mem_m16(addr);
-                self.pc += 3;
                 extra_clocks = Cpu65c816::TWO_CYCLE;
             }
 
             // sbc, long,X
             (0xFF, _, RegSize::Byte, _) => {
-                let addr = self.absolute_long_x8();
+                let addr = self.long_x8();
                 self.sbc_m8(addr);
-                self.pc += 4;
                 extra_clocks = 0;
             }
             (0xFF, _, RegSize::TwoBytes, _) => {
-                let addr = self.absolute_long_x16();
+                let addr = self.long_x16();
                 self.sbc_m16(addr);
-                self.pc += 4;
                 extra_clocks = 0;
             }
         }
-        
+
         if self.branch_taken {
             self.add_clocks(Cpu65c816::ONE_CYCLE);
 
@@ -6429,5 +5890,434 @@ impl Cpu65c816 {
         }
 
         self.add_clocks(extra_clocks);
+    }
+}
+
+
+impl Cpu65c816 {
+    fn cpu_status_str(&self) -> String {
+        let mut status_str = String::new();
+        status_str.push(if self.is_flag_set(Flag::FlagN) {
+            'N'
+        } else {
+            'n'
+        });
+        status_str.push(if self.is_flag_set(Flag::FlagV) {
+            'V'
+        } else {
+            'v'
+        });
+        if self.mode == CpuMode::Emulation {
+            status_str.push('1');
+            status_str.push(if self.is_flag_set(Flag::FlagX) {
+                'B'
+            } else {
+                'b'
+            });
+        } else {
+            status_str.push(if self.is_flag_set(Flag::FlagM) {
+                'M'
+            } else {
+                'm'
+            });
+            status_str.push(if self.is_flag_set(Flag::FlagX) {
+                'X'
+            } else {
+                'x'
+            });
+        }
+        status_str.push(if self.is_flag_set(Flag::FlagD) {
+            'D'
+        } else {
+            'd'
+        });
+        status_str.push(if self.is_flag_set(Flag::FlagI) {
+            'I'
+        } else {
+            'i'
+        });
+        status_str.push(if self.is_flag_set(Flag::FlagZ) {
+            'Z'
+        } else {
+            'z'
+        });
+        status_str.push(if self.is_flag_set(Flag::FlagC) {
+            'C'
+        } else {
+            'c'
+        });
+
+        status_str
+    }
+
+    fn lemon_cpu_str(&self) -> String {
+        format!(
+            "PC: {:02x}{:04x} A:{:04x} X:{:04x} Y:{:04x} S:{:04x} D:{:04x} DB:{:02x} {} E: {}",
+            self.prg_bank,
+            self.pc,
+            self.acc,
+            self.x,
+            self.y,
+            self.stk_ptr,
+            self.direct_page,
+            self.data_bank,
+            self.cpu_status_str(),
+            self.mode == CpuMode::Emulation,
+        )
+    }
+
+    pub fn print_state_str(&self) {
+        println!("{}", self.lemon_cpu_str());
+    }
+}
+
+// impl Cpu65c816 {
+//     pub fn temp_load_test(&mut self) {
+//         use std::path::Path;
+
+//         // C:\Users\lance\Desktop\Pet Projects\RustProjects\snemulator\games\Super Mario World (USA).sfc
+//         let test_path_str = format!("tests/lemons/CPUTest/CPUADC.sfc");
+//         // let test_path_str = format!("tests/ppu_tests/test_hello.sfc");
+//         // let test_path_str = format!("games/Super Mario World (USA).sfc");
+//         // let test_path_str = format!("games/SNES Test Program.sfc");
+//         let test_path = Path::new(&test_path_str);
+//         let cart = Cartridge::from_path(test_path).unwrap();
+
+//         self.load_cart(cart);
+
+//         self.stk_ptr = 0x1ff;
+//         self.status = 0x34;
+
+//         self.rom_mirror = self.rom.len() - 1;
+
+//         self.reset();
+//     }
+
+//     fn cpu_status_str(&self) -> String {
+//         let mut status_str = String::new();
+//         status_str.push(if self.is_flag_set(Flag::FlagN) {
+//             'N'
+//         } else {
+//             'n'
+//         });
+//         status_str.push(if self.is_flag_set(Flag::FlagV) {
+//             'V'
+//         } else {
+//             'v'
+//         });
+//         if self.mode == CpuMode::Emulation {
+//             status_str.push('1');
+//             status_str.push(if self.is_flag_set(Flag::FlagX) {
+//                 'B'
+//             } else {
+//                 'b'
+//             });
+//         } else {
+//             status_str.push(if self.is_flag_set(Flag::FlagM) {
+//                 'M'
+//             } else {
+//                 'm'
+//             });
+//             status_str.push(if self.is_flag_set(Flag::FlagX) {
+//                 'X'
+//             } else {
+//                 'x'
+//             });
+//         }
+//         status_str.push(if self.is_flag_set(Flag::FlagD) {
+//             'D'
+//         } else {
+//             'd'
+//         });
+//         status_str.push(if self.is_flag_set(Flag::FlagI) {
+//             'I'
+//         } else {
+//             'i'
+//         });
+//         status_str.push(if self.is_flag_set(Flag::FlagZ) {
+//             'Z'
+//         } else {
+//             'z'
+//         });
+//         status_str.push(if self.is_flag_set(Flag::FlagC) {
+//             'C'
+//         } else {
+//             'c'
+//         });
+
+//         status_str
+//     }
+
+//     fn lemon_cpu_str(&self) -> String {
+//         format!(
+//             "{:02x}{:04x} A:{:04x} X:{:04x} Y:{:04x} S:{:04x} D:{:04x} DB:{:02x} {} ",
+//             self.prg_bank,
+//             self.pc,
+//             self.acc,
+//             self.x,
+//             self.y,
+//             self.stk_ptr,
+//             self.direct_page,
+//             self.data_bank,
+//             self.cpu_status_str()
+//         )
+//     }
+// }
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use libretro_rs::retro::{
+        framebuf::ResizableFrameBuffer, log::PlatformLogger, pixel::format::{RGB565, XRGB8888},
+    };
+
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+    use crate::system::{cartridge::Cartridge, sppu::Ppu5C7x};
+
+    /// Prints out a slice of bytes in hex and ASCII format, side by side. When
+    /// startval is specified, indices beginning at the startval will be printed
+    /// before each line. If startval is unspecified, indeces start at 0.
+    pub fn hexdump_at(bytes: &[u8], startval: usize) {
+        const CHUNK_SIZE: usize = 16;
+
+        let mut index = startval;
+        println!();
+        for chunk in bytes.chunks(CHUNK_SIZE) {
+            let l = chunk.len();
+            print!("{:08X}: ", index);
+            for b in chunk.iter() {
+                print!("{b:02X} ");
+            }
+
+            print!("{:>width$} ", "|", width = (CHUNK_SIZE - l) * 3 + 1);
+            for b in chunk.iter() {
+                match b {
+                    32..=126 => print!("{}", *b as char),
+                    _ => print!("."),
+                }
+            }
+            println!();
+            index += CHUNK_SIZE;
+        }
+    }
+
+    /// Prints out a slice of bytes in hex and ASCII format, side by side. When
+    /// startval is specified, indeces beginning at the startval will be printed
+    /// before each line. If startval is unspecified, indeces start at 0.
+    pub fn hexdump(bytes: &[u8]) {
+        hexdump_at(bytes, 0);
+    }
+
+    /// Find the subvector "needle" in the vector "haystack"
+    fn find_subvec(haystack: &Vec<u8>, needle: &Vec<u8>) -> Option<usize> {
+        (0..haystack.len() - needle.len() + 1)
+            .filter(|&i| haystack[i..i + needle.len()] == needle[..])
+            .next()
+    }
+
+    fn cpu_status_str(cpu: &Cpu65c816) -> String {
+        let mut status_str = String::new();
+        status_str.push(if cpu.is_flag_set(Flag::FlagN) {
+            'N'
+        } else {
+            'n'
+        });
+        status_str.push(if cpu.is_flag_set(Flag::FlagV) {
+            'V'
+        } else {
+            'v'
+        });
+        if cpu.mode == CpuMode::Emulation {
+            status_str.push('1');
+            status_str.push(if cpu.is_flag_set(Flag::FlagX) {
+                'B'
+            } else {
+                'b'
+            });
+        } else {
+            status_str.push(if cpu.is_flag_set(Flag::FlagM) {
+                'M'
+            } else {
+                'm'
+            });
+            status_str.push(if cpu.is_flag_set(Flag::FlagX) {
+                'X'
+            } else {
+                'x'
+            });
+        }
+        status_str.push(if cpu.is_flag_set(Flag::FlagD) {
+            'D'
+        } else {
+            'd'
+        });
+        status_str.push(if cpu.is_flag_set(Flag::FlagI) {
+            'I'
+        } else {
+            'i'
+        });
+        status_str.push(if cpu.is_flag_set(Flag::FlagZ) {
+            'Z'
+        } else {
+            'z'
+        });
+        status_str.push(if cpu.is_flag_set(Flag::FlagC) {
+            'C'
+        } else {
+            'c'
+        });
+
+        status_str
+    }
+
+    fn lemon_cpu_str(cpu: &Cpu65c816) -> String {
+        format!(
+            "{:02x}{:04x} A:{:04x} X:{:04x} Y:{:04x} S:{:04x} D:{:04x} DB:{:02x} {} ",
+            cpu.prg_bank,
+            cpu.pc,
+            cpu.acc,
+            cpu.x,
+            cpu.y,
+            cpu.stk_ptr,
+            cpu.direct_page,
+            cpu.data_bank,
+            cpu_status_str(cpu)
+        )
+    }
+
+    fn clock_system_until_cpu_instr(cpu: &mut Cpu65c816, ppu: &mut Ppu5C7x, frame_buf: &mut [RGB565]) {
+        let start_pc = cpu.pc;
+
+        while cpu.pc == start_pc {
+            let ppu_clocks = ppu.sys_clocks_left();
+            let cpu_clocks = cpu.sys_clocks_left();
+    
+            if ppu_clocks < cpu_clocks {
+                cpu.remove_clocks(ppu_clocks);
+                ppu.clock(frame_buf);
+            } else {
+                ppu.remove_clocks(cpu_clocks);
+                cpu.clock(0);
+            }
+        }
+    }
+
+    const INSTR_NAMES: [&str; 256] = [
+        "BRK", "ORA", "COP", "ORA", "TSB", "ORA", "ASL", "ORA", "PHP", "ORA", "ASL", "PHD", "TSB",
+        "ORA", "ASL", "ORA", "BPL", "ORA", "ORA", "ORA", "TRB", "ORA", "ASL", "ORA", "CLC", "ORA",
+        "INC", "TCS", "TRB", "ORA", "ASL", "ORA", "JSR", "AND", "JSL", "AND", "BIT", "AND", "ROL",
+        "AND", "PLP", "AND", "ROL", "PLD", "BIT", "AND", "ROL", "AND", "BMI", "AND", "AND", "AND",
+        "BIT", "AND", "ROL", "AND", "SEC", "AND", "DEC", "TSC", "BIT", "AND", "ROL", "AND", "RTI",
+        "EOR", "WDM", "EOR", "MVP", "EOR", "LSR", "EOR", "PHA", "EOR", "LSR", "PHK", "JMP", "EOR",
+        "LSR", "EOR", "BVC", "EOR", "EOR", "EOR", "MVN", "EOR", "LSR", "EOR", "CLI", "EOR", "PHY",
+        "TCD", "JMP", "EOR", "LSR", "EOR", "RTS", "ADC", "PEX", "ADC", "STZ", "ADC", "ROR", "ADC",
+        "PLA", "ADC", "ROR", "RTL", "JMP", "ADC", "ROR", "ADC", "BVS", "ADC", "ADC", "ADC", "STZ",
+        "ADC", "ROR", "ADC", "SEI", "ADC", "PLY", "TDC", "JMP", "ADC", "ROR", "ADC", "BRA", "STA",
+        "BRA", "STA", "STY", "STA", "STX", "STA", "DEY", "BIT", "TXA", "PHB", "STY", "STA", "STX",
+        "STA", "BCC", "STA", "STA", "STA", "STY", "STA", "STX", "STA", "TYA", "STA", "TXS", "TXY",
+        "STZ", "STA", "STZ", "STA", "LDY", "LDA", "LDX", "LDA", "LDY", "LDA", "LDX", "LDA", "TAY",
+        "LDA", "TAX", "PLB", "LDY", "LDA", "LDX", "LDA", "BCS", "LDA", "LDA", "LDA", "LDY", "LDA",
+        "LDX", "LDA", "CLV", "LDA", "TSX", "TYX", "LDY", "LDA", "LDX", "LDA", "CPY", "CMP", "REP",
+        "CMP", "CPY", "CMP", "DEC", "CMP", "INY", "CMP", "DEX", "WAI", "CPY", "CMP", "DEC", "CMP",
+        "BNE", "CMP", "CMP", "CMP", "PEX", "CMP", "DEC", "CMP", "CLD", "CMP", "PHX", "STP", "JMP",
+        "CMP", "DEC", "CMP", "CPX", "SBC", "SEP", "SBC", "CPX", "SBC", "INC", "SBC", "INX", "SBC",
+        "NOP", "XBA", "CPX", "SBC", "INC", "SBC", "BEQ", "SBC", "SBC", "SBC", "PEX", "SBC", "INC",
+        "SBC", "SED", "SBC", "PLX", "XCE", "JSR", "SBC", "INC", "SBC",
+    ];
+
+    #[test]
+    fn test_lorom_title() {
+        let test_path = Path::new("tests/blarggs/test_adc_sbc/test_adc.smc");
+        let cart = Cartridge::from_path(test_path).unwrap();
+
+        let apuio_regs = Rc::new(ApuIORegs::new());
+        let logger = Rc::new(SnemLogger::new(None));
+        let ppu_data = Rc::new(PpuData::new(logger.clone()));
+        let mut cpu = Cpu65c816::new(ppu_data, apuio_regs, logger);
+
+        cpu.load_cart(cart);
+
+        hexdump_at(&cpu.rom[0x8000..0x8000 + 0x1000], 0x8000);
+    }
+
+    fn run_lemon_test(test_name: &str) {
+        let test_path_str = format!("testroms/lemons/CPUTest/{test_name}.sfc");
+        let test_path = Path::new(&test_path_str);
+        let cart = Cartridge::from_path(test_path).unwrap();
+
+        let log_path_str = format!("testroms/lemons/CPUTest/{test_name}-trace_compare.log");
+        let log_path = Path::new(&log_path_str);
+        let log_lines: Vec<String> = std::fs::read_to_string(log_path)
+            .unwrap()
+            .lines()
+            .map(String::from)
+            .collect();
+
+        let apuio_regs = Rc::new(ApuIORegs::new());
+        let logger = Rc::new(SnemLogger::new(None));
+        let ppu_data = Rc::new(PpuData::new(logger.clone()));
+        let mut ppu = Ppu5C7x::new(ppu_data.clone(), logger.clone());
+        let mut cpu = Cpu65c816::new(ppu_data, apuio_regs, logger);
+        cpu.load_cart(cart);
+        
+        let mut dummy_frame_buffer = vec![RGB565::ZERO; 512*448];
+
+        cpu.stk_ptr = 0x1ff;
+        cpu.status = 0x34;
+
+        cpu.rom_mirror = cpu.rom.len() - 1;
+
+        cpu.pc = 0x8000;
+
+        cpu.wram[0] = 0xb5;
+
+        for (i, line) in log_lines.iter().enumerate() {
+            let instr_addr = ((cpu.prg_bank as u32) << 16) | (cpu.pc as u32);
+
+            let opcode = cpu._read(instr_addr).0;
+            let val1 = cpu._read(instr_addr.wrapping_add16(1)).0;
+            let val2 = cpu._read(instr_addr.wrapping_add16(2)).0;
+
+            // Quick hack for running this test
+            if opcode == 0x2C && val1 == 0x10 && val2 == 0x42 {
+                cpu.debug_nmi = if log_lines[i + 1].as_bytes()[48] == b'N' {
+                    0xc2
+                } else {
+                    0x42
+                }
+            }
+
+            assert_eq!(*line, lemon_cpu_str(&cpu));
+
+            println!("{}", *line);
+
+            cpu.dma_status = DmaStatus::Off;
+            cpu.exec_instr(0);
+            // clock_system_until_cpu_instr(&mut cpu, &mut ppu, &mut dummy_frame_buffer[..]);
+        }
+    }
+
+    #[test]
+    fn test_lemon_all() {
+        let paths = std::fs::read_dir("./testroms/lemons/CPUTest").unwrap();
+
+        for path in paths {
+            if let Ok(path) = path {
+                let file_name = String::from(path.file_name().to_str().unwrap());
+
+                if let Some(test_name) = file_name.strip_suffix(".sfc") {
+                    if test_name == "CPUMSC" {
+                        println!("cpumsc [[SKIPPED - PPU Dependent]]");
+                        continue;
+                    }
+
+                    run_lemon_test(test_name);
+
+                    println!("{} [[PASSED]]", test_name.to_lowercase());
+                }
+            }
+        }
     }
 }
