@@ -893,6 +893,11 @@ impl PpuData {
                     }
                 );
 
+                match self.bg_mode.get() {
+                    BgMode::Mode5 | BgMode::Mode6 => self.hi_res_enabled.set(true),
+                    _ => {}
+                };
+
                 println!("Set Bg Mode to {:?} and bg3 priority to {}, bg tile sizes to bg1: {:?}, bg2: {:?}, bg3: {:?}, bg4: {:?}",
                     self.bg_mode.get(),
                     self.bg3_mode1_priority.get(),
