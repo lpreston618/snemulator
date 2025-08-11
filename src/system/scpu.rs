@@ -2783,6 +2783,8 @@ impl Cpu65c816 {
         let opcode = self.read_prg();
         let extra_clocks: usize;
 
+        // self.debug_cnt = 1;
+
         // if self.pc == 0x8B49 && self.prg_bank == 0x03 {
         //     self.debug_flag = true;
 
@@ -2803,29 +2805,29 @@ impl Cpu65c816 {
         //     println!("($000200) = {:02X}", self._read(0x000200).0);
         // }
 
-        if self.debug_cnt == 1 {
-            let (prg_data, prg_mirror) = if self.prg_bank == 0x7e || self.prg_bank == 0x7f {
-                (&self.wram[..], self.wram.len()-1)
-            } else {
-                (&self.rom[..], self.rom_mirror as usize)
-            };
+        // if self.debug_cnt == 1 {
+        //     let (prg_data, prg_mirror) = if self.prg_bank == 0x7e || self.prg_bank == 0x7f {
+        //         (&self.wram[..], self.wram.len()-1)
+        //     } else {
+        //         (&self.rom[..], self.rom_mirror as usize)
+        //     };
 
-            self.logger.log(
-                LogLevel::Info,
-                format!("{}",
-                    disassembler::instr_disassembly(
-                        self.prg_bank,
-                        self.pc-1,
-                        prg_data,
-                        prg_mirror,
-                        self.is_flag_set(Flag::FlagM), 
-                        self.is_flag_set(Flag::FlagX),
-                        self.mode == CpuMode::Emulation,
-                        self.mapping_mode,
-                    )
-                ).as_str()
-            );
-        }
+        //     self.logger.log(
+        //         LogLevel::Info,
+        //         format!("{}",
+        //             disassembler::instr_disassembly(
+        //                 self.prg_bank,
+        //                 self.pc-1,
+        //                 prg_data,
+        //                 prg_mirror,
+        //                 self.is_flag_set(Flag::FlagM), 
+        //                 self.is_flag_set(Flag::FlagX),
+        //                 self.mode == CpuMode::Emulation,
+        //                 self.mapping_mode,
+        //             )
+        //         ).as_str()
+        //     );
+        // }
 
         match (opcode, self.mode, self.acc_size(), self.idx_size()) {
             // brk, imp

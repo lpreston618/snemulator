@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::rc::Rc;
 
 use crate::log::{LogLevel, SnemLogger};
@@ -57,6 +58,7 @@ pub struct Spc700 {
     timer2: Timer<FAST_TIMER_CLOCK_PERIOD>,
 
     debug_flag: bool,
+    debug_cnt: usize,
 
     logger: Rc<SnemLogger>,
 
@@ -71,6 +73,13 @@ impl Spc700 {
         0xE4, 0xF5, 0xCB, 0xF4, 0xD7, 0x00, 0xFC, 0xD0, 0xF3, 0xAB, 0x01, 0x10, 0xEF, 0x7E, 0xF4,
         0x10, 0xEB, 0xBA, 0xF6, 0xDA, 0x00, 0xBA, 0xF4, 0xC4, 0xF4, 0xDD, 0x5D, 0xD0, 0xDB, 0x1F,
         0x00, 0x00, 0xC0, 0xFF,
+    ];
+    const CELL_IPL_ROM: [Cell<u8>; 64] = [
+        Cell::new(0xCD), Cell::new(0xEF), Cell::new(0xBD), Cell::new(0xE8), Cell::new(0x00), Cell::new(0xC6), Cell::new(0x1D), Cell::new(0xD0), Cell::new(0xFC), Cell::new(0x8F), Cell::new(0xAA), Cell::new(0xF4), Cell::new(0x8F), Cell::new(0xBB), Cell::new(0xF5),
+        Cell::new(0x78), Cell::new(0xCC), Cell::new(0xF4), Cell::new(0xD0), Cell::new(0xFB), Cell::new(0x2F), Cell::new(0x19), Cell::new(0xEB), Cell::new(0xF4), Cell::new(0xD0), Cell::new(0xFC), Cell::new(0x7E), Cell::new(0xF4), Cell::new(0xD0), Cell::new(0x0B),
+        Cell::new(0xE4), Cell::new(0xF5), Cell::new(0xCB), Cell::new(0xF4), Cell::new(0xD7), Cell::new(0x00), Cell::new(0xFC), Cell::new(0xD0), Cell::new(0xF3), Cell::new(0xAB), Cell::new(0x01), Cell::new(0x10), Cell::new(0xEF), Cell::new(0x7E), Cell::new(0xF4),
+        Cell::new(0x10), Cell::new(0xEB), Cell::new(0xBA), Cell::new(0xF6), Cell::new(0xDA), Cell::new(0x00), Cell::new(0xBA), Cell::new(0xF4), Cell::new(0xC4), Cell::new(0xF4), Cell::new(0xDD), Cell::new(0x5D), Cell::new(0xD0), Cell::new(0xDB), Cell::new(0x1F),
+        Cell::new(0x00), Cell::new(0x00), Cell::new(0xC0), Cell::new(0xFF),
     ];
 
     pub fn new(apuio_regs: Rc<ssmp::ApuIORegs>, smp_data: Rc<SmpData>, logger: Rc<SnemLogger>) -> Spc700 {
@@ -101,6 +110,7 @@ impl Spc700 {
             timer2: Timer::new(),
 
             debug_flag: false,
+            debug_cnt: 0,
 
             logger,
 
@@ -209,10 +219,17 @@ impl Spc700 {
         }
     }
 
-    fn read_word(&mut self, address: u16) -> u16 {
+    fn read_word_dp(&mut self, address: u16) -> u16 {
         u16::from_le_bytes([
             self.read(address),
             self.read(inc_low_byte(address)),
+        ])
+    }
+
+    fn read_word(&mut self, address: u16) -> u16 {
+        u16::from_le_bytes([
+            self.read(address),
+            self.read(address + 1),
         ])
     }
 
@@ -244,60 +261,30 @@ impl Spc700 {
     }
 
     fn exec_instr(&mut self) {
-        // if self.pc < 0xFFC0 {
-        //     self.debug_flag = true;
-        // }
-
-        // if self.pc == 0xd44 {
-        //     println!("At pc = $0D44, x = {:02X}, y = {:02X}, a = {:02X}, dir_page = {:03X}, sp = {:02X}",
-        //         self.x, self.y, self.acc, self.dir_page, self.sp);
-                
-        //     drop(self.logfile.take());
-
-        //     std::process::exit(0);
-        // }
-
         let cycles: usize;
         let opcode = self.read_prg();
         self.branch_taken = false;
 
-        // if self.pc < 0xFFC0 {
-        //     // crate::tools::hexdump::hexdump8_raw(&aram_clone, "aram_dump.bin");
+        if self.debug_cnt == 0x350 {
+            let prg_data = if self.pc-1 >= 0xFFC0 {
+                &Self::CELL_IPL_ROM[..]
+            } else {
+                &self.smp_data.aram[..]
+            };
 
-        //     disassembler::disassemble_block(&self.smp_data.aram[0x12f2..0x1350], 0x12f2, "aram_disassembly2.txt");
+            let pc = if self.pc-1 >= 0xFFC0 {
+                self.pc - 1 - 0xFFC0
+            } else {
+                self.pc - 1
+            };
 
-        //     std::process::exit(0);
-        // }
-
-        // if self.apuio_regs.debug_flag.get() {
-        //     self.logger.log(
-        //         LogLevel::Info,
-        //         format!("{}",
-        //             disassembler::disassembly_string(self.pc - 1, &self.smp_data.aram[..])
-        //         ).as_str()
-        //     );
-        // }
-
-        // if self.apuio_regs.debug_flag.get() {
-        //     let prg_data = if self.pc-1 >= 0xFFC0 {
-        //         &Self::IPL_ROM[..]
-        //     } else {
-        //         &self.aram[..]
-        //     };
-
-        //     let pc = if self.pc-1 >= 0xFFC0 {
-        //         self.pc - 1 - 0xFFC0
-        //     } else {
-        //         self.pc - 1
-        //     };
-
-        //     self.logger.log(
-        //         LogLevel::Info,
-        //         format!("{}",
-        //             disassembler::disassembly_string(pc, prg_data)
-        //         ).as_str()
-        //     );
-        // }
+            self.logger.log(
+                LogLevel::Info,
+                format!("{}",
+                    disassembler::disassembly_string(pc, prg_data)
+                ).as_str()
+            );
+        }
 
         match opcode {
             0x00 => {
@@ -305,7 +292,7 @@ impl Spc700 {
                 cycles = 2;
             }
             0x01 => {
-                self.call(0xFFDE);
+                self.tcall(0xFFDE);
                 cycles = 8;
             }
             0x02 => {
@@ -382,7 +369,7 @@ impl Spc700 {
                 cycles = 2;
             }
             0x11 => {
-                self.call(0xFFDC);
+                self.tcall(0xFFDC);
                 cycles = 8;
             }
             0x12 => {
@@ -458,7 +445,7 @@ impl Spc700 {
                 cycles = 2;
             }
             0x21 => {
-                self.call(0xFFDA);
+                self.tcall(0xFFDA);
                 cycles = 8;
             }
             0x22 => {
@@ -536,7 +523,7 @@ impl Spc700 {
                 cycles = 2;
             }
             0x31 => {
-                self.call(0xFFD8);
+                self.tcall(0xFFD8);
                 cycles = 8;
             }
             0x32 => {
@@ -612,7 +599,7 @@ impl Spc700 {
                 cycles = 2;
             }
             0x41 => {
-                self.call(0xFFD6);
+                self.tcall(0xFFD6);
                 cycles = 8;
             }
             0x42 => {
@@ -690,7 +677,7 @@ impl Spc700 {
                 cycles = 2;
             }
             0x51 => {
-                self.call(0xFFD4);
+                self.tcall(0xFFD4);
                 cycles = 8;
             }
             0x52 => {
@@ -766,7 +753,7 @@ impl Spc700 {
                 cycles = 2;
             }
             0x61 => {
-                self.call(0xFFD2);
+                self.tcall(0xFFD2);
                 cycles = 8;
             }
             0x62 => {
@@ -843,7 +830,7 @@ impl Spc700 {
                 cycles = 2;
             }
             0x71 => {
-                self.call(0xFFD0);
+                self.tcall(0xFFD0);
                 cycles = 8;
             }
             0x72 => {
@@ -918,7 +905,7 @@ impl Spc700 {
                 cycles = 2;
             }
             0x81 => {
-                self.call(0xFFCE);
+                self.tcall(0xFFCE);
                 cycles = 8;
             }
             0x82 => {
@@ -996,7 +983,7 @@ impl Spc700 {
                 cycles = 2;
             }
             0x91 => {
-                self.call(0xFFCC);
+                self.tcall(0xFFCC);
                 cycles = 8;
             }
             0x92 => {
@@ -1070,7 +1057,7 @@ impl Spc700 {
                 cycles = 3;
             }
             0xA1 => {
-                self.call(0xFFCA);
+                self.tcall(0xFFCA);
                 cycles = 8;
             }
             0xA2 => {
@@ -1148,7 +1135,7 @@ impl Spc700 {
                 cycles = 2;
             }
             0xB1 => {
-                self.call(0xFFC8);
+                self.tcall(0xFFC8);
                 cycles = 8;
             }
             0xB2 => {
@@ -1223,7 +1210,7 @@ impl Spc700 {
                 cycles = 3;
             }
             0xC1 => {
-                self.call(0xFFC6);
+                self.tcall(0xFFC6);
                 cycles = 8;
             }
             0xC2 => {
@@ -1300,7 +1287,7 @@ impl Spc700 {
                 cycles = 2;
             }
             0xD1 => {
-                self.call(0xFFC4);
+                self.tcall(0xFFC4);
                 cycles = 8;
             }
             0xD2 => {
@@ -1375,7 +1362,7 @@ impl Spc700 {
                 cycles = 2;
             }
             0xE1 => {
-                self.call(0xFFC2);
+                self.tcall(0xFFC2);
                 cycles = 8;
             }
             0xE2 => {
@@ -1451,7 +1438,7 @@ impl Spc700 {
                 cycles = 2;
             }
             0xF1 => {
-                self.call(0xFFC0);
+                self.tcall(0xFFC0);
                 cycles = 8;
             }
             0xF2 => {
@@ -1592,7 +1579,7 @@ impl Spc700 {
         let arg1_addr = (self.x as u16) | self.dir_page;
         let arg2_addr = (self.y as u16) | self.dir_page;
 
-        (arg1_addr, arg2_addr)
+        (arg2_addr, arg1_addr)
     }
 
     fn immediate_to_direct(&mut self) -> (u16, u16) {
@@ -1664,13 +1651,13 @@ impl Spc700 {
 
 // CPU Instructions
 impl Spc700 {
-    fn add_16_base(&mut self, arg1: u16, arg2: u16, carry_in: bool) -> u16 {
-        let result = (arg1 as u32) + (arg2 as u32) + if carry_in { 1 } else { 0 };
-        let half_result = (arg1 & 0xFFF) + (arg2 & 0xFFF);
+    fn add_16_base(&mut self, arg1: u16, arg2: u16) -> u16 {
+        let result = (arg1 as u32) + (arg2 as u32);
+        let half_result = (arg1 & 0x7FF) + (arg2 & 0x7FF);
 
         self.set_flag_to_bool(Flag::FlagC, result > 0xFFFF);
         self.set_flag_to_bool(Flag::FlagN, result & 0x8000 != 0);
-        self.set_flag_to_bool(Flag::FlagH, half_result >= 0xFFF);
+        self.set_flag_to_bool(Flag::FlagH, half_result > 0x7FF);
         self.set_flag_to_bool(Flag::FlagZ, result & 0xFFFF == 0);
 
         // Set V flag if acc and data are same sign, but result is different sign
@@ -1684,11 +1671,11 @@ impl Spc700 {
 
     fn adc_base(&mut self, arg1: u8, arg2: u8, carry_in: bool) -> u8 {
         let result = (arg1 as u16) + (arg2 as u16) + if carry_in { 1 } else { 0 };
-        let half_result = (arg1 & 0xF) + (arg2 & 0xF);
+        let half_result = (arg1 & 0xF) + (arg2 & 0xF) + if carry_in { 1 } else { 0 };
 
         self.set_flag_to_bool(Flag::FlagC, result > 0xFF);
         self.set_flag_to_bool(Flag::FlagN, result.bit_en(7));
-        self.set_flag_to_bool(Flag::FlagH, half_result >= 0xA);
+        self.set_flag_to_bool(Flag::FlagH, half_result > 0xF);
         self.set_flag_to_bool(Flag::FlagZ, result & 0xFF == 0);
 
         // Set V flag if acc and data are same sign, but result is different sign
@@ -1715,9 +1702,9 @@ impl Spc700 {
     }
 
     fn addw(&mut self, address: u16) {
-        let data = self.read_word(address);
+        let data = self.read_word_dp(address);
         let ya = ((self.y as u16) << 8) | (self.acc as u16);
-        let result = self.add_16_base(ya, data, self.is_flag_set(Flag::FlagC));
+        let result = self.add_16_base(ya, data);
 
         self.y = (result >> 8) as u8;
         self.acc = result as u8;
@@ -1854,6 +1841,14 @@ impl Spc700 {
     // BRK - Break
     // TODO: make sure it actually works this way
     fn brk(&mut self) {
+        const BRK_VECTOR: u16 = 0xFFDE;
+
+        self.push_word(self.pc);
+        self.push(self.status);
+
+        self.pc = self.read_word(BRK_VECTOR);
+
+        self.clear_flag(Flag::FlagI);
         self.set_flag(Flag::FlagB);
     }
 
@@ -1941,7 +1936,7 @@ impl Spc700 {
 
     // CMPW - Compare Word with YA
     fn cmpw(&mut self, address: u16) {
-        let data = self.read_word(address);
+        let data = self.read_word_dp(address);
         let ya = ((self.y as u16) << 8) | (self.acc as u16);
         let result = ya - data;
 
@@ -2038,7 +2033,7 @@ impl Spc700 {
     }
     
     fn decw(&mut self, address: u16) {
-        let result = self.read_word(address) - 1;
+        let result = self.read_word_dp(address) - 1;
 
         self.set_flag_to_bool(Flag::FlagN, result.bit_en(15));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
@@ -2123,7 +2118,7 @@ impl Spc700 {
     }
 
     fn incw(&mut self, address: u16) {
-        let result = self.read_word(address) + 1;
+        let result = self.read_word_dp(address) + 1;
 
         self.write_word(address, result);
 
@@ -2177,7 +2172,7 @@ impl Spc700 {
     }
 
     fn ldya(&mut self, address: u16) {
-        let data = self.read_word(address);
+        let data = self.read_word_dp(address);
 
         self.y = (data >> 8) as u8;
         self.acc = data as u8;
@@ -2383,7 +2378,7 @@ impl Spc700 {
         let data = self.read(address);
         let comp = !data;
 
-        self.acc = self.adc_base(self.acc, comp, !self.is_flag_set(Flag::FlagC));
+        self.acc = self.adc_base(self.acc, comp, self.is_flag_set(Flag::FlagC));
     }
 
     fn sbc_mem(&mut self, addr1: u16, addr2: u16) {
@@ -2391,7 +2386,7 @@ impl Spc700 {
         let arg2 = self.read(addr2);
         let comp1 = !arg1;
 
-        let result = self.adc_base(arg2, comp1, !self.is_flag_set(Flag::FlagC));
+        let result = self.adc_base(arg2, comp1, self.is_flag_set(Flag::FlagC));
 
         self.write(addr2, result);
     }
@@ -2442,15 +2437,15 @@ impl Spc700 {
     }
 
     fn stya(&mut self, address: u16) {
-        let ya = ((self.y as u16) << 8) | (self.acc as u16);
-        self.write_word(address, ya);
+        self.write(address, self.acc);
+        self.write(inc_low_byte(address), self.y);
     }
 
     fn subw(&mut self, address: u16) {
-        let data = self.read_word(address);
-        let comp = !data;
+        let data = self.read_word_dp(address);
+        let comp = !data + 1;
         let ya = ((self.y as u16) << 8) | (self.acc as u16);
-        let result = self.add_16_base(ya, comp, !self.is_flag_set(Flag::FlagC));
+        let result = self.add_16_base(ya, comp);
 
         self.y = (result >> 8) as u8;
         self.acc = result as u8;
@@ -2468,6 +2463,11 @@ impl Spc700 {
 
         self.set_flag_to_bool(Flag::FlagN, self.y.bit_en(7));
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
+    }
+
+    fn tcall(&mut self, address: u16) {
+        self.push_word(self.pc);
+        self.pc = self.read_word(address);
     }
 
     fn tclr1(&mut self, address: u16) {
