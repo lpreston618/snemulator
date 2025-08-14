@@ -118,9 +118,9 @@ impl Ssmp {
     // }
 
     pub fn start_frame(&mut self) {
-        self.next_sample = 0.0;
+        self.next_sample -= self.frame_time;
+        self.next_smp_clock -= self.frame_time;
         self.frame_time = 0.0;
-        self.next_smp_clock = 0.0;
     }
 
     /// Clocks the sound processor, checking if it is time to generate a new

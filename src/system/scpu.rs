@@ -16,6 +16,7 @@ use crate::system::ssmp::ApuIORegs;
 use crate::utils::util_macros::bool2byte;
 use crate::utils::{dec_low_byte, inc_low_byte, GetBits, GetBytes, SetBytes, SetCellBytes};
 
+use std::io::Write;
 use std::rc::Rc;
 
 const WRAM_SIZE: usize = 128 * 1024; // 128 KiB
@@ -77,6 +78,7 @@ pub struct Cpu65c816 {
     rom_mirror: usize,
 
     has_sram: bool,
+    sram_full_bank: bool,
     sram: Vec<u8>,
     sram_mirror: usize,
 
@@ -107,6 +109,8 @@ pub struct Cpu65c816 {
 
     debug_flag: bool,
     debug_cnt: usize,
+
+    logfile: Option<std::fs::File>,
 }
 
 // SNES System Functionality
@@ -142,6 +146,7 @@ impl Cpu65c816 {
             rom_mirror: 0,
 
             has_sram: false,
+            sram_full_bank: false,
             sram: Vec::new(),
             sram_mirror: 0,
 
@@ -169,6 +174,8 @@ impl Cpu65c816 {
 
             debug_flag: false,
             debug_cnt: 0,
+
+            logfile: Some(std::fs::File::create("snemlog.txt").unwrap()),
         }
     }
 
@@ -188,7 +195,7 @@ impl Cpu65c816 {
         self.data_bank = 0;
         self.prg_bank = 0;
         self.direct_page = 0;
-        self.stk_ptr = 0x01FF;
+        self.stk_ptr = 0x0100;
         self.status = 0x34;
         self.reset();
     }
@@ -197,7 +204,10 @@ impl Cpu65c816 {
         self.has_sram = cart.has_ram();
         self.sram = vec![0; cart.ram_size()];
         self.sram_mirror = cart.ram_size() - 1;
+        self.sram_full_bank = cart.ram_size() > 5 || cart.rom_size() > 11;
+
         self.mapping_mode = cart.mapping_mode();
+
         self.rom = cart.rom_data();
         self.rom_mirror = self.rom.len() - 1;
     }
@@ -616,23 +626,29 @@ impl Cpu65c816 {
     /// Read from ROM (or SRAM) in LoROM mapping mode
     /// Memory map diagram here: https://snes.nesdev.org/wiki/Memory_map#LoROM
     fn read_lorom(&self, address: u32) -> (u8, usize) {
-        if 0xF0 <= (address.bank() | 0x80) && address.bank_addr() <= 0x7FFF && self.has_sram {
-            let sram_addr = (((address & 0x0F0000) >> 1) | (address & 0x7FFF)) as usize;
+        if self.has_sram {
+            if self.sram_full_bank {
+                if (address.bank() & 0x7F) >= 0x70 {
+                    let sram_addr = (address & 0x0FFFFF) as usize;
 
-            let data = self.sram[sram_addr & self.sram_mirror];
-            let clocks = Cpu65c816::ONE_CYCLE_SLOW;
+                    let data = self.sram[sram_addr & self.sram_mirror];
+                    let clocks = Cpu65c816::ONE_CYCLE_SLOW;
 
-            return (data, clocks);
+                    return (data, clocks);
+                }
+            } else {
+                if (address.bank() & 0x7F) >= 0x70 && address.bank_addr() < 0x8000 {
+                    let sram_addr = (((address & 0x0F0000) >> 1) | (address & 0x7FFF)) as usize;
+    
+                    let data = self.sram[sram_addr & self.sram_mirror];
+                    let clocks = Cpu65c816::ONE_CYCLE_SLOW;
+    
+                    return (data, clocks);
+                }
+            }
         }
 
-        let mirror_addr = if (address & 0x00FFFF) >= 0x8000 {
-            address | 0x800000
-        } else {
-            (address & 0xBFFFFF) | 0x008000
-        };
-
-        // 0 if mapped_addr > rom.len() ? or mirror ?
-        let mapped_addr = (map_lorom_addr(mirror_addr) as usize) & self.rom_mirror;
+        let mapped_addr = (map_lorom_addr(address) as usize) & self.rom_mirror;
 
         let data = self.rom[mapped_addr];
 
@@ -652,12 +668,24 @@ impl Cpu65c816 {
     /// Write to SRAM (ROM writes are ignored but still take cycles)
     /// Memory map diagram here: https://snes.nesdev.org/wiki/Memory_map#LoROM
     fn write_lorom(&mut self, address: u32, data: u8) -> usize {
-        if 0xF0 <= (address.bank() | 0x80) && address.bank_addr() <= 0x7FFF && self.has_sram {
-            let sram_addr = (((address & 0x0F0000) >> 1) | (address & 0x7FFF)) as usize;
+        if self.has_sram {
+            if self.sram_full_bank {
+                if (address.bank() & 0x7F) >= 0x70 {
+                    let sram_addr = (address & 0x0FFFFF) as usize;
 
-            self.sram[sram_addr & self.sram_mirror] = data;
+                    self.sram[sram_addr & self.sram_mirror] = data;
 
-            return Cpu65c816::ONE_CYCLE_SLOW;
+                    return Cpu65c816::ONE_CYCLE_SLOW;
+                }
+            } else {
+                if (address.bank() & 0x7F) >= 0x70 && address.bank_addr() < 0x8000 {
+                    let sram_addr = (((address & 0x0F0000) >> 1) | (address & 0x7FFF)) as usize;
+    
+                    self.sram[sram_addr & self.sram_mirror] = data;
+    
+                    return Cpu65c816::ONE_CYCLE_SLOW;
+                }
+            }
         }
 
         let clocks = if address.bank() >= 0x80 {
@@ -885,6 +913,8 @@ impl Cpu65c816 {
             CpuMode::Emulation => {
                 self.push16_n(self.pc);
                 self.push8_n(self.status);
+
+                self.stk_ptr |= 0x100;
 
                 (vector_lo, vector_hi) = match interrupt {
                     CpuInterrupt::IRQ => (0x00FFFE, 0x00FFFF),
@@ -1977,12 +2007,20 @@ impl Cpu65c816 {
 
     fn plp_n(&mut self) {
         self.status = self.pop8_n();
+
+        if self.is_flag_set(Flag::FlagX) {
+            self.x &= 0x00FF;
+            self.y &= 0x00FF;
+        }
     }
     fn plp_e(&mut self) {
         self.status = self.pop8_e();
         // Emulation mode forces these flags on
         self.set_flag(Flag::FlagM);
         self.set_flag(Flag::FlagX);
+
+        self.x &= 0x00FF;
+        self.y &= 0x00FF;
     }
 
     fn plx_x8(&mut self) {
@@ -2784,6 +2822,24 @@ impl Cpu65c816 {
         let extra_clocks: usize;
 
         // self.debug_cnt = 1;
+        if self.debug_cnt < 4758145 {
+            if self.pc == 0x806c || self.pc == 0x806e {
+                if !self.debug_flag {
+                    self.debug_cnt += 1;
+                    self.logfile.as_mut().unwrap().write(" ; Awaiting interrupt\n".as_bytes()).unwrap();
+                    self.debug_flag = true;
+                }
+            } else {
+                self.debug_flag = false;
+                self.debug_cnt += 1;
+
+                self.log_cpu_str(opcode);
+            }
+        } else if self.debug_cnt == 4758145 {
+            self.logfile.take();
+            println!("Done.");
+            self.debug_cnt += 1;
+        } 
 
         // if self.pc == 0x8B49 && self.prg_bank == 0x03 {
         //     self.debug_flag = true;
@@ -2805,7 +2861,9 @@ impl Cpu65c816 {
         //     println!("($000200) = {:02X}", self._read(0x000200).0);
         // }
 
-        // if self.debug_cnt == 1 {
+        // self.debug_flag = true;
+
+        // if self.debug_flag {
         //     let (prg_data, prg_mirror) = if self.prg_bank == 0x7e || self.prg_bank == 0x7f {
         //         (&self.wram[..], self.wram.len()-1)
         //     } else {
@@ -5923,6 +5981,31 @@ impl Cpu65c816 {
 
     pub fn print_state_str(&self) {
         println!("{}", self.lemon_cpu_str());
+    }
+
+    //PC:8077 OP:80 A:eb80 X:   0 Y:  fe SW:czidxvNe SP: 1ff DP: 0 DBR: 0
+    fn log_cpu_str(&mut self, opcode: u8) {
+        self.logfile.as_mut().unwrap().write(
+            format!("PC:{:02x}{:04x} OP:{opcode:02x} A:{:04x} X:{:04x} Y:{:04x} SW:{}{}{}{}{}{}{}{} EM:{} SP:{:04x} DP:{:02x} DBR:{:02x}\n",
+                self.prg_bank,
+                self.pc-1,
+                self.acc,
+                self.x,
+                self.y,
+                if self.status & (Flag::FlagN as u8) != 0 { 'N' } else { 'n' },
+                if self.status & (Flag::FlagV as u8) != 0 { 'V' } else { 'v' },
+                if self.status & (Flag::FlagM as u8) != 0 { 'M' } else { 'm' },
+                if self.status & (Flag::FlagX as u8) != 0 { 'X' } else { 'x' },
+                if self.status & (Flag::FlagD as u8) != 0 { 'D' } else { 'd' },
+                if self.status & (Flag::FlagI as u8) != 0 { 'I' } else { 'i' },
+                if self.status & (Flag::FlagZ as u8) != 0 { 'Z' } else { 'z' },
+                if self.status & (Flag::FlagC as u8) != 0 { 'C' } else { 'c' },
+                if self.mode == CpuMode::Emulation { '1' } else { '0' },
+                self.stk_ptr,
+                self.direct_page,
+                self.data_bank,
+            ).as_bytes()
+        ).unwrap();
     }
 }
 

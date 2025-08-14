@@ -898,14 +898,14 @@ impl PpuData {
                     _ => {}
                 };
 
-                println!("Set Bg Mode to {:?} and bg3 priority to {}, bg tile sizes to bg1: {:?}, bg2: {:?}, bg3: {:?}, bg4: {:?}",
-                    self.bg_mode.get(),
-                    self.bg3_mode1_priority.get(),
-                    self.bg1_char_size.get(),
-                    self.bg2_char_size.get(),
-                    self.bg3_char_size.get(),
-                    self.bg4_char_size.get(),
-                );
+                // println!("Set Bg Mode to {:?} and bg3 priority to {}, bg tile sizes to bg1: {:?}, bg2: {:?}, bg3: {:?}, bg4: {:?}",
+                //     self.bg_mode.get(),
+                //     self.bg3_mode1_priority.get(),
+                //     self.bg1_char_size.get(),
+                //     self.bg2_char_size.get(),
+                //     self.bg3_char_size.get(),
+                //     self.bg4_char_size.get(),
+                // );
             }
 
             0x06 => {

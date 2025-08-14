@@ -210,6 +210,10 @@ impl Cartridge {
         (1 << self.ram_size) * 1024
     }
 
+    pub fn rom_size(&self) -> usize {
+        (1 << self.rom_size) * 1024
+    }
+
     pub fn has_ram(&self) -> bool {
         self.extra_ram
     }
