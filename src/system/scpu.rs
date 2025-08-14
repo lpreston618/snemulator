@@ -106,11 +106,6 @@ pub struct Cpu65c816 {
     joypad_auto_read: bool,
 
     logger: Rc<SnemLogger>,
-
-    debug_flag: bool,
-    debug_cnt: usize,
-
-    logfile: Option<std::fs::File>,
 }
 
 // SNES System Functionality
@@ -171,11 +166,6 @@ impl Cpu65c816 {
             p1_auto_read: 0,
             p2_auto_read: 0,
             joypad_auto_read: false,
-
-            debug_flag: false,
-            debug_cnt: 0,
-
-            logfile: Some(std::fs::File::create("snemlog.txt").unwrap()),
         }
     }
 
@@ -227,9 +217,6 @@ impl Cpu65c816 {
         self.p1_auto_read = p1_controller_state.reverse_bits();
         self.p2_auto_read = p2_controller_state.reverse_bits();
     }
-
-    pub fn set_debug(&mut self) { self.debug_flag = true; }
-    pub fn clear_debug(&mut self) { self.debug_flag = false; }
 }
 
 // Internal Helper Functions / Bus Behavior
@@ -2820,72 +2807,6 @@ impl Cpu65c816 {
     fn exec_instr(&mut self, frame: usize) {
         let opcode = self.read_prg();
         let extra_clocks: usize;
-
-        // self.debug_cnt = 1;
-        if self.debug_cnt < 4758145 {
-            if self.pc == 0x806c || self.pc == 0x806e {
-                if !self.debug_flag {
-                    self.debug_cnt += 1;
-                    self.logfile.as_mut().unwrap().write(" ; Awaiting interrupt\n".as_bytes()).unwrap();
-                    self.debug_flag = true;
-                }
-            } else {
-                self.debug_flag = false;
-                self.debug_cnt += 1;
-
-                self.log_cpu_str(opcode);
-            }
-        } else if self.debug_cnt == 4758145 {
-            self.logfile.take();
-            println!("Done.");
-            self.debug_cnt += 1;
-        } 
-
-        // if self.pc == 0x8B49 && self.prg_bank == 0x03 {
-        //     self.debug_flag = true;
-
-        //     self.debug_cnt = 1;
-
-        //     println!("BEFORE OP 0x{opcode:02X}:");
-
-        //     self.print_state_str();   
-
-        //     println!("($000200) = {:02X}", self._read(0x000200).0);
-        // }
-
-        // if self.pc == 0x8B4A && self.prg_bank == 0x03 {
-        //     println!("AFTER:");
-
-        //     self.print_state_str();   
-
-        //     println!("($000200) = {:02X}", self._read(0x000200).0);
-        // }
-
-        // self.debug_flag = true;
-
-        // if self.debug_flag {
-        //     let (prg_data, prg_mirror) = if self.prg_bank == 0x7e || self.prg_bank == 0x7f {
-        //         (&self.wram[..], self.wram.len()-1)
-        //     } else {
-        //         (&self.rom[..], self.rom_mirror as usize)
-        //     };
-
-        //     self.logger.log(
-        //         LogLevel::Info,
-        //         format!("{}",
-        //             disassembler::instr_disassembly(
-        //                 self.prg_bank,
-        //                 self.pc-1,
-        //                 prg_data,
-        //                 prg_mirror,
-        //                 self.is_flag_set(Flag::FlagM), 
-        //                 self.is_flag_set(Flag::FlagX),
-        //                 self.mode == CpuMode::Emulation,
-        //                 self.mapping_mode,
-        //             )
-        //         ).as_str()
-        //     );
-        // }
 
         match (opcode, self.mode, self.acc_size(), self.idx_size()) {
             // brk, imp
@@ -5905,199 +5826,3 @@ impl Cpu65c816 {
         self.add_clocks(extra_clocks);
     }
 }
-
-
-impl Cpu65c816 {
-    fn cpu_status_str(&self) -> String {
-        let mut status_str = String::new();
-        status_str.push(if self.is_flag_set(Flag::FlagN) {
-            'N'
-        } else {
-            'n'
-        });
-        status_str.push(if self.is_flag_set(Flag::FlagV) {
-            'V'
-        } else {
-            'v'
-        });
-        if self.mode == CpuMode::Emulation {
-            status_str.push('1');
-            status_str.push(if self.is_flag_set(Flag::FlagX) {
-                'B'
-            } else {
-                'b'
-            });
-        } else {
-            status_str.push(if self.is_flag_set(Flag::FlagM) {
-                'M'
-            } else {
-                'm'
-            });
-            status_str.push(if self.is_flag_set(Flag::FlagX) {
-                'X'
-            } else {
-                'x'
-            });
-        }
-        status_str.push(if self.is_flag_set(Flag::FlagD) {
-            'D'
-        } else {
-            'd'
-        });
-        status_str.push(if self.is_flag_set(Flag::FlagI) {
-            'I'
-        } else {
-            'i'
-        });
-        status_str.push(if self.is_flag_set(Flag::FlagZ) {
-            'Z'
-        } else {
-            'z'
-        });
-        status_str.push(if self.is_flag_set(Flag::FlagC) {
-            'C'
-        } else {
-            'c'
-        });
-
-        status_str
-    }
-
-    fn lemon_cpu_str(&self) -> String {
-        format!(
-            "PC: {:02x}{:04x} A:{:04x} X:{:04x} Y:{:04x} S:{:04x} D:{:04x} DB:{:02x} {} E: {}",
-            self.prg_bank,
-            self.pc,
-            self.acc,
-            self.x,
-            self.y,
-            self.stk_ptr,
-            self.direct_page,
-            self.data_bank,
-            self.cpu_status_str(),
-            self.mode == CpuMode::Emulation,
-        )
-    }
-
-    pub fn print_state_str(&self) {
-        println!("{}", self.lemon_cpu_str());
-    }
-
-    //PC:8077 OP:80 A:eb80 X:   0 Y:  fe SW:czidxvNe SP: 1ff DP: 0 DBR: 0
-    fn log_cpu_str(&mut self, opcode: u8) {
-        self.logfile.as_mut().unwrap().write(
-            format!("PC:{:02x}{:04x} OP:{opcode:02x} A:{:04x} X:{:04x} Y:{:04x} SW:{}{}{}{}{}{}{}{} EM:{} SP:{:04x} DP:{:02x} DBR:{:02x}\n",
-                self.prg_bank,
-                self.pc-1,
-                self.acc,
-                self.x,
-                self.y,
-                if self.status & (Flag::FlagN as u8) != 0 { 'N' } else { 'n' },
-                if self.status & (Flag::FlagV as u8) != 0 { 'V' } else { 'v' },
-                if self.status & (Flag::FlagM as u8) != 0 { 'M' } else { 'm' },
-                if self.status & (Flag::FlagX as u8) != 0 { 'X' } else { 'x' },
-                if self.status & (Flag::FlagD as u8) != 0 { 'D' } else { 'd' },
-                if self.status & (Flag::FlagI as u8) != 0 { 'I' } else { 'i' },
-                if self.status & (Flag::FlagZ as u8) != 0 { 'Z' } else { 'z' },
-                if self.status & (Flag::FlagC as u8) != 0 { 'C' } else { 'c' },
-                if self.mode == CpuMode::Emulation { '1' } else { '0' },
-                self.stk_ptr,
-                self.direct_page,
-                self.data_bank,
-            ).as_bytes()
-        ).unwrap();
-    }
-}
-
-// impl Cpu65c816 {
-//     pub fn temp_load_test(&mut self) {
-//         use std::path::Path;
-
-//         // C:\Users\lance\Desktop\Pet Projects\RustProjects\snemulator\games\Super Mario World (USA).sfc
-//         let test_path_str = format!("tests/lemons/CPUTest/CPUADC.sfc");
-//         // let test_path_str = format!("tests/ppu_tests/test_hello.sfc");
-//         // let test_path_str = format!("games/Super Mario World (USA).sfc");
-//         // let test_path_str = format!("games/SNES Test Program.sfc");
-//         let test_path = Path::new(&test_path_str);
-//         let cart = Cartridge::from_path(test_path).unwrap();
-
-//         self.load_cart(cart);
-
-//         self.stk_ptr = 0x1ff;
-//         self.status = 0x34;
-
-//         self.rom_mirror = self.rom.len() - 1;
-
-//         self.reset();
-//     }
-
-//     fn cpu_status_str(&self) -> String {
-//         let mut status_str = String::new();
-//         status_str.push(if self.is_flag_set(Flag::FlagN) {
-//             'N'
-//         } else {
-//             'n'
-//         });
-//         status_str.push(if self.is_flag_set(Flag::FlagV) {
-//             'V'
-//         } else {
-//             'v'
-//         });
-//         if self.mode == CpuMode::Emulation {
-//             status_str.push('1');
-//             status_str.push(if self.is_flag_set(Flag::FlagX) {
-//                 'B'
-//             } else {
-//                 'b'
-//             });
-//         } else {
-//             status_str.push(if self.is_flag_set(Flag::FlagM) {
-//                 'M'
-//             } else {
-//                 'm'
-//             });
-//             status_str.push(if self.is_flag_set(Flag::FlagX) {
-//                 'X'
-//             } else {
-//                 'x'
-//             });
-//         }
-//         status_str.push(if self.is_flag_set(Flag::FlagD) {
-//             'D'
-//         } else {
-//             'd'
-//         });
-//         status_str.push(if self.is_flag_set(Flag::FlagI) {
-//             'I'
-//         } else {
-//             'i'
-//         });
-//         status_str.push(if self.is_flag_set(Flag::FlagZ) {
-//             'Z'
-//         } else {
-//             'z'
-//         });
-//         status_str.push(if self.is_flag_set(Flag::FlagC) {
-//             'C'
-//         } else {
-//             'c'
-//         });
-
-//         status_str
-//     }
-
-//     fn lemon_cpu_str(&self) -> String {
-//         format!(
-//             "{:02x}{:04x} A:{:04x} X:{:04x} Y:{:04x} S:{:04x} D:{:04x} DB:{:02x} {} ",
-//             self.prg_bank,
-//             self.pc,
-//             self.acc,
-//             self.x,
-//             self.y,
-//             self.stk_ptr,
-//             self.direct_page,
-//             self.data_bank,
-//             self.cpu_status_str()
-//         )
-//     }
-// }

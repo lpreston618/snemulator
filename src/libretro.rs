@@ -98,10 +98,6 @@ impl SnemulatorCore {
         let p1_port = retro::device::DevicePort::new(0);
         let p2_port = retro::device::DevicePort::new(1);
 
-        if callbacks.is_joypad_button_pressed(p1_port, JoypadButton::Start) && !self.p1_controller.is_button_pressed(JoypadButton::Start) {
-            self.snem_cpu.as_ref().unwrap().print_state_str();
-        }
-
         set_button!(self.p1_controller, p1_port, JoypadButton::A);
         set_button!(self.p1_controller, p1_port, JoypadButton::B);
         set_button!(self.p1_controller, p1_port, JoypadButton::X);
@@ -127,16 +123,6 @@ impl SnemulatorCore {
         set_button!(self.p2_controller, p2_port, JoypadButton::Start);
         set_button!(self.p2_controller, p2_port, JoypadButton::L1);
         set_button!(self.p2_controller, p2_port, JoypadButton::R1);
-
-        if self.p1_controller.is_button_pressed(JoypadButton::L1) {
-            println!("Set debug");
-            self.snem_cpu.as_mut().unwrap().set_debug();
-        }
-
-        if self.p1_controller.is_button_pressed(JoypadButton::R1) {
-            println!("Clr debug");
-            self.snem_cpu.as_mut().unwrap().clear_debug();
-        }
 
         inputs_polled
     }
