@@ -2526,11 +2526,15 @@ impl Cpu65c816 {
     pub fn clock(&mut self, frame: usize) {
         self.sys_clocks_until_clock = 0;
 
-        if self.ppu_data.cpu_vblank_nmi.get() && !self.vblank_nmi_ignore { // TODO: maybe clear cpu_vblank_nmi regardless of vblank_nmi_ignore
-            self.trigger_interrupt(CpuInterrupt::NMI);
+        if self.ppu_data.cpu_vblank_nmi.get() {
+            if !self.vblank_nmi_ignore {
+                self.trigger_interrupt(CpuInterrupt::NMI);
+            }
             self.ppu_data.cpu_vblank_nmi.set(false);
-        } else if self.ppu_data.hv_timer_irq.get() { // TODO: Same as ^^^, maybe clear flag even when ignore is false
-            self.trigger_interrupt(CpuInterrupt::IRQ);
+        } else if self.ppu_data.hv_timer_irq.get() {
+            if !self.vblank_nmi_ignore {
+                self.trigger_interrupt(CpuInterrupt::IRQ);
+            }
             self.ppu_data.hv_timer_irq.set(false);
         } else {
             if self.ppu_data.hblank_start.get() {
