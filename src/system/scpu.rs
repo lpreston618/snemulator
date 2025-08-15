@@ -106,6 +106,8 @@ pub struct Cpu65c816 {
     joypad_auto_read: bool,
 
     logger: Rc<SnemLogger>,
+
+    debug_flag: bool,
 }
 
 // SNES System Functionality
@@ -166,6 +168,8 @@ impl Cpu65c816 {
             p1_auto_read: 0,
             p2_auto_read: 0,
             joypad_auto_read: false,
+
+            debug_flag: false,
         }
     }
 
@@ -462,6 +466,25 @@ impl Cpu65c816 {
                 self.dma_channels[7].bytes_written = 0;
 
                 self.active_dma_channel_idx = data.trailing_zeros() as usize;
+
+                for i in 0..8 {
+                    if self.dma_channels[i].dma_enable {
+                        if self.dma_channels[i].b_bus_addr == 0x18 || self.dma_channels[i].b_bus_addr == 0x19 {
+                            if self.dma_channels[i].a_bus_addr() == 0x7f2000 && (self.ppu_data.vram_addr.get() & 0x1000 == 0x1000) && !self.debug_flag {
+                                self.debug_flag = true;
+                                println!("Log start.")
+                            }
+
+                            if self.dma_channels[i].a_bus_addr() == 0x7f2000 && self.ppu_data.vram_addr.get() == 0x0BC0 {
+                                self.debug_flag = false;
+                                println!("Log end.");
+                            }
+                            if self.debug_flag && self.dma_channels[i].a_bus_bank == 0x7f {
+                                println!("Started DMA on ch. {i}, A: ${:06X}, B: $21{:02X}, VRAM ADDR: ${:04X}, BYTES: {}, PC: {:02X}{:04X}", self.dma_channels[i].a_bus_addr(), self.dma_channels[i].b_bus_addr, self.ppu_data.vram_addr.get(), self.dma_channels[i].byte_count, self.prg_bank, self.pc);
+                            }
+                        }
+                    }
+                }
             }
             0x420C => {
                 // so we don't try to start hblank immediately
@@ -2807,6 +2830,33 @@ impl Cpu65c816 {
     fn exec_instr(&mut self, frame: usize) {
         let opcode = self.read_prg();
         let extra_clocks: usize;
+
+        // if self.debug_flag {
+        //     self.log_cpu_str(opcode);
+        // }
+        if self.debug_flag {
+            let (prg_data, prg_mirror) = if self.prg_bank == 0x7e || self.prg_bank == 0x7f {
+                (&self.wram[..], WRAM_SIZE-1)
+            } else {
+                (&self.rom[..], self.rom_mirror as usize)
+            };
+
+            self.logger.log(
+                LogLevel::Info,
+                format!("{}",
+                    disassembler::instr_disassembly(
+                        self.prg_bank,
+                        self.pc-1,
+                        prg_data,
+                        prg_mirror,
+                        self.is_flag_set(Flag::FlagM), 
+                        self.is_flag_set(Flag::FlagX),
+                        self.mode == CpuMode::Emulation,
+                        self.mapping_mode,
+                    )
+                ).as_str()
+            );
+        }
 
         match (opcode, self.mode, self.acc_size(), self.idx_size()) {
             // brk, imp
@@ -5824,5 +5874,69 @@ impl Cpu65c816 {
         }
 
         self.add_clocks(extra_clocks);
+    }
+}
+
+
+impl Cpu65c816 {
+    fn log_cpu_str(&mut self, opcode: u8) {
+        self.logger.log(
+            LogLevel::Info,
+            format!("PC:{:02x}{:04x} OP:{opcode:02x} A:{:04x} X:{:04x} Y:{:04x} SW:{}{}{}{}{}{}{}{} EM:{} SP:{:04x} DP:{:02x} DBR:{:02x}\n",
+
+
+                self.prg_bank,
+
+
+                self.pc-1,
+
+
+                self.acc,
+
+
+                self.x,
+
+
+                self.y,
+
+
+                if self.status & (Flag::FlagN as u8) != 0 { 'N' } else { 'n' },
+
+
+                if self.status & (Flag::FlagV as u8) != 0 { 'V' } else { 'v' },
+
+
+                if self.status & (Flag::FlagM as u8) != 0 { 'M' } else { 'm' },
+
+
+                if self.status & (Flag::FlagX as u8) != 0 { 'X' } else { 'x' },
+
+
+                if self.status & (Flag::FlagD as u8) != 0 { 'D' } else { 'd' },
+
+
+                if self.status & (Flag::FlagI as u8) != 0 { 'I' } else { 'i' },
+
+
+                if self.status & (Flag::FlagZ as u8) != 0 { 'Z' } else { 'z' },
+
+
+                if self.status & (Flag::FlagC as u8) != 0 { 'C' } else { 'c' },
+
+
+                if self.mode == CpuMode::Emulation { '1' } else { '0' },
+
+
+                self.stk_ptr,
+
+
+                self.direct_page,
+
+
+                self.data_bank,
+
+
+            ).as_str()
+        );
     }
 }

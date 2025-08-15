@@ -3,11 +3,12 @@ mod utils;
 use utils::{xbgr0555_to_rgb565, rgb565_to_xbgr0555, Togglable, ToggleState};
 
 use crate::system::sppu::utils::{rgb565_from_parts, rgb565_to_parts};
-use crate::utils::{GetBits, SetCellBytes};
+use crate::utils::{GetBits, GetBytes, SetCellBytes};
 use crate::log::{SnemLogger, LogLevel};
 
 use libretro_rs::retro::pixel::format::RGB565;
 
+use std::io::Write;
 use std::{cell::Cell, rc::Rc};
 
 const VBLANK_START_SCANLINE: usize = 225;
@@ -925,11 +926,11 @@ impl PpuData {
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
 
-                // println!("Set Bg1 vram base addr to ${:04X}, count_x: {:?}, count_y: {:?}", 
-                //     (self.bg1_vram_addr.get() as u16) << 10, 
-                //     self.bg1_tilemap_count_x.get(), 
-                //     self.bg1_tilemap_count_y.get()
-                // );
+                println!("Set Bg1 vram base addr to ${:04X}, count_x: {:?}, count_y: {:?}", 
+                    (self.bg1_vram_addr.get() as u16) << 10, 
+                    self.bg1_tilemap_count_x.get(), 
+                    self.bg1_tilemap_count_y.get()
+                );
             }
 
             0x08 => {
@@ -941,11 +942,11 @@ impl PpuData {
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
 
-                // println!("Set Bg2 vram base addr to ${:04X}, count_x: {:?}, count_y: {:?}", 
-                //     (self.bg2_vram_addr.get() as u16) << 10, 
-                //     self.bg2_tilemap_count_x.get(), 
-                //     self.bg2_tilemap_count_y.get()
-                // );
+                println!("Set Bg2 vram base addr to ${:04X}, count_x: {:?}, count_y: {:?}", 
+                    (self.bg2_vram_addr.get() as u16) << 10, 
+                    self.bg2_tilemap_count_x.get(), 
+                    self.bg2_tilemap_count_y.get()
+                );
             }
 
             0x09 => {
@@ -957,11 +958,11 @@ impl PpuData {
                     if data.bit_en(0) { TilemapCount::Two } else { TilemapCount::One }
                 );
 
-                // println!("Set Bg3 vram base addr to ${:04X}, count_x: {:?}, count_y: {:?}", 
-                //     (self.bg3_vram_addr.get() as u16) << 10, 
-                //     self.bg3_tilemap_count_x.get(), 
-                //     self.bg3_tilemap_count_y.get()
-                // );
+                println!("Set Bg3 vram base addr to ${:04X}, count_x: {:?}, count_y: {:?}", 
+                    (self.bg3_vram_addr.get() as u16) << 10, 
+                    self.bg3_tilemap_count_x.get(), 
+                    self.bg3_tilemap_count_y.get()
+                );
             }
 
             0x0A => {
@@ -984,15 +985,15 @@ impl PpuData {
                 self.bg2_chr_base_addr.set(data >> 4);
                 self.bg1_chr_base_addr.set(data & 0x0F);
 
-                // println!("Set Bg1 chr base address to ${:04X}", (self.bg1_chr_base_addr.get() as u16) << 12);
-                // println!("Set Bg2 chr base address to ${:04X}", (self.bg2_chr_base_addr.get() as u16) << 12);
+                println!("Set Bg1 chr base address to ${:04X}", (self.bg1_chr_base_addr.get() as u16) << 12);
+                println!("Set Bg2 chr base address to ${:04X}", (self.bg2_chr_base_addr.get() as u16) << 12);
             }
 
             0x0C => {
                 self.bg4_chr_base_addr.set(data >> 4);
                 self.bg3_chr_base_addr.set(data & 0x0F);
 
-                // println!("Set Bg3 chr base address to ${:04X}", (self.bg3_chr_base_addr.get() as u16) << 12);
+                println!("Set Bg3 chr base address to ${:04X}", (self.bg3_chr_base_addr.get() as u16) << 12);
                 // println!("Set Bg4 chr base address to ${:04X}", (self.bg4_chr_base_addr.get() as u16) << 12);
             }
 
@@ -1424,7 +1425,8 @@ impl PpuData {
             }
 
             0x38 => {
-                let addr = self.internal_oam_addr.replace(self.internal_oam_addr.get() + 1);
+                let addr = self.internal_oam_addr.get();
+                self.internal_oam_addr.set((addr + 1) % OAM_SIZE as u16);
 
                 self.oam[addr as usize].get()
             }
@@ -2105,7 +2107,7 @@ impl Ppu5C7x {
                 let chr_idx = (tile_y << 4) + tile_x;
 
                 let obj_table_base_addr = if sprite.use_second_obj_table {
-                    self.name_base_addr() + ((self.name_secondary_select() as u16) << 12)
+                    self.name_base_addr() + self.name_secondary_select()
                 } else {
                     self.name_base_addr()
                 };
@@ -3047,6 +3049,19 @@ impl Ppu5C7x {
             TileSize::Size16x16 => (x & 0xF, y & 0xF),
         };
 
+        // if screen_x == 4 && screen_y == 4 {
+        //     match bg_layer {
+        //         ColorLayer::Bg1 => {
+        //             println!("tile_addr: ${:04X}, tile_row: {}, tile_col: {}",
+        //                 bg_data.tilemap_base_addr + tilemap_offset + tile_idx,
+        //                 tile_row,
+        //                 tile_col,
+        //             )
+        //         },
+        //         _ => {}
+        //     }
+        // }
+
         TileData {
             tile_addr: bg_data.tilemap_base_addr + tilemap_offset + tile_idx,
             tile_row: tile_row as u8,
@@ -3208,6 +3223,27 @@ impl Ppu5C7x {
             chr_pal: tile_pal,
             chr_priority: tile_priority,
         }
+    }
+
+    pub fn dump_vram(&self) {
+        let mut outf = std::fs::File::create("vram_dump.bin").unwrap();
+
+        let mut vram_clone = Vec::new();
+        for b in self.registers.vram.iter() {
+            vram_clone.push(b.get().get_lo());
+            vram_clone.push(b.get().get_hi());
+        }
+
+        outf.write(&vram_clone).unwrap();
+    
+        println!("Dumped vram.");
+
+        let mut vram_clone = Vec::new();
+        for b in self.registers.vram.iter() {
+            vram_clone.push(b.get());
+        }
+
+        crate::tools::hexdump::hexdump16_to_file(&vram_clone, 0, "vram_dump.txt");
     }
 
     fn bg_col_2bpp(&self, tile_data: TileData, bg_chr_base_addr: u16, bg_cgram_base_addr: u8) -> ColorData {        
@@ -3532,7 +3568,7 @@ impl Ppu5C7x {
     fn bg3_mode1_priority(&self) -> bool { self.registers.bg3_mode1_priority.get() }
 
     fn name_base_addr(&self) -> u16 { (self.registers.name_base_addr.get() as u16) << 13 }
-    fn name_secondary_select(&self) -> u8 { self.registers.name_secondary_select.get() }
+    fn name_secondary_select(&self) -> u16 { (self.registers.name_secondary_select.get() as u16 + 1) << 12 }
     
     fn bg1_m7_x_offset(&self) -> u16 { self.registers.bg1_m7_x_offset.get() }
     fn bg1_m7_y_offset(&self) -> u16 { self.registers.bg1_m7_y_offset.get() }

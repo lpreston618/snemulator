@@ -94,7 +94,6 @@ impl SnemulatorCore {
 
         let inputs_polled = callbacks.poll_inputs();
 
-        
         let p1_port = retro::device::DevicePort::new(0);
         let p2_port = retro::device::DevicePort::new(1);
 

@@ -130,7 +130,7 @@ impl Ssmp {
 
         if self.frame_time >= self.next_sample {
             self.next_sample += TIME_PER_SAMPLE;
-            self.samples_generated += 1;
+            // self.samples_generated += 1;
             
             self.sdsp.clock_envelopes();
             self.sdsp.generate_sample(audio_buffer);
