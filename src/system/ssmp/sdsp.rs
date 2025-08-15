@@ -784,9 +784,9 @@ impl SuperDSP {
     pub fn generate_sample(&mut self, audio_buffer: &mut Vec<i16>) {
         let mut lsum = 0;
         let mut rsum = 0;
-        
+
         for voice in 0..8 {
-            let (lsample, rsample) =  self.generate_voice_samples(voice);
+            let (lsample, rsample) = self.generate_voice_samples(voice);
 
             lsum = (lsum + lsample) & 0x7FFF;
             rsum = (rsum + rsample) & 0x7FFF;

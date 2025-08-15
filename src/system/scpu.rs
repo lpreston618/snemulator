@@ -466,25 +466,6 @@ impl Cpu65c816 {
                 self.dma_channels[7].bytes_written = 0;
 
                 self.active_dma_channel_idx = data.trailing_zeros() as usize;
-
-                for i in 0..8 {
-                    if self.dma_channels[i].dma_enable {
-                        if self.dma_channels[i].b_bus_addr == 0x18 || self.dma_channels[i].b_bus_addr == 0x19 {
-                            if self.dma_channels[i].a_bus_addr() == 0x7f2000 && (self.ppu_data.vram_addr.get() & 0x1000 == 0x1000) && !self.debug_flag {
-                                self.debug_flag = true;
-                                println!("Log start.")
-                            }
-
-                            if self.dma_channels[i].a_bus_addr() == 0x7f2000 && self.ppu_data.vram_addr.get() == 0x0BC0 {
-                                self.debug_flag = false;
-                                println!("Log end.");
-                            }
-                            if self.debug_flag && self.dma_channels[i].a_bus_bank == 0x7f {
-                                println!("Started DMA on ch. {i}, A: ${:06X}, B: $21{:02X}, VRAM ADDR: ${:04X}, BYTES: {}, PC: {:02X}{:04X}", self.dma_channels[i].a_bus_addr(), self.dma_channels[i].b_bus_addr, self.ppu_data.vram_addr.get(), self.dma_channels[i].byte_count, self.prg_bank, self.pc);
-                            }
-                        }
-                    }
-                }
             }
             0x420C => {
                 // so we don't try to start hblank immediately
@@ -531,8 +512,8 @@ impl Cpu65c816 {
 
                     self.active_hdma_channel_idx = 8;
                     self.dma_status = match self.dma_status {
-                        DmaStatus::InactiveLayeredHDMA => DmaStatus::DMA,
-                        _ => DmaStatus::Off,
+                        DmaStatus::InactiveHDMA => DmaStatus::Off,
+                        _ => self.dma_status,
                     }
                 }
             }
@@ -602,6 +583,10 @@ impl Cpu65c816 {
                 } else {
                     dma::Direction::AtoB
                 };
+
+                // if channel_idx == 0 {
+                //     println!("Set ch. 0 a bus addr inc to {:?}", dma_channel.inc_mode);
+                // }
             }
             0x4301 => { dma_channel.b_bus_addr = data; }
             0x4302 => {
