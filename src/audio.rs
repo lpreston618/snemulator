@@ -2,7 +2,7 @@ use libretro_rs::retro;
 
 use crate::libretro::IDEAL_FPS;
 
-/// SNES produces a 32 KHz sound wave
+/// SNES produces samples at 32 KHz
 pub const AUDIO_FREQ: usize = 32000;
 pub const IDEAL_FRAME_SAMPLES: usize = AUDIO_FREQ / IDEAL_FPS + 1;
 pub const MAX_AUDIO_BUFFER_SIZE: usize = IDEAL_FRAME_SAMPLES * 2;

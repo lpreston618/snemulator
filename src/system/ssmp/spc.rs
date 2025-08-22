@@ -176,6 +176,12 @@ impl Spc700 {
         }
     }
 
+    pub fn inc_debug_cnt(&mut self) {
+        if self.debug_flag {
+            self.debug_cnt += 1;
+        }
+    }
+
     fn write_sound_regs(&mut self, address: u16, data: u8) {
         match address & 0xF {
             0x1 => {

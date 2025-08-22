@@ -2523,8 +2523,12 @@ impl Cpu65c816 {
         self.sys_clocks_until_clock
     }
 
-    pub fn clock(&mut self, frame: usize) {
-        self.sys_clocks_until_clock = 0;
+    pub fn clock(&mut self, master_clocks: usize) {
+        self.sys_clocks_until_clock -= master_clocks;
+
+        if self.sys_clocks_until_clock > 0 {
+            return;
+        }
 
         if self.ppu_data.cpu_vblank_nmi.get() {
             if !self.vblank_nmi_ignore {
@@ -2552,7 +2556,7 @@ impl Cpu65c816 {
             }
 
             match self.dma_status {
-                DmaStatus::Off | DmaStatus::InactiveHDMA => self.exec_instr(frame),
+                DmaStatus::Off | DmaStatus::InactiveHDMA => self.exec_instr(),
                 DmaStatus::DMA | DmaStatus::InactiveLayeredHDMA => self.do_dma(),
                 DmaStatus::HDMA | DmaStatus::ActiveLayeredHDMA => self.do_hdma(),
             }
@@ -2744,6 +2748,10 @@ impl Cpu65c816 {
 
             self.dma_channels[ch_idx].bytes_written = bytes_written;
             self.dma_channels[ch_idx].table_started = true;
+
+            let clocks = bytes_written * Cpu65c816::ONE_CYCLE_SLOW;
+
+            self.add_clocks(clocks);
         }
 
         self.dma_channels[ch_idx].scanlines_left -= 1;
@@ -2816,7 +2824,7 @@ impl Cpu65c816 {
         self.add_clocks(Cpu65c816::ONE_CYCLE_SLOW * bytes_written);
     }
 
-    fn exec_instr(&mut self, frame: usize) {
+    fn exec_instr(&mut self) {
         let opcode = self.read_prg();
         let extra_clocks: usize;
 

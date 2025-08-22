@@ -19,9 +19,14 @@ impl<const PERIOD: usize> Timer<PERIOD> {
     }
 
     pub fn clock(&mut self) {
+        if !self.enable {
+            self.counter = 0;
+            return;
+        }
+
         self.clocks += 1;
 
-        if self.enable && self.clocks == PERIOD {
+        if self.clocks == PERIOD {
             self.clocks = 0;
             self.internal_counter += 1;
 
@@ -47,8 +52,8 @@ impl<const PERIOD: usize> Timer<PERIOD> {
 
     pub fn get_target(&self) -> u8 { self.target }
     pub fn get_counter(&mut self) -> u8 {
-        let data = self.counter;
-        self.counter += 1;
+        let data = self.counter & 0x0F;
+        self.counter = 0;
         data
     }
 }

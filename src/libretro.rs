@@ -70,9 +70,6 @@ struct SnemulatorCore {
 impl SnemulatorCore {
     pub fn render_audio(&mut self, callbacks: &mut impl Callbacks) {
         callbacks.upload_audio_frame(self.audio_buffer.as_slice());
-
-        // println!("Rendered {} samples, status = {:?}", self.audio_buffer.len(), self.audio_buffer_status);
-
         self.audio_buffer.clear()
     }
 
@@ -145,36 +142,28 @@ impl SnemulatorCore {
     fn cycle(&mut self, cpu: &mut scpu::Cpu65c816, ppu: &mut sppu::Ppu5C7x, smp: &mut ssmp::Ssmp) {
         let ppu_clocks = ppu.sys_clocks_left();
         let cpu_clocks = cpu.sys_clocks_left();
-
-        if ppu_clocks < cpu_clocks {
-            cpu.remove_clocks(ppu_clocks);
-            ppu.clock(&mut self.frame_buffer);
-        } else {
-            ppu.remove_clocks(cpu_clocks);
-            cpu.clock(self.frame_count as usize);
-            if cpu.poll_controllers {
-                cpu.latch_controller_states(
-                    self.p1_controller.state_as_u16(),
-                    self.p2_controller.state_as_u16()
-                );
-
-                cpu.poll_controllers = false;
-            }
-
-            if cpu.auto_read_controllers {
-                cpu.do_joypad_auto_read(
-                    self.p1_controller.state_as_u16(),
-                    self.p2_controller.state_as_u16()
-                );
-
-                cpu.auto_read_controllers = false;
-            }
-        }
-
         let master_clocks = cpu_clocks.min(ppu_clocks);
 
-        if self.audio_buffer.len() < audio::MAX_AUDIO_BUFFER_SIZE {
-            smp.clock(&mut self.audio_buffer, master_clocks);
+        cpu.clock(master_clocks);
+        ppu.clock(master_clocks, &mut self.frame_buffer);
+        smp.clock(master_clocks, &mut self.audio_buffer);
+
+        if cpu.poll_controllers {
+            cpu.latch_controller_states(
+                self.p1_controller.state_as_u16(),
+                self.p2_controller.state_as_u16()
+            );
+
+            cpu.poll_controllers = false;
+        }
+
+        if cpu.auto_read_controllers {
+            cpu.do_joypad_auto_read(
+                self.p1_controller.state_as_u16(),
+                self.p2_controller.state_as_u16()
+            );
+
+            cpu.auto_read_controllers = false;
         }
     }
 

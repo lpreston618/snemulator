@@ -13,20 +13,21 @@ use std::{cell::Cell, rc::Rc};
 use crate::log::{LogLevel, SnemLogger};
 use crate::audio::AUDIO_FREQ;
 
+/// Frequency of the SNES master clock
 const MASTER_CLOCK_HZ: usize = 21477300;
+/// Amount of time (in seconds) each system clock takes.
 const MASTER_CLOCK_PERIOD: f64 = 1.0 / MASTER_CLOCK_HZ as f64;
-const SDSP_CLOCK_HZ: usize = 3072000;
-const SMP_CLOCK_HZ: usize = SDSP_CLOCK_HZ / 3;
-// const SMP_CLOCK_PERIOD: f64 = 1.0 / SDSP_CLOCK_HZ as f64;
-const SMP_CLOCK_PERIOD: f64 = 1.0 / SMP_CLOCK_HZ as f64;
+/// Frequency of the SPC700 internal clock
+const SPC_CLOCK_HZ: usize = 1024000;
+/// Amount of time (in seconds) each SPC700 clock cycle takes.
+const SPC_CLOCK_PERIOD: f64 = 1.0 / SPC_CLOCK_HZ as f64;
+/// Amount of time (in seconds) between playing each sample.
+const AUDIO_SAMPLE_PERIOD: f64 = 1.0 / AUDIO_FREQ as f64;
 
-/// Time (in seconds) between playing each sample.
-const TIME_PER_SAMPLE: f64 = 1.0 / AUDIO_FREQ as f64;
-
-/// How long to wait between generating samples before deciding to drop all the
-/// samples we are behind by. This is useful when the emulator is paused, for
-/// example, so we don't try to generate millions of samples at once.
-const SAMPLE_DROP_TIME: f64 = TIME_PER_SAMPLE * 64.0;
+// // How long to wait between generating samples before deciding to drop all the
+// // samples we are behind by. This is useful when the emulator is paused, for
+// // example, so we don't try to generate millions of samples at once.
+// const SAMPLE_DROP_TIME: f64 = TIME_PER_SAMPLE * 64.0;
 
 /// 64 KiB of Audio RAM
 const ARAM_SIZE: usize = 0x10000;
@@ -73,12 +74,10 @@ pub struct Ssmp {
     sdsp: sdsp::SuperDSP,
 
     next_sample: f64,
-    next_smp_clock: f64,
+    next_spc_clock: f64,
     frame_time: f64,
-    last_smp_clock: std::time::Instant,
-    start_time: std::time::Instant,
 
-    samples_generated: usize,
+    debug_cnt: usize,
 
     logger: Rc<SnemLogger>
 }
@@ -92,12 +91,10 @@ impl Ssmp {
             sdsp: sdsp::SuperDSP::new(smp_data),
             
             next_sample: 0.0,
-            next_smp_clock: 0.0,
+            next_spc_clock: 0.0,
             frame_time: 0.0,
-            last_smp_clock: std::time::Instant::now(),
-            start_time: std::time::Instant::now(),
 
-            samples_generated: 0,
+            debug_cnt: 0,
 
             logger,
         }
@@ -109,35 +106,29 @@ impl Ssmp {
         self.logger.log(LogLevel::Info, "S-Smp finishing.");
     }
 
-    /// Used to purely generate samples in case of audio buffer underrun, i.e.,
-    /// the S-DSP is not clocked.
-    // pub fn generate_samples(&mut self, audio_buffer: &mut Vec<i16>, num_samples: usize) {
-    //     for _ in 0..num_samples {
-    //         self.sdsp.generate_sample(audio_buffer);
-    //     }
-    // }
-
     pub fn start_frame(&mut self) {
         self.next_sample -= self.frame_time;
-        self.next_smp_clock -= self.frame_time;
+        self.next_spc_clock -= self.frame_time;
         self.frame_time = 0.0;
     }
 
     /// Clocks the sound processor, checking if it is time to generate a new
     /// sample and/or clock the S-DSP and SPC700 processors.
-    pub fn clock(&mut self, audio_buffer: &mut Vec<i16>, master_clocks: usize) {
+    pub fn clock(&mut self, master_clocks: usize, audio_buffer: &mut Vec<i16>) {
         self.frame_time += MASTER_CLOCK_PERIOD * master_clocks as f64;
+        self.debug_cnt += master_clocks;
 
         if self.frame_time >= self.next_sample {
-            self.next_sample += TIME_PER_SAMPLE;
-            // self.samples_generated += 1;
-            
+            self.next_sample += AUDIO_SAMPLE_PERIOD;
+
             self.sdsp.clock_envelopes();
             self.sdsp.generate_sample(audio_buffer);
+
+            self.spc.inc_debug_cnt();
         }
 
-        if self.frame_time >= self.next_smp_clock {
-            self.next_smp_clock += SMP_CLOCK_PERIOD;
+        if self.frame_time >= self.next_spc_clock {
+            self.next_spc_clock += SPC_CLOCK_PERIOD;
 
             self.spc.clock();
         }
