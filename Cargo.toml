@@ -2,16 +2,12 @@
 
 [package]
 name = "snemulator"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [dependencies]
-args = "2.2.0"
-getopts = "0.2.21"
-libretro-rs = { path = "./libretro/libretro-rs" }
-serde_json = "1.0.134"
-rand="*"
-hound="*"
+anyhow = "1.0.102"
+sdl3 = "0.17.3"
 
 [profile.dev]
 overflow-checks = false
@@ -22,6 +18,3 @@ debug = 2
 overflow-checks = false
 opt-level = 3
 lto = true
-
-[lib]
-crate-type = ["cdylib"]

@@ -1,0 +1,6 @@
+[env]
+SDL3_LIB_DIR = "vendored/SDL3/lib/x64"
+SDL3_INCLUDE_DIR = "vendored/SDL3/include"
+
+[build]
+rustflags = ["-L", "vendored/SDL3/lib/x64"]
