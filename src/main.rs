@@ -1,8 +1,8 @@
 use anyhow::Result;
-use snemulator::app::EmulatorApp;
+use snemulator::app::SnemulatorApp;
 
 fn main() -> Result<()> {
-    let mut app = EmulatorApp::new()?;
+    let mut app = SnemulatorApp::new()?;
     
     app.run()
 }

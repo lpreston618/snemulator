@@ -1,32 +1,28 @@
+use crate::core::controller::{ControllerPlayer, JoypadButton, SnemController};
 use crate::core::sysinfo::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
 // Emulator core
 pub struct Snemulator {
-    buttons: [bool; 8],
+    p1_controller: SnemController,
+    p2_controller: SnemController,
     // Add your emulator state here (CPU, memory, etc.)
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum Button {
-    Up = 0,
-    Down = 1,
-    Left = 2,
-    Right = 3,
-    A = 4,
-    B = 5,
-    Start = 6,
-    Select = 7,
 }
 
 impl Snemulator {
     pub fn new() -> Self {
         Self {
-            buttons: [false; 8],
+            p1_controller: SnemController::new(),
+            p2_controller: SnemController::new(),
         }
     }
 
-    pub fn set_button(&mut self, button: Button, pressed: bool) {
-        self.buttons[button as usize] = pressed;
+    pub fn set_button(&mut self, player: ControllerPlayer, button: JoypadButton, pressed: bool) {
+        println!("{player:?} button {button:?} pressed = {pressed}");
+        
+        match player {
+            ControllerPlayer::Player1 => self.p1_controller.set_button(button, pressed),
+            ControllerPlayer::Player2 => self.p2_controller.set_button(button, pressed),
+        }
     }
 
     pub fn run_frame(&mut self, frame_buffer: &mut [u8]) {

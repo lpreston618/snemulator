@@ -7,6 +7,9 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.102"
+egui = "0.33.3"
+egui_glow = "0.33.3"
+glow = "0.16.0"
 sdl3 = "0.17.3"
 
 [profile.dev]
