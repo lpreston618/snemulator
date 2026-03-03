@@ -9,7 +9,10 @@ edition = "2021"
 anyhow = "1.0.102"
 egui = "0.33.3"
 egui_glow = "0.33.3"
+env_logger = "0.11.9"
 glow = "0.16.0"
+log = "0.4.29"
+rfd = "0.17.2"
 sdl3 = "0.17.3"
 
 [profile.dev]

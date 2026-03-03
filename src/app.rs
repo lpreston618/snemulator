@@ -1,9 +1,9 @@
 use anyhow::Result;
 use glow::HasContext;
+use log::{info, warn, error, trace};
+use rfd::FileDialog;
 use sdl3::event::Event;
 use sdl3::keyboard::{Keycode, Mod};
-use sdl3::pixels::PixelFormat;
-use sdl3::sys::render::SDL_LOGICAL_PRESENTATION_LETTERBOX;
 use sdl3::video::GLProfile;
 use std::time::{Duration, Instant};
 use crate::core::sysinfo::{SCREEN_WIDTH, SCREEN_HEIGHT};
@@ -14,6 +14,10 @@ const WINDOW_WIDTH: u32 = 640;
 const WINDOW_HEIGHT: u32 = 480;
 const TARGET_FPS: u32 = 60;
 const FRAME_BUF_SIZE: usize = (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize;
+const SECS_BEFORE_HIDE_MENU: f32 = 3.0;
+const SECS_BEFORE_HIDE_MOUSE: f32 = 3.0;
+const FRAMES_BEFORE_HIDE_MENU: u64 = (SECS_BEFORE_HIDE_MENU * TARGET_FPS as f32) as u64;
+const FRAMES_BEFORE_HIDE_MOUSE: u64 = (SECS_BEFORE_HIDE_MOUSE * TARGET_FPS as f32) as u64;
 
 fn sdl_to_egui_mouse_button(button: sdl3::mouse::MouseButton) -> Option<egui::PointerButton> {
     match button {
@@ -26,6 +30,92 @@ fn sdl_to_egui_mouse_button(button: sdl3::mouse::MouseButton) -> Option<egui::Po
 
 fn button_with_shortcut(ui: &mut egui::Ui, label: &str, shortcut: &str) -> egui::Response {
     ui.add(egui::Button::new(label).right_text(egui::RichText::new(shortcut).weak()))
+}
+
+fn create_shader_program(gl: &glow::Context) -> Result<(glow::Program, glow::VertexArray, glow::Buffer), String> {
+    // Create shader program for rendering game texture
+    unsafe {
+        // Vertex shader
+        let vertex_shader_source = r#"
+            #version 330 core
+            layout (location = 0) in vec2 aPos;
+            layout (location = 1) in vec2 aTexCoord;
+            
+            out vec2 TexCoord;
+            
+            void main() {
+                gl_Position = vec4(aPos, 0.0, 1.0);
+                TexCoord = aTexCoord;
+            }
+        "#;
+        
+        // Fragment shader
+        let fragment_shader_source = r#"
+            #version 330 core
+            out vec4 FragColor;
+            in vec2 TexCoord;
+            
+            uniform sampler2D gameTexture;
+            
+            void main() {
+                FragColor = texture(gameTexture, TexCoord);
+            }
+        "#;
+        
+        let vertex_shader = gl.create_shader(glow::VERTEX_SHADER)?;
+        gl.shader_source(vertex_shader, vertex_shader_source);
+        gl.compile_shader(vertex_shader);
+        
+        let fragment_shader = gl.create_shader(glow::FRAGMENT_SHADER)?;
+        gl.shader_source(fragment_shader, fragment_shader_source);
+        gl.compile_shader(fragment_shader);
+        
+        let shader_program = gl.create_program()?;
+        gl.attach_shader(shader_program, vertex_shader);
+        gl.attach_shader(shader_program, fragment_shader);
+        gl.link_program(shader_program);
+        
+        gl.delete_shader(vertex_shader);
+        gl.delete_shader(fragment_shader);
+        
+        // Create VAO and VBO for a fullscreen quad
+        let vertices: [f32; 24] = [
+            // positions   // texCoords
+            -1.0,  1.0,    0.0, 0.0,  // top-left
+            -1.0, -1.0,    0.0, 1.0,  // bottom-left
+             1.0, -1.0,    1.0, 1.0,  // bottom-right
+            
+            -1.0,  1.0,    0.0, 0.0,  // top-left
+             1.0, -1.0,    1.0, 1.0,  // bottom-right
+             1.0,  1.0,    1.0, 0.0,  // top-right
+        ];
+        
+        let vao = gl.create_vertex_array()?;
+        let vbo = gl.create_buffer()?;
+        
+        gl.bind_vertex_array(Some(vao));
+        gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
+        gl.buffer_data_u8_slice(
+            glow::ARRAY_BUFFER,
+            std::slice::from_raw_parts(
+                vertices.as_ptr() as *const u8,
+                vertices.len() * std::mem::size_of::<f32>(),
+            ),
+            glow::STATIC_DRAW,
+        );
+        
+        // Position attribute
+        gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 4 * std::mem::size_of::<f32>() as i32, 0);
+        gl.enable_vertex_attrib_array(0);
+        
+        // TexCoord attribute
+        gl.vertex_attrib_pointer_f32(1, 2, glow::FLOAT, false, 4 * std::mem::size_of::<f32>() as i32, 2 * std::mem::size_of::<f32>() as i32);
+        gl.enable_vertex_attrib_array(1);
+        
+        gl.bind_vertex_array(None);
+        
+        Ok((shader_program, vao, vbo))
+    }
 }
 
 enum SnemulatorAppAction {
@@ -43,14 +133,22 @@ pub struct SnemulatorApp {
     snem_core: Snemulator,
     frame_buffer: Vec<u8>,
     game_texture: Option<glow::Texture>,
+    shader_program: glow::Program,
+    vao: glow::VertexArray,
+    vbo: glow::Buffer,
     
     start_time: std::time::Instant,
+    frame_count: u64,
+    last_mouse_input_frame: u64,
     show_menu: bool,
     show_mouse: bool,
+    show_settings: bool,
     show_about: bool,
     is_paused: bool,
     is_fullscreen: bool,
     is_minimized: bool,
+    
+    app_action: SnemulatorAppAction,
 }
 
 impl SnemulatorApp {
@@ -132,6 +230,8 @@ impl SnemulatorApp {
             Some(texture)
         };
         
+        let (shader_program, vao, vbo) = create_shader_program(&gl).map_err(|e| anyhow::anyhow!(e))?;
+        
         let snem_core = Snemulator::new();
         
         Ok(Self {
@@ -144,13 +244,20 @@ impl SnemulatorApp {
             snem_core,
             frame_buffer,
             game_texture,
+            shader_program,
+            vao,
+            vbo,
             start_time: std::time::Instant::now(),
+            frame_count: 0,
+            last_mouse_input_frame: 0,
             show_menu: true,
             show_mouse: true,
+            show_settings: false,
             show_about: false,
             is_paused: false,
             is_fullscreen: false,
             is_minimized: false,
+            app_action: SnemulatorAppAction::Continue,
         })
     }
 
@@ -159,6 +266,7 @@ impl SnemulatorApp {
 
         'running: loop {
             let frame_start = Instant::now();
+            self.app_action = SnemulatorAppAction::Continue;
             
             let (window_width, window_height) = self.window.size();
             
@@ -172,34 +280,31 @@ impl SnemulatorApp {
                 ..Default::default()
             };
             
-            let mut action = self.handle_input(&mut raw_input);
-
-            match action {
-                SnemulatorAppAction::Exit => break 'running,
-                SnemulatorAppAction::Continue => {}
-            }
+            self.handle_input(&mut raw_input);
             
             // Emulate one frame
             if !self.is_paused {
                 self.snem_core.run_frame(&mut self.frame_buffer);
+                
+                self.update_game_texture();
             }
-            
-            self.update_game_texture();
             
             // Run egui
             let ctx = self.egui_context.clone();
+            let mut game_rect = egui::Rect::NOTHING;
             let full_output = ctx.run(raw_input, |ctx| {
-                action = self.render_ui(ctx);
+                game_rect = self.render_ui(ctx);
             });
             
-            match action {
+            self.render(game_rect, full_output)?;
+
+            match self.app_action {
                 SnemulatorAppAction::Exit => break 'running,
                 SnemulatorAppAction::Continue => {}
             }
             
-            self.render(full_output)?;
-
             // Frame timing
+            self.frame_count += 1;
             let elapsed = frame_start.elapsed();
             if elapsed < frame_duration {
                 std::thread::sleep(frame_duration - elapsed);
@@ -212,28 +317,23 @@ impl SnemulatorApp {
         Ok(())
     }
     
-    fn handle_input(&mut self, raw_input: &mut egui::RawInput) -> SnemulatorAppAction {
+    fn handle_input(&mut self, raw_input: &mut egui::RawInput) {
         let mut event_pump = self.sdl_context.event_pump().expect("Failed to get event pump");
 
         // Handle SDL events
-        let mut action = SnemulatorAppAction::Continue;
         for event in event_pump.poll_iter() {
             // Convert SDL event to egui event
             self.handle_sdl_event(&event, raw_input);
 
             match event {
                 Event::Quit { .. } => {
-                    action = SnemulatorAppAction::Exit;
+                    info!("Quit event received, exiting");
+                    
+                    self.app_action = SnemulatorAppAction::Exit;
                 }
                 
                 Event::Window { win_event, .. } => {
                     match win_event {
-                        sdl3::event::WindowEvent::Resized(_, _) => {
-                            
-                        }
-                        // sdl3::event::WindowEvent::Maximized => {
-                        //     self.is_fullscreen = true;
-                        // }
                         sdl3::event::WindowEvent::Minimized => {
                             self.is_minimized = true;
                         }
@@ -254,9 +354,7 @@ impl SnemulatorApp {
                     keycode: Some(keycode),
                     keymod,
                     ..
-                } => {
-                    action = self.handle_keydown(keycode, keymod);
-                }
+                } => self.handle_keydown(keycode, keymod),
                 
                 Event::KeyUp {
                     keycode: Some(keycode),
@@ -267,15 +365,20 @@ impl SnemulatorApp {
             }
         }
         
-        action
+        self.show_menu = (self.frame_count - self.last_mouse_input_frame) < FRAMES_BEFORE_HIDE_MENU;
+        self.show_mouse = (self.frame_count - self.last_mouse_input_frame) < FRAMES_BEFORE_HIDE_MOUSE;
+        
+        self.sdl_context.mouse().show_cursor(self.show_mouse);
     }
     
     fn handle_sdl_event(&mut self, event: &Event, raw_input: &mut egui::RawInput) {
         match event {
             Event::MouseMotion { x, y, .. } => {
+                self.last_mouse_input_frame = self.frame_count;
                 raw_input.events.push(egui::Event::PointerMoved(egui::Pos2::new(*x as f32, *y as f32)));
             }
             Event::MouseButtonDown { mouse_btn, x, y, .. } => {
+                self.last_mouse_input_frame = self.frame_count;
                 if let Some(button) = sdl_to_egui_mouse_button(*mouse_btn) {
                     raw_input.events.push(egui::Event::PointerButton {
                         pos: egui::Pos2::new(*x as f32, *y as f32),
@@ -286,6 +389,7 @@ impl SnemulatorApp {
                 }
             }
             Event::MouseButtonUp { mouse_btn, x, y, .. } => {
+                self.last_mouse_input_frame = self.frame_count;
                 if let Some(button) = sdl_to_egui_mouse_button(*mouse_btn) {
                     raw_input.events.push(egui::Event::PointerButton {
                         pos: egui::Pos2::new(*x as f32, *y as f32),
@@ -299,25 +403,25 @@ impl SnemulatorApp {
         }
     }
 
-    fn handle_keydown(&mut self, keycode: Keycode, keymod: Mod) -> SnemulatorAppAction {
-        let mut action = SnemulatorAppAction::Continue;
-        
+    fn handle_keydown(&mut self, keycode: Keycode, keymod: Mod) {
         match keycode {
             Keycode::F11 => {
                 if let Err(e) = self.toggle_fullscreen() {
-                    eprintln!("Failed to toggle fullscreen: {}", e);
+                    error!("Failed to toggle fullscreen: {}", e);
                 }
             }
             Keycode::Escape => {
                 if self.is_fullscreen {
                     if let Err(e) = self.toggle_fullscreen() {
-                        eprintln!("Failed to exit fullscreen: {}", e);
+                        error!("Failed to exit fullscreen: {}", e);
                     }
                 }
             }
             Keycode::Q => {
                 if keymod.contains(Mod::LCTRLMOD) {
-                    action = SnemulatorAppAction::Exit;
+                    info!("Ctrl+Q pressed, exiting");
+                    
+                    self.app_action = SnemulatorAppAction::Exit;
                 }
             }
             
@@ -331,8 +435,6 @@ impl SnemulatorApp {
             Keycode::Backspace => self.snem_core.set_button(ControllerPlayer::Player2, JoypadButton::Select, true),
             _ => {}
         }
-        
-        action
     }
 
     fn handle_keyup(&mut self, keycode: Keycode) {
@@ -368,82 +470,150 @@ impl SnemulatorApp {
         }
     }
     
-    fn render_ui(&mut self, ctx: &egui::Context) -> SnemulatorAppAction {
-        let mut action = SnemulatorAppAction::Continue;
-        
+    fn render_game_screen(&self, available_rect: egui::Rect, window_width: f32, window_height: f32) {
+        unsafe {
+            if let Some(texture) = self.game_texture {
+                // Calculate aspect ratio
+                let game_aspect = SCREEN_WIDTH as f32 / SCREEN_HEIGHT as f32;
+                let available_width = available_rect.width();
+                let available_height = available_rect.height();
+                let available_aspect = available_width / available_height;
+                
+                // Calculate size maintaining aspect ratio
+                let (render_width, render_height) = if available_aspect > game_aspect {
+                    // Available space is wider - fit to height
+                    let h = available_height;
+                    let w = h * game_aspect;
+                    (w, h)
+                } else {
+                    // Available space is taller - fit to width
+                    let w = available_width;
+                    let h = w / game_aspect;
+                    (w, h)
+                };
+                
+                // Center the game screen in available space
+                let x = available_rect.left() + (available_width - render_width) / 2.0;
+                let y = available_rect.top() + (available_height - render_height) / 2.0;
+                
+                // Convert to OpenGL normalized device coordinates
+                let ndc_x = (x / window_width) * 2.0 - 1.0;
+                let ndc_y = 1.0 - (y / window_height) * 2.0;
+                let ndc_w = (render_width / window_width) * 2.0;
+                let ndc_h = (render_height / window_height) * 2.0;
+                
+                // Update vertex positions for this specific area
+                let vertices: [f32; 24] = [
+                    // positions                    // texCoords
+                    ndc_x,          ndc_y,          0.0, 0.0,  // top-left
+                    ndc_x,          ndc_y - ndc_h,  0.0, 1.0,  // bottom-left
+                    ndc_x + ndc_w,  ndc_y - ndc_h,  1.0, 1.0,  // bottom-right
+                    
+                    ndc_x,          ndc_y,          0.0, 0.0,  // top-left
+                    ndc_x + ndc_w,  ndc_y - ndc_h,  1.0, 1.0,  // bottom-right
+                    ndc_x + ndc_w,  ndc_y,          1.0, 0.0,  // top-right
+                ];
+                
+                // Update VBO
+                self.gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vbo));
+                self.gl.buffer_data_u8_slice(
+                    glow::ARRAY_BUFFER,
+                    std::slice::from_raw_parts(
+                        vertices.as_ptr() as *const u8,
+                        vertices.len() * std::mem::size_of::<f32>(),
+                    ),
+                    glow::STATIC_DRAW,
+                );
+                
+                self.gl.use_program(Some(self.shader_program));
+                self.gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+                self.gl.bind_vertex_array(Some(self.vao));
+                self.gl.draw_arrays(glow::TRIANGLES, 0, 6);
+                self.gl.bind_vertex_array(None);
+            }
+        }
+    }
+    
+    fn render_ui(&mut self, ctx: &egui::Context) -> egui::Rect {
         // Top menu bar
-        egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
-            egui::MenuBar::new().ui(ui, |ui| {                
-                ui.menu_button("File", |ui| {
-                    ui.set_width(100.0);
-                    
-                    if ui.button("Load Rom").clicked() {
-                        self.load_rom();
-                    }
-                    if ui.button("Recent ROMs").clicked() {
-                        println!("Recent ROMs clicked.");
-                    }
-                    
-                    ui.separator();
-                    
-                    if button_with_shortcut(ui, "Exit", "Ctrl + Q").clicked() {
-                        action = SnemulatorAppAction::Exit;
-                    }
-                });
-                
-                ui.menu_button("Emulation", |ui| {
-                    ui.set_width(100.0);
-                    
-                    let pause_text = if self.is_paused { "Resume" } else { "Pause" };
-                    if ui.button(pause_text).clicked() {
-                        self.toggle_pause();
-                        ui.close();
-                    }
-                    if ui.button("Reset").clicked() {
-                        self.reset_emulation();
-                        ui.close();
-                    }
-                    
-                    ui.separator();
-                    
-                    if ui.button("Save State").clicked() {
-                        self.save_state();
-                        ui.close();
-                    }
-                    if ui.button("Load State").clicked() {
-                        self.load_state();
-                        ui.close();
-                    }
-                    
-                });
-                
-                ui.menu_button("View", |ui| {
-                    ui.set_width(100.0);
-                    
-                    let window_size_text = if self.is_fullscreen { "Windowed" } else { "Fullscreen" };
-                    if button_with_shortcut(ui, window_size_text, "F11").clicked() {
-                        if let Err(e) = self.toggle_fullscreen() {
-                            eprintln!("Failed to toggle fullscreen: {}", e);
+        if self.show_menu && !self.is_fullscreen {
+            egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
+                egui::MenuBar::new().ui(ui, |ui| {                
+                    ui.menu_button("File", |ui| {
+                        ui.set_width(100.0);
+                        
+                        if ui.button("Load Rom").clicked() {
+                            if let Err(e) = self.load_rom() {
+                                error!("Failed to load rom: {}", e);
+                            }
+                        }
+                        if ui.button("Recent ROMs").clicked() {
+                            warn!("Recent ROMs clicked.");
                         }
                         
-                        ui.close();
-                    }
-                });
-                
-                ui.menu_button("About", |ui| {
-                    ui.set_width(100.0);
+                        ui.separator();
+                        
+                        if button_with_shortcut(ui, "Exit", "Ctrl + Q").clicked() {
+                            info!("Exit button clicked, exiting");
+                            
+                            self.app_action = SnemulatorAppAction::Exit;
+                        }
+                    });
                     
-                    if ui.button("About").clicked() {
-                        self.show_about = true;
-                        ui.close();
-                    }
-                })
+                    ui.menu_button("Emulation", |ui| {
+                        ui.set_width(100.0);
+                        
+                        let pause_text = if self.is_paused { "Resume" } else { "Pause" };
+                        if ui.button(pause_text).clicked() {
+                            self.toggle_pause();
+                            ui.close();
+                        }
+                        if ui.button("Reset").clicked() {
+                            self.reset_emulation();
+                            ui.close();
+                        }
+                        
+                        ui.separator();
+                        
+                        if ui.button("Save State").clicked() {
+                            self.save_state();
+                            ui.close();
+                        }
+                        if ui.button("Load State").clicked() {
+                            self.load_state();
+                            ui.close();
+                        }
+                        
+                    });
+                    
+                    ui.menu_button("View", |ui| {
+                        ui.set_width(100.0);
+                        
+                        let window_size_text = if self.is_fullscreen { "Windowed" } else { "Fullscreen" };
+                        if button_with_shortcut(ui, window_size_text, "F11").clicked() {
+                            if let Err(e) = self.toggle_fullscreen() {
+                                error!("Failed to toggle fullscreen: {}", e);
+                            }
+                            
+                            ui.close();
+                        }
+                    });
+                    
+                    ui.menu_button("About", |ui| {
+                        ui.set_width(100.0);
+                        
+                        if ui.button("About").clicked() {
+                            self.show_about = true;
+                            ui.close();
+                        }
+                    })
+                });
+    
+                //     ui.menu_button("View", |ui| {
+                //         ui.checkbox(&mut self.show_menu, "Show Controls Panel");
+                //     });
             });
-
-            //     ui.menu_button("View", |ui| {
-            //         ui.checkbox(&mut self.show_menu, "Show Controls Panel");
-            //     });
-        });
+        }
 
         // Side panel with controls
         // if self.show_menu {
@@ -522,19 +692,11 @@ impl SnemulatorApp {
         //         ui.label(if self.emulator.paused { "⏸ PAUSED" } else { "▶️ RUNNING" });
         //     });
         // });
-
-        // Central panel for game display
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.centered_and_justified(|ui| {
-                ui.heading("Game Screen");
-                ui.label("(Emulator output will render here)");
-            });
-        });
         
-        action
+        ctx.available_rect()
     }
     
-    fn render(&mut self, egui_full_output: egui::FullOutput) -> Result<()> {
+    fn render(&mut self, available_rect: egui::Rect, egui_full_output: egui::FullOutput) -> Result<()> {
         let (window_width, window_height) = self.window.size();
         
         unsafe {
@@ -543,8 +705,8 @@ impl SnemulatorApp {
             self.gl.clear(glow::COLOR_BUFFER_BIT);
         }
         
-        // Render game screen (you'd render this properly with shaders)
-        // For now we'll just clear to show egui works
+        // Render snes frame buffer
+        self.render_game_screen(available_rect, window_width as f32, window_height as f32);
 
         // Render egui
         let clipped_primitives = self.egui_context.tessellate(egui_full_output.shapes, egui_full_output.pixels_per_point);
@@ -561,30 +723,41 @@ impl SnemulatorApp {
         Ok(())
     }
     
-    fn load_rom(&mut self) {
-        println!("Load ROM called");
+    fn load_rom(&mut self) -> Result<()> {
+        let romfile = FileDialog::new()
+            .add_filter("ROM", &["sfc", "smc"])
+            .set_directory("/")
+            .pick_file();
+        
+        if let Some(romfile) = romfile {
+            let data = std::fs::read(romfile)?;
+            
+            self.snem_core.load_rom(data)?;
+        }
+        
+        Ok(())
     }
     
     fn toggle_pause(&mut self) {
         self.is_paused = !self.is_paused;
     
         if self.is_paused {
-            println!("Paused emulation");
+            trace!("Paused emulation");
         } else {
-            println!("Resumed emulation");
+            trace!("Resumed emulation");
         }
     }
     
     fn reset_emulation(&mut self) {
-        println!("Reset called");
+        warn!("Reset called");
     }
     
     fn save_state(&mut self) {
-        println!("Save State called");
+        warn!("Save State called");
     }
     
     fn load_state(&mut self) {
-        println!("Load State called");
+        warn!("Load State called");
     }
     
     fn toggle_fullscreen(&mut self) -> Result<()> {
@@ -593,7 +766,7 @@ impl SnemulatorApp {
             _ => false, // on -> off
         };
         
-        println!("Fullscreen = {}", self.is_fullscreen);
+        trace!("Set fullscreen to {}", self.is_fullscreen);
         
         self.window.set_fullscreen(self.is_fullscreen)?;
         
