@@ -44,7 +44,7 @@ pub struct Cpu65c816 {
     pub irq_pending: bool,
     pub nmi_pending: bool,
     
-    // Cycle tracking
+    /// The number of clocks before the next instruction is executed
     clocks: usize,
         
     fast_rom_en: bool,
@@ -55,8 +55,10 @@ pub struct Cpu65c816 {
 
 // SNES System Functionality
 impl Cpu65c816 {
-    const ONE_CYCLE_SLOW: usize = 6;
-    const ONE_CYCLE_FAST: usize = 4;
+    /// Number of system clocks in a single slow cpu cycle (e.g. a typical bus read/write)
+    const SLOW_CYCLE_CLOCKS: usize = 8;
+    /// Number of system clocks in a single cpu cycle
+    const CYCLE_CLOCKS: usize = 6;
     
     // Creates a new, uninitialized 65c816 CPU
     pub fn new() -> Cpu65c816 {
@@ -64,7 +66,7 @@ impl Cpu65c816 {
             a: 0,
             x: 0,
             y: 0,
-            s: 0,
+            sp: 0,
             pc: 0,
             pb: 0,
             db: 0,
@@ -95,7 +97,7 @@ impl Cpu65c816 {
         self.db = 0;
         self.pb = 0;
         self.dp = 0;
-        self.s = 0x0100;
+        self.sp = 0x0100;
         self.p = 0x34;
         self.reset();
     }
@@ -104,76 +106,14 @@ impl Cpu65c816 {
         // self.trigger_interrupt(CpuInterrupt::Reset);
     }
     
-    fn read(&mut self, bus: &mut CpuBus, addr: Address) -> u8 {
-        self.clocks += Self::ONE_CYCLE_SLOW;
-        bus.read(addr)
-    }
-    
-    fn write(&mut self, bus: &mut CpuBus, addr: Address, value: u8) {
-        self.clocks += Self::ONE_CYCLE_SLOW;
-        bus.write(addr, value);
-    }
-    
-    fn read_prg(&mut self, bus: &mut CpuBus) -> u8 {
-        let pc = self.pc;
-        self.pc += 1;
-        self.clocks += Self::ONE_CYCLE_SLOW;
-        bus.read(Address { bank: self.pb, offset: pc })
-    }
-    
-    fn read_word(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) -> u16 {
-        u16::from_le_bytes([
-            self.read(bus, addr_lo),
-            self.read(bus, addr_hi),
-        ])
-    }
-    
-    fn write_word(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address, value: u16) {
-        self.write(bus, addr_lo, value as u8);
-        self.write(bus, addr_hi, (value >> 8) as u8);
-    }
-    
-    fn pop(&mut self, bus: &mut CpuBus) -> u8 {
-        self.sp += 1;
+    /// Cycles the cpu for a given number of clocks. If the number of clocks is 0 after cycling, the next instructions is executed.
+    pub fn cycle(&mut self, bus: &mut CpuBus, clocks: usize) {
+        self.clocks -= clocks;
         
-        if self.e {
-            self.sp = 0x100 | (self.sp & 0xFF);
-        }
+        assert!(self.clocks < 250); // make sure no underflow
         
-        self.read(bus, Address { bank: 0, offset: self.sp })
-    }
-    
-    fn push(&mut self, bus: &mut CpuBus, value: u8) {
-        self.write(bus, Address { bank: 0, offset: self.sp }, value);
-        
-        self.sp -= 1;
-        
-        if self.e {
-            self.sp = 0x100 | (self.sp & 0xFF);
-        }
-    }
-    
-    fn pop_word(&mut self, bus: &mut CpuBus) -> u16 {
-        u16::from_le_bytes([
-            self.pop(bus),
-            self.pop(bus),
-        ])
-    }
-    
-    fn push_word(&mut self, bus: &mut CpuBus, value: u16) {
-        self.push(bus, (value >> 8) as u8);
-        self.push(bus, value as u8);
-    }
-    
-    fn is_flag_set(&self, flag: Flag) -> bool {
-        self.p & (flag as u8) != 0
-    }
-
-    fn set_flag_to_bool(&mut self, flag: Flag, value: bool) {
-        if value {
-            self.p |= flag as u8;
-        } else {
-            self.p &= !(flag as u8);
+        if self.clocks == 0 {
+            self.execute(bus);
         }
     }
 }
