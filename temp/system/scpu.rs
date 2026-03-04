@@ -6,7 +6,6 @@ mod mult;
 use dma::{DmaChannel, DmaStatus};
 use utils::{CpuAddress, is_mmio_addr};
 
-use crate::log::{LogLevel, SnemLogger};
 use crate::system::cartridge::{MappingMode, Cartridge};
 use crate::system::scpu::utils::{map_hirom_addr, map_lorom_addr};
 use crate::system::sppu::{self, PpuData};

@@ -1,4 +1,4 @@
-use crate::utils::{GetBytes, SetBytes};
+use crate::{set_byte_n, get_byte_n};
 
 /// Implementation of the S-CPU's contained multiplication and division circuit.
 pub struct Mult5A22 {
@@ -27,11 +27,11 @@ impl Mult5A22 {
     }
 
     pub fn set_numer_lo(&mut self, data: u8) {
-        self.div_numer.set_lo(data);
+        set_byte_n!(self.div_numer, data as u16, 0);
     }
 
     pub fn set_numer_hi(&mut self, data: u8) {
-        self.div_numer.set_hi(data);
+        set_byte_n!(self.div_numer, data as u16, 1);
     }
 
     pub fn set_denom(&mut self, data: u8) {
@@ -44,8 +44,8 @@ impl Mult5A22 {
         }
     }
 
-    pub fn get_result_lo(&self) -> u8 { self.result.get_lo() }
-    pub fn get_result_hi(&self) -> u8 { self.result.get_hi() }
-    pub fn get_quotient_result_lo(&self) -> u8 { self.div_quotient.get_lo() }
-    pub fn get_quotient_result_hi(&self) -> u8 { self.div_quotient.get_hi() }
+    pub fn get_result_lo(&self) -> u8 { get_byte_n!(self.result, 0) }
+    pub fn get_result_hi(&self) -> u8 { get_byte_n!(self.result, 1) }
+    pub fn get_quotient_result_lo(&self) -> u8 { get_byte_n!(self.div_quotient, 0) }
+    pub fn get_quotient_result_hi(&self) -> u8 { get_byte_n!(self.div_quotient, 1) }
 }

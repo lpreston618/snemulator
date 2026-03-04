@@ -53,7 +53,7 @@ impl Snemulator {
         // 1. Execute CPU instructions until a frame is complete
         // 2. Update the frame_buffer with pixel data (RGBA format)
         
-        // while !self.cycle() {}
+        while !self.cycle() {}
         
         // Example: Fill with a test pattern
         for y in 0..SCREEN_HEIGHT {
@@ -65,5 +65,9 @@ impl Snemulator {
                 frame_buffer[offset + 3] = 255;              // A
             }
         }
+    }
+    
+    fn cycle(&mut self) -> bool {
+        true
     }
 }

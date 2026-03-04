@@ -130,12 +130,13 @@ pub struct SnemulatorApp {
     egui_painter: egui_glow::Painter,
     window: sdl3::video::Window,
     gl: std::sync::Arc<glow::Context>,
-    snem_core: Snemulator,
-    frame_buffer: Vec<u8>,
     game_texture: Option<glow::Texture>,
     shader_program: glow::Program,
     vao: glow::VertexArray,
     vbo: glow::Buffer,
+    
+    snem_core: Snemulator,
+    frame_buffer: Vec<u8>,
     
     start_time: std::time::Instant,
     frame_count: u64,
@@ -147,6 +148,7 @@ pub struct SnemulatorApp {
     is_paused: bool,
     is_fullscreen: bool,
     is_minimized: bool,
+    pause_on_minimize: bool,
     
     app_action: SnemulatorAppAction,
 }
@@ -180,9 +182,7 @@ impl SnemulatorApp {
             glow::Context::from_loader_function(|s| {
                 match video_subsystem.gl_get_proc_address(s) {
                     Some(func) => {
-                        unsafe {
-                            func as *const _
-                        }
+                        func as *const _
                     }
                     None => std::ptr::null(),
                 }
@@ -257,12 +257,13 @@ impl SnemulatorApp {
             is_paused: false,
             is_fullscreen: false,
             is_minimized: false,
+            pause_on_minimize: true,
             app_action: SnemulatorAppAction::Continue,
         })
     }
 
     pub fn run(&mut self) -> Result<()> {
-        let frame_duration = Duration::from_micros(1_000_000 / TARGET_FPS as u64);
+        const FRAME_DURATION: Duration = Duration::from_micros(1_000_000 / TARGET_FPS as u64);
 
         'running: loop {
             let frame_start = Instant::now();
@@ -283,7 +284,7 @@ impl SnemulatorApp {
             self.handle_input(&mut raw_input);
             
             // Emulate one frame
-            if !self.is_paused {
+            if !self.is_paused && (!self.is_minimized || !self.pause_on_minimize) {
                 self.snem_core.run_frame(&mut self.frame_buffer);
                 
                 self.update_game_texture();
@@ -292,6 +293,10 @@ impl SnemulatorApp {
             // Run egui
             let ctx = self.egui_context.clone();
             let mut game_rect = egui::Rect::NOTHING;
+            // game_rect = egui::Rect {
+            //     min: egui::Pos2::ZERO,
+            //     max: egui::Pos2::new(window_width as f32, window_height as f32),
+            // };
             let full_output = ctx.run(raw_input, |ctx| {
                 game_rect = self.render_ui(ctx);
             });
@@ -306,8 +311,8 @@ impl SnemulatorApp {
             // Frame timing
             self.frame_count += 1;
             let elapsed = frame_start.elapsed();
-            if elapsed < frame_duration {
-                std::thread::sleep(frame_duration - elapsed);
+            if elapsed < FRAME_DURATION {
+                std::thread::sleep(FRAME_DURATION - elapsed);
             }
         }
         
@@ -543,6 +548,7 @@ impl SnemulatorApp {
                         ui.set_width(100.0);
                         
                         if ui.button("Load Rom").clicked() {
+                            // TODO
                             if let Err(e) = self.load_rom() {
                                 error!("Failed to load rom: {}", e);
                             }
