@@ -56,4 +56,4 @@ pub(super) fn rgb565_to_parts(col: u16) -> (u16, u16, u16) {
 
 pub(super) fn rgb565_from_parts(r: u16, g: u16, b: u16) -> u16 {
     (r << 11) | (g << 6) | b
-} 
+}

@@ -1,6 +1,6 @@
 use crate::core::scpu::bus::{Address, CpuBus};
 
-mod bus;
+pub mod bus;
 mod dma;
 mod instructions;
 mod ioregs;
@@ -40,12 +40,12 @@ pub struct Cpu65c816 {
     
     // Internal state
     pub halted: bool,
-    pub waiting_for_irq: bool,
+    pub waiting_for_interrupt: bool,
     pub irq_pending: bool,
     pub nmi_pending: bool,
     
     /// The number of clocks before the next instruction is executed
-    clocks: usize,
+    pub clocks: usize,
         
     fast_rom_en: bool,
     branch_taken: bool,
@@ -76,7 +76,7 @@ impl Cpu65c816 {
             
             // Internal state
             halted: false,
-            waiting_for_irq: false,
+            waiting_for_interrupt: false,
             irq_pending: false,
             nmi_pending: false,
             
@@ -107,13 +107,99 @@ impl Cpu65c816 {
     }
     
     /// Cycles the cpu for a given number of clocks. If the number of clocks is 0 after cycling, the next instructions is executed.
-    pub fn cycle(&mut self, bus: &mut CpuBus, clocks: usize) {
-        self.clocks -= clocks;
+    pub fn cycle(&mut self, bus: &mut CpuBus) {
+        if self.nmi_pending {
+            // self.trigger_interrupt(CpuInterrupt::NMI);
+            self.nmi_pending = false;
+            self.waiting_for_interrupt = false;
+        } else if self.irq_pending && !self.is_flag_set(Flag::FlagI) {
+            // self.trigger_interrupt(CpuInterrupt::IRQ);
+            self.waiting_for_interrupt = false;
+        }
         
-        assert!(self.clocks < 250); // make sure no underflow
+        if self.halted || self.waiting_for_interrupt {
+            self.clocks += Self::CYCLE_CLOCKS;
+            return;
+        }
         
-        if self.clocks == 0 {
-            self.execute(bus);
+        self.execute(bus);
+    }
+}
+
+// Bus/flag access
+impl Cpu65c816 {
+    /// Read a byte from the bus at a given address. Adds to cpu clocks.
+    fn read(&mut self, bus: &mut CpuBus, addr: Address) -> u8 {
+        self.clocks += Self::SLOW_CYCLE_CLOCKS;
+        bus.read(addr)
+    }
+    
+    /// Write a byte to the bus at a given address. Adds to cpu clocks.
+    fn write(&mut self, bus: &mut CpuBus, addr: Address, value: u8) {
+        self.clocks += Self::SLOW_CYCLE_CLOCKS;
+        bus.write(addr, value);
+    }
+    
+    fn read_prg(&mut self, bus: &mut CpuBus) -> u8 {
+        let pc = self.pc;
+        self.pc += 1;
+        self.clocks += Self::SLOW_CYCLE_CLOCKS;
+        bus.read(Address { bank: self.pb, offset: pc })
+    }
+    
+    fn read_word(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) -> u16 {
+        u16::from_le_bytes([
+            self.read(bus, addr_lo),
+            self.read(bus, addr_hi),
+        ])
+    }
+    
+    fn write_word(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address, value: u16) {
+        self.write(bus, addr_lo, value as u8);
+        self.write(bus, addr_hi, (value >> 8) as u8);
+    }
+    
+    fn pop(&mut self, bus: &mut CpuBus) -> u8 {
+        self.sp += 1;
+        
+        if self.e {
+            self.sp = 0x100 | (self.sp & 0xFF);
+        }
+        
+        self.read(bus, Address { bank: 0, offset: self.sp })
+    }
+    
+    fn push(&mut self, bus: &mut CpuBus, value: u8) {
+        self.write(bus, Address { bank: 0, offset: self.sp }, value);
+        
+        self.sp -= 1;
+        
+        if self.e {
+            self.sp = 0x100 | (self.sp & 0xFF);
+        }
+    }
+    
+    fn pop_word(&mut self, bus: &mut CpuBus) -> u16 {
+        u16::from_le_bytes([
+            self.pop(bus),
+            self.pop(bus),
+        ])
+    }
+    
+    fn push_word(&mut self, bus: &mut CpuBus, value: u16) {
+        self.push(bus, (value >> 8) as u8);
+        self.push(bus, value as u8);
+    }
+    
+    fn is_flag_set(&self, flag: Flag) -> bool {
+        self.p & (flag as u8) != 0
+    }
+
+    fn set_flag_to_bool(&mut self, flag: Flag, value: bool) {
+        if value {
+            self.p |= flag as u8;
+        } else {
+            self.p &= !(flag as u8);
         }
     }
 }

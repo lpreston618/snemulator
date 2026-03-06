@@ -457,7 +457,7 @@ impl Cpu65c816 {
             0xFD => op_case_flagm!(self, bus, absolute_x, sbc, inc_addr),
             0xFE => op_case_flagm!(self, bus, absolute_x, inc_mem, inc_addr),
             0xFF => op_case_flagm!(self, bus, long_x, sbc, inc_addr),
-        }
+        };
         
         if self.branch_taken {  
             self.clocks += Self::CYCLE_CLOCKS;
@@ -470,84 +470,6 @@ impl Cpu65c816 {
         let extra_cycles = Self::EXTRA_CYCLES_LOOKUP[opcode as usize] as usize;
         
         self.clocks += Self::CYCLE_CLOCKS * extra_cycles;
-    }
-}
-
-// Bus/flag access
-impl Cpu65c816 {
-    /// Read a byte from the bus at a given address. Adds to cpu clocks.
-    fn read(&mut self, bus: &mut CpuBus, addr: Address) -> u8 {
-        self.clocks += Self::SLOW_CYCLE_CLOCKS;
-        bus.read(addr)
-    }
-    
-    /// Write a byte to the bus at a given address. Adds to cpu clocks.
-    fn write(&mut self, bus: &mut CpuBus, addr: Address, value: u8) {
-        self.clocks += Self::SLOW_CYCLE_CLOCKS;
-        bus.write(addr, value);
-    }
-    
-    fn read_prg(&mut self, bus: &mut CpuBus) -> u8 {
-        let pc = self.pc;
-        self.pc += 1;
-        self.clocks += Self::SLOW_CYCLE_CLOCKS;
-        bus.read(Address { bank: self.pb, offset: pc })
-    }
-    
-    fn read_word(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) -> u16 {
-        u16::from_le_bytes([
-            self.read(bus, addr_lo),
-            self.read(bus, addr_hi),
-        ])
-    }
-    
-    fn write_word(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address, value: u16) {
-        self.write(bus, addr_lo, value as u8);
-        self.write(bus, addr_hi, (value >> 8) as u8);
-    }
-    
-    fn pop(&mut self, bus: &mut CpuBus) -> u8 {
-        self.sp += 1;
-        
-        if self.e {
-            self.sp = 0x100 | (self.sp & 0xFF);
-        }
-        
-        self.read(bus, Address { bank: 0, offset: self.sp })
-    }
-    
-    fn push(&mut self, bus: &mut CpuBus, value: u8) {
-        self.write(bus, Address { bank: 0, offset: self.sp }, value);
-        
-        self.sp -= 1;
-        
-        if self.e {
-            self.sp = 0x100 | (self.sp & 0xFF);
-        }
-    }
-    
-    fn pop_word(&mut self, bus: &mut CpuBus) -> u16 {
-        u16::from_le_bytes([
-            self.pop(bus),
-            self.pop(bus),
-        ])
-    }
-    
-    fn push_word(&mut self, bus: &mut CpuBus, value: u16) {
-        self.push(bus, (value >> 8) as u8);
-        self.push(bus, value as u8);
-    }
-    
-    fn is_flag_set(&self, flag: Flag) -> bool {
-        self.p & (flag as u8) != 0
-    }
-
-    fn set_flag_to_bool(&mut self, flag: Flag, value: bool) {
-        if value {
-            self.p |= flag as u8;
-        } else {
-            self.p &= !(flag as u8);
-        }
     }
 }
 
@@ -1820,7 +1742,7 @@ impl Cpu65c816 {
     }
     
     fn wai(&mut self) {
-        self.waiting_for_irq = true;
+        self.waiting_for_interrupt = true;
     }
 
     fn wdm(&mut self, bus: &mut CpuBus, addr: Address) {
