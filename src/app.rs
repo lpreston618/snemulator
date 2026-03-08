@@ -292,7 +292,9 @@ impl SnemulatorApp {
             
             // Emulate one frame
             if self.rom_loaded && !self.is_paused && (!self.is_minimized || !self.pause_on_minimize) {
-                self.snem_core.run_frame(&mut self.frame_buffer);
+                let mut temp = Vec::new();
+                
+                self.snem_core.run_frame(&mut self.frame_buffer, &mut temp);
                 
                 self.update_game_texture();
             }

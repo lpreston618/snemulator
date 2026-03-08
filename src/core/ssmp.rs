@@ -67,8 +67,8 @@ impl Ssmp {
 
     /// Clocks the sound processor, checking if it is time to generate a new
     /// sample and/or clock the S-DSP and SPC700 processors.
-    pub fn clock(&mut self, master_clocks: usize, audio_buffer: &mut Vec<i16>, apu_regs: &mut ApuIoPorts) {
-        self.frame_time += MASTER_CLOCK_PERIOD * master_clocks as f32;
+    pub fn clock(&mut self, clocks: usize, audio_buffer: &mut Vec<i16>, apu_regs: &mut ApuIoPorts) {
+        self.frame_time += MASTER_CLOCK_PERIOD * clocks as f32;
         // self.debug_cnt += master_clocks;
 
         if self.frame_time >= self.next_sample {

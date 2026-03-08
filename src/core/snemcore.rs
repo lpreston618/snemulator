@@ -8,6 +8,7 @@ use crate::core::scpu::{Cpu65c816, CpuInterrupt};
 use crate::core::scpu::bus::CpuBus;
 use crate::core::sppu::Ppu5C7x;
 use crate::core::sppu::bus::PpuBus;
+use crate::core::ssmp::Ssmp;
 use crate::core::ssmp::ioports::ApuIoPorts;
 use crate::core::sysinfo::{
     CGRAM_SIZE, OAM_SIZE, SCREEN_HEIGHT, SCREEN_WIDTH, VRAM_SIZE, WRAM_SIZE
@@ -23,7 +24,7 @@ pub struct Snemulator {
     
     cpu: Cpu65c816,
     ppu: Ppu5C7x,
-    // ssmp: ssmp::Ssmp,
+    ssmp: Ssmp,
     
     wram: Box<[u8; WRAM_SIZE]>,
     vram: Box<[u16; VRAM_SIZE]>,
@@ -57,7 +58,7 @@ impl Snemulator {
             p2_controller: SnemController::new(),
             cpu: Cpu65c816::new(),
             ppu: Ppu5C7x::new(),
-            // ssmp: ssmp::Ssmp::new(),
+            ssmp: Ssmp::new(),
             wram: Box::new([0u8; WRAM_SIZE]),
             vram: Box::new([0u16; VRAM_SIZE]),
             cgram: Box::new([Color::default(); CGRAM_SIZE]),
@@ -101,7 +102,7 @@ impl Snemulator {
         }
     }
 
-    pub fn run_frame(&mut self, frame_buffer: &mut [u8]) {
+    pub fn run_frame(&mut self, frame_buffer: &mut [u8], audio_buffer: &mut Vec<i16>) {
         // TODO: Implement your emulator logic here
         // This should:
         // 1. Execute CPU instructions until a frame is complete
@@ -110,11 +111,11 @@ impl Snemulator {
         self.frame_ready = false;
         
         while !self.frame_ready {
-            self.cycle(frame_buffer);
+            self.cycle(frame_buffer, audio_buffer);
         }
     }
     
-    fn cycle(&mut self, frame_buffer: &mut [u8]) {
+    fn cycle(&mut self, frame_buffer: &mut [u8], audio_buffer: &mut Vec<i16>) {
         let clocks = self.cpu.clocks.min(self.ppu.clocks);
         
         self.cpu.clocks -= clocks;
@@ -177,6 +178,8 @@ impl Snemulator {
                 _ => {}
             }
         }
+        
+        self.ssmp.clock(clocks, audio_buffer, &mut self.apu_ports);
     }
     
     pub fn get_system_clocks(&self) -> u64 {
