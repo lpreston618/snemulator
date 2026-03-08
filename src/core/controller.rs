@@ -1,3 +1,11 @@
+pub enum JoypadCmd {
+    LatchJoypads,
+    EnableAutoread,
+    DisableAutoread,
+    ClockJoy1,
+    ClockJoy2,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum JoypadButton {
     B      = 1 << 0,

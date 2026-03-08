@@ -10,10 +10,10 @@ use crate::core::sysinfo::{SCREEN_WIDTH, SCREEN_HEIGHT};
 use crate::core::snemcore::Snemulator;
 use crate::core::controller::{ControllerPlayer, JoypadButton};
 
+pub const FRAME_BUF_SIZE: usize = (2*SCREEN_WIDTH * 2*SCREEN_HEIGHT * 4) as usize;
 const WINDOW_WIDTH: u32 = 640;
 const WINDOW_HEIGHT: u32 = 480;
 const TARGET_FPS: u32 = 60;
-const FRAME_BUF_SIZE: usize = (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize;
 const SECS_BEFORE_HIDE_MENU: f32 = 3.0;
 const SECS_BEFORE_HIDE_MOUSE: f32 = 3.0;
 const FRAMES_BEFORE_HIDE_MENU: u64 = (SECS_BEFORE_HIDE_MENU * TARGET_FPS as f32) as u64;
@@ -128,6 +128,7 @@ pub struct SnemulatorApp {
     _gl_context: sdl3::video::GLContext,
     egui_context: egui::Context,
     egui_painter: egui_glow::Painter,
+    ui_scale: f32,
     window: sdl3::video::Window,
     gl: std::sync::Arc<glow::Context>,
     game_texture: Option<glow::Texture>,
@@ -149,6 +150,7 @@ pub struct SnemulatorApp {
     is_fullscreen: bool,
     is_minimized: bool,
     pause_on_minimize: bool,
+    rom_loaded: bool,
     
     app_action: SnemulatorAppAction,
 }
@@ -192,6 +194,9 @@ impl SnemulatorApp {
         
         // Initialize egui
         let egui_context = egui::Context::default();
+        
+        egui_context.set_pixels_per_point(window.display_scale());
+        
         let egui_painter = egui_glow::Painter::new(
             gl.clone(),
             "",
@@ -232,16 +237,15 @@ impl SnemulatorApp {
         
         let (shader_program, vao, vbo) = create_shader_program(&gl).map_err(|e| anyhow::anyhow!(e))?;
         
-        let snem_core = Snemulator::new();
-        
         Ok(Self {
             sdl_context,
             _gl_context: gl_context,
             egui_context,
             egui_painter,
+            ui_scale: window.display_scale(),
             window,
             gl,
-            snem_core,
+            snem_core: Snemulator::new(),
             frame_buffer,
             game_texture,
             shader_program,
@@ -258,13 +262,14 @@ impl SnemulatorApp {
             is_fullscreen: false,
             is_minimized: false,
             pause_on_minimize: true,
+            rom_loaded: false,
             app_action: SnemulatorAppAction::Continue,
         })
     }
 
     pub fn run(&mut self) -> Result<()> {
         const FRAME_DURATION: Duration = Duration::from_micros(1_000_000 / TARGET_FPS as u64);
-
+        
         'running: loop {
             let frame_start = Instant::now();
             self.app_action = SnemulatorAppAction::Continue;
@@ -284,7 +289,7 @@ impl SnemulatorApp {
             self.handle_input(&mut raw_input);
             
             // Emulate one frame
-            if !self.is_paused && (!self.is_minimized || !self.pause_on_minimize) {
+            if self.rom_loaded && !self.is_paused && (!self.is_minimized || !self.pause_on_minimize) {
                 self.snem_core.run_frame(&mut self.frame_buffer);
                 
                 self.update_game_texture();
@@ -379,30 +384,39 @@ impl SnemulatorApp {
     fn handle_sdl_event(&mut self, event: &Event, raw_input: &mut egui::RawInput) {
         match event {
             Event::MouseMotion { x, y, .. } => {
+                // Convert physical pixels to logical pixels
+                let logical_x = *x as f32 / self.ui_scale;
+                let logical_y = *y as f32 / self.ui_scale;
+                raw_input.events.push(egui::Event::PointerMoved(egui::Pos2::new(logical_x, logical_y)));
                 self.last_mouse_input_frame = self.frame_count;
-                raw_input.events.push(egui::Event::PointerMoved(egui::Pos2::new(*x as f32, *y as f32)));
             }
             Event::MouseButtonDown { mouse_btn, x, y, .. } => {
-                self.last_mouse_input_frame = self.frame_count;
                 if let Some(button) = sdl_to_egui_mouse_button(*mouse_btn) {
+                    // Convert physical pixels to logical pixels
+                    let logical_x = *x as f32 / self.ui_scale;
+                    let logical_y = *y as f32 / self.ui_scale;
                     raw_input.events.push(egui::Event::PointerButton {
-                        pos: egui::Pos2::new(*x as f32, *y as f32),
+                        pos: egui::Pos2::new(logical_x, logical_y),
                         button,
                         pressed: true,
                         modifiers: Default::default(),
                     });
                 }
+                self.last_mouse_input_frame = self.frame_count;
             }
             Event::MouseButtonUp { mouse_btn, x, y, .. } => {
-                self.last_mouse_input_frame = self.frame_count;
                 if let Some(button) = sdl_to_egui_mouse_button(*mouse_btn) {
+                    // Convert physical pixels to logical pixels
+                    let logical_x = *x as f32 / self.ui_scale;
+                    let logical_y = *y as f32 / self.ui_scale;
                     raw_input.events.push(egui::Event::PointerButton {
-                        pos: egui::Pos2::new(*x as f32, *y as f32),
+                        pos: egui::Pos2::new(logical_x, logical_y),
                         button,
                         pressed: false,
                         modifiers: Default::default(),
                     });
                 }
+                self.last_mouse_input_frame = self.frame_count;
             }
             _ => {}
         }
@@ -429,7 +443,7 @@ impl SnemulatorApp {
                     self.app_action = SnemulatorAppAction::Exit;
                 }
             }
-            
+         
             Keycode::Up => self.snem_core.set_button(ControllerPlayer::Player1, JoypadButton::Up, true),
             Keycode::Down => self.snem_core.set_button(ControllerPlayer::Player1, JoypadButton::Down, true),
             Keycode::Left => self.snem_core.set_button(ControllerPlayer::Player1, JoypadButton::Left, true),
@@ -438,6 +452,7 @@ impl SnemulatorApp {
             Keycode::X => self.snem_core.set_button(ControllerPlayer::Player2, JoypadButton::B, true),
             Keycode::Return => self.snem_core.set_button(ControllerPlayer::Player2, JoypadButton::Start, true),
             Keycode::Backspace => self.snem_core.set_button(ControllerPlayer::Player2, JoypadButton::Select, true),
+            
             _ => {}
         }
     }
@@ -736,9 +751,14 @@ impl SnemulatorApp {
             .pick_file();
         
         if let Some(romfile) = romfile {
-            let data = std::fs::read(romfile)?;
+            let file_name = romfile.to_str().unwrap();
+            let data = std::fs::read(&romfile)?;
             
             self.snem_core.load_rom(data)?;
+            
+            info!("Loaded rom '{file_name}'");
+            
+            self.rom_loaded = true;
         }
         
         Ok(())

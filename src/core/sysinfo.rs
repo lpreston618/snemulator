@@ -1,5 +1,5 @@
-pub const SCREEN_WIDTH: u32 = 160;  // Your emulator's native resolution
-pub const SCREEN_HEIGHT: u32 = 144;
+pub const SCREEN_WIDTH: u32 = 256;
+pub const SCREEN_HEIGHT: u32 = 240;
 
 /// 128 KiB of WRAM
 pub const WRAM_SIZE: usize = 128 * 1024;

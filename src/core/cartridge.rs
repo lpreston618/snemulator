@@ -1,5 +1,7 @@
 use std::{io::Read, path::Path};
 
+use crate::core::scpu::bus::Address;
+
 #[derive(Debug, Clone, Copy, Default)]
 enum MappingMode {
     #[default]
@@ -32,18 +34,8 @@ pub struct Cartridge {
 
 
 impl Cartridge {
-    /// Read in a cartridge from the given path to an spc or sfc file
-    pub fn from_path(path: &Path) -> Result<Cartridge, String> {
-        let mut rom_file = std::fs::File::open(path).unwrap();
-
-        let mut cart_rom = Vec::new();
-
-        let res = rom_file.read_to_end(&mut cart_rom);
-
-        if let Err(_) = res {
-            return Err("failed to read ROM bytes".to_string());
-        }
-
+    /// Read in a cartridge from the given spc or sfc rom
+    pub fn from_rom(mut cart_rom: Vec<u8>) -> Result<Cartridge, String> {
         // Ignore optional 512 byte header
         if cart_rom.len() % 1024 == 512 {
             cart_rom.drain(0..512);
@@ -91,6 +83,14 @@ impl Cartridge {
         cart.interrupt_vectors.copy_from_slice(&header_bytes[0x20..0x40]);
         
         Ok(cart)
+    }
+    
+    pub fn read(&mut self, addr: Address) -> u8 {
+        0
+    }
+    
+    pub fn write(&mut self, addr: Address, value: u8) {
+        
     }
 }
 

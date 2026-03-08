@@ -1,9 +1,14 @@
-use anyhow::Result;
-use crate::core::controller::{ControllerPlayer, JoypadButton, SnemController};
+use anyhow::{Result, anyhow};
+use crate::core::cartridge::Cartridge;
+use crate::core::controller::{ControllerPlayer, JoypadButton, JoypadCmd, SnemController};
+use crate::core::scpu::dma::DmaRegs;
+use crate::core::scpu::ioregs::CpuIoRegs;
+use crate::core::scpu::mult::Mult5A22;
 use crate::core::scpu::{Cpu65c816, CpuInterrupt};
 use crate::core::scpu::bus::CpuBus;
 use crate::core::sppu::Ppu5C7x;
-use crate::core::sppu::bus::{PpuBus, FRAME_BUF_SIZE};
+use crate::core::sppu::bus::PpuBus;
+use crate::core::ssmp::ioports::ApuIoPorts;
 use crate::core::sysinfo::{
     CGRAM_SIZE, OAM_SIZE, SCREEN_HEIGHT, SCREEN_WIDTH, VRAM_SIZE, WRAM_SIZE
 };
@@ -25,10 +30,24 @@ pub struct Snemulator {
     cgram: Box<[Color; CGRAM_SIZE]>,
     oam: Box<[u8; OAM_SIZE]>,
     ppu_regs: PpuRegs,
+    cpu_regs: CpuIoRegs,
+    apu_ports: ApuIoPorts,
+    
+    mult: Mult5A22,
+    dma_regs: [DmaRegs; 8],
+    
+    joy1_latch: u16,
+    joy2_latch: u16,
+    joy1_data1_auto: u16,
+    joy2_data1_auto: u16,
+    joy1_data2_auto: u16,
+    joy2_data2_auto: u16,
     
     frame_ready: bool,
     
-    rom: Vec<u8>,
+    cart: Option<Cartridge>,
+    
+    total_clocks: u64,
 }
 
 impl Snemulator {
@@ -44,14 +63,33 @@ impl Snemulator {
             cgram: Box::new([Color::default(); CGRAM_SIZE]),
             oam: Box::new([0u8; OAM_SIZE]),
             ppu_regs: PpuRegs::default(),
+            cpu_regs: CpuIoRegs::default(),
+            apu_ports: ApuIoPorts::default(),
+            mult: Mult5A22::new(),
+            dma_regs: [DmaRegs::default(); 8],
+            joy1_latch: 0,
+            joy2_latch: 0,
+            joy1_data1_auto: 0,
+            joy2_data1_auto: 0,
+            joy1_data2_auto: 0,
+            joy2_data2_auto: 0,
             frame_ready: false,
-            rom: Vec::new(),
+            cart: None,
+            total_clocks: 0,
         }
     }
     
     pub fn load_rom(&mut self, data: Vec<u8>) -> Result<()> {
-        
-        Ok(())
+        match Cartridge::from_rom(data) {
+            Ok(cart) => {
+                self.cart = Some(cart);
+                Ok(())
+            },
+            Err(err) => {
+                error!("Failed to load ROM: {}", err);
+                Err(anyhow!(err))
+            },
+        }
     }
 
     pub fn set_button(&mut self, player: ControllerPlayer, button: JoypadButton, pressed: bool) {
@@ -74,17 +112,6 @@ impl Snemulator {
         while !self.frame_ready {
             self.cycle(frame_buffer);
         }
-        
-        // Example: Fill with a test pattern
-        for y in 0..SCREEN_HEIGHT {
-            for x in 0..SCREEN_WIDTH {
-                let offset = ((y * SCREEN_WIDTH + x) * 4) as usize;
-                frame_buffer[offset] = (x & 0xFF) as u8;     // R
-                frame_buffer[offset + 1] = (y & 0xFF) as u8; // G
-                frame_buffer[offset + 2] = 128;              // B
-                frame_buffer[offset + 3] = 255;              // A
-            }
-        }
     }
     
     fn cycle(&mut self, frame_buffer: &mut [u8]) {
@@ -92,17 +119,40 @@ impl Snemulator {
         
         self.cpu.clocks -= clocks;
         self.ppu.clocks -= clocks;
+        self.total_clocks += clocks as u64;
         
         if self.cpu.clocks == 0 {
+            let mut joypad_cmd: Option<JoypadCmd> = None;
+            
             let mut bus = CpuBus {
                 wram: &mut self.wram,
                 vram: &mut self.vram,
                 cgram: &mut self.cgram,
                 oam: &mut self.oam,
                 ppu_regs: &mut self.ppu_regs,
+                cpu_regs: &mut self.cpu_regs,
+                apu_ports: &mut self.apu_ports,
+                
+                mult: &mut self.mult,
+                dma_regs: &mut self.dma_regs,
+                
+                joy1_in: self.joy1_latch,
+                joy2_in: self.joy2_latch,
+                joy1_data1_auto: self.joy1_data1_auto,
+                joy2_data1_auto: self.joy2_data1_auto,
+                joy1_data2_auto: self.joy1_data2_auto,
+                joy2_data2_auto: self.joy2_data2_auto,
+                joypad_cmd: &mut joypad_cmd,
+                cart: self.cart.as_mut().unwrap(),
             };
             
             self.cpu.cycle(&mut bus);
+            
+            match joypad_cmd {
+                Some(JoypadCmd::ClockJoy1) => { self.joy1_latch >>= 1; },
+                Some(JoypadCmd::ClockJoy2) => { self.joy2_latch >>= 1; },
+                _ => {},
+            }
         }
         
         if self.ppu.clocks == 0 {
@@ -113,6 +163,7 @@ impl Snemulator {
                 cgram: &mut self.cgram,
                 oam: &mut self.oam,
                 ppu_regs: &mut self.ppu_regs,
+                cpu_regs: &mut self.cpu_regs,
                 frame_buffer,
                 frame_ready: &mut self.frame_ready,
                 interrupt: &mut interrupt,
@@ -126,5 +177,9 @@ impl Snemulator {
                 _ => {}
             }
         }
+    }
+    
+    pub fn get_system_clocks(&self) -> u64 {
+        self.total_clocks
     }
 }

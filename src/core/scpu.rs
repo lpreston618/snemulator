@@ -1,10 +1,10 @@
 use crate::core::scpu::bus::{Address, CpuBus};
 
 pub mod bus;
-mod dma;
+pub mod ioregs;
+pub mod dma;
+pub mod mult;
 mod instructions;
-mod ioregs;
-mod mult;
 
 pub enum Flag {
     FlagC = 1 << 0,   // Carry

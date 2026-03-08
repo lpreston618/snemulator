@@ -1,5 +1,6 @@
 /// Shared registers between the S-CPU and SPC700
-pub struct ApuIORegs {
+#[derive(Clone, Copy, Default)]
+pub struct ApuIoPorts {
     /// SPC700 -> S-CPU register 0
     pub apuio0: u8,
     /// SPC700 -> S-CPU register 1
@@ -19,9 +20,9 @@ pub struct ApuIORegs {
     pub cpuio3: u8,
 }
 
-impl ApuIORegs {
-    pub fn new() -> ApuIORegs {
-        ApuIORegs {
+impl ApuIoPorts {
+    pub fn new() -> ApuIoPorts {
+        ApuIoPorts {
             apuio0: 0, apuio1: 0, apuio2: 0, apuio3: 0,
             cpuio0: 0, cpuio1: 0, cpuio2: 0, cpuio3: 0,
         }

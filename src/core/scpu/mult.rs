@@ -1,51 +1,24 @@
-use crate::{set_byte_n, get_byte_n};
-
 /// Implementation of the S-CPU's contained multiplication and division circuit.
+#[derive(Default)]
 pub struct Mult5A22 {
-    mult_factor1: u8,
-    div_numer: u16,
-    div_quotient: u16,
-    result: u16,
+    pub mult_factor1: u8,
+    pub mult_factor2: u8,
+    pub div_numer: u16,
+    pub div_denom: u8,
+    
+    pub div_quotient: u16,
+    pub result: u16,
 }
 
 impl Mult5A22 {
     pub fn new() -> Mult5A22 {
         Mult5A22 { 
-            mult_factor1: 0, 
-            div_numer: 0, 
+            mult_factor1: 0xFF, 
+            mult_factor2: 0,
+            div_numer: 0xFFFF, 
+            div_denom: 0,
             div_quotient: 0, 
             result: 0,
         }
     }
-
-    pub fn set_factor1(&mut self, data: u8) {
-        self.mult_factor1 = data;
-    }
-
-    pub fn set_factor2(&mut self, data: u8) {
-        self.result = (self.mult_factor1 as u16) * (data as u16);
-    }
-
-    pub fn set_numer_lo(&mut self, data: u8) {
-        set_byte_n!(self.div_numer, data as u16, 0);
-    }
-
-    pub fn set_numer_hi(&mut self, data: u8) {
-        set_byte_n!(self.div_numer, data as u16, 1);
-    }
-
-    pub fn set_denom(&mut self, data: u8) {
-        if data == 0 {
-            self.div_quotient = 0xFFFF;
-            self.result = self.div_numer;
-        } else {
-            self.div_quotient = self.div_numer / (data as u16);
-            self.result = self.div_numer % (data as u16);
-        }
-    }
-
-    pub fn get_result_lo(&self) -> u8 { get_byte_n!(self.result, 0) }
-    pub fn get_result_hi(&self) -> u8 { get_byte_n!(self.result, 1) }
-    pub fn get_quotient_result_lo(&self) -> u8 { get_byte_n!(self.div_quotient, 0) }
-    pub fn get_quotient_result_hi(&self) -> u8 { get_byte_n!(self.div_quotient, 1) }
 }

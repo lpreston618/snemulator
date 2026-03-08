@@ -1,18 +1,20 @@
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Color {
-    r: u8,
-    g: u8,
-    b: u8,
-    _a: u8,
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub a: u8,
 }
 
 impl Color {
+    pub const BLACK: Self = Color { r: 0, g: 0, b: 0, a: 255 };
+    
     pub fn new(r: u8, g: u8, b: u8) -> Self {
-        Self {
+        Color {
             r,
             g,
             b,
-            _a: 255,
+            a: 255,
         }
     }
     
@@ -27,6 +29,6 @@ impl Color {
         let r = ((color & 0x001F) << 3) as u8;
         let g = ((color & 0x03E0) >> 2) as u8;
         let b = ((color & 0x7C00) >> 7) as u8;
-        Self { r, g, b, _a: 255 }
+        Color { r, g, b, a: 255 }
     }
 }
