@@ -11,6 +11,8 @@ use crate::core::snemcore::Snemulator;
 use crate::core::controller::{ControllerPlayer, JoypadButton};
 
 pub const FRAME_BUF_SIZE: usize = (2*SCREEN_WIDTH * 2*SCREEN_HEIGHT * 4) as usize;
+pub const AUDIO_SAMPLE_HZ: usize = 44100;
+
 const WINDOW_WIDTH: u32 = 640;
 const WINDOW_HEIGHT: u32 = 480;
 const TARGET_FPS: u32 = 60;
@@ -316,6 +318,9 @@ impl SnemulatorApp {
             // Frame timing
             self.frame_count += 1;
             let elapsed = frame_start.elapsed();
+            
+            // info!("Frame time: {} us, Time left: {} us", elapsed.as_micros(), FRAME_DURATION.as_micros() - elapsed.as_micros());
+            
             if elapsed < FRAME_DURATION {
                 std::thread::sleep(FRAME_DURATION - elapsed);
             }
