@@ -362,6 +362,8 @@ impl MainWindow {
             self.gl.clear(glow::COLOR_BUFFER_BIT);
         }
         
+        // Render game screen
+        self.render_game_screen(game_rect);
 
         // Render egui
         let clipped_primitives = self.menu.egui_context.tessellate(full_output.shapes, full_output.pixels_per_point);
@@ -372,8 +374,6 @@ impl MainWindow {
             &clipped_primitives,
             &full_output.textures_delta,
         );
-        // Render game screen
-        self.render_game_screen(game_rect);
 
         self.window.gl_swap_window();
 

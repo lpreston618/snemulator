@@ -14,7 +14,7 @@ glow = "0.16.0"
 log = "0.4.29"
 paste = "1.0.15"
 rfd = "0.17.2"
-sdl3 = "0.17.3"
+sdl3 = {version = "0.17.3", features = ["build-from-source"]}
 
 [profile.dev]
 overflow-checks = false

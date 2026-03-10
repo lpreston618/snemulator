@@ -107,7 +107,7 @@ impl Snemulator {
             ppu_regs: PpuRegs::default(),
             cpu_regs: CpuIoRegs::default(),
             apu_ports: ApuIoPorts::default(),
-            mult: Mult5A22::new(),
+            mult: Mult5A22::default(),
             dma_regs: [DmaRegs::default(); 8],
             joy1_latch: 0,
             joy2_latch: 0,
@@ -123,6 +123,8 @@ impl Snemulator {
     }
     
     fn power_on(&mut self) {
+        self.mult.power_on();
+        
         let mut bus = cpu_bus!(self);
         
         self.cpu.power_on(&mut bus);

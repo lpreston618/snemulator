@@ -52,7 +52,7 @@ impl<const PERIOD: usize> Timer<PERIOD> {
 
     pub fn get_target(&self) -> u8 { self.target }
     pub fn get_counter(&mut self) -> u8 {
-        let data = self.counter & 0x0F;
+        let data = self.counter;
         self.counter = 0;
         data
     }

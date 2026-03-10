@@ -11,14 +11,12 @@ pub struct Mult5A22 {
 }
 
 impl Mult5A22 {
-    pub fn new() -> Mult5A22 {
-        Mult5A22 { 
-            mult_factor1: 0xFF, 
-            mult_factor2: 0,
-            div_numer: 0xFFFF, 
-            div_denom: 0,
-            div_quotient: 0, 
-            result: 0,
-        }
+    pub fn power_on(&mut self) {
+        self.mult_factor1 = 0xFF;
+        self.mult_factor2 = 0;
+        self.div_numer = 0xFFFF;
+        self.div_denom = 0;
+        self.div_quotient = 0;
+        self.result = 0;
     }
 }
