@@ -85,8 +85,6 @@ impl MainWindow {
             gl.clone()
         )?;
         
-        info!("Main window scale: {}", window.display_scale());
-        
         // Create OpenGL texture for game screen
         let game_texture = unsafe {
             let texture = gl.create_texture()
@@ -349,7 +347,7 @@ impl MainWindow {
         }
     }
     
-    pub fn render(&mut self, app_state: &AppState, raw_input: egui::RawInput, frame_buffer: &[u8]) -> Result<AppAction> {
+    pub fn render(&mut self, app_state: &AppState, app_settings: &Settings, raw_input: egui::RawInput, frame_buffer: &[u8]) -> Result<AppAction> {
         self.window.gl_make_current(self.gl_context.as_ref()).ok();
         
         let (window_width, window_height) = self.window.size();
@@ -365,7 +363,12 @@ impl MainWindow {
                 app_action = self.menu.render(app_state);
             }
             
-            game_rect = ctx.available_rect();
+            if app_settings.always_show_menu {
+                game_rect = ctx.available_rect();
+            } else {
+                game_rect = ctx.viewport_rect();
+            }
+            
         });
 
         // Render

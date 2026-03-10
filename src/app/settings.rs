@@ -12,6 +12,7 @@ pub struct Settings {
     pub vsync_en: bool,
     // integer_scaling: bool,
     pub show_fps: bool,
+    pub always_show_menu: bool,
     
     // Audio settings
     pub audio_enabled: bool,

@@ -147,7 +147,7 @@ impl SnemulatorApp {
                 self.render_load_rom_screen();
             }
             
-            let app_action = self.main_window.render(&self.state, raw_input, &self.frame_buffer[..])?;
+            let app_action = self.main_window.render(&self.state, &self.settings, raw_input, &self.frame_buffer[..])?;
 
             match app_action {
                 AppAction::Continue => {}
@@ -159,7 +159,7 @@ impl SnemulatorApp {
                 about_window.render();
             }
             
-            self.state.show_menu = self.state.frame_count - self.state.last_mouse_input_frame < FRAMES_BEFORE_HIDE_MENU;
+            self.state.show_menu = self.settings.always_show_menu || (self.state.frame_count - self.state.last_mouse_input_frame < FRAMES_BEFORE_HIDE_MENU);
             self.state.show_mouse = match self.sdl_context.mouse().focused_window_id() {
                 Some(id) => {
                     id != self.main_window.window.id() || (self.state.frame_count - self.state.last_mouse_input_frame < FRAMES_BEFORE_HIDE_MOUSE)
