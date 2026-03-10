@@ -28,14 +28,13 @@ pub struct MainWindow {
 impl MainWindow {
     pub fn new(
         video_subsystem: &sdl3::VideoSubsystem,
-        gl: std::sync::Arc<glow::Context>,
-        gl_context: std::rc::Rc<sdl3::video::GLContext>,
         settings: &Settings) -> Result<Self> {
             
         // Set OpenGL attributes
         let gl_attr = video_subsystem.gl_attr();
         gl_attr.set_context_profile(GLProfile::Core);
         gl_attr.set_context_version(3, 3);
+        gl_attr.set_context_flags().forward_compatible().set();
         gl_attr.set_double_buffer(true);
         
         // Create window
@@ -45,7 +44,7 @@ impl MainWindow {
             .resizable()
             .opengl()
             .build()?;
-        
+    
         let window_width = (WINDOW_WIDTH as f32 * window.display_scale()) as u32;
         let window_height = (WINDOW_HEIGHT as f32 * window.display_scale()) as u32;
         
@@ -55,9 +54,23 @@ impl MainWindow {
             sdl3::video::WindowPos::Centered,
             sdl3::video::WindowPos::Centered
         );
-        window.gl_make_current(gl_context.as_ref())?;
-        
         let window = window; // No longer mutable
+        
+        // Create the shared GL context
+        let gl_context = window.gl_create_context()?;
+        let gl_context = std::rc::Rc::new(gl_context);
+        
+        let gl = unsafe {
+            glow::Context::from_loader_function(|s| {
+                match video_subsystem.gl_get_proc_address(s) {
+                    Some(ptr) => ptr as *const _,
+                    None => return std::ptr::null(),
+                }
+            })
+        };
+        let gl = std::sync::Arc::new(gl);
+        
+        window.gl_make_current(gl_context.as_ref())?;
         
         video_subsystem.gl_set_swap_interval(
             if settings.vsync_en {
@@ -378,6 +391,14 @@ impl MainWindow {
         self.window.gl_swap_window();
 
         Ok(app_action)
+    }
+    
+    pub fn gl(&self) -> std::sync::Arc<glow::Context> {
+        self.gl.clone()
+    }
+    
+    pub fn gl_context(&self) -> std::rc::Rc<sdl3::video::GLContext> {
+        self.gl_context.clone()
     }
 }
 

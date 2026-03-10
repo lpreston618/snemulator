@@ -87,34 +87,13 @@ impl SnemulatorApp {
         let settings = SnemulatorApp::try_find_settings().unwrap_or_default();
         let frame_buffer = Box::new([0u8; FRAME_BUF_SIZE]);
         
-        // Create a temporary window just to create the GL context
-        let temp_window = video_subsystem
-            .window("", 1, 1)
-            .opengl()
-            .hidden()
-            .build()?;
-
-        // Create the shared GL context
-        let gl_context = temp_window.gl_create_context()?;
-        let gl_context = std::rc::Rc::new(gl_context);
-        
-        let gl = unsafe {
-            glow::Context::from_loader_function(|s| {
-                match video_subsystem.gl_get_proc_address(s) {
-                    Some(ptr) => ptr as *const _,
-                    None => return std::ptr::null(),
-                }
-            })
-        };
-        let gl = std::sync::Arc::new(gl);
-        
-        let main_window = MainWindow::new(&video_subsystem, gl.clone(), gl_context.clone(), &settings)?;
+        let main_window = MainWindow::new(&video_subsystem, &settings)?;
         
         Ok(Self {
             sdl_context,
             video_subsystem,
-            gl,
-            gl_context,
+            gl: main_window.gl(),
+            gl_context: main_window.gl_context(),
             
             main_window,
             about_window: None,
