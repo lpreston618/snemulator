@@ -15,7 +15,48 @@ use crate::core::sysinfo::{
 };
 use crate::core::sppu::color::Color;
 use crate::core::sppu::regs::PpuRegs;
-use log::{debug, error, info, trace, warn};
+use log::trace;
+
+macro_rules! cpu_bus {
+    ($core:ident) => {
+        CpuBus {
+            wram: &mut $core.wram,
+            vram: &mut $core.vram,
+            cgram: &mut $core.cgram,
+            oam: &mut $core.oam,
+            ppu_regs: &mut $core.ppu_regs,
+            cpu_regs: &mut $core.cpu_regs,
+            apu_ports: &mut $core.apu_ports,
+            
+            mult: &mut $core.mult,
+            dma_regs: &mut $core.dma_regs,
+            
+            joy1_in: $core.joy1_latch,
+            joy2_in: $core.joy2_latch,
+            joy1_data1_auto: $core.joy1_data1_auto,
+            joy2_data1_auto: $core.joy2_data1_auto,
+            joy1_data2_auto: $core.joy1_data2_auto,
+            joy2_data2_auto: $core.joy2_data2_auto,
+            joypad_cmd: &mut $core.joypad_cmd,
+            cart: $core.cart.as_mut().unwrap(),
+        }
+    };
+}
+
+macro_rules! ppu_bus {
+    ($core:ident, $frame_buffer:ident) => {
+        PpuBus {
+            vram: &mut $core.vram,
+            cgram: &mut $core.cgram,
+            oam: &mut $core.oam,
+            ppu_regs: &mut $core.ppu_regs,
+            cpu_regs: &mut $core.cpu_regs,
+            $frame_buffer,
+            frame_ready: &mut $core.frame_ready,
+            interrupt: &mut $core.cpu_interrupt,
+        }
+    };
+}
 
 // Emulator core
 pub struct Snemulator {
@@ -43,12 +84,12 @@ pub struct Snemulator {
     joy2_data1_auto: u16,
     joy1_data2_auto: u16,
     joy2_data2_auto: u16,
+    joypad_cmd: Option<JoypadCmd>,
+    cpu_interrupt: Option<CpuInterrupt>,
     
     frame_ready: bool,
     
     cart: Option<Cartridge>,
-    
-    total_clocks: u64,
 }
 
 impl Snemulator {
@@ -74,23 +115,25 @@ impl Snemulator {
             joy2_data1_auto: 0,
             joy1_data2_auto: 0,
             joy2_data2_auto: 0,
+            joypad_cmd: None,
+            cpu_interrupt: None,
             frame_ready: false,
             cart: None,
-            total_clocks: 0,
         }
     }
     
+    fn power_on(&mut self) {
+        let mut bus = cpu_bus!(self);
+        
+        self.cpu.power_on(&mut bus);
+    }
+    
     pub fn load_rom(&mut self, data: Vec<u8>) -> Result<()> {
-        match Cartridge::from_rom(data) {
-            Ok(cart) => {
-                self.cart = Some(cart);
-                Ok(())
-            },
-            Err(err) => {
-                error!("Failed to load ROM: {}", err);
-                Err(anyhow!(err))
-            },
-        }
+        self.cart = Some(Cartridge::from_rom(data).map_err(|e| anyhow!(e))?);
+        
+        self.power_on();
+        
+        Ok(())
     }
 
     pub fn set_button(&mut self, player: ControllerPlayer, button: JoypadButton, pressed: bool) {
@@ -103,11 +146,6 @@ impl Snemulator {
     }
 
     pub fn run_frame(&mut self, frame_buffer: &mut [u8], audio_buffer: &mut Vec<i16>) {
-        // TODO: Implement your emulator logic here
-        // This should:
-        // 1. Execute CPU instructions until a frame is complete
-        // 2. Update the frame_buffer with pixel data (RGBA format)
-        
         self.frame_ready = false;
         
         while !self.frame_ready {
@@ -120,36 +158,15 @@ impl Snemulator {
         
         self.cpu.clocks -= clocks;
         self.ppu.clocks -= clocks;
-        self.total_clocks += clocks as u64;
         
         if self.cpu.clocks == 0 {
-            let mut joypad_cmd: Option<JoypadCmd> = None;
+            self.joypad_cmd = None;
             
-            let mut bus = CpuBus {
-                wram: &mut self.wram,
-                vram: &mut self.vram,
-                cgram: &mut self.cgram,
-                oam: &mut self.oam,
-                ppu_regs: &mut self.ppu_regs,
-                cpu_regs: &mut self.cpu_regs,
-                apu_ports: &mut self.apu_ports,
-                
-                mult: &mut self.mult,
-                dma_regs: &mut self.dma_regs,
-                
-                joy1_in: self.joy1_latch,
-                joy2_in: self.joy2_latch,
-                joy1_data1_auto: self.joy1_data1_auto,
-                joy2_data1_auto: self.joy2_data1_auto,
-                joy1_data2_auto: self.joy1_data2_auto,
-                joy2_data2_auto: self.joy2_data2_auto,
-                joypad_cmd: &mut joypad_cmd,
-                cart: self.cart.as_mut().unwrap(),
-            };
+            let mut bus = cpu_bus!(self);
             
             self.cpu.cycle(&mut bus);
             
-            match joypad_cmd {
+            match self.joypad_cmd {
                 Some(JoypadCmd::ClockJoy1) => { self.joy1_latch >>= 1; },
                 Some(JoypadCmd::ClockJoy2) => { self.joy2_latch >>= 1; },
                 _ => {},
@@ -157,22 +174,13 @@ impl Snemulator {
         }
         
         if self.ppu.clocks == 0 {
-            let mut interrupt: Option<CpuInterrupt> = None;
+            self.cpu_interrupt = None;
             
-            let mut bus = PpuBus {
-                vram: &mut self.vram,
-                cgram: &mut self.cgram,
-                oam: &mut self.oam,
-                ppu_regs: &mut self.ppu_regs,
-                cpu_regs: &mut self.cpu_regs,
-                frame_buffer,
-                frame_ready: &mut self.frame_ready,
-                interrupt: &mut interrupt,
-            };
+            let mut bus = ppu_bus!(self, frame_buffer);
             
             self.ppu.cycle(&mut bus);
             
-            match interrupt {
+            match self.cpu_interrupt {
                 Some(CpuInterrupt::IRQ) => { self.cpu.irq_pending = true; }
                 Some(CpuInterrupt::NMI) => { self.cpu.nmi_pending = true; }
                 _ => {}
@@ -180,9 +188,5 @@ impl Snemulator {
         }
         
         self.ssmp.clock(clocks, audio_buffer, &mut self.apu_ports);
-    }
-    
-    pub fn get_system_clocks(&self) -> u64 {
-        self.total_clocks
     }
 }

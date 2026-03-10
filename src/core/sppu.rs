@@ -174,7 +174,7 @@ impl Ppu5C7x {
         frame_buffer[pixel_idx + 0] = col.r;
         frame_buffer[pixel_idx + 1] = col.g;
         frame_buffer[pixel_idx + 2] = col.b;
-        frame_buffer[pixel_idx + 3] = col.a;
+        frame_buffer[pixel_idx + 3] = 255;
     }
 
     fn draw_dot_modes_0to4(&mut self, bus: &mut PpuBus) {
@@ -341,7 +341,6 @@ impl Ppu5C7x {
             r: (((col.r as u16) * (brightness as u16)) / 15) as u8,
             g: (((col.g as u16) * (brightness as u16)) / 15) as u8,
             b: (((col.b as u16) * (brightness as u16)) / 15) as u8,
-            a: col.a,
         }
     }
 
@@ -1653,13 +1652,11 @@ impl Ppu5C7x {
                 r: main_col.r.saturating_add(sub_col.r) & 0xF8, // 5-bit color max
                 g: main_col.g.saturating_add(sub_col.g) & 0xF8,
                 b: main_col.b.saturating_add(sub_col.b) & 0xF8,
-                a: 255,
             },
             CMathOperator::Subtract => Color {
                 r: main_col.r.saturating_sub(sub_col.r),
                 g: main_col.g.saturating_sub(sub_col.g),
                 b: main_col.b.saturating_sub(sub_col.b),
-                a: 255,
             },
         };
         

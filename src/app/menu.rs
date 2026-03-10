@@ -10,7 +10,6 @@ pub struct MainMenuBar {
     pub egui_context: egui::Context,
     pub egui_painter: egui_glow::Painter,
     pub ui_scale: f32,
-    pub visible: bool,
 }
 
 impl MainMenuBar {
@@ -30,84 +29,91 @@ impl MainMenuBar {
             egui_context,
             egui_painter,
             ui_scale,
-            visible: true,
         })
     }
 
     pub fn render(&self, app_state: &AppState) -> SnemulatorAppAction {
         let mut app_action = SnemulatorAppAction::Continue;
         let ctx = &self.egui_context;
-        
-        if self.visible {
-            // Top menu bar
-            egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
-                egui::MenuBar::new().ui(ui, |ui| {                
-                    ui.menu_button("File", |ui| {
-                        ui.set_width(100.0);
-                        
-                        if ui.button("Load Rom").clicked() {
-                            app_action = SnemulatorAppAction::LoadRom;
-                        }
-                        if ui.button("Recent ROMs").clicked() {
-                            warn!("Recent ROMs clicked.");
-                        }
-                        
-                        ui.separator();
-                        
-                        if button_with_shortcut(ui, "Exit", "Ctrl + Q").clicked() {
-                            info!("Exit button clicked, exiting");
-                            
-                            app_action = SnemulatorAppAction::Exit;
-                        }
-                    });
+    
+        // Top menu bar
+        egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
+            egui::MenuBar::new().ui(ui, |ui| {                
+                ui.menu_button("File", |ui| {
+                    ui.set_width(100.0);
                     
-                    ui.menu_button("Emulation", |ui| {
-                        ui.set_width(100.0);
-                        
-                        let pause_text = if app_state.is_paused { "Resume" } else { "Pause" };
-                        if ui.button(pause_text).clicked() {
-                            app_action = SnemulatorAppAction::TogglePause;
-                            ui.close();
-                        }
-                        if ui.button("Reset").clicked() {
-                            app_action = SnemulatorAppAction::ResetCore;
-                            ui.close();
-                        }
-                        
-                        ui.separator();
-                        
-                        if ui.button("Save State").clicked() {
-                            app_action = SnemulatorAppAction::SaveState;
-                            ui.close();
-                        }
-                        if ui.button("Load State").clicked() {
-                            app_action = SnemulatorAppAction::LoadState;
-                            ui.close();
-                        }
-                        
-                    });
+                    if ui.button("Load Rom").clicked() {
+                        app_action = SnemulatorAppAction::LoadRom;
+                        ui.close();
+                    }
+                    if ui.button("Recent ROMs").clicked() {
+                        warn!("Recent ROMs clicked.");
+                        ui.close();
+                    }
                     
-                    ui.menu_button("View", |ui| {
-                        ui.set_width(100.0);
-                        
-                        let window_size_text = if app_state.is_fullscreen { "Windowed" } else { "Fullscreen" };
-                        if button_with_shortcut(ui, window_size_text, "F11").clicked() {
-                            app_action = SnemulatorAppAction::ToggleFullscreen;
-                            ui.close();
-                        }
-                    });
+                    ui.separator();
                     
-                    ui.menu_button("About", |ui| {
-                        ui.set_width(100.0);
+                    if ui.button("Settings").clicked() {
+                        app_action = SnemulatorAppAction::ShowSettings;
+                        ui.close();
+                    }
+                    
+                    ui.separator();
+                    
+                    if button_with_shortcut(ui, "Exit", "Ctrl + Q").clicked() {
+                        info!("Exit button clicked, exiting");
                         
-                        if ui.button("About").clicked() {
-                            app_action = SnemulatorAppAction::ShowAbout;
-                            ui.close();
-                        }
-                    })
+                        app_action = SnemulatorAppAction::Exit;
+                        ui.close();
+                    }
                 });
+                
+                ui.menu_button("Emulation", |ui| {
+                    ui.set_width(100.0);
+                    
+                    let pause_text = if app_state.is_paused { "Resume" } else { "Pause" };
+                    if ui.button(pause_text).clicked() {
+                        app_action = SnemulatorAppAction::TogglePause;
+                        ui.close();
+                    }
+                    if ui.button("Reset").clicked() {
+                        app_action = SnemulatorAppAction::ResetCore;
+                        ui.close();
+                    }
+                    
+                    ui.separator();
+                    
+                    if ui.button("Save State").clicked() {
+                        app_action = SnemulatorAppAction::SaveState;
+                        ui.close();
+                    }
+                    if ui.button("Load State").clicked() {
+                        app_action = SnemulatorAppAction::LoadState;
+                        ui.close();
+                    }
+                    
+                });
+                
+                ui.menu_button("View", |ui| {
+                    ui.set_width(100.0);
+                    
+                    let window_size_text = if app_state.is_fullscreen { "Windowed" } else { "Fullscreen" };
+                    if button_with_shortcut(ui, window_size_text, "F11").clicked() {
+                        app_action = SnemulatorAppAction::ToggleFullscreen;
+                        ui.close();
+                    }
+                });
+                
+                ui.menu_button("About", |ui| {
+                    ui.set_width(100.0);
+                    
+                    if ui.button("About").clicked() {
+                        app_action = SnemulatorAppAction::ShowAbout;
+                        ui.close();
+                    }
+                })
             });
-        }
+        });
     
         app_action
     }

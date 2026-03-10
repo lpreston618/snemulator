@@ -1,4 +1,4 @@
-use std::{io::Read, path::Path};
+use log::trace;
 
 use crate::core::scpu::bus::Address;
 
@@ -82,11 +82,27 @@ impl Cartridge {
         cart.is_ntsc = header_bytes[0x19] > 0;
         cart.interrupt_vectors.copy_from_slice(&header_bytes[0x20..0x40]);
         
+        trace!("Set mapping mode to {:?}", cart.mapping_mode);
+        
         Ok(cart)
     }
     
     pub fn read(&mut self, addr: Address) -> u8 {
-        0
+        let addr = addr.to_u32();
+        
+        let mapped_addr = match self.mapping_mode {
+            MappingMode::LoROM => {
+                ((addr & 0x7F0000) >> 1) | (addr & 0x7FFF)
+            }
+            MappingMode::HiROM => {
+                addr & 0x3FFFFF
+            }
+            MappingMode::ExHiROM => {
+                (((addr & 0x800000) ^ 0x800000) >> 1) | (addr & 0x3FFFFF)
+            }
+        };
+        
+        self.rom[mapped_addr as usize]
     }
     
     pub fn write(&mut self, addr: Address, value: u8) {

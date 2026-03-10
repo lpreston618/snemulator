@@ -1,8 +1,9 @@
 use glow::HasContext;
 use anyhow::Result;
+use log::info;
 use sdl3::video::GLProfile;
 
-use crate::{app::{self, AppState, SnemulatorAppAction, WINDOW_HEIGHT, WINDOW_WIDTH, settings::AppSettings}, core::{snemcore::Snemulator, sysinfo::{SCREEN_HEIGHT, SCREEN_WIDTH}}};
+use crate::{app::{self, AppState, SnemulatorAppAction, WINDOW_HEIGHT, WINDOW_WIDTH, settings::Settings}, core::sysinfo::{SCREEN_HEIGHT, SCREEN_WIDTH}};
 
 fn sdl_to_egui_mouse_button(button: sdl3::mouse::MouseButton) -> Option<egui::PointerButton> {
     match button {
@@ -16,8 +17,8 @@ fn sdl_to_egui_mouse_button(button: sdl3::mouse::MouseButton) -> Option<egui::Po
 pub struct MainWindow {
     pub window: sdl3::video::Window,
     menu: app::menu::MainMenuBar,
-    _gl_context: sdl3::video::GLContext,
     gl: std::sync::Arc<glow::Context>,
+    gl_context: std::rc::Rc<sdl3::video::GLContext>,
     shader_program: glow::Program,
     vao: glow::VertexArray,
     vbo: glow::Buffer,
@@ -25,7 +26,12 @@ pub struct MainWindow {
 }
 
 impl MainWindow {
-    pub fn new(video_subsystem: &sdl3::VideoSubsystem, settings: &AppSettings) -> Result<Self> {
+    pub fn new(
+        video_subsystem: &sdl3::VideoSubsystem,
+        gl: std::sync::Arc<glow::Context>,
+        gl_context: std::rc::Rc<sdl3::video::GLContext>,
+        settings: &Settings) -> Result<Self> {
+            
         // Set OpenGL attributes
         let gl_attr = video_subsystem.gl_attr();
         gl_attr.set_context_profile(GLProfile::Core);
@@ -49,12 +55,9 @@ impl MainWindow {
             sdl3::video::WindowPos::Centered,
             sdl3::video::WindowPos::Centered
         );
+        window.gl_make_current(gl_context.as_ref())?;
         
         let window = window; // No longer mutable
-        
-        // Create OpenGL context
-        let gl_context = window.gl_create_context()?;
-        window.gl_make_current(&gl_context)?;
         
         video_subsystem.gl_set_swap_interval(
             if settings.vsync_en {
@@ -64,21 +67,12 @@ impl MainWindow {
             }
         )?;
         
-        // Load OpenGL functions
-        let gl = unsafe {
-            glow::Context::from_loader_function(|s| {
-                match video_subsystem.gl_get_proc_address(s) {
-                    Some(func) => func as *const _,
-                    None => std::ptr::null(),
-                }
-            })
-        };
-        let gl = std::sync::Arc::new(gl);
-        
         let menu = app::menu::MainMenuBar::new(
             window.display_scale(),
             gl.clone()
         )?;
+        
+        info!("Main window scale: {}", window.display_scale());
         
         // Create OpenGL texture for game screen
         let game_texture = unsafe {
@@ -99,8 +93,8 @@ impl MainWindow {
                 glow::TEXTURE_2D,
                 0,
                 glow::RGBA as i32,
-                2*SCREEN_WIDTH as i32,
-                2*SCREEN_HEIGHT as i32,
+                SCREEN_WIDTH as i32,
+                SCREEN_HEIGHT as i32,
                 0,
                 glow::RGBA,
                 glow::UNSIGNED_BYTE,
@@ -114,8 +108,8 @@ impl MainWindow {
         Ok(Self {
             window,
             menu,
-            _gl_context: gl_context,
             gl,
+            gl_context,
             shader_program,
             vao,
             vbo,
@@ -209,12 +203,13 @@ impl MainWindow {
         }
     }
     
-    pub fn handle_sdl_event(&mut self, event: &sdl3::event::Event, raw_input: &mut egui::RawInput) {
+    pub fn handle_sdl_event(&mut self, event: &sdl3::event::Event, raw_input: &mut egui::RawInput, app_state: &mut AppState) {
         match event {
             sdl3::event::Event::MouseMotion { x, y, .. } => {
                 let logical_x = *x as f32 / self.menu.ui_scale;
                 let logical_y = *y as f32 / self.menu.ui_scale;
                 raw_input.events.push(egui::Event::PointerMoved(egui::Pos2::new(logical_x, logical_y)));
+                app_state.last_mouse_input_frame = app_state.frame_count;
             }
             sdl3::event::Event::MouseButtonDown { mouse_btn, x, y, .. } => {
                 if let Some(button) = sdl_to_egui_mouse_button(*mouse_btn) {
@@ -227,6 +222,7 @@ impl MainWindow {
                         modifiers: Default::default(),
                     });
                 }
+                app_state.last_mouse_input_frame = app_state.frame_count;
             }
             sdl3::event::Event::MouseButtonUp { mouse_btn, x, y, .. } => {
                 if let Some(button) = sdl_to_egui_mouse_button(*mouse_btn) {
@@ -239,6 +235,7 @@ impl MainWindow {
                         modifiers: Default::default(),
                     });
                 }
+                app_state.last_mouse_input_frame = app_state.frame_count;
             }
             _ => {}
         }
@@ -267,9 +264,23 @@ impl MainWindow {
         let (window_width, window_height) = self.window.size();
         let window_width = window_width as f32;
         let window_height = window_height as f32;
-        
+                
         unsafe {
             if let Some(texture) = self.game_texture {
+                let display_scale = self.window.display_scale();
+                
+                // Only scale top y because the menu bar is the only thing we are accouting for
+                let available_rect = egui::Rect::from_min_max(
+                    egui::pos2(
+                        available_rect.min.x,
+                        available_rect.min.y * display_scale
+                    ),
+                    egui::pos2(
+                        available_rect.max.x,
+                        available_rect.max.y
+                    )
+                );
+                            
                 let game_aspect = SCREEN_WIDTH as f32 / SCREEN_HEIGHT as f32;
                 let available_width = available_rect.width();
                 let available_height = available_rect.height();
@@ -288,19 +299,22 @@ impl MainWindow {
                 let x = available_rect.left() + (available_width - render_width) / 2.0;
                 let y = available_rect.top() + (available_height - render_height) / 2.0;
                 
+                // Convert to OpenGL normalized device coordinates
                 let ndc_x = (x / window_width) * 2.0 - 1.0;
                 let ndc_y = 1.0 - (y / window_height) * 2.0;
                 let ndc_w = (render_width / window_width) * 2.0;
                 let ndc_h = (render_height / window_height) * 2.0;
                 
+                // Update vertex positions for this specific area
                 let vertices: [f32; 24] = [
-                    ndc_x,          ndc_y,          0.0, 0.0,
-                    ndc_x,          ndc_y - ndc_h,  0.0, 1.0,
-                    ndc_x + ndc_w,  ndc_y - ndc_h,  1.0, 1.0,
+                    // positions                    // texCoords
+                    ndc_x,          ndc_y,          0.0, 0.0,  // top-left
+                    ndc_x,          ndc_y - ndc_h,  0.0, 1.0,  // bottom-left
+                    ndc_x + ndc_w,  ndc_y - ndc_h,  1.0, 1.0,  // bottom-right
                     
-                    ndc_x,          ndc_y,          0.0, 0.0,
-                    ndc_x + ndc_w,  ndc_y - ndc_h,  1.0, 1.0,
-                    ndc_x + ndc_w,  ndc_y,          1.0, 0.0,
+                    ndc_x,          ndc_y,          0.0, 0.0,  // top-left
+                    ndc_x + ndc_w,  ndc_y - ndc_h,  1.0, 1.0,  // bottom-right
+                    ndc_x + ndc_w,  ndc_y,          1.0, 0.0,  // top-right
                 ];
                 
                 self.gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vbo));
@@ -323,9 +337,9 @@ impl MainWindow {
     }
     
     pub fn render(&mut self, app_state: &AppState, raw_input: egui::RawInput, frame_buffer: &[u8]) -> Result<SnemulatorAppAction> {
-        let (window_width, window_height) = self.window.size();
+        self.window.gl_make_current(self.gl_context.as_ref()).ok();
         
-        // self.menu.egui_context.set_pixels_per_point(self.menu.ui_scale);
+        let (window_width, window_height) = self.window.size();
 
         // Update game texture
         self.update_game_texture(frame_buffer);
@@ -333,12 +347,12 @@ impl MainWindow {
         // Run egui
         let mut app_action = SnemulatorAppAction::Continue;
         let mut game_rect = egui::Rect::NOTHING;
-        let full_output = self.menu.egui_context.run(raw_input, |_ctx| {
+        let full_output = self.menu.egui_context.run(raw_input, |ctx| {
             if app_state.show_menu {
                 app_action = self.menu.render(app_state);
             }
             
-            game_rect = self.menu.egui_context.available_rect();
+            game_rect = ctx.available_rect();
         });
 
         // Render
@@ -347,9 +361,7 @@ impl MainWindow {
             self.gl.clear_color(0.1, 0.1, 0.1, 1.0);
             self.gl.clear(glow::COLOR_BUFFER_BIT);
         }
-
-        // Render game screen
-        self.render_game_screen(game_rect);
+        
 
         // Render egui
         let clipped_primitives = self.menu.egui_context.tessellate(full_output.shapes, full_output.pixels_per_point);
@@ -360,13 +372,17 @@ impl MainWindow {
             &clipped_primitives,
             &full_output.textures_delta,
         );
+        // Render game screen
+        self.render_game_screen(game_rect);
 
         self.window.gl_swap_window();
 
         Ok(app_action)
     }
-    
-    pub fn cleanup(&mut self) {
+}
+
+impl Drop for MainWindow {
+    fn drop(&mut self) {
         self.menu.egui_painter.destroy();
     }
 }

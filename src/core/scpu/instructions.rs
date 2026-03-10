@@ -1,20 +1,10 @@
 use crate::core::scpu::bus::{Address, CpuBus};
-use crate::core::scpu::{Cpu65c816, Flag};
+use crate::core::scpu::{Cpu65c816, CpuInterrupt, Flag};
 use crate::{
     set_byte_n,
     get_bit_n,
 };
 use paste::paste;
-
-const N_BRK_VECTOR_LO: u16 = 0xFFE6;
-const N_BRK_VECTOR_HI: u16 = 0xFFE7;
-const E_BRK_VECTOR_LO: u16 = 0xFFFE;
-const E_BRK_VECTOR_HI: u16 = 0xFFFF;
-
-const N_COP_VECTOR_LO: u16 = 0xFFE4;
-const N_COP_VECTOR_HI: u16 = 0xFFE5;
-const E_COP_VECTOR_LO: u16 = 0xFFF4;
-const E_COP_VECTOR_HI: u16 = 0xFFF5;
 
 /// Set the N and Z flags based on an 8-bit value.
 macro_rules! set_nz8 {
@@ -948,26 +938,9 @@ impl Cpu65c816 {
     }
 
     fn brk(&mut self, bus: &mut CpuBus) {   
-        if !self.e {
-            self.push(bus, self.pb);
-        }
-        
-        self.push_word(bus, self.pc + 1);
-        self.push(bus, self.p);
-        self.set_flag_to_bool(Flag::FlagI, true);
-        self.set_flag_to_bool(Flag::FlagD, false);
+        self.pc += 1; // Push address of next instruction
 
-        if self.e {
-            self.pc = self.read_word(bus,
-                Address { bank: 0, offset: E_BRK_VECTOR_LO },
-                Address { bank: 0, offset: E_BRK_VECTOR_HI },
-            );
-        } else {
-            self.pc = self.read_word(bus,
-                Address { bank: 0, offset: N_BRK_VECTOR_LO },
-                Address { bank: 0, offset: N_BRK_VECTOR_HI },
-            );
-        }
+        self.handle_interrupt(bus, CpuInterrupt::BRK);
     }
 
     fn bvc(&mut self, addr: Address) {
@@ -1011,26 +984,7 @@ impl Cpu65c816 {
     fn cop(&mut self, bus: &mut CpuBus, addr: Address) {
         let _ = self.read(bus, addr); // read is discarded here
 
-        if !self.e {
-            self.push(bus, self.pb);
-        }
-        
-        self.push_word(bus, self.pc);
-        self.push(bus, self.p);
-        self.set_flag_to_bool(Flag::FlagI, true);
-        self.set_flag_to_bool(Flag::FlagD, false);
-
-        if self.e {
-            self.pc = self.read_word(bus,
-                Address { bank: 0, offset: E_COP_VECTOR_LO },
-                Address { bank: 0, offset: E_COP_VECTOR_HI },
-            );
-        } else {
-            self.pc = self.read_word(bus,
-                Address { bank: 0, offset: N_COP_VECTOR_LO },
-                Address { bank: 0, offset: N_COP_VECTOR_HI },
-            );
-        }
+        self.handle_interrupt(bus, CpuInterrupt::COP);
     }
 
     fn cpx_x8(&mut self, bus: &mut CpuBus, addr: Address) {

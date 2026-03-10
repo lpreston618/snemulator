@@ -21,6 +21,8 @@ pub enum Flag {
 pub enum CpuInterrupt {
     IRQ,
     NMI,
+    BRK,
+    COP,
     Reset,
     Abort,
 }
@@ -90,8 +92,8 @@ impl Cpu65c816 {
         }
     }
 
-    /// Sets the CPU to its proper initial state. Can be triggered by an interrupt.
-    pub fn initialize(&mut self) {
+    /// Sets the CPU to its proper initial state.
+    pub fn power_on(&mut self, bus: &mut CpuBus) {
         self.x = 0;
         self.y = 0;
         self.db = 0;
@@ -99,7 +101,14 @@ impl Cpu65c816 {
         self.dp = 0;
         self.sp = 0x0100;
         self.p = 0x34;
-        self.reset();
+        self.e = true;
+        self.halted = false;
+        self.waiting_for_interrupt = false;
+        self.irq_pending = false;
+        self.nmi_pending = false;
+        self.fast_rom_en = false;
+        self.stopped = false;
+        self.handle_interrupt(bus, CpuInterrupt::Reset); // TODO: Check this?
     }
 
     pub fn reset(&mut self) {
@@ -109,12 +118,16 @@ impl Cpu65c816 {
     /// Cycles the cpu for a given number of clocks. If the number of clocks is 0 after cycling, the next instructions is executed.
     pub fn cycle(&mut self, bus: &mut CpuBus) {
         if self.nmi_pending {
-            // self.trigger_interrupt(CpuInterrupt::NMI);
+            self.handle_interrupt(bus, CpuInterrupt::NMI);
             self.nmi_pending = false;
             self.waiting_for_interrupt = false;
-        } else if self.irq_pending && !self.is_flag_set(Flag::FlagI) {
-            // self.trigger_interrupt(CpuInterrupt::IRQ);
+            return;
+        }
+        
+        if self.irq_pending && !self.is_flag_set(Flag::FlagI) {
+            self.handle_interrupt(bus, CpuInterrupt::IRQ);
             self.waiting_for_interrupt = false;
+            return;
         }
         
         if self.halted || self.waiting_for_interrupt {
@@ -123,6 +136,50 @@ impl Cpu65c816 {
         }
         
         self.execute(bus);
+    }
+    
+    pub fn handle_interrupt(&mut self, bus: &mut CpuBus, interrupt: CpuInterrupt) {
+        match interrupt {
+            CpuInterrupt::Reset => { self.e = true; }
+            _ => {}
+        }
+        
+        if self.e {
+            self.push(bus, self.pb);
+        }
+        
+        self.push_word(bus, self.pc);
+        self.push(bus, self.p);
+        
+        self.set_flag_to_bool(Flag::FlagI, true);
+        self.set_flag_to_bool(Flag::FlagD, false);
+        
+        let vector_bank = 0;
+        let vector_offset = if self.e {
+            match interrupt {
+                CpuInterrupt::IRQ => 0xFFFE,
+                CpuInterrupt::NMI => 0xFFFA,
+                CpuInterrupt::BRK => 0xFFFE,
+                CpuInterrupt::COP => 0xFFF4,
+                CpuInterrupt::Reset => 0xFFFC,
+                CpuInterrupt::Abort => 0xFFF8,
+            }
+        } else {
+            match interrupt {
+                CpuInterrupt::IRQ => 0xFFEE,
+                CpuInterrupt::NMI => 0xFFEA,
+                CpuInterrupt::BRK => 0xFFE6,
+                CpuInterrupt::COP => 0xFFE4,
+                CpuInterrupt::Reset => unreachable!(), // reset interrupt sets e flag
+                CpuInterrupt::Abort => 0xFFE8,
+            }
+        };
+        
+        let vector_lo = Address { bank: vector_bank, offset: vector_offset };
+        let vector_hi = Address { bank: vector_bank, offset: vector_offset + 1 };
+        
+        self.pb = 0;
+        self.pc = self.read_word(bus, vector_lo, vector_hi)
     }
 }
 

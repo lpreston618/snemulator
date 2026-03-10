@@ -57,7 +57,7 @@ impl<'a> CpuBus<'a> {
     pub fn read(&mut self, addr: Address) -> u8 {
         match addr.bank {
             // Banks $00-$3F: LoROM mapping
-            0x00..=0x3F => match addr.offset {
+            0x00..=0x3F | 0x80..=0xBF => match addr.offset {
                 // WRAM mirror (first 8KB)
                 0x0000..=0x1FFF => self.wram[addr.offset as usize],
 
@@ -94,7 +94,7 @@ impl<'a> CpuBus<'a> {
             // Banks $40-$6F: LoROM cartridge
             0x40..=0x6F => self.cart.read(addr),
 
-            // Banks $70-$7D: SRAM (typically)
+            // Banks $70-$7D: SRAM or ROM
             0x70..=0x7D => self.cart.read(addr),
 
             // Banks $7E-$7F: WRAM (full 128KB)
@@ -102,12 +102,6 @@ impl<'a> CpuBus<'a> {
                 let wram_addr = ((addr.bank as usize & 1) << 16) | (addr.offset as usize);
                 self.wram[wram_addr]
             }
-
-            // Banks $80-$BF: Mirror of $00-$3F
-            0x80..=0xBF => self.read(Address {
-                bank: addr.bank & 0x7F,
-                offset: addr.offset,
-            }),
 
             // Banks $C0-$FF: HiROM cartridge / mirror
             0xC0..=0xFF => self.cart.read(addr),
@@ -351,19 +345,19 @@ impl<'a> CpuBus<'a> {
         }
     }
 
-    fn write_ppu_regs(&mut self, offset: u16, data: u8) {
+    fn write_ppu_regs(&mut self, offset: u16, value: u8) {
         let ppu_regs = &mut self.ppu_regs;
 
         match offset {
             0x2100 => {
-                ppu_regs.in_fblank = get_bit_n!(data, 7);
-                ppu_regs.screen_brightness = data & 0x0F;
+                ppu_regs.in_fblank = get_bit_n!(value, 7);
+                ppu_regs.screen_brightness = value & 0x0F;
 
                 // println!("Set fblank to {}, S: {} D: {}", self.in_fblank.get(), self.scanline.get(), self.dot.get());
             }
 
             0x2101 => {
-                let new_obj_size = match data >> 5 {
+                let new_obj_size = match value >> 5 {
                     0 => ObjectSizeSelect::Size8x8_16x16,
                     1 => ObjectSizeSelect::Size8x8_32x32,
                     2 => ObjectSizeSelect::Size8x8_64x64,
@@ -376,21 +370,21 @@ impl<'a> CpuBus<'a> {
                 };
 
                 ppu_regs.obj_sprite_size = new_obj_size;
-                ppu_regs.name_secondary_select = (data >> 3) & 0x03;
-                ppu_regs.name_base_addr = data & 0x03;
+                ppu_regs.name_secondary_select = (value >> 3) & 0x03;
+                ppu_regs.name_base_addr = value & 0x03;
 
                 // println!("Set name base addr to ${:04X}", (ppu_regs.name_base_addr.get() as u16) << 13);
             }
 
             0x2102 => {
-                set_byte_n!(ppu_regs.oam_addr, data as u16, 0);
-                ppu_regs.priority_rotation_idx = data & 0xFE;
+                set_byte_n!(ppu_regs.oam_addr, value as u16, 0);
+                ppu_regs.priority_rotation_idx = value & 0xFE;
                 ppu_regs.internal_oam_addr = (ppu_regs.oam_addr & 0x1FF) << 1;
             }
 
             0x2103 => {
-                set_byte_n!(ppu_regs.oam_addr, data as u16, 1);
-                ppu_regs.priority_rotation = get_bit_n!(data, 7);
+                set_byte_n!(ppu_regs.oam_addr, value as u16, 1);
+                ppu_regs.priority_rotation = get_bit_n!(value, 7);
                 ppu_regs.internal_oam_addr = (ppu_regs.oam_addr & 0x1FF) << 1;
             }
 
@@ -398,14 +392,14 @@ impl<'a> CpuBus<'a> {
                 let internal_oam_addr = ppu_regs.internal_oam_addr as usize;
 
                 if internal_oam_addr & 1 == 0 {
-                    ppu_regs.oam_data_latch = data;
+                    ppu_regs.oam_data_latch = value;
                 } else if internal_oam_addr < 0x200 {
                     self.oam[internal_oam_addr - 1] = ppu_regs.oam_data_latch;
-                    self.oam[internal_oam_addr] = data;
+                    self.oam[internal_oam_addr] = value;
                 }
 
                 if internal_oam_addr >= 0x200 {
-                    self.oam[internal_oam_addr] = data;
+                    self.oam[internal_oam_addr] = value;
                 }
 
                 ppu_regs.internal_oam_addr += 1;
@@ -413,28 +407,28 @@ impl<'a> CpuBus<'a> {
             }
 
             0x2105 => {
-                ppu_regs.bg4_char_size = if get_bit_n!(data, 7) {
+                ppu_regs.bg4_char_size = if get_bit_n!(value, 7) {
                     TileSize::Size16x16
                 } else {
                     TileSize::Size8x8
                 };
-                ppu_regs.bg3_char_size = if get_bit_n!(data, 6) {
+                ppu_regs.bg3_char_size = if get_bit_n!(value, 6) {
                     TileSize::Size16x16
                 } else {
                     TileSize::Size8x8
                 };
-                ppu_regs.bg2_char_size = if get_bit_n!(data, 5) {
+                ppu_regs.bg2_char_size = if get_bit_n!(value, 5) {
                     TileSize::Size16x16
                 } else {
                     TileSize::Size8x8
                 };
-                ppu_regs.bg1_char_size = if get_bit_n!(data, 4) {
+                ppu_regs.bg1_char_size = if get_bit_n!(value, 4) {
                     TileSize::Size16x16
                 } else {
                     TileSize::Size8x8
                 };
-                ppu_regs.bg3_mode1_priority = get_bit_n!(data, 3);
-                ppu_regs.bg_mode = match data & 7 {
+                ppu_regs.bg3_mode1_priority = get_bit_n!(value, 3);
+                ppu_regs.bg_mode = match value & 7 {
                     0 => BgMode::Mode0,
                     1 => BgMode::Mode1,
                     2 => BgMode::Mode2,
@@ -464,21 +458,21 @@ impl<'a> CpuBus<'a> {
             }
 
             0x2106 => {
-                ppu_regs.mosaic_size = data >> 4;
-                ppu_regs.bg4_mosaic_en = get_bit_n!(data, 3);
-                ppu_regs.bg3_mosaic_en = get_bit_n!(data, 2);
-                ppu_regs.bg2_mosaic_en = get_bit_n!(data, 1);
-                ppu_regs.bg1_mosaic_en = get_bit_n!(data, 0);
+                ppu_regs.mosaic_size = value >> 4;
+                ppu_regs.bg4_mosaic_en = get_bit_n!(value, 3);
+                ppu_regs.bg3_mosaic_en = get_bit_n!(value, 2);
+                ppu_regs.bg2_mosaic_en = get_bit_n!(value, 1);
+                ppu_regs.bg1_mosaic_en = get_bit_n!(value, 0);
             }
 
             0x2107 => {
-                ppu_regs.bg1_vram_addr = (data >> 2) as u8;
-                ppu_regs.bg1_tilemap_count_y = if get_bit_n!(data, 1) {
+                ppu_regs.bg1_vram_addr = (value >> 2) as u8;
+                ppu_regs.bg1_tilemap_count_y = if get_bit_n!(value, 1) {
                     TilemapCount::Two
                 } else {
                     TilemapCount::One
                 };
-                ppu_regs.bg1_tilemap_count_x = if get_bit_n!(data, 0) {
+                ppu_regs.bg1_tilemap_count_x = if get_bit_n!(value, 0) {
                     TilemapCount::Two
                 } else {
                     TilemapCount::One
@@ -492,13 +486,13 @@ impl<'a> CpuBus<'a> {
             }
 
             0x2108 => {
-                ppu_regs.bg2_vram_addr = data >> 2;
-                ppu_regs.bg2_tilemap_count_y = if get_bit_n!(data, 1) {
+                ppu_regs.bg2_vram_addr = value >> 2;
+                ppu_regs.bg2_tilemap_count_y = if get_bit_n!(value, 1) {
                     TilemapCount::Two
                 } else {
                     TilemapCount::One
                 };
-                ppu_regs.bg2_tilemap_count_x = if get_bit_n!(data, 0) {
+                ppu_regs.bg2_tilemap_count_x = if get_bit_n!(value, 0) {
                     TilemapCount::Two
                 } else {
                     TilemapCount::One
@@ -512,13 +506,13 @@ impl<'a> CpuBus<'a> {
             }
 
             0x2109 => {
-                ppu_regs.bg3_vram_addr = data >> 2;
-                ppu_regs.bg3_tilemap_count_y = if get_bit_n!(data, 1) {
+                ppu_regs.bg3_vram_addr = value >> 2;
+                ppu_regs.bg3_tilemap_count_y = if get_bit_n!(value, 1) {
                     TilemapCount::Two
                 } else {
                     TilemapCount::One
                 };
-                ppu_regs.bg3_tilemap_count_x = if get_bit_n!(data, 0) {
+                ppu_regs.bg3_tilemap_count_x = if get_bit_n!(value, 0) {
                     TilemapCount::Two
                 } else {
                     TilemapCount::One
@@ -532,13 +526,13 @@ impl<'a> CpuBus<'a> {
             }
 
             0x210A => {
-                ppu_regs.bg4_vram_addr = data >> 2;
-                ppu_regs.bg4_tilemap_count_y = if get_bit_n!(data, 1) {
+                ppu_regs.bg4_vram_addr = value >> 2;
+                ppu_regs.bg4_tilemap_count_y = if get_bit_n!(value, 1) {
                     TilemapCount::Two
                 } else {
                     TilemapCount::One
                 };
-                ppu_regs.bg4_tilemap_count_x = if get_bit_n!(data, 0) {
+                ppu_regs.bg4_tilemap_count_x = if get_bit_n!(value, 0) {
                     TilemapCount::Two
                 } else {
                     TilemapCount::One
@@ -552,16 +546,16 @@ impl<'a> CpuBus<'a> {
             }
 
             0x210B => {
-                ppu_regs.bg2_chr_base_addr = data >> 4;
-                ppu_regs.bg1_chr_base_addr = data & 0x0F;
+                ppu_regs.bg2_chr_base_addr = value >> 4;
+                ppu_regs.bg1_chr_base_addr = value & 0x0F;
 
                 // println!("Set Bg1 chr base address to ${:04X}", (ppu_regs.bg1_chr_base_addr.get() as u16) << 12);
                 // println!("Set Bg2 chr base address to ${:04X}", (ppu_regs.bg2_chr_base_addr.get() as u16) << 12);
             }
 
             0x210C => {
-                ppu_regs.bg4_chr_base_addr = data >> 4;
-                ppu_regs.bg3_chr_base_addr = data & 0x0F;
+                ppu_regs.bg4_chr_base_addr = value >> 4;
+                ppu_regs.bg3_chr_base_addr = value & 0x0F;
 
                 // println!("Set Bg3 chr base address to ${:04X}", (ppu_regs.bg3_chr_base_addr.get() as u16) << 12);
                 // println!("Set Bg4 chr base address to ${:04X}", (ppu_regs.bg4_chr_base_addr.get() as u16) << 12);
@@ -570,85 +564,85 @@ impl<'a> CpuBus<'a> {
             0x210D => {
                 let bgofs_latch = ppu_regs.bg_offset_latch as u16;
                 let bghofs_latch = ppu_regs.bg_offset_x_latch as u16;
-                ppu_regs.bg_offset_latch = data;
-                ppu_regs.bg_offset_x_latch = data;
+                ppu_regs.bg_offset_latch = value;
+                ppu_regs.bg_offset_x_latch = value;
 
                 ppu_regs.bg1_m7_x_offset =
-                    (((data & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
+                    (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
             }
 
             0x210E => {
                 let bgofs_latch = ppu_regs.bg_offset_latch as u16;
-                ppu_regs.bg_offset_latch = data;
+                ppu_regs.bg_offset_latch = value;
 
-                ppu_regs.bg1_m7_y_offset = (((data & 3) as u16) << 8) | bgofs_latch;
+                ppu_regs.bg1_m7_y_offset = (((value & 3) as u16) << 8) | bgofs_latch;
             }
 
             0x210F => {
                 let bgofs_latch = ppu_regs.bg_offset_latch as u16;
                 let bghofs_latch = ppu_regs.bg_offset_x_latch as u16;
-                ppu_regs.bg_offset_latch = data;
-                ppu_regs.bg_offset_x_latch = data;
+                ppu_regs.bg_offset_latch = value;
+                ppu_regs.bg_offset_x_latch = value;
 
                 ppu_regs.bg2_x_offset =
-                    (((data & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
+                    (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
             }
 
             0x2110 => {
                 let bgofs_latch = ppu_regs.bg_offset_latch as u16;
-                ppu_regs.bg_offset_latch = data;
+                ppu_regs.bg_offset_latch = value;
 
-                ppu_regs.bg2_y_offset = (((data & 3) as u16) << 8) | bgofs_latch;
+                ppu_regs.bg2_y_offset = (((value & 3) as u16) << 8) | bgofs_latch;
             }
 
             0x2111 => {
                 let bgofs_latch = ppu_regs.bg_offset_latch as u16;
                 let bghofs_latch = ppu_regs.bg_offset_x_latch as u16;
-                ppu_regs.bg_offset_latch = data;
-                ppu_regs.bg_offset_x_latch = data;
+                ppu_regs.bg_offset_latch = value;
+                ppu_regs.bg_offset_x_latch = value;
 
                 ppu_regs.bg3_x_offset =
-                    (((data & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
+                    (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
             }
 
             0x2112 => {
                 let bgofs_latch = ppu_regs.bg_offset_latch as u16;
-                ppu_regs.bg_offset_latch = data;
+                ppu_regs.bg_offset_latch = value;
 
-                ppu_regs.bg3_y_offset = (((data & 3) as u16) << 8) | bgofs_latch;
+                ppu_regs.bg3_y_offset = (((value & 3) as u16) << 8) | bgofs_latch;
             }
 
             0x2113 => {
                 let bgofs_latch = ppu_regs.bg_offset_latch as u16;
                 let bghofs_latch = ppu_regs.bg_offset_x_latch as u16;
-                ppu_regs.bg_offset_latch = data;
-                ppu_regs.bg_offset_x_latch = data;
+                ppu_regs.bg_offset_latch = value;
+                ppu_regs.bg_offset_x_latch = value;
 
                 ppu_regs.bg4_x_offset =
-                    (((data & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
+                    (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
             }
 
             0x2114 => {
                 let bgofs_latch = ppu_regs.bg_offset_latch as u16;
-                ppu_regs.bg_offset_latch = data;
+                ppu_regs.bg_offset_latch = value;
 
-                ppu_regs.bg4_y_offset = (((data & 3) as u16) << 8) | bgofs_latch;
+                ppu_regs.bg4_y_offset = (((value & 3) as u16) << 8) | bgofs_latch;
             }
 
             0x2115 => {
-                ppu_regs.vram_addr_inc_mode = if get_bit_n!(data, 7) {
+                ppu_regs.vram_addr_inc_mode = if get_bit_n!(value, 7) {
                     VramIncMode::HighByte
                 } else {
                     VramIncMode::LowByte
                 };
-                ppu_regs.addr_remap_mode = match (data >> 2) & 3 {
+                ppu_regs.addr_remap_mode = match (value >> 2) & 3 {
                     0 => AddressRemapping::None,
                     1 => AddressRemapping::ColDepth2,
                     2 => AddressRemapping::ColDepth4,
                     3 => AddressRemapping::ColDepth8,
                     _ => unreachable!(),
                 };
-                ppu_regs.addr_inc_size = match data & 3 {
+                ppu_regs.addr_inc_size = match value & 3 {
                     0 => IncrSize::Bytes2,
                     1 => IncrSize::Bytes64,
                     2 => IncrSize::Bytes256,
@@ -658,14 +652,14 @@ impl<'a> CpuBus<'a> {
             }
 
             0x2116 => {
-                set_byte_n!(ppu_regs.vram_addr, data as u16, 0);
+                set_byte_n!(ppu_regs.vram_addr, value as u16, 0);
                 ppu_regs.vram_latch = self.vram[ppu_regs.get_vram_addr() as usize];
 
                 // println!("Set vram addr (lo) to ${:04X}", ppu_regs.vram_addr.get());
             }
 
             0x2117 => {
-                set_byte_n!(ppu_regs.vram_addr, data as u16, 1);
+                set_byte_n!(ppu_regs.vram_addr, value as u16, 1);
                 ppu_regs.vram_latch = self.vram[ppu_regs.get_vram_addr() as usize];
 
                 // println!("Set vram addr (hi) to ${:04X}", ppu_regs.vram_addr.get());
@@ -673,7 +667,7 @@ impl<'a> CpuBus<'a> {
 
             0x2118 => {
                 if ppu_regs.in_fblank || ppu_regs.in_vblank {
-                    set_byte_n!(self.vram[ppu_regs.get_vram_addr() as usize], data as u16, 0);
+                    set_byte_n!(self.vram[ppu_regs.get_vram_addr() as usize], value as u16, 0);
                 }
 
                 match ppu_regs.vram_addr_inc_mode {
@@ -684,7 +678,7 @@ impl<'a> CpuBus<'a> {
 
             0x2119 => {
                 if ppu_regs.in_fblank || ppu_regs.in_vblank {
-                    set_byte_n!(self.vram[ppu_regs.get_vram_addr() as usize], data as u16, 1);
+                    set_byte_n!(self.vram[ppu_regs.get_vram_addr() as usize], value as u16, 1);
                 }
 
                 match ppu_regs.vram_addr_inc_mode {
@@ -694,31 +688,31 @@ impl<'a> CpuBus<'a> {
             }
 
             0x211A => {
-                ppu_regs.m7_tilemap_repeat = get_bit_n!(data, 7);
-                ppu_regs.m7_fill_mode = if get_bit_n!(data, 6) {
+                ppu_regs.m7_tilemap_repeat = get_bit_n!(value, 7);
+                ppu_regs.m7_fill_mode = if get_bit_n!(value, 6) {
                     M7FillMode::Character
                 } else {
                     M7FillMode::Transparent
                 };
-                ppu_regs.m7_flip_bg_y = get_bit_n!(data, 1);
-                ppu_regs.m7_flip_bg_x = get_bit_n!(data, 0);
+                ppu_regs.m7_flip_bg_y = get_bit_n!(value, 1);
+                ppu_regs.m7_flip_bg_x = get_bit_n!(value, 0);
             }
 
             0x211B => {
                 let latched_val = ppu_regs.m7_latch as u16;
-                ppu_regs.m7_latch = data;
+                ppu_regs.m7_latch = value;
 
-                ppu_regs.m7_matrix_a = ((data as u16) << 8) | latched_val;
-                ppu_regs.mult_factor_16 = ((data as u16) << 8) | latched_val;
+                ppu_regs.m7_matrix_a = ((value as u16) << 8) | latched_val;
+                ppu_regs.mult_factor_16 = ((value as u16) << 8) | latched_val;
 
                 ppu_regs.update_multiply_result();
             }
 
             0x211C => {
                 let latched_val = ppu_regs.m7_latch as u16;
-                ppu_regs.m7_latch = data;
+                ppu_regs.m7_latch = value;
 
-                ppu_regs.m7_matrix_b = ((data as u16) << 8) | latched_val;
+                ppu_regs.m7_matrix_b = ((value as u16) << 8) | latched_val;
                 ppu_regs.mult_factor_8 = latched_val as u8;
 
                 ppu_regs.update_multiply_result();
@@ -726,34 +720,34 @@ impl<'a> CpuBus<'a> {
 
             0x211D => {
                 let latched_val = ppu_regs.m7_latch as u16;
-                ppu_regs.m7_latch = data;
+                ppu_regs.m7_latch = value;
 
-                ppu_regs.m7_matrix_c = ((data as u16) << 8) | latched_val;
+                ppu_regs.m7_matrix_c = ((value as u16) << 8) | latched_val;
             }
 
             0x211E => {
                 let latched_val = ppu_regs.m7_latch as u16;
-                ppu_regs.m7_latch = data;
+                ppu_regs.m7_latch = value;
 
-                ppu_regs.m7_matrix_d = ((data as u16) << 8) | latched_val;
+                ppu_regs.m7_matrix_d = ((value as u16) << 8) | latched_val;
             }
 
             0x211F => {
                 let latched_val = ppu_regs.m7_latch as u16;
-                ppu_regs.m7_latch = data;
+                ppu_regs.m7_latch = value;
 
-                ppu_regs.m7_center_x = ((data as u16) << 8) | latched_val;
+                ppu_regs.m7_center_x = ((value as u16) << 8) | latched_val;
             }
 
             0x2120 => {
                 let latched_val = ppu_regs.m7_latch as u16;
-                ppu_regs.m7_latch = data;
+                ppu_regs.m7_latch = value;
 
-                ppu_regs.m7_center_y = ((data as u16) << 8) | latched_val;
+                ppu_regs.m7_center_y = ((value as u16) << 8) | latched_val;
             }
 
             0x2121 => {
-                ppu_regs.cgram_addr = data;
+                ppu_regs.cgram_addr = value;
                 ppu_regs.cgram_toggle = false;
             }
 
@@ -761,9 +755,9 @@ impl<'a> CpuBus<'a> {
                 ppu_regs.cgram_toggle = !ppu_regs.cgram_toggle;
 
                 if ppu_regs.cgram_toggle {
-                    ppu_regs.cgram_latch = data;
+                    ppu_regs.cgram_latch = value;
                 } else {
-                    let new_col = u16::from_le_bytes([ppu_regs.cgram_latch, data]);
+                    let new_col = u16::from_le_bytes([ppu_regs.cgram_latch, value]);
 
                     self.cgram[ppu_regs.cgram_addr as usize] = Color::from_bgr555(new_col);
 
@@ -772,74 +766,74 @@ impl<'a> CpuBus<'a> {
             }
 
             0x2123 => {
-                ppu_regs.bg2_w2_en = get_bit_n!(data, 7);
-                ppu_regs.bg2_w2_inv = get_bit_n!(data, 6);
-                ppu_regs.bg2_w1_en = get_bit_n!(data, 5);
-                ppu_regs.bg2_w1_inv = get_bit_n!(data, 4);
-                ppu_regs.bg1_w2_en = get_bit_n!(data, 3);
-                ppu_regs.bg1_w2_inv = get_bit_n!(data, 2);
-                ppu_regs.bg1_w1_en = get_bit_n!(data, 1);
-                ppu_regs.bg1_w1_inv = get_bit_n!(data, 0);
+                ppu_regs.bg2_w2_en = get_bit_n!(value, 7);
+                ppu_regs.bg2_w2_inv = get_bit_n!(value, 6);
+                ppu_regs.bg2_w1_en = get_bit_n!(value, 5);
+                ppu_regs.bg2_w1_inv = get_bit_n!(value, 4);
+                ppu_regs.bg1_w2_en = get_bit_n!(value, 3);
+                ppu_regs.bg1_w2_inv = get_bit_n!(value, 2);
+                ppu_regs.bg1_w1_en = get_bit_n!(value, 1);
+                ppu_regs.bg1_w1_inv = get_bit_n!(value, 0);
             }
 
             0x2124 => {
-                ppu_regs.bg4_w2_en = get_bit_n!(data, 7);
-                ppu_regs.bg4_w2_inv = get_bit_n!(data, 6);
-                ppu_regs.bg4_w1_en = get_bit_n!(data, 5);
-                ppu_regs.bg4_w1_inv = get_bit_n!(data, 4);
-                ppu_regs.bg3_w2_en = get_bit_n!(data, 3);
-                ppu_regs.bg3_w2_inv = get_bit_n!(data, 2);
-                ppu_regs.bg3_w1_en = get_bit_n!(data, 1);
-                ppu_regs.bg3_w1_inv = get_bit_n!(data, 0);
+                ppu_regs.bg4_w2_en = get_bit_n!(value, 7);
+                ppu_regs.bg4_w2_inv = get_bit_n!(value, 6);
+                ppu_regs.bg4_w1_en = get_bit_n!(value, 5);
+                ppu_regs.bg4_w1_inv = get_bit_n!(value, 4);
+                ppu_regs.bg3_w2_en = get_bit_n!(value, 3);
+                ppu_regs.bg3_w2_inv = get_bit_n!(value, 2);
+                ppu_regs.bg3_w1_en = get_bit_n!(value, 1);
+                ppu_regs.bg3_w1_inv = get_bit_n!(value, 0);
             }
 
             0x2125 => {
-                ppu_regs.col_w2_en = get_bit_n!(data, 7);
-                ppu_regs.col_w2_inv = get_bit_n!(data, 6);
-                ppu_regs.col_w1_en = get_bit_n!(data, 5);
-                ppu_regs.col_w1_inv = get_bit_n!(data, 4);
-                ppu_regs.obj_w2_en = get_bit_n!(data, 3);
-                ppu_regs.obj_w2_inv = get_bit_n!(data, 2);
-                ppu_regs.obj_w1_en = get_bit_n!(data, 1);
-                ppu_regs.obj_w1_inv = get_bit_n!(data, 0);
+                ppu_regs.col_w2_en = get_bit_n!(value, 7);
+                ppu_regs.col_w2_inv = get_bit_n!(value, 6);
+                ppu_regs.col_w1_en = get_bit_n!(value, 5);
+                ppu_regs.col_w1_inv = get_bit_n!(value, 4);
+                ppu_regs.obj_w2_en = get_bit_n!(value, 3);
+                ppu_regs.obj_w2_inv = get_bit_n!(value, 2);
+                ppu_regs.obj_w1_en = get_bit_n!(value, 1);
+                ppu_regs.obj_w1_inv = get_bit_n!(value, 0);
             }
 
             0x2126 => {
-                ppu_regs.w1_left_pos = data;
+                ppu_regs.w1_left_pos = value;
             }
             0x2127 => {
-                ppu_regs.w1_right_pos = data;
+                ppu_regs.w1_right_pos = value;
             }
             0x2128 => {
-                ppu_regs.w2_left_pos = data;
+                ppu_regs.w2_left_pos = value;
             }
             0x2129 => {
-                ppu_regs.w2_right_pos = data;
+                ppu_regs.w2_right_pos = value;
             }
 
             0x212A => {
-                ppu_regs.bg4_win_logic = match data >> 6 {
+                ppu_regs.bg4_win_logic = match value >> 6 {
                     0 => WindowLogic::Or,
                     1 => WindowLogic::And,
                     2 => WindowLogic::Xor,
                     3 => WindowLogic::Xnor,
                     _ => unreachable!(),
                 };
-                ppu_regs.bg3_win_logic = match (data >> 4) & 3 {
+                ppu_regs.bg3_win_logic = match (value >> 4) & 3 {
                     0 => WindowLogic::Or,
                     1 => WindowLogic::And,
                     2 => WindowLogic::Xor,
                     3 => WindowLogic::Xnor,
                     _ => unreachable!(),
                 };
-                ppu_regs.bg2_win_logic = match (data >> 2) & 3 {
+                ppu_regs.bg2_win_logic = match (value >> 2) & 3 {
                     0 => WindowLogic::Or,
                     1 => WindowLogic::And,
                     2 => WindowLogic::Xor,
                     3 => WindowLogic::Xnor,
                     _ => unreachable!(),
                 };
-                ppu_regs.bg1_win_logic = match data & 3 {
+                ppu_regs.bg1_win_logic = match value & 3 {
                     0 => WindowLogic::Or,
                     1 => WindowLogic::And,
                     2 => WindowLogic::Xor,
@@ -849,14 +843,14 @@ impl<'a> CpuBus<'a> {
             }
 
             0x212B => {
-                ppu_regs.col_win_logic = match (data >> 2) & 3 {
+                ppu_regs.col_win_logic = match (value >> 2) & 3 {
                     0 => WindowLogic::Or,
                     1 => WindowLogic::And,
                     2 => WindowLogic::Xor,
                     3 => WindowLogic::Xnor,
                     _ => unreachable!(),
                 };
-                ppu_regs.obj_win_logic = match data & 3 {
+                ppu_regs.obj_win_logic = match value & 3 {
                     0 => WindowLogic::Or,
                     1 => WindowLogic::And,
                     2 => WindowLogic::Xor,
@@ -866,11 +860,11 @@ impl<'a> CpuBus<'a> {
             }
 
             0x212C => {
-                ppu_regs.obj_main_en = get_bit_n!(data, 4);
-                ppu_regs.bg4_main_en = get_bit_n!(data, 3);
-                ppu_regs.bg3_main_en = get_bit_n!(data, 2);
-                ppu_regs.bg2_main_en = get_bit_n!(data, 1);
-                ppu_regs.bg1_main_en = get_bit_n!(data, 0);
+                ppu_regs.obj_main_en = get_bit_n!(value, 4);
+                ppu_regs.bg4_main_en = get_bit_n!(value, 3);
+                ppu_regs.bg3_main_en = get_bit_n!(value, 2);
+                ppu_regs.bg2_main_en = get_bit_n!(value, 1);
+                ppu_regs.bg1_main_en = get_bit_n!(value, 0);
 
                 // println!("Set main en flags to Bg1: {}, Bg2: {}, Bg3: {}, Bg4: {}, Obj: {}",
                 //     ppu_regs.bg1_main_enabled.get(),
@@ -882,78 +876,78 @@ impl<'a> CpuBus<'a> {
             }
 
             0x212D => {
-                ppu_regs.obj_sub_en = get_bit_n!(data, 4);
-                ppu_regs.bg4_sub_en = get_bit_n!(data, 3);
-                ppu_regs.bg3_sub_en = get_bit_n!(data, 2);
-                ppu_regs.bg2_sub_en = get_bit_n!(data, 1);
-                ppu_regs.bg1_sub_en = get_bit_n!(data, 0);
+                ppu_regs.obj_sub_en = get_bit_n!(value, 4);
+                ppu_regs.bg4_sub_en = get_bit_n!(value, 3);
+                ppu_regs.bg3_sub_en = get_bit_n!(value, 2);
+                ppu_regs.bg2_sub_en = get_bit_n!(value, 1);
+                ppu_regs.bg1_sub_en = get_bit_n!(value, 0);
             }
 
             0x212E => {
-                ppu_regs.obj_win_main_en = get_bit_n!(data, 4);
-                ppu_regs.bg4_win_main_en = get_bit_n!(data, 3);
-                ppu_regs.bg3_win_main_en = get_bit_n!(data, 2);
-                ppu_regs.bg2_win_main_en = get_bit_n!(data, 1);
-                ppu_regs.bg1_win_main_en = get_bit_n!(data, 0);
+                ppu_regs.obj_win_main_en = get_bit_n!(value, 4);
+                ppu_regs.bg4_win_main_en = get_bit_n!(value, 3);
+                ppu_regs.bg3_win_main_en = get_bit_n!(value, 2);
+                ppu_regs.bg2_win_main_en = get_bit_n!(value, 1);
+                ppu_regs.bg1_win_main_en = get_bit_n!(value, 0);
             }
 
             0x212F => {
-                ppu_regs.obj_win_sub_en = get_bit_n!(data, 4);
-                ppu_regs.bg4_win_sub_en = get_bit_n!(data, 3);
-                ppu_regs.bg3_win_sub_en = get_bit_n!(data, 2);
-                ppu_regs.bg2_win_sub_en = get_bit_n!(data, 1);
-                ppu_regs.bg1_win_sub_en = get_bit_n!(data, 0);
+                ppu_regs.obj_win_sub_en = get_bit_n!(value, 4);
+                ppu_regs.bg4_win_sub_en = get_bit_n!(value, 3);
+                ppu_regs.bg3_win_sub_en = get_bit_n!(value, 2);
+                ppu_regs.bg2_win_sub_en = get_bit_n!(value, 1);
+                ppu_regs.bg1_win_sub_en = get_bit_n!(value, 0);
             }
 
             0x2130 => {
-                ppu_regs.col_win_main_region = match data >> 6 {
+                ppu_regs.col_win_main_region = match value >> 6 {
                     0 => WindowColorRegion::Nowhere,
                     1 => WindowColorRegion::Outside,
                     2 => WindowColorRegion::Inside,
                     3 => WindowColorRegion::Everywhere,
                     _ => unreachable!(),
                 };
-                ppu_regs.col_win_sub_region = match (data >> 4) & 3 {
+                ppu_regs.col_win_sub_region = match (value >> 4) & 3 {
                     0 => WindowColorRegion::Nowhere,
                     1 => WindowColorRegion::Outside,
                     2 => WindowColorRegion::Inside,
                     3 => WindowColorRegion::Everywhere,
                     _ => unreachable!(),
                 };
-                ppu_regs.sub_color_fixed = !get_bit_n!(data, 1);
-                ppu_regs.use_direct_col = get_bit_n!(data, 0);
+                ppu_regs.sub_color_fixed = !get_bit_n!(value, 1);
+                ppu_regs.use_direct_col = get_bit_n!(value, 0);
             }
 
             0x2131 => {
-                ppu_regs.cmath_operator = if get_bit_n!(data, 7) {
+                ppu_regs.cmath_operator = if get_bit_n!(value, 7) {
                     CMathOperator::Subtract
                 } else {
                     CMathOperator::Add
                 };
-                ppu_regs.cmath_half = get_bit_n!(data, 6);
-                ppu_regs.back_cmath_en = get_bit_n!(data, 5);
-                ppu_regs.obj_cmath_en = get_bit_n!(data, 4);
-                ppu_regs.bg4_cmath_en = get_bit_n!(data, 3);
-                ppu_regs.bg3_cmath_en = get_bit_n!(data, 2);
-                ppu_regs.bg2_cmath_en = get_bit_n!(data, 1);
-                ppu_regs.bg1_cmath_en = get_bit_n!(data, 0);
+                ppu_regs.cmath_half = get_bit_n!(value, 6);
+                ppu_regs.back_cmath_en = get_bit_n!(value, 5);
+                ppu_regs.obj_cmath_en = get_bit_n!(value, 4);
+                ppu_regs.bg4_cmath_en = get_bit_n!(value, 3);
+                ppu_regs.bg3_cmath_en = get_bit_n!(value, 2);
+                ppu_regs.bg2_cmath_en = get_bit_n!(value, 1);
+                ppu_regs.bg1_cmath_en = get_bit_n!(value, 0);
             }
 
             0x2132 => {
-                let new_val = data & 0x1F;
+                let new_val = value & 0x1F;
                 
-                if get_bit_n!(data, 7) { ppu_regs.fixed_color.b = new_val; }
-                if get_bit_n!(data, 6) { ppu_regs.fixed_color.g = new_val; }
-                if get_bit_n!(data, 5) { ppu_regs.fixed_color.r = new_val; }
+                if get_bit_n!(value, 7) { ppu_regs.fixed_color.b = new_val; }
+                if get_bit_n!(value, 6) { ppu_regs.fixed_color.g = new_val; }
+                if get_bit_n!(value, 5) { ppu_regs.fixed_color.r = new_val; }
             }
 
             0x2133 => {
-                ppu_regs._external_sync = get_bit_n!(data, 7);
-                ppu_regs.ext_bg_en = get_bit_n!(data, 6);
-                ppu_regs.hi_res_en = get_bit_n!(data, 3);
-                ppu_regs.overscan_en = get_bit_n!(data, 2);
-                ppu_regs.obj_interlace_en = get_bit_n!(data, 1);
-                ppu_regs.screen_interlace_en = get_bit_n!(data, 0);
+                ppu_regs._external_sync = get_bit_n!(value, 7);
+                ppu_regs.ext_bg_en = get_bit_n!(value, 6);
+                ppu_regs.hi_res_en = get_bit_n!(value, 3);
+                ppu_regs.overscan_en = get_bit_n!(value, 2);
+                ppu_regs.obj_interlace_en = get_bit_n!(value, 1);
+                ppu_regs.screen_interlace_en = get_bit_n!(value, 0);
             }
 
             _ => {}

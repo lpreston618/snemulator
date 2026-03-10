@@ -1,5 +1,5 @@
-pub const SCREEN_WIDTH: u32 = 256;
-pub const SCREEN_HEIGHT: u32 = 240;
+pub const SCREEN_WIDTH: u32 = 2 * 256;
+pub const SCREEN_HEIGHT: u32 = 2 * 224;
 
 /// 128 KiB of WRAM
 pub const WRAM_SIZE: usize = 128 * 1024;
