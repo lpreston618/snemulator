@@ -1,13 +1,13 @@
 use anyhow::Result;
 use log::info;
 
-use crate::app::egui_window::EguiWindow;
+use crate::app::ui_window::UiWindow;
 
 const ABOUT_WINDOW_WIDTH: u32 = 400;
 const ABOUT_WINDOW_HEIGHT: u32 = 400;
 
 pub struct AboutWindow {
-    pub egui_window: EguiWindow,
+    pub egui_window: UiWindow,
 }
 
 impl AboutWindow {
@@ -16,7 +16,7 @@ impl AboutWindow {
         gl: std::sync::Arc<glow::Context>, 
         gl_context: std::rc::Rc<sdl3::video::GLContext>) -> Result<Self> {
         Ok(Self {
-            egui_window: EguiWindow::new(
+            egui_window: UiWindow::new(
                 video_subsystem,
                 gl,
                 gl_context,
@@ -28,7 +28,7 @@ impl AboutWindow {
     }
         
     pub fn render(&mut self) {
-        self.egui_window.render(
+        self.egui_window.render(None,
             |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     ui.vertical_centered(|ui| {

@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::app::egui_window::EguiWindow;
+use crate::app::ui_window::UiWindow;
 
 const SETTINGS_WINDOW_WIDTH: u32 = 600;
 const SETTINGS_WINDOW_HEIGHT: u32 = 400;
@@ -28,7 +28,7 @@ pub struct Settings {
 }
 
 pub struct SettingsWindow {
-    egui_window: EguiWindow,
+    egui_window: UiWindow,
 }
 
 impl SettingsWindow {
@@ -37,7 +37,7 @@ impl SettingsWindow {
         gl: std::sync::Arc<glow::Context>, 
         gl_context: std::rc::Rc<sdl3::video::GLContext>) -> Result<Self> {
         Ok(Self {
-            egui_window: EguiWindow::new(
+            egui_window: UiWindow::new(
                 video_subsystem,
                 gl,
                 gl_context,
@@ -49,7 +49,7 @@ impl SettingsWindow {
     }
     
     pub fn render(&mut self, settings: &mut Settings) {
-        self.egui_window.render(|ui| {
+        self.egui_window.render(None, |ui| {
             
         });
     }

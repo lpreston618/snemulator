@@ -93,6 +93,10 @@ impl Ssmp {
             };
 
             self.spc.clock(&mut bus);
+            
+            self.timer0.clock();
+            self.timer1.clock();
+            self.timer2.clock();
         }
     }
 }

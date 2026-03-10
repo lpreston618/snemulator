@@ -30,9 +30,6 @@ pub struct SdspRegs {
     // $1D
     pub unused: u8,
     
-    // $2D
-    pub voice_pitchmod_en: u8,
-    
     // $5D
     pub sample_page: u8,
     
@@ -59,7 +56,6 @@ impl SdspRegs {
             noise_freq: 0,
             echo_feedback: 0,
             unused: 0,
-            voice_pitchmod_en: 0,
             sample_page: 0,
             echo_page: 0,
             echo_delay_time: 0,

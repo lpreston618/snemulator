@@ -3,7 +3,7 @@ use anyhow::Result;
 use log::info;
 use sdl3::video::GLProfile;
 
-use crate::{app::{self, AppState, SnemulatorAppAction, WINDOW_HEIGHT, WINDOW_WIDTH, settings::Settings}, core::sysinfo::{SCREEN_HEIGHT, SCREEN_WIDTH}};
+use crate::{app::{self, AppState, AppAction, WINDOW_HEIGHT, WINDOW_WIDTH, settings::Settings}, core::sysinfo::{SCREEN_HEIGHT, SCREEN_WIDTH}};
 
 fn sdl_to_egui_mouse_button(button: sdl3::mouse::MouseButton) -> Option<egui::PointerButton> {
     match button {
@@ -203,7 +203,7 @@ impl MainWindow {
         }
     }
     
-    pub fn handle_sdl_event(&mut self, event: &sdl3::event::Event, raw_input: &mut egui::RawInput, app_state: &mut AppState) {
+    pub fn handle_sdl_event(&mut self, event: &sdl3::event::Event, raw_input: &mut egui::RawInput, app_state: &mut AppState) {        
         match event {
             sdl3::event::Event::MouseMotion { x, y, .. } => {
                 let logical_x = *x as f32 / self.menu.ui_scale;
@@ -336,7 +336,7 @@ impl MainWindow {
         }
     }
     
-    pub fn render(&mut self, app_state: &AppState, raw_input: egui::RawInput, frame_buffer: &[u8]) -> Result<SnemulatorAppAction> {
+    pub fn render(&mut self, app_state: &AppState, raw_input: egui::RawInput, frame_buffer: &[u8]) -> Result<AppAction> {
         self.window.gl_make_current(self.gl_context.as_ref()).ok();
         
         let (window_width, window_height) = self.window.size();
@@ -345,7 +345,7 @@ impl MainWindow {
         self.update_game_texture(frame_buffer);
 
         // Run egui
-        let mut app_action = SnemulatorAppAction::Continue;
+        let mut app_action = AppAction::Continue;
         let mut game_rect = egui::Rect::NOTHING;
         let full_output = self.menu.egui_context.run(raw_input, |ctx| {
             if app_state.show_menu {

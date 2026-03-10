@@ -110,10 +110,6 @@ impl Cpu65c816 {
         self.stopped = false;
         self.handle_interrupt(bus, CpuInterrupt::Reset); // TODO: Check this?
     }
-
-    pub fn reset(&mut self) {
-        // self.trigger_interrupt(CpuInterrupt::Reset);
-    }
     
     /// Cycles the cpu for a given number of clocks. If the number of clocks is 0 after cycling, the next instructions is executed.
     pub fn cycle(&mut self, bus: &mut CpuBus) {

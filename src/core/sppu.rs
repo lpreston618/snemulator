@@ -58,11 +58,6 @@ struct OAMSprite {
     height: usize,
 }
 
-pub enum FrameBufferSize {
-    Size256x240,
-    Size512x480,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum ColorLayer {
     Bg1,

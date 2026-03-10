@@ -19,12 +19,3 @@ pub struct ApuIoPorts {
     /// S-CPU -> SPC700 register 3
     pub cpuio3: u8,
 }
-
-impl ApuIoPorts {
-    pub fn new() -> ApuIoPorts {
-        ApuIoPorts {
-            apuio0: 0, apuio1: 0, apuio2: 0, apuio3: 0,
-            cpuio0: 0, cpuio1: 0, cpuio2: 0, cpuio3: 0,
-        }
-    }
-}

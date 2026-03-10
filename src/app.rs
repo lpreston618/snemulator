@@ -11,7 +11,7 @@ use crate::core::sysinfo::{SCREEN_WIDTH, SCREEN_HEIGHT};
 use crate::core::snemcore::Snemulator;
 use crate::core::controller::{ControllerPlayer, JoypadButton};
 
-mod egui_window;
+mod ui_window;
 mod about_window;
 mod main_window;
 mod menu;
@@ -29,7 +29,7 @@ const SECS_BEFORE_HIDE_MOUSE: f32 = 3.0;
 const FRAMES_BEFORE_HIDE_MENU: u64 = (SECS_BEFORE_HIDE_MENU * TARGET_FPS as f32) as u64;
 const FRAMES_BEFORE_HIDE_MOUSE: u64 = (SECS_BEFORE_HIDE_MOUSE * TARGET_FPS as f32) as u64;
 
-enum SnemulatorAppAction {
+enum AppAction {
     Continue,
     TogglePause,
     ToggleFullscreen,
@@ -37,8 +37,8 @@ enum SnemulatorAppAction {
     ResetCore,
     SaveState,
     LoadState,
-    ShowAbout,
-    ShowSettings,
+    OpenAbout,
+    OpenSettings,
     Exit,
 }
 
@@ -152,8 +152,8 @@ impl SnemulatorApp {
             let app_action = self.handle_input(&mut raw_input);
             
             match app_action {
-                SnemulatorAppAction::Continue => {},
-                SnemulatorAppAction::Exit => break 'running,
+                AppAction::Continue => {},
+                AppAction::Exit => break 'running,
                 _ => { self.do_action(app_action); }
             }
             
@@ -171,8 +171,8 @@ impl SnemulatorApp {
             let app_action = self.main_window.render(&self.state, raw_input, &self.frame_buffer[..])?;
 
             match app_action {
-                SnemulatorAppAction::Continue => {}
-                SnemulatorAppAction::Exit => break 'running,
+                AppAction::Continue => {}
+                AppAction::Exit => break 'running,
                 _ => { self.do_action(app_action); }
             }
             
@@ -204,12 +204,12 @@ impl SnemulatorApp {
         Ok(())
     }
     
-    fn handle_input(&mut self, raw_input: &mut egui::RawInput) -> SnemulatorAppAction {
-        let mut app_action = SnemulatorAppAction::Continue;
+    fn handle_input(&mut self, raw_input: &mut egui::RawInput) -> AppAction {
+        let mut app_action = AppAction::Continue;
         
         let mut event_pump = self.sdl_context.event_pump().unwrap();
         
-        for event in event_pump.poll_iter() {
+        for event in event_pump.poll_iter() {            
             // Route events to windows
             let event_window_id = match &event {
                 Event::Window { window_id, .. } => Some(*window_id),
@@ -247,7 +247,7 @@ impl SnemulatorApp {
                 Event::Quit { .. } => {
                     info!("Quit event received, exiting.");
                     
-                    app_action = SnemulatorAppAction::Exit;
+                    app_action = AppAction::Exit;
                 }
 
                 Event::KeyDown { keycode: Some(keycode), keymod, .. } => {
@@ -280,35 +280,35 @@ impl SnemulatorApp {
         }
     }
     
-    fn do_action(&mut self, app_action: SnemulatorAppAction) {
+    fn do_action(&mut self, app_action: AppAction) {
         match app_action {
-            SnemulatorAppAction::LoadRom => self.load_rom(),
-            SnemulatorAppAction::LoadState => self.save_state(),
-            SnemulatorAppAction::SaveState => self.load_state(),
-            SnemulatorAppAction::ResetCore => self.reset_emulation(),
-            SnemulatorAppAction::ShowAbout => self.show_about(),
-            SnemulatorAppAction::ShowSettings => self.show_settings(),
-            SnemulatorAppAction::ToggleFullscreen => self.toggle_fullscreen(),
-            SnemulatorAppAction::TogglePause => self.toggle_pause(),
+            AppAction::LoadRom => self.load_rom(),
+            AppAction::LoadState => self.save_state(),
+            AppAction::SaveState => self.load_state(),
+            AppAction::ResetCore => self.reset_emulation(),
+            AppAction::OpenAbout => self.show_about(),
+            AppAction::OpenSettings => self.show_settings(),
+            AppAction::ToggleFullscreen => self.toggle_fullscreen(),
+            AppAction::TogglePause => self.toggle_pause(),
             _ => {}
         }
     }
 
-    fn handle_keydown(&mut self, keycode: Keycode, keymod: Mod) -> SnemulatorAppAction {
-        let mut app_action = SnemulatorAppAction::Continue;
+    fn handle_keydown(&mut self, keycode: Keycode, keymod: Mod) -> AppAction {
+        let mut app_action = AppAction::Continue;
         
         match keycode {
-            Keycode::F11 => { app_action = SnemulatorAppAction::ToggleFullscreen; },
+            Keycode::F11 => { app_action = AppAction::ToggleFullscreen; },
             Keycode::Escape => {
                 if self.state.is_fullscreen {
-                    app_action = SnemulatorAppAction::ToggleFullscreen;
+                    app_action = AppAction::ToggleFullscreen;
                 }
             }
             Keycode::Q => {
                 if keymod.contains(Mod::LCTRLMOD) {
                     info!("Ctrl+Q pressed, exiting");
                     
-                    app_action = SnemulatorAppAction::Exit;
+                    app_action = AppAction::Exit;
                 }
             }
          

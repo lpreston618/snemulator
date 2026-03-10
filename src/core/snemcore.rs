@@ -11,7 +11,7 @@ use crate::core::sppu::bus::PpuBus;
 use crate::core::ssmp::Ssmp;
 use crate::core::ssmp::ioports::ApuIoPorts;
 use crate::core::sysinfo::{
-    CGRAM_SIZE, OAM_SIZE, SCREEN_HEIGHT, SCREEN_WIDTH, VRAM_SIZE, WRAM_SIZE
+    CGRAM_SIZE, OAM_SIZE, VRAM_SIZE, WRAM_SIZE
 };
 use crate::core::sppu::color::Color;
 use crate::core::sppu::regs::PpuRegs;
@@ -147,6 +147,8 @@ impl Snemulator {
 
     pub fn run_frame(&mut self, frame_buffer: &mut [u8], audio_buffer: &mut Vec<i16>) {
         self.frame_ready = false;
+        
+        self.ssmp.start_frame();
         
         while !self.frame_ready {
             self.cycle(frame_buffer, audio_buffer);
