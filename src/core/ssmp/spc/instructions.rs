@@ -1,3 +1,5 @@
+use log::trace;
+
 use crate::{core::ssmp::spc::{Flag, Spc700, bus::{self, SpcBus}}, get_bit_n, get_byte_n};
 
 // Flag functions

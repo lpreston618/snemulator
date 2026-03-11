@@ -48,10 +48,10 @@ pub enum TransferPattern {
 #[derive(Default, Clone, Copy)]
 pub struct DmaRegs {
     // $420B
-    pub dma_enable: bool,
+    pub dma_en: bool,
     
     // $420C
-    pub hdma_enable: bool,
+    pub hdma_en: bool,
     
     // $43n0
     pub params_raw: u8,

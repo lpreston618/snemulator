@@ -1,17 +1,11 @@
-use crate::{app::AUDIO_SAMPLE_HZ, core::{ssmp::{ioports::ApuIoPorts, sdsp::{SuperDSP, regs::SdspRegs, voices::VoiceRegs}, spc::{Spc700, bus::SpcBus, ioregs::SpcIoRegs}, timers::Timer}, sysinfo::{ARAM_SIZE, MASTER_CLOCK_HZ, SPC_CLOCK_HZ}}};
+use log::info;
+
+use crate::{app::AUDIO_SAMPLE_HZ, core::{ssmp::{ioports::ApuIoPorts, sdsp::{SuperDSP, regs::SdspRegs, voices::VoiceRegs}, spc::{Spc700, bus::SpcBus, ioregs::SpcIoRegs}, timers::Timer}, sysinfo::{ARAM_SIZE, FAST_TIMER_CLOCK_PERIOD, MASTER_CLOCK_HZ, SLOW_TIMER_CLOCK_PERIOD, SPC_CLOCK_HZ}}};
 
 pub mod ioports;
 mod timers;
 mod spc;
 mod sdsp;
-
-// TIMER2 runs at 64kHz, which translates to one tick per every 48 DSP clocks.
-// The Spc700 clocks every 3, DSP clocks, so TIMER2 is clocked once every 48/3,
-// or 16, Spc700 clocks.
-// Timers 0 and 1 each run at 1/8th that speed (8kHz), so they are clocked every
-// 16*8, or 128, SPC clocks.
-pub const FAST_TIMER_CLOCK_PERIOD: usize = 16;
-pub const SLOW_TIMER_CLOCK_PERIOD: usize = 128;
 
 const MASTER_CLOCK_PERIOD: f32 = 1.0 / MASTER_CLOCK_HZ as f32;
 const AUDIO_SAMPLE_PERIOD: f32 = 1.0 / AUDIO_SAMPLE_HZ as f32;
@@ -38,11 +32,11 @@ pub struct Ssmp {
 impl Ssmp {
     pub fn new() -> Ssmp {
         Ssmp {
-            spc: Spc700::new(),
+            spc: Spc700::default(),
             sdsp: SuperDSP::new(),
             
             aram: Box::new([0u8; ARAM_SIZE]),
-            spc_regs: SpcIoRegs::new(),
+            spc_regs: SpcIoRegs::default(),
             sdsp_regs: SdspRegs::new(),
             timer0: Timer::new(),
             timer1: Timer::new(),
@@ -55,9 +49,11 @@ impl Ssmp {
         }
     }
 
-    // pub fn finish(&mut self) {
-    //     self.sdsp.finish();
-    // }
+    pub fn power_on(&mut self) {
+        self.spc.power_on();
+        self.spc_regs.power_on();
+        // self.sdsp.power_on();
+    }
 
     pub fn start_frame(&mut self) {
         self.next_sample -= self.frame_time;
@@ -69,7 +65,6 @@ impl Ssmp {
     /// sample and/or clock the S-DSP and SPC700 processors.
     pub fn clock(&mut self, clocks: usize, audio_buffer: &mut Vec<i16>, apu_regs: &mut ApuIoPorts) {
         self.frame_time += MASTER_CLOCK_PERIOD * clocks as f32;
-        // self.debug_cnt += master_clocks;
 
         if self.frame_time >= self.next_sample {
             self.next_sample += AUDIO_SAMPLE_PERIOD;

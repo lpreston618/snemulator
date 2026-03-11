@@ -1,3 +1,5 @@
+use log::debug;
+
 use crate::core::cartridge::Cartridge;
 use crate::core::controller::JoypadCmd;
 use crate::core::scpu::dma::{AddressIncMode, Direction, DmaRegs, TransferPattern};
@@ -377,15 +379,13 @@ impl<'a> CpuBus<'a> {
             }
 
             0x2102 => {
-                set_byte_n!(ppu_regs.oam_addr, value as u16, 0);
                 ppu_regs.priority_rotation_idx = value & 0xFE;
-                ppu_regs.internal_oam_addr = (ppu_regs.oam_addr & 0x1FF) << 1;
+                ppu_regs.internal_oam_addr = (value as u16) << 1;
             }
 
             0x2103 => {
-                set_byte_n!(ppu_regs.oam_addr, value as u16, 1);
+                ppu_regs.oam_write_high_table = get_bit_n!(value, 0);
                 ppu_regs.priority_rotation = get_bit_n!(value, 7);
-                ppu_regs.internal_oam_addr = (ppu_regs.oam_addr & 0x1FF) << 1;
             }
 
             0x2104 => {
@@ -393,17 +393,17 @@ impl<'a> CpuBus<'a> {
 
                 if internal_oam_addr & 1 == 0 {
                     ppu_regs.oam_data_latch = value;
-                } else if internal_oam_addr < 0x200 {
+                } else if !ppu_regs.oam_write_high_table {
                     self.oam[internal_oam_addr - 1] = ppu_regs.oam_data_latch;
                     self.oam[internal_oam_addr] = value;
                 }
 
-                if internal_oam_addr >= 0x200 {
-                    self.oam[internal_oam_addr] = value;
+                if ppu_regs.oam_write_high_table {
+                    self.oam[internal_oam_addr & 0x1F] = value;
                 }
 
                 ppu_regs.internal_oam_addr += 1;
-                ppu_regs.internal_oam_addr %= OAM_SIZE as u16;
+                ppu_regs.internal_oam_addr &= 0x1FF;
             }
 
             0x2105 => {
@@ -752,17 +752,17 @@ impl<'a> CpuBus<'a> {
             }
 
             0x2122 => {
-                ppu_regs.cgram_toggle = !ppu_regs.cgram_toggle;
-
-                if ppu_regs.cgram_toggle {
+                if !ppu_regs.cgram_toggle {
                     ppu_regs.cgram_latch = value;
                 } else {
-                    let new_col = u16::from_le_bytes([ppu_regs.cgram_latch, value]);
+                    let new_col = ((value as u16) << 8) | ppu_regs.cgram_latch as u16;
 
                     self.cgram[ppu_regs.cgram_addr as usize] = Color::from_bgr555(new_col);
 
                     ppu_regs.cgram_addr += 1;
                 }
+                
+                ppu_regs.cgram_toggle = !ppu_regs.cgram_toggle;
             }
 
             0x2123 => {
@@ -1087,6 +1087,18 @@ impl<'a> CpuBus<'a> {
             0x4208 => { set_byte_n!(self.cpu_regs.h_counter_target, (value & 1) as u16, 1); }
             0x4209 => { set_byte_n!(self.cpu_regs.v_counter_target, value as u16, 0); }
             0x420A => { set_byte_n!(self.cpu_regs.v_counter_target, (value & 1) as u16, 1); }
+            
+            0x420B => {
+                for i in 0..8 {
+                    self.dma_regs[i].dma_en = get_bit_n!(value, i);
+                }
+            }
+            
+            0x420C => {
+                for i in 0..8 {
+                    self.dma_regs[i].hdma_en = get_bit_n!(value, i);
+                }
+            }
             
             0x4210..=0x42FF => {}, // Read-only regs
             

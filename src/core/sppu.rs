@@ -1768,6 +1768,7 @@ impl Ppu5C7x {
                 bus.trigger_interrupt(CpuInterrupt::NMI);
             }
             
+            self.frame += 1;
             bus.set_frame_finished();
         }
     }

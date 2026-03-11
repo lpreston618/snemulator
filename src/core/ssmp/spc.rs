@@ -3,11 +3,14 @@
 
 // use crate::core::ssmp::spc::bus::SpcBus;
 
+use log::info;
+
 use crate::core::ssmp::spc::bus::SpcBus;
 
 pub mod bus;
 pub mod ioregs;
 mod instructions;
+mod disassembler;
 
 #[derive(PartialEq)]
 pub enum Flag {
@@ -21,6 +24,7 @@ pub enum Flag {
     FlagN = 128, // Negative
 }
 
+#[derive(Default)]
 pub struct Spc700 {
     pc: u16,
     sp: u8,
@@ -46,28 +50,21 @@ impl Spc700 {
         0x00, 0x00, 0xC0, 0xFF,
     ];
 
-    pub fn new() -> Spc700 {
-        Spc700 {
-            pc: 0xFFC0,
-            sp: 0,
-            a: 0,
-            x: 0,
-            y: 0,
-            status: 0,
-            stopped: false,
-            branch_taken: false,
-            dir_page: 0,
-
-            clocks: 0,
-        }
+    pub fn power_on(&mut self) {
+        self.pc = 0xFFC0;
+        self.sp = 0;
+        self.a = 0;
+        self.x = 0;
+        self.y = 0;
+        self.status = 0;
+        self.dir_page = 0;
+        self.stopped = false;
+        self.branch_taken = false;
+        self.clocks = 0;
     }
 
-//     fn reset(&mut self) {
-//         todo!()
-//     }
-
     pub fn clock(&mut self, bus: &mut SpcBus) {
-        if self.clocks == 0 {
+        if self.clocks == 0 {            
             self.exec_instr(bus);
         }
 

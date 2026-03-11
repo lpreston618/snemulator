@@ -10,7 +10,7 @@ pub const ARAM_SIZE: usize = 64 * 1024;
 /// 512 Bytes of Character-Graphics RAM (256 colors)
 pub const CGRAM_SIZE: usize = 256;
 /// 544 Bytes of Object Attribute Memory
-pub const OAM_SIZE: usize = 544;
+pub const OAM_SIZE: usize = 512 + 32;
 /// Frequency of the SNES master clock
 pub const MASTER_CLOCK_HZ: usize = 21477300;
 /// Frequency of the SPC700 internal clock

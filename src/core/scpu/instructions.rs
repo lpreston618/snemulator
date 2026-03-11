@@ -4,6 +4,7 @@ use crate::{
     set_byte_n,
     get_bit_n,
 };
+use log::trace;
 use paste::paste;
 
 /// Set the N and Z flags based on an 8-bit value.
@@ -102,6 +103,15 @@ macro_rules! op_case {
     };
 }
 
+macro_rules! op_case_imm {
+    ($cpu:ident, $bus:ident, $instr:ident) => {
+        {
+            let addr = $cpu.immediate();
+            $cpu.$instr($bus, addr);
+        }
+    };
+}
+
 macro_rules! op_case_br {
     ($cpu:ident, $bus:ident, $addr_mode:ident, $instr:ident) => {
         {
@@ -131,6 +141,16 @@ macro_rules! op_case_long {
     };
 }
 
+macro_rules! op_case_long_imm {
+    ($cpu:ident, $bus:ident, $instr:ident) => {
+        {
+            let addr_lo = $cpu.immediate();
+            let addr_hi = $cpu.immediate();
+            $cpu.$instr($bus, addr_lo, addr_hi);
+        }
+    };
+}
+
 macro_rules! op_case_flagm {
     ($cpu:ident, $bus:ident, $addr_mode:ident, $instr:ident, $wrap_add:ident) => {
         paste!( {
@@ -145,6 +165,21 @@ macro_rules! op_case_flagm {
     };
 }
 
+macro_rules! op_case_flagm_imm {
+    ($cpu:ident, $bus:ident, $instr:ident) => {
+        paste!( {
+            let addr = $cpu.immediate();
+        
+            if $cpu.is_flag_set(Flag::FlagM) {
+                $cpu.[<$instr _m8>]($bus, addr);
+            } else {
+                let addr2 = $cpu.immediate();
+                $cpu.[<$instr _m16>]($bus, addr, addr2);
+            }
+        } )
+    };
+}
+
 macro_rules! op_case_flagx {
     ($cpu:ident, $bus:ident, $addr_mode:ident, $instr:ident, $wrap_add:ident) => {
         paste!( {
@@ -154,6 +189,21 @@ macro_rules! op_case_flagx {
                 $cpu.[<$instr _x8>]($bus, addr);
             } else {
                 $cpu.[<$instr _x16>]($bus, addr, $wrap_add!(addr));
+            }
+        } )
+    };
+}
+
+macro_rules! op_case_flagx_imm {
+    ($cpu:ident, $bus:ident, $instr:ident) => {
+        paste!( {
+            let addr = $cpu.immediate();
+        
+            if $cpu.is_flag_set(Flag::FlagX) {
+                $cpu.[<$instr _x8>]($bus, addr);
+            } else {
+                let addr2 = $cpu.immediate();
+                $cpu.[<$instr _x16>]($bus, addr, addr2);
             }
         } )
     };
@@ -193,14 +243,14 @@ impl Cpu65c816 {
         match opcode {
             0x00 => self.brk(bus),
             0x01 => op_case_flagm!(self, bus, direct_x_indirect, ora, inc_addr),
-            0x02 => op_case!(self, bus, immediate, cop),
+            0x02 => op_case_imm!(self, bus, cop),
             0x03 => op_case_flagm!(self, bus, stack_relative, ora, inc_addr16),
             0x04 => op_case_flagm!(self, bus, direct, tsb, inc_addr16),
             0x05 => op_case_flagm!(self, bus, direct, ora, inc_addr16),
             0x06 => op_case_flagm!(self, bus, direct, asl_mem, inc_addr16),
             0x07 => op_case_flagm!(self, bus, direct_indirect_long, ora, inc_addr),
             0x08 => self.php(bus),
-            0x09 => op_case_flagm!(self, bus, immediate, ora, inc_addr16),
+            0x09 => op_case_flagm_imm!(self, bus, ora),
             0x0A => self.asl(),
             0x0B => self.phd(bus),
             0x0C => op_case_flagm!(self, bus, absolute, tsb, inc_addr),
@@ -232,7 +282,7 @@ impl Cpu65c816 {
             0x26 => op_case_flagm!(self, bus, direct, rol_mem, inc_addr16),
             0x27 => op_case_flagm!(self, bus, direct_indirect_long, and, inc_addr),
             0x28 => self.plp(bus),
-            0x29 => op_case_flagm!(self, bus, immediate, and, inc_addr16),
+            0x29 => op_case_flagm_imm!(self, bus, and),
             0x2A => self.rol(),
             0x2B => self.pld(bus),
             0x2C => op_case_flagm!(self, bus, absolute, bit, inc_addr),
@@ -257,14 +307,14 @@ impl Cpu65c816 {
             0x3F => op_case_flagm!(self, bus, long_x, and, inc_addr),
             0x40 => self.rti(bus),
             0x41 => op_case_flagm!(self, bus, direct_x_indirect, eor, inc_addr),
-            0x42 => op_case!(self, bus, immediate, wdm),
+            0x42 => op_case_imm!(self, bus, wdm),
             0x43 => op_case_flagm!(self, bus, stack_relative, eor, inc_addr16),
             0x44 => op_case_src_dst!(self, bus, mvp),
             0x45 => op_case_flagm!(self, bus, direct, eor, inc_addr16),
             0x46 => op_case_flagm!(self, bus, direct, lsr_mem, inc_addr16),
             0x47 => op_case_flagm!(self, bus, direct_indirect_long, eor, inc_addr),
             0x48 => self.pha(bus),
-            0x49 => op_case_flagm!(self, bus, immediate, eor, inc_addr16),
+            0x49 => op_case_flagm_imm!(self, bus, eor),
             0x4A => self.lsr(),
             0x4B => self.phk(bus),
             0x4C => op_case_br!(self, bus, absolute, jmp),
@@ -289,14 +339,14 @@ impl Cpu65c816 {
             0x5F => op_case_flagm!(self, bus, long_x, eor, inc_addr),
             0x60 => self.rts(bus),
             0x61 => op_case_flagm!(self, bus, direct_x_indirect, adc, inc_addr),
-            0x62 => op_case_long!(self, bus, immediate, per, inc_addr16),
+            0x62 => op_case_long_imm!(self, bus, per),
             0x63 => op_case_flagm!(self, bus, stack_relative, adc, inc_addr16),
             0x64 => op_case_flagm!(self, bus, direct, stz, inc_addr16),
             0x65 => op_case_flagm!(self, bus, direct, adc, inc_addr16),
             0x66 => op_case_flagm!(self, bus, direct, ror_mem, inc_addr16),
             0x67 => op_case_flagm!(self, bus, direct_indirect_long, adc, inc_addr),
             0x68 => self.pla(bus),
-            0x69 => op_case_flagm!(self, bus, immediate, adc, inc_addr16),
+            0x69 => op_case_flagm_imm!(self, bus, adc),
             0x6A => self.ror(),
             0x6B => self.rtl(bus),
             0x6C => op_case_br!(self, bus, absolute_indirect, jmp),
@@ -328,7 +378,7 @@ impl Cpu65c816 {
             0x86 => op_case_flagx!(self, bus, direct, stx, inc_addr16),
             0x87 => op_case_flagm!(self, bus, direct_indirect_long, sta, inc_addr),
             0x88 => self.dey(),
-            0x89 => op_case_flagm!(self, bus, immediate, bit, inc_addr16),
+            0x89 => op_case_flagm_imm!(self, bus, bit),
             0x8A => self.txa(),
             0x8B => self.phb(bus),
             0x8C => op_case_flagx!(self, bus, absolute, sty, inc_addr),
@@ -351,16 +401,16 @@ impl Cpu65c816 {
             0x9D => op_case_flagm!(self, bus, absolute_x, sta, inc_addr),
             0x9E => op_case_flagm!(self, bus, absolute_x, stz, inc_addr),
             0x9F => op_case_flagm!(self, bus, long_x, sta, inc_addr),
-            0xA0 => op_case_flagx!(self, bus, immediate, ldy, inc_addr16),
+            0xA0 => op_case_flagx_imm!(self, bus, ldy),
             0xA1 => op_case_flagm!(self, bus, direct_x_indirect, lda, inc_addr),
-            0xA2 => op_case_flagx!(self, bus, immediate, ldx, inc_addr16),
+            0xA2 => op_case_flagx_imm!(self, bus, ldx),
             0xA3 => op_case_flagm!(self, bus, stack_relative, lda, inc_addr16),
             0xA4 => op_case_flagx!(self, bus, direct, ldy, inc_addr16),
             0xA5 => op_case_flagm!(self, bus, direct, lda, inc_addr16),
             0xA6 => op_case_flagx!(self, bus, direct, ldx, inc_addr16),
             0xA7 => op_case_flagm!(self, bus, direct_indirect_long, lda, inc_addr),
             0xA8 => self.tay(),
-            0xA9 => op_case_flagm!(self, bus, immediate, lda, inc_addr16),
+            0xA9 => op_case_flagm_imm!(self, bus, lda),
             0xAA => self.tax(),
             0xAB => self.plb(bus),
             0xAC => op_case_flagx!(self, bus, absolute, ldy, inc_addr),
@@ -383,16 +433,16 @@ impl Cpu65c816 {
             0xBD => op_case_flagm!(self, bus, absolute_x, lda, inc_addr),
             0xBE => op_case_flagx!(self, bus, absolute_y, ldx, inc_addr),
             0xBF => op_case_flagm!(self, bus, long_x, lda, inc_addr),
-            0xC0 => op_case_flagx!(self, bus, immediate, cpy, inc_addr16),
+            0xC0 => op_case_flagx_imm!(self, bus, cpy),
             0xC1 => op_case_flagm!(self, bus, direct_x_indirect, cmp, inc_addr),
-            0xC2 => op_case!(self, bus, immediate, rep),
+            0xC2 => op_case_imm!(self, bus, rep),
             0xC3 => op_case_flagm!(self, bus, stack_relative, cmp, inc_addr16),
             0xC4 => op_case_flagx!(self, bus, direct, cpy, inc_addr16),
             0xC5 => op_case_flagm!(self, bus, direct, cmp, inc_addr16),
             0xC6 => op_case_flagm!(self, bus, direct, dec_mem, inc_addr16),
             0xC7 => op_case_flagm!(self, bus, direct_indirect_long, cmp, inc_addr),
             0xC8 => self.iny(),
-            0xC9 => op_case_flagm!(self, bus, immediate, cmp, inc_addr16),
+            0xC9 => op_case_flagm_imm!(self, bus, cmp),
             0xCA => self.dex(),
             0xCB => self.wai(),
             0xCC => op_case_flagx!(self, bus, absolute, cpy, inc_addr),
@@ -415,16 +465,16 @@ impl Cpu65c816 {
             0xDD => op_case_flagm!(self, bus, absolute_x, cmp, inc_addr),
             0xDE => op_case_flagm!(self, bus, absolute_x, dec_mem, inc_addr),
             0xDF => op_case_flagm!(self, bus, long_x, cmp, inc_addr),
-            0xE0 => op_case_flagx!(self, bus, immediate, cpx, inc_addr16),
+            0xE0 => op_case_flagx_imm!(self, bus, cpx),
             0xE1 => op_case_flagm!(self, bus, direct_x_indirect, sbc, inc_addr),
-            0xE2 => op_case!(self, bus, immediate, sep),
+            0xE2 => op_case_imm!(self, bus, sep),
             0xE3 => op_case_flagm!(self, bus, stack_relative, sbc, inc_addr16),
             0xE4 => op_case_flagx!(self, bus, direct, cpx, inc_addr16),
             0xE5 => op_case_flagm!(self, bus, direct, sbc, inc_addr16),
             0xE6 => op_case_flagm!(self, bus, direct, inc_mem, inc_addr16),
             0xE7 => op_case_flagm!(self, bus, direct_indirect_long, sbc, inc_addr),
             0xE8 => self.inx(),
-            0xE9 => op_case_flagm!(self, bus, immediate, sbc, inc_addr16),
+            0xE9 => op_case_flagm_imm!(self, bus, sbc),
             0xEA => self.nop(),
             0xEB => self.xba(),
             0xEC => op_case_flagx!(self, bus, absolute, cpx, inc_addr),
@@ -435,7 +485,7 @@ impl Cpu65c816 {
             0xF1 => op_case_flagm!(self, bus, direct_indirect_y, sbc, inc_addr),
             0xF2 => op_case_flagm!(self, bus, direct_indirect, sbc, inc_addr),
             0xF3 => op_case_flagm!(self, bus, stack_relative_indirect_y, sbc, inc_addr),
-            0xF4 => op_case_long!(self, bus, immediate, pex, inc_addr16),
+            0xF4 => op_case_long_imm!(self, bus, pex),
             0xF5 => op_case_flagm!(self, bus, direct_x, sbc, inc_addr16),
             0xF6 => op_case_flagm!(self, bus, direct_x, inc_mem, inc_addr16),
             0xF7 => op_case_flagm!(self, bus, direct_indirect_long_y, sbc, inc_addr),
@@ -465,7 +515,7 @@ impl Cpu65c816 {
 
 // Addressing Modes
 impl Cpu65c816 {
-    fn immediate(&mut self, _bus: &mut CpuBus) -> Address {
+    fn immediate(&mut self) -> Address {
         let offset = self.pc;
         self.pc += 1;        
         

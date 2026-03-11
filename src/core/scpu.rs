@@ -1,9 +1,12 @@
-use crate::core::scpu::bus::{Address, CpuBus};
+use log::trace;
+
+use crate::core::scpu::{bus::{Address, CpuBus}, dissasembler::disassemble};
 
 pub mod bus;
 pub mod ioregs;
 pub mod dma;
 pub mod mult;
+pub mod dissasembler;
 mod instructions;
 
 pub enum Flag {
@@ -126,7 +129,7 @@ impl Cpu65c816 {
             return;
         }
         
-        if self.halted || self.waiting_for_interrupt {
+        if self.stopped || self.halted || self.waiting_for_interrupt {
             self.clocks += Self::CYCLE_CLOCKS;
             return;
         }
@@ -150,7 +153,6 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagI, true);
         self.set_flag_to_bool(Flag::FlagD, false);
         
-        let vector_bank = 0;
         let vector_offset = if self.e {
             match interrupt {
                 CpuInterrupt::IRQ => 0xFFFE,
@@ -171,8 +173,8 @@ impl Cpu65c816 {
             }
         };
         
-        let vector_lo = Address { bank: vector_bank, offset: vector_offset };
-        let vector_hi = Address { bank: vector_bank, offset: vector_offset + 1 };
+        let vector_lo = Address { bank: 0, offset: vector_offset };
+        let vector_hi = Address { bank: 0, offset: vector_offset + 1 };
         
         self.pb = 0;
         self.pc = self.read_word(bus, vector_lo, vector_hi)

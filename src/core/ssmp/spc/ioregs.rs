@@ -1,3 +1,4 @@
+#[derive(Default)]
 pub struct SpcIoRegs {
     // $F1
     pub ipl_read_en: bool,
@@ -8,11 +9,9 @@ pub struct SpcIoRegs {
 }
 
 impl SpcIoRegs {
-    pub fn new() -> Self {
-        Self {
-            ipl_read_en: false,
-            sdsp_read_only: false,
-            sdsp_addr: 0,
-        }
+    pub fn power_on(&mut self) {
+        self.ipl_read_en = true;
+        self.sdsp_read_only = false;
+        self.sdsp_addr = 0;
     }
 }

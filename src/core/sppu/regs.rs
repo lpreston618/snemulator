@@ -155,7 +155,7 @@ pub struct PpuRegs {
     //       - OAM word address (A)
     //       - Priority rotation (P)
     //       - Address high bit / table select (B)
-    pub oam_addr: u16,
+    pub oam_write_high_table: bool,
     pub internal_oam_addr: u16,
     pub priority_rotation: bool,
     pub priority_rotation_idx: u8,

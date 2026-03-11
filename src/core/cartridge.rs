@@ -42,7 +42,7 @@ impl Cartridge {
         }
 
         let cart_rom = pad_rom(cart_rom)?;
-
+        
         Self::from_padded_rom(cart_rom)
     }
     
@@ -82,7 +82,24 @@ impl Cartridge {
         cart.is_ntsc = header_bytes[0x19] > 0;
         cart.interrupt_vectors.copy_from_slice(&header_bytes[0x20..0x40]);
         
-        trace!("Set mapping mode to {:?}", cart.mapping_mode);
+        trace!("Title: '{}'", std::str::from_utf8(&cart.title).unwrap_or("<FAILED TO READ TITLE>"));
+        trace!("  fast_rom: {}", cart.fast_rom);
+        trace!("  mapping_mode: {:?}", cart.mapping_mode);
+        trace!("  extra_ram: {}", cart.extra_ram);
+        trace!("  battery: {}", cart.battery);
+        trace!("  coprocessor: {}", cart.coprocessor);
+        trace!("  coprocessor_id: {}", cart.coprocessor_id);
+        trace!("  rom_size: {} (= {} KiB)", cart.rom_size, 1 << cart.rom_size);
+        trace!("  ram_size: {} (= {} KiB)", cart.ram_size, 1 << cart.ram_size);
+        trace!("  is_ntsc: {}", cart.is_ntsc);
+        trace!("  padded rom size: 0x{:X}", cart.rom.len());
+        trace!("  vectors:    NAT    EMU ");
+        trace!("    COP      ${:02X}{:02X}  ${:02X}{:02X}", cart.interrupt_vectors[0x05], cart.interrupt_vectors[0x04], cart.interrupt_vectors[0x15], cart.interrupt_vectors[0x14]);
+        trace!("    BRK      ${:02X}{:02X}  .....", cart.interrupt_vectors[0x07], cart.interrupt_vectors[0x06]);
+        trace!("    ABORT    ${:02X}{:02X}  ${:02X}{:02X}", cart.interrupt_vectors[0x09], cart.interrupt_vectors[0x08], cart.interrupt_vectors[0x19], cart.interrupt_vectors[0x18]);
+        trace!("    NMI      ${:02X}{:02X}  ${:02X}{:02X}", cart.interrupt_vectors[0x0B], cart.interrupt_vectors[0x0A], cart.interrupt_vectors[0x1B], cart.interrupt_vectors[0x1A]);
+        trace!("    RESET    .....  ${:02X}{:02X}", cart.interrupt_vectors[0x1D], cart.interrupt_vectors[0x1C]);
+        trace!("    IRQ      ${:02X}{:02X}  ${:02X}{:02X}", cart.interrupt_vectors[0x0F], cart.interrupt_vectors[0x0E], cart.interrupt_vectors[0x1F], cart.interrupt_vectors[0x1E]);
         
         Ok(cart)
     }
@@ -102,7 +119,9 @@ impl Cartridge {
             }
         };
         
-        self.rom[mapped_addr as usize]
+        let mapped_addr = (mapped_addr as usize) & (self.rom.len() - 1);
+        
+        self.rom[mapped_addr]
     }
     
     pub fn write(&mut self, addr: Address, value: u8) {

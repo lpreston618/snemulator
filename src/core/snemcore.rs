@@ -4,7 +4,7 @@ use crate::core::controller::{ControllerPlayer, JoypadButton, JoypadCmd, SnemCon
 use crate::core::scpu::dma::DmaRegs;
 use crate::core::scpu::ioregs::CpuIoRegs;
 use crate::core::scpu::mult::Mult5A22;
-use crate::core::scpu::{Cpu65c816, CpuInterrupt};
+use crate::core::scpu::{self, Cpu65c816, CpuInterrupt};
 use crate::core::scpu::bus::CpuBus;
 use crate::core::sppu::Ppu5C7x;
 use crate::core::sppu::bus::PpuBus;
@@ -15,7 +15,7 @@ use crate::core::sysinfo::{
 };
 use crate::core::sppu::color::Color;
 use crate::core::sppu::regs::PpuRegs;
-use log::trace;
+use log::{debug, trace};
 
 macro_rules! cpu_bus {
     ($core:ident) => {
@@ -123,11 +123,12 @@ impl Snemulator {
     }
     
     fn power_on(&mut self) {
+        self.ssmp.power_on();
         self.mult.power_on();
         
         let mut bus = cpu_bus!(self);
-        
         self.cpu.power_on(&mut bus);
+        
     }
     
     pub fn load_rom(&mut self, data: Vec<u8>) -> Result<()> {
@@ -152,6 +153,21 @@ impl Snemulator {
         
         self.ssmp.start_frame();
         
+        // if self.ppu.frame == 120 {
+        //     for group in self.cgram.chunks(4) {
+        //         debug!("{:?} {:?} {:?} {:?}", group[0], group[1], group[2], group[3]);
+        //     }
+        // }
+        
+        // trace!("Frame {}", self.ppu.frame);
+        
+        // if self.ppu.frame > 100 {
+        //     for _ in 0..100 {
+        //         self.cycle(frame_buffer, audio_buffer);
+        //     }
+        //     return;
+        // }
+        
         while !self.frame_ready {
             self.cycle(frame_buffer, audio_buffer);
         }
@@ -169,6 +185,10 @@ impl Snemulator {
             let mut bus = cpu_bus!(self);
             
             self.cpu.cycle(&mut bus);
+            
+            // if self.ppu.frame > 100 {
+            //     trace!("{}", scpu::dissasembler::disassemble(&self.cpu, &mut bus));
+            // }
             
             match self.joypad_cmd {
                 Some(JoypadCmd::ClockJoy1) => { self.joy1_latch >>= 1; },
