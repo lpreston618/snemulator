@@ -39,6 +39,7 @@ struct DisassembleData {
 
 // This table would be defined elsewhere with all 256 entries
 static DISASSEMBLE_TABLE: [DisassembleData; 256] = [
+    // 0x00-0x0F
     DisassembleData {name: "brk", addr_mode: AddressingMode::Implied},
     DisassembleData {name: "ora", addr_mode: AddressingMode::DirectXIndirect},
     DisassembleData {name: "cop", addr_mode: AddressingMode::Immediate8},
@@ -55,6 +56,7 @@ static DISASSEMBLE_TABLE: [DisassembleData; 256] = [
     DisassembleData {name: "ora", addr_mode: AddressingMode::Absolute},
     DisassembleData {name: "asl", addr_mode: AddressingMode::Absolute},
     DisassembleData {name: "ora", addr_mode: AddressingMode::Long},
+    // 0x10-0x1F
     DisassembleData {name: "bpl", addr_mode: AddressingMode::Relative8},
     DisassembleData {name: "ora", addr_mode: AddressingMode::DirectIndirectY},
     DisassembleData {name: "ora", addr_mode: AddressingMode::DirectIndirect},
@@ -71,6 +73,7 @@ static DISASSEMBLE_TABLE: [DisassembleData; 256] = [
     DisassembleData {name: "ora", addr_mode: AddressingMode::AbsoluteX},
     DisassembleData {name: "asl", addr_mode: AddressingMode::AbsoluteX},
     DisassembleData {name: "ora", addr_mode: AddressingMode::LongX},
+    // 0x20-0x2F
     DisassembleData {name: "jsr", addr_mode: AddressingMode::Absolute},
     DisassembleData {name: "and", addr_mode: AddressingMode::DirectXIndirect},
     DisassembleData {name: "jsl", addr_mode: AddressingMode::Long},

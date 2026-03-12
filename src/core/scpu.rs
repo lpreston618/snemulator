@@ -56,6 +56,8 @@ pub struct Cpu65c816 {
     fast_rom_en: bool,
     branch_taken: bool,
     page_crossed: bool,
+    
+    debug_cnt: usize,
 }
 
 // SNES System Functionality
@@ -92,6 +94,8 @@ impl Cpu65c816 {
             branch_taken: false,
             page_crossed: false,
             stopped: false,
+            
+            debug_cnt: 0,
         }
     }
 
@@ -133,8 +137,6 @@ impl Cpu65c816 {
             self.clocks += Self::CYCLE_CLOCKS;
             return;
         }
-        
-        // debug!("${:02X}{:04X}: {}", self.pb, self.pc, dissasembler::disassemble(self, bus));
         
         self.execute(bus);
     }

@@ -4,7 +4,7 @@ use crate::{
     set_byte_n,
     get_bit_n,
 };
-use log::trace;
+use log::{debug, trace};
 use paste::paste;
 
 /// Set the N and Z flags based on an 8-bit value.
@@ -237,6 +237,13 @@ impl Cpu65c816 {
     /// to complete the instruction is added to the CPU's internal clock counter.
     pub fn execute(&mut self, bus: &mut CpuBus) {
         let opcode = self.read_prg(bus);
+        
+        if opcode == 0x60 {
+            let ret_addr = self.pop_word(bus);
+            self.sp -= 2;
+            self.debug_cnt -= 1;
+            debug!("${:02X}{:04X}: RTS, Stk: {:04X}, depth: {}", self.pb, self.pc, ret_addr, self.debug_cnt);
+        }
 
         self.branch_taken = false;
         
@@ -498,6 +505,13 @@ impl Cpu65c816 {
             0xFE => op_case_flagm!(self, bus, absolute_x, inc_mem, inc_addr),
             0xFF => op_case_flagm!(self, bus, long_x, sbc, inc_addr),
         };
+        
+        if opcode == 0x20 {
+            let ret_addr = self.pop_word(bus);
+            self.sp -= 2;
+            debug!("${:02X}{:04X}: JSR, Stk: {:04X}, depth: {}", self.pb, self.pc, ret_addr, self.debug_cnt);
+            self.debug_cnt += 1;
+        }
         
         if self.branch_taken {  
             self.clocks += Self::CYCLE_CLOCKS;
