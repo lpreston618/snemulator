@@ -1,12 +1,12 @@
 use log::{debug, trace};
 
-use crate::core::scpu::{bus::{Address, CpuBus}, dissasembler::disassemble};
+use crate::core::scpu::{bus::{Address, CpuBus}, disassembler::disassemble};
 
 pub mod bus;
 pub mod ioregs;
 pub mod dma;
 pub mod mult;
-pub mod dissasembler;
+pub mod disassembler;
 mod instructions;
 
 pub enum Flag {
@@ -55,7 +55,7 @@ pub struct Cpu65c816 {
         
     fast_rom_en: bool,
     branch_taken: bool,
-    page_crossed: bool,
+    page_crossed: bool,    
     
     debug_cnt: usize,
 }
@@ -142,12 +142,17 @@ impl Cpu65c816 {
     }
     
     pub fn handle_interrupt(&mut self, bus: &mut CpuBus, interrupt: CpuInterrupt) {
+        debug!("handling interrupt: {:?}, ${:02X}{:04X}, sp: 0x{:04X}, p: {:02X}, e: {}", interrupt, self.pb, self.pc, self.sp, self.p, self.e);
+        
         match interrupt {
             CpuInterrupt::Reset => { self.e = true; }
+            CpuInterrupt::BRK => {
+                panic!("BRK");
+            },
             _ => {}
         }
         
-        if self.e {
+        if !self.e {
             self.push(bus, self.pb);
         }
         
