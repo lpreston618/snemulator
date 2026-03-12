@@ -45,6 +45,10 @@ pub struct CpuBus<'a> {
     pub cart: &'a mut Cartridge, // or rom or what have you
     pub mult: &'a mut Mult5A22,
     pub dma_regs: &'a mut [DmaRegs; 8],
+    pub dma_en: &'a mut bool,
+    pub hdma_en: &'a mut bool,
+    pub dma_active_ch: &'a mut usize,
+    pub hdma_active_ch: &'a mut usize,
     
     pub joy1_in: u16,
     pub joy2_in: u16,
@@ -113,7 +117,7 @@ impl<'a> CpuBus<'a> {
     pub fn write(&mut self, addr: Address, value: u8) {
         match addr.bank {
             // WRAM mirror
-            0x00..=0x3F => match addr.offset {
+            0x00..=0x3F | 0x80..=0xBF => match addr.offset {
                 0x0000..=0x1FFF => self.wram[addr.offset as usize] = value,
 
                 // PPU registers
@@ -152,14 +156,60 @@ impl<'a> CpuBus<'a> {
                 self.wram[wram_addr] = value;
             }
 
-            // Mirror
-            0x80..=0xBF => self.write(
-                Address {
-                    bank: addr.bank & 0x7F,
-                    offset: addr.offset,
-                },
-                value,
-            ),
+            // Cartridge
+            _ => self.cart.write(addr, value),
+        }
+    }
+    
+    /// Same as [`read`], but for DMA transfers. This version cannot access MMIO regs.
+    pub fn dma_read(&mut self, addr: Address) -> u8 {
+        match addr.bank {
+            // Banks $00-$3F: LoROM mapping
+            0x00..=0x3F | 0x80..=0xBF => match addr.offset {
+                // WRAM mirror (first 8KB)
+                0x0000..=0x1FFF => self.wram[addr.offset as usize],
+
+                // Cartridge (LoROM: $8000-$FFFF)
+                0x8000..=0xFFFF => self.cart.read(addr),
+
+                _ => 0, // Open bus
+            },
+
+            // Banks $40-$6F: LoROM cartridge
+            0x40..=0x6F => self.cart.read(addr),
+
+            // Banks $70-$7D: SRAM or ROM
+            0x70..=0x7D => self.cart.read(addr),
+
+            // Banks $7E-$7F: WRAM (full 128KB)
+            0x7E..=0x7F => {
+                let wram_addr = ((addr.bank as usize & 1) << 16) | (addr.offset as usize);
+                self.wram[wram_addr]
+            }
+
+            // Banks $C0-$FF: HiROM cartridge / mirror
+            0xC0..=0xFF => self.cart.read(addr),
+        }
+    }
+    
+    /// Same as [`write`], but for DMA transfers. This version cannot access MMIO regs.
+    pub fn dma_write(&mut self, addr: Address, value: u8) {
+        match addr.bank {
+            // WRAM mirror
+            0x00..=0x3F | 0x80..=0xBF => match addr.offset {
+                0x0000..=0x1FFF => self.wram[addr.offset as usize] = value,
+
+                // Cartridge (SRAM, mapper registers)
+                0x8000..=0xFFFF => self.cart.write(addr, value),
+
+                _ => {}
+            },
+
+            // WRAM direct access
+            0x7E..=0x7F => {
+                let wram_addr = ((addr.bank as usize & 1) << 16) | (addr.offset as usize);
+                self.wram[wram_addr] = value;
+            }
 
             // Cartridge
             _ => self.cart.write(addr, value),
@@ -1089,12 +1139,20 @@ impl<'a> CpuBus<'a> {
             0x420A => { set_byte_n!(self.cpu_regs.v_counter_target, (value & 1) as u16, 1); }
             
             0x420B => {
-                for i in 0..8 {
+                *self.dma_en = value != 0;
+                *self.dma_active_ch = value.trailing_zeros() as usize;
+                for i in 0..8 {                    
                     self.dma_regs[i].dma_en = get_bit_n!(value, i);
+                    
+                    if self.dma_regs[i].dma_en {
+                        self.dma_regs[i].transfer_pattern_step = 0;
+                    }
                 }
             }
             
             0x420C => {
+                *self.hdma_en = value != 0;
+                *self.hdma_active_ch = value.trailing_zeros() as usize;
                 for i in 0..8 {
                     self.dma_regs[i].hdma_en = get_bit_n!(value, i);
                 }
@@ -1117,10 +1175,10 @@ impl<'a> CpuBus<'a> {
         
         match offset & 0xF {
             0x0 => channel.params_raw,
-            0x1 => channel.b_bus_addr,
-            0x2 => get_byte_n!(channel.dma_src_addr.offset, 0),
-            0x3 => get_byte_n!(channel.dma_src_addr.offset, 1),
-            0x4 => channel.dma_src_addr.bank,
+            0x1 => channel.b_bus_addr.offset as u8,
+            0x2 => get_byte_n!(channel.a_bus_addr.offset, 0),
+            0x3 => get_byte_n!(channel.a_bus_addr.offset, 1),
+            0x4 => channel.a_bus_addr.bank,
             0x5 => get_byte_n!(channel.hdma_indirect_table_addr.offset, 0),
             0x6 => get_byte_n!(channel.hdma_indirect_table_addr.offset, 1),
             0x7 => channel.hdma_indirect_table_addr.bank,
@@ -1175,10 +1233,10 @@ impl<'a> CpuBus<'a> {
                 };
             },
             
-            0x1 => { channel.b_bus_addr = value; },
-            0x2 => { set_byte_n!(channel.dma_src_addr.offset, value as u16, 0); },
-            0x3 => { set_byte_n!(channel.dma_src_addr.offset, value as u16, 1); },
-            0x4 => { channel.dma_src_addr.bank = value; },
+            0x1 => { channel.b_bus_addr = Address { bank: 0, offset: value as u16 }; },
+            0x2 => { set_byte_n!(channel.a_bus_addr.offset, value as u16, 0); },
+            0x3 => { set_byte_n!(channel.a_bus_addr.offset, value as u16, 1); },
+            0x4 => { channel.a_bus_addr.bank = value; },
             0x5 => { set_byte_n!(channel.hdma_indirect_table_addr.offset, value as u16, 0); },
             0x6 => { set_byte_n!(channel.hdma_indirect_table_addr.offset, value as u16, 1); },
             0x7 => { channel.hdma_indirect_table_addr.bank = value; },

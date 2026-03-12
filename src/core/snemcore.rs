@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
 use crate::core::cartridge::Cartridge;
 use crate::core::controller::{ControllerPlayer, JoypadButton, JoypadCmd, SnemController};
-use crate::core::scpu::dma::DmaRegs;
+use crate::core::scpu::dma::{self, DmaRegs};
 use crate::core::scpu::ioregs::CpuIoRegs;
 use crate::core::scpu::mult::Mult5A22;
 use crate::core::scpu::{self, Cpu65c816, CpuInterrupt};
@@ -30,6 +30,10 @@ macro_rules! cpu_bus {
             
             mult: &mut $core.mult,
             dma_regs: &mut $core.dma_regs,
+            dma_en: &mut $core.dma_en,
+            hdma_en: &mut $core.hdma_en,
+            dma_active_ch: &mut $core.dma_active_ch,
+            hdma_active_ch: &mut $core.hdma_active_ch,
             
             joy1_in: $core.joy1_latch,
             joy2_in: $core.joy2_latch,
@@ -77,6 +81,10 @@ pub struct Snemulator {
     
     mult: Mult5A22,
     dma_regs: [DmaRegs; 8],
+    dma_en: bool,
+    hdma_en: bool,
+    dma_active_ch: usize,
+    hdma_active_ch: usize,
     
     joy1_latch: u16,
     joy2_latch: u16,
@@ -109,6 +117,10 @@ impl Snemulator {
             apu_ports: ApuIoPorts::default(),
             mult: Mult5A22::default(),
             dma_regs: [DmaRegs::default(); 8],
+            dma_en: false,
+            hdma_en: false,
+            dma_active_ch: 8,
+            hdma_active_ch: 8,
             joy1_latch: 0,
             joy2_latch: 0,
             joy1_data1_auto: 0,
@@ -153,21 +165,6 @@ impl Snemulator {
         
         self.ssmp.start_frame();
         
-        // if self.ppu.frame == 120 {
-        //     for group in self.cgram.chunks(4) {
-        //         debug!("{:?} {:?} {:?} {:?}", group[0], group[1], group[2], group[3]);
-        //     }
-        // }
-        
-        // trace!("Frame {}", self.ppu.frame);
-        
-        // if self.ppu.frame > 100 {
-        //     for _ in 0..100 {
-        //         self.cycle(frame_buffer, audio_buffer);
-        //     }
-        //     return;
-        // }
-        
         while !self.frame_ready {
             self.cycle(frame_buffer, audio_buffer);
         }
@@ -180,21 +177,7 @@ impl Snemulator {
         self.ppu.clocks -= clocks;
         
         if self.cpu.clocks == 0 {
-            self.joypad_cmd = None;
-            
-            let mut bus = cpu_bus!(self);
-            
-            self.cpu.cycle(&mut bus);
-            
-            // if self.ppu.frame > 100 {
-            //     trace!("{}", scpu::dissasembler::disassemble(&self.cpu, &mut bus));
-            // }
-            
-            match self.joypad_cmd {
-                Some(JoypadCmd::ClockJoy1) => { self.joy1_latch >>= 1; },
-                Some(JoypadCmd::ClockJoy2) => { self.joy2_latch >>= 1; },
-                _ => {},
-            }
+            self.cycle_cpu();
         }
         
         if self.ppu.clocks == 0 {
@@ -212,5 +195,83 @@ impl Snemulator {
         }
         
         self.ssmp.clock(clocks, audio_buffer, &mut self.apu_ports);
+    }
+    
+    fn cycle_cpu(&mut self) {
+        if self.dma_en {
+            self.cpu.stopped = true;
+            
+            self.do_dma();
+        }
+        
+        self.joypad_cmd = None;
+        
+        let mut bus = cpu_bus!(self);
+        
+        self.cpu.cycle(&mut bus);
+
+        match self.joypad_cmd {
+            Some(JoypadCmd::ClockJoy1) => { self.joy1_latch >>= 1; },
+            Some(JoypadCmd::ClockJoy2) => { self.joy2_latch >>= 1; },
+            _ => {},
+        }
+    }
+    
+    fn do_dma(&mut self) {
+        let dma_ch_regs = &mut self.dma_regs[self.dma_active_ch];
+        
+        // HDMA indirect table register is same as DMA byte count register
+        let byte_count = dma_ch_regs.hdma_indirect_table_addr.offset;
+
+        if byte_count == 0 {
+            dma_ch_regs.dma_en = false;
+            
+            self.dma_active_ch += 1;
+            
+            'seek_active_channel: while self.dma_active_ch < 8 {
+                let dma_ch_regs = &mut self.dma_regs[self.dma_active_ch];
+                
+                let byte_count = dma_ch_regs.hdma_indirect_table_addr.offset;
+                
+                if dma_ch_regs.dma_en {
+                    if byte_count == 0 {
+                        dma_ch_regs.dma_en = false;
+                    } else {
+                        break 'seek_active_channel;
+                    }
+                }
+                
+                self.dma_active_ch += 1;
+            }
+        }
+        
+        // No DMA channels are enabled, disable DMA
+        if self.dma_active_ch == 8 {
+            self.dma_en = false;
+            self.cpu.stopped = false;
+            return;
+        }
+        
+        let dma_ch_regs = &mut self.dma_regs[self.dma_active_ch]; // To appease borrow checker
+        
+        let abus_addr = dma_ch_regs.a_bus_addr;
+        let bbus_addr = dma_ch_regs.get_b_with_offset();
+        
+        let (src_addr, dst_addr) = match dma_ch_regs.direction {
+            dma::Direction::AtoB => (abus_addr, bbus_addr),
+            dma::Direction::BtoA => (bbus_addr, abus_addr),
+        };
+
+        let mut bus = cpu_bus!(self);
+        
+        let data = bus.dma_read(src_addr);
+        
+        bus.dma_write(dst_addr, data);
+        
+        let dma_ch_regs = &mut self.dma_regs[self.dma_active_ch]; // To appease borrow checker
+        
+        dma_ch_regs.hdma_indirect_table_addr.offset -= 1; // byte_count -= 1
+        
+        dma_ch_regs.inc_a_bus_addr();
     }
 }

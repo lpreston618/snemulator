@@ -283,7 +283,7 @@ impl Ppu5C7x {
 
         let dot_col_data1 = match regs.bg_mode {
             BgMode::Mode5 => self.bg_mode5_dot(bus, screen_x + 0, screen_y, spr_col.clone()),
-            // BgMode::Mode6 => self.bg_mode6_dot(2*screen_x + 0, screen_y, spr_col),
+            // BgMode::Mode6 => self.bg_mode6_dot(bus, 2*screen_x + 0, screen_y, spr_col),
             _ => unreachable!() // Only called for modes 5 & 6
         };
         let dot_col_data2 = match regs.bg_mode {

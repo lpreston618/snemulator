@@ -1,4 +1,4 @@
-use log::trace;
+use log::{debug, trace};
 
 use crate::core::scpu::{bus::{Address, CpuBus}, dissasembler::disassemble};
 
@@ -45,6 +45,7 @@ pub struct Cpu65c816 {
     
     // Internal state
     pub halted: bool,
+    pub stopped: bool,
     pub waiting_for_interrupt: bool,
     pub irq_pending: bool,
     pub nmi_pending: bool,
@@ -55,7 +56,6 @@ pub struct Cpu65c816 {
     fast_rom_en: bool,
     branch_taken: bool,
     page_crossed: bool,
-    stopped: bool,
 }
 
 // SNES System Functionality
@@ -133,6 +133,8 @@ impl Cpu65c816 {
             self.clocks += Self::CYCLE_CLOCKS;
             return;
         }
+        
+        // debug!("${:02X}{:04X}: {}", self.pb, self.pc, dissasembler::disassemble(self, bus));
         
         self.execute(bus);
     }

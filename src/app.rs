@@ -17,7 +17,7 @@ mod main_window;
 mod menu;
 mod settings;
 
-pub const FRAME_BUF_SIZE: usize = (2*SCREEN_WIDTH * 2*SCREEN_HEIGHT * 4) as usize;
+pub const FRAME_BUF_SIZE: usize = (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize;
 pub const AUDIO_SAMPLE_HZ: usize = 44100;
 
 pub const WINDOW_WIDTH: u32 = 640;

@@ -642,10 +642,9 @@ impl Cpu65c816 {
     }
         
     fn direct_indirect_long(&mut self, bus: &mut CpuBus) -> Address {
-        let ll = self.read_prg(bus);
-        let hh = self.read_prg(bus);
+        let data = self.read_prg(bus);
 
-        let ptr_lo = self.dp + u16::from_le_bytes([ll, hh]);
+        let ptr_lo = self.dp + data as u16;
         let ptr_mi = ptr_lo + 1;
         let ptr_hi = ptr_mi + 1;
 
