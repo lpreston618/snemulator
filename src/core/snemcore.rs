@@ -6,7 +6,7 @@ use crate::core::scpu::ioregs::CpuIoRegs;
 use crate::core::scpu::mult::Mult5A22;
 use crate::core::scpu::{self, Cpu65c816, CpuInterrupt};
 use crate::core::scpu::bus::CpuBus;
-use crate::core::sppu::Ppu5C7x;
+use crate::core::sppu::{self, Ppu5C7x};
 use crate::core::sppu::bus::PpuBus;
 use crate::core::ssmp::Ssmp;
 use crate::core::ssmp::ioports::ApuIoPorts;
@@ -15,6 +15,7 @@ use crate::core::sysinfo::{
 };
 use crate::core::sppu::color::Color;
 use crate::core::sppu::regs::PpuRegs;
+use crate::get_bit_n;
 use log::{debug, trace};
 
 macro_rules! cpu_bus {
@@ -31,7 +32,7 @@ macro_rules! cpu_bus {
             mult: &mut $core.mult,
             dma_regs: &mut $core.dma_regs,
             dma_en: &mut $core.dma_en,
-            hdma_en: &mut $core.hdma_en,
+            hdma_pending: &mut $core.hdma_pending,
             dma_active_ch: &mut $core.dma_active_ch,
             hdma_active_ch: &mut $core.hdma_active_ch,
             
@@ -83,6 +84,7 @@ pub struct Snemulator {
     dma_regs: [DmaRegs; 8],
     dma_en: bool,
     hdma_en: bool,
+    hdma_pending: bool,
     dma_active_ch: usize,
     hdma_active_ch: usize,
     
@@ -119,6 +121,7 @@ impl Snemulator {
             dma_regs: [DmaRegs::default(); 8],
             dma_en: false,
             hdma_en: false,
+            hdma_pending: false,
             dma_active_ch: 8,
             hdma_active_ch: 8,
             joy1_latch: 0,
@@ -194,13 +197,22 @@ impl Snemulator {
             }
         }
         
+        if self.hdma_pending && self.ppu.scanline < sppu::VBLANK_START_SCANLINE && self.ppu.dot == sppu::HBLANK_START_DOT {
+            self.hdma_en = true;
+            self.dma_regs[self.hdma_active_ch].transfer_pattern_step = 0;
+        }
+        
         self.ssmp.clock(clocks, audio_buffer, &mut self.apu_ports);
     }
     
     fn cycle_cpu(&mut self) {
-        if self.dma_en {
+        if self.hdma_en {
             self.cpu.stopped = true;
-            
+            self.do_hdma();
+        }
+        
+        if !self.hdma_en && self.dma_en {
+            self.cpu.stopped = true;
             self.do_dma();
         }
         
@@ -215,6 +227,68 @@ impl Snemulator {
             Some(JoypadCmd::ClockJoy2) => { self.joy2_latch >>= 1; },
             _ => {},
         }
+    }
+    
+    fn do_hdma(&mut self) {
+        let hdma_ch_regs = &mut self.dma_regs[self.hdma_active_ch];
+        
+        // check if channel active or find next active channel
+        if hdma_ch_regs.scanlines_left == 0 {
+            'seek_next_entry: while self.hdma_active_ch < 8 {
+                let hdma_ch_regs = &mut self.dma_regs[self.hdma_active_ch];
+                
+                let mut hdma_table_addr = hdma_ch_regs.a_bus_addr;
+                hdma_table_addr.offset = hdma_ch_regs.hdma_table_offset;
+                
+                let mut bus = cpu_bus!(self);
+                
+                let scanline_counter = bus.read(hdma_table_addr);
+                
+                let hdma_ch_regs = &mut self.dma_regs[self.hdma_active_ch];
+                
+                if scanline_counter != 0 {
+                    // Found a valid enty in this HDMA table
+                    hdma_ch_regs.transfer_pattern_step = 0;
+                    hdma_ch_regs.scanlines_left = scanline_counter & 0x7F;
+                    hdma_ch_regs.hdma_reload_flag = get_bit_n!(scanline_counter, 7);
+                    break 'seek_next_entry;   
+                }
+                
+                // No more entries in this table, move to next channel
+                hdma_ch_regs.hdma_en = false;
+                self.hdma_active_ch += 1;
+            }
+        }
+        
+        // No active HDMA channel found
+        if self.hdma_active_ch == 8 {
+            self.hdma_en = false;
+            self.hdma_pending = false;
+            self.cpu.stopped = false;
+            return;
+        }
+        
+        let hdma_ch_regs = &mut self.dma_regs[self.hdma_active_ch];
+        
+        // do single byte transfer
+        
+        let a_bus_addr = hdma_ch_regs.hdma_get_a_bus_addr();
+        let b_bus_addr = hdma_ch_regs.get_b_with_offset();
+        
+        let (src_addr, dst_addr) = match hdma_ch_regs.direction {
+            dma::Direction::AtoB => (a_bus_addr, b_bus_addr),
+            dma::Direction::BtoA => (b_bus_addr, a_bus_addr),
+        };
+        
+        hdma_ch_regs.scanline_counter -= 1;
+        hdma_ch_regs.transfer_pattern_step += 1;
+        
+        let mut bus = cpu_bus!(self);
+        
+        let data = bus.read(src_addr);
+        
+        bus.write(dst_addr, data);
+        
     }
     
     fn do_dma(&mut self) {
@@ -264,9 +338,9 @@ impl Snemulator {
 
         let mut bus = cpu_bus!(self);
         
-        let data = bus.dma_read(src_addr);
+        let data = bus.read(src_addr);
         
-        bus.dma_write(dst_addr, data);
+        bus.write(dst_addr, data);
         
         let dma_ch_regs = &mut self.dma_regs[self.dma_active_ch]; // To appease borrow checker
         

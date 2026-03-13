@@ -11,10 +11,10 @@ pub mod bus;
 pub mod color;
 pub mod regs;
 
-const VBLANK_START_SCANLINE: usize = 225;
+pub const VBLANK_START_SCANLINE: usize = 225;
 const VBLANK_END_SCANLINE_NTSC: usize = 261;
 const VISIBLE_SCANLINE_START_DOT: usize = 22;
-const HBLANK_START_DOT: usize = 278;
+pub const HBLANK_START_DOT: usize = 278;
 const SCANLINE_END_DOT: usize = 340;
 
 macro_rules! win_active_signals {

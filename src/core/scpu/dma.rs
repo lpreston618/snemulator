@@ -49,10 +49,10 @@ pub enum TransferPattern {
 pub struct DmaRegs {
     // $420B
     pub dma_en: bool,
-    
+
     // $420C
     pub hdma_en: bool,
-    
+
     // $43n0
     pub params_raw: u8,
     pub direction: Direction,
@@ -60,31 +60,31 @@ pub struct DmaRegs {
     pub inc_mode: AddressIncMode,
     pub transfer_pattern: TransferPattern,
     pub transfer_pattern_step: u8,
-    
+
     // $43n1
     pub b_bus_addr: Address,
-    
+
     // $43n2..=$43n4
     pub a_bus_addr: Address,
-    
+
     // $43n5..=$43n7
     pub hdma_indirect_table_addr: Address,
-    
+
     // $43n8..=$43n9
     pub hdma_table_offset: u16,
-   
+
     // $43nA
     pub hdma_reload_flag: bool,
     pub scanline_counter: u8,
-    
+
     // $43nB and $43nF
     pub unused: u8,
-     
+
     // pub byte_count: u16,
     // pub hdma_indirect_table_bank: u8,
     // pub dma_src_addr: u32,
     // pub hdma_table_addr: u16,
-    // pub scanlines_left: u8,
+    pub scanlines_left: u8,
     // pub unused: u8,
     // pub hdma_repeat: bool,
     // pub bytes_written: usize, // needed to keep track of B bus increment patterns
@@ -98,45 +98,72 @@ impl DmaRegs {
     // bytes to two adjacent addresses over and over, so Pattern1 would be used.
     pub fn get_b_with_offset(&mut self) -> Address {
         let step = self.transfer_pattern_step;
-        
+
         self.transfer_pattern_step += 1;
 
         match self.transfer_pattern {
-            TransferPattern::Pattern0
-            | TransferPattern::Pattern2
-            | TransferPattern::Pattern6 => self.b_bus_addr,
-            
-            TransferPattern::Pattern1 
-            | TransferPattern::Pattern5 => {
+            TransferPattern::Pattern0 | TransferPattern::Pattern2 | TransferPattern::Pattern6 => {
+                self.b_bus_addr
+            }
+
+            TransferPattern::Pattern1 | TransferPattern::Pattern5 => {
                 let offset = self.b_bus_addr.to_u32() + (step & 1) as u32;
-                
-                Address { bank: 0, offset: (offset & 0xFF) as u16 }
-            },
-            
-            TransferPattern::Pattern3
-            | TransferPattern::Pattern7 => {
+
+                Address {
+                    bank: 0,
+                    offset: (offset & 0xFF) as u16,
+                }
+            }
+
+            TransferPattern::Pattern3 | TransferPattern::Pattern7 => {
                 if (step & 3) < 2 {
                     self.b_bus_addr
                 } else {
                     let offset = self.b_bus_addr.to_u32() + (step & 1) as u32;
-                    
-                    Address { bank: 0, offset: (offset & 0xFF) as u16 }
+
+                    Address {
+                        bank: 0,
+                        offset: (offset & 0xFF) as u16,
+                    }
                 }
-            },
+            }
 
             TransferPattern::Pattern4 => {
                 let offset = self.b_bus_addr.to_u32() + (step & 3) as u32;
-                
-                Address { bank: 0, offset: (offset & 0xFF) as u16 }
-            },
+
+                Address {
+                    bank: 0,
+                    offset: (offset & 0xFF) as u16,
+                }
+            }
         }
     }
 
     pub fn inc_a_bus_addr(&mut self) {
         match self.inc_mode {
-            AddressIncMode::Inc => { self.a_bus_addr.offset += 1; },
-            AddressIncMode::Dec => { self.a_bus_addr.offset -= 1; },
-            AddressIncMode::Fixed => {},
+            AddressIncMode::Inc => {
+                self.a_bus_addr.offset += 1;
+            }
+            AddressIncMode::Dec => {
+                self.a_bus_addr.offset -= 1;
+            }
+            AddressIncMode::Fixed => {}
         };
+    }
+
+    // Fetch and auto-increment the A-bus address, taking into account direct/indirect mode
+    pub fn hdma_get_a_bus_addr(&mut self) -> Address {
+        if self.indirect_hdma {
+            let a = self.hdma_indirect_table_addr;
+            self.hdma_indirect_table_addr.offset += 1;
+            a
+        } else {
+            let a = Address {
+                bank: self.a_bus_addr.bank,
+                offset: self.hdma_table_offset,
+            };
+            self.hdma_table_offset += 1;
+            a
+        }
     }
 }

@@ -46,7 +46,7 @@ pub struct CpuBus<'a> {
     pub mult: &'a mut Mult5A22,
     pub dma_regs: &'a mut [DmaRegs; 8],
     pub dma_en: &'a mut bool,
-    pub hdma_en: &'a mut bool,
+    pub hdma_pending: &'a mut bool,
     pub dma_active_ch: &'a mut usize,
     pub hdma_active_ch: &'a mut usize,
     
@@ -1141,7 +1141,7 @@ impl<'a> CpuBus<'a> {
             0x420B => {
                 *self.dma_en = value != 0;
                 *self.dma_active_ch = value.trailing_zeros() as usize;
-                for i in 0..8 {                    
+                for i in 0..8 {
                     self.dma_regs[i].dma_en = get_bit_n!(value, i);
                     
                     if self.dma_regs[i].dma_en {
@@ -1151,10 +1151,14 @@ impl<'a> CpuBus<'a> {
             }
             
             0x420C => {
-                *self.hdma_en = value != 0;
+                *self.hdma_pending = value != 0;
                 *self.hdma_active_ch = value.trailing_zeros() as usize;
                 for i in 0..8 {
                     self.dma_regs[i].hdma_en = get_bit_n!(value, i);
+                    
+                    if self.dma_regs[i].hdma_en {
+                        self.dma_regs[i].hdma_table_offset = self.dma_regs[i].a_bus_addr.offset;
+                    }
                 }
             }
             
