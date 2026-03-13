@@ -184,22 +184,7 @@ impl Snemulator {
         }
         
         if self.ppu.clocks == 0 {
-            self.cpu_interrupt = None;
-            
-            let mut bus = ppu_bus!(self, frame_buffer);
-            
-            self.ppu.cycle(&mut bus);
-            
-            match self.cpu_interrupt {
-                Some(CpuInterrupt::IRQ) => { self.cpu.irq_pending = true; }
-                Some(CpuInterrupt::NMI) => { self.cpu.nmi_pending = true; }
-                _ => {}
-            }
-        }
-        
-        if self.hdma_pending && self.ppu.scanline < sppu::VBLANK_START_SCANLINE && self.ppu.dot == sppu::HBLANK_START_DOT {
-            self.hdma_en = true;
-            self.dma_regs[self.hdma_active_ch].transfer_pattern_step = 0;
+            self.cycle_ppu(frame_buffer);
         }
         
         self.ssmp.clock(clocks, audio_buffer, &mut self.apu_ports);
@@ -229,10 +214,29 @@ impl Snemulator {
         }
     }
     
+    fn cycle_ppu(&mut self, frame_buffer: &mut [u8]) {
+        self.cpu_interrupt = None;
+        
+        let mut bus = ppu_bus!(self, frame_buffer);
+        
+        self.ppu.cycle(&mut bus);
+        
+        match self.cpu_interrupt {
+            Some(CpuInterrupt::IRQ) => { self.cpu.irq_pending = true; }
+            Some(CpuInterrupt::NMI) => { self.cpu.nmi_pending = true; }
+            _ => {}
+        }
+    
+        if self.hdma_pending && self.ppu.scanline < sppu::VBLANK_START_SCANLINE && self.ppu.dot == sppu::HBLANK_START_DOT {
+            self.hdma_en = true;
+            self.dma_regs[self.hdma_active_ch].transfer_pattern_step = 0;
+        }
+    }
+    
     fn do_hdma(&mut self) {
         let hdma_ch_regs = &mut self.dma_regs[self.hdma_active_ch];
         
-        // check if channel active or find next active channel
+        // Table entry finished
         if hdma_ch_regs.scanlines_left == 0 {
             'seek_next_entry: while self.hdma_active_ch < 8 {
                 let hdma_ch_regs = &mut self.dma_regs[self.hdma_active_ch];
@@ -246,11 +250,31 @@ impl Snemulator {
                 
                 let hdma_ch_regs = &mut self.dma_regs[self.hdma_active_ch];
                 
+                // Found a valid enty in this HDMA table
                 if scanline_counter != 0 {
-                    // Found a valid enty in this HDMA table
                     hdma_ch_regs.transfer_pattern_step = 0;
                     hdma_ch_regs.scanlines_left = scanline_counter & 0x7F;
                     hdma_ch_regs.hdma_reload_flag = get_bit_n!(scanline_counter, 7);
+                    
+                    // Load indirect table address
+                    if hdma_ch_regs.indirect_hdma {
+                        let mut bus = cpu_bus!(self);
+                        
+                        let hdma_indirect_table_addr = u16::from_le_bytes([
+                            bus.read(hdma_table_addr),
+                            bus.read(hdma_table_addr),
+                        ]);
+                        
+                        let hdma_ch_regs = &mut self.dma_regs[self.hdma_active_ch];
+                        
+                        hdma_ch_regs.hdma_table_offset += 2;
+                        
+                        hdma_ch_regs.hdma_indirect_table_addr = scpu::Address {
+                            bank: hdma_ch_regs.a_bus_addr.bank,
+                            offset: hdma_indirect_table_addr,
+                        }
+                    }
+                    
                     break 'seek_next_entry;   
                 }
                 
@@ -270,9 +294,21 @@ impl Snemulator {
         
         let hdma_ch_regs = &mut self.dma_regs[self.hdma_active_ch];
         
-        // do single byte transfer
-        
-        let a_bus_addr = hdma_ch_regs.hdma_get_a_bus_addr();
+        let a_bus_addr = if hdma_ch_regs.indirect_hdma {
+            let addr = hdma_ch_regs.hdma_indirect_table_addr;
+            
+            hdma_ch_regs.hdma_indirect_table_addr.offset += 1;
+
+            addr
+        } else {
+            let addr = scpu::Address {
+                bank: hdma_ch_regs.a_bus_addr.bank,
+                offset: hdma_ch_regs.hdma_table_offset
+            };
+            
+            hdma_ch_regs.hdma_table_offset += 1;
+            addr
+        };
         let b_bus_addr = hdma_ch_regs.get_b_with_offset();
         
         let (src_addr, dst_addr) = match hdma_ch_regs.direction {
@@ -288,7 +324,6 @@ impl Snemulator {
         let data = bus.read(src_addr);
         
         bus.write(dst_addr, data);
-        
     }
     
     fn do_dma(&mut self) {

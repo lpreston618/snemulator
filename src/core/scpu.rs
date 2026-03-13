@@ -1,6 +1,6 @@
 use log::{debug, trace};
 
-use crate::core::scpu::{bus::{Address, CpuBus}, disassembler::disassemble};
+use crate::core::scpu::{bus::{CpuBus}, disassembler::disassemble};
 
 pub mod bus;
 pub mod ioregs;
@@ -8,6 +8,8 @@ pub mod dma;
 pub mod mult;
 pub mod disassembler;
 mod instructions;
+
+pub use bus::Address;
 
 pub enum Flag {
     FlagC = 1 << 0,   // Carry
