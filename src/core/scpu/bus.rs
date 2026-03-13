@@ -160,61 +160,6 @@ impl<'a> CpuBus<'a> {
             _ => self.cart.write(addr, value),
         }
     }
-    
-    /// Same as [`read`], but for DMA transfers. This version cannot access MMIO regs.
-    pub fn dma_read(&mut self, addr: Address) -> u8 {
-        match addr.bank {
-            // Banks $00-$3F: LoROM mapping
-            0x00..=0x3F | 0x80..=0xBF => match addr.offset {
-                // WRAM mirror (first 8KB)
-                0x0000..=0x1FFF => self.wram[addr.offset as usize],
-
-                // Cartridge (LoROM: $8000-$FFFF)
-                0x8000..=0xFFFF => self.cart.read(addr),
-
-                _ => 0, // Open bus
-            },
-
-            // Banks $40-$6F: LoROM cartridge
-            0x40..=0x6F => self.cart.read(addr),
-
-            // Banks $70-$7D: SRAM or ROM
-            0x70..=0x7D => self.cart.read(addr),
-
-            // Banks $7E-$7F: WRAM (full 128KB)
-            0x7E..=0x7F => {
-                let wram_addr = ((addr.bank as usize & 1) << 16) | (addr.offset as usize);
-                self.wram[wram_addr]
-            }
-
-            // Banks $C0-$FF: HiROM cartridge / mirror
-            0xC0..=0xFF => self.cart.read(addr),
-        }
-    }
-    
-    /// Same as [`write`], but for DMA transfers. This version cannot access MMIO regs.
-    pub fn dma_write(&mut self, addr: Address, value: u8) {
-        match addr.bank {
-            // WRAM mirror
-            0x00..=0x3F | 0x80..=0xBF => match addr.offset {
-                0x0000..=0x1FFF => self.wram[addr.offset as usize] = value,
-
-                // Cartridge (SRAM, mapper registers)
-                0x8000..=0xFFFF => self.cart.write(addr, value),
-
-                _ => {}
-            },
-
-            // WRAM direct access
-            0x7E..=0x7F => {
-                let wram_addr = ((addr.bank as usize & 1) << 16) | (addr.offset as usize);
-                self.wram[wram_addr] = value;
-            }
-
-            // Cartridge
-            _ => self.cart.write(addr, value),
-        }
-    }
 
     fn read_wram_port(&mut self, offset: u16) -> u8 {
         // match offset {
@@ -497,13 +442,13 @@ impl<'a> CpuBus<'a> {
                     _ => {}
                 };
 
-                // println!("Set Bg Mode to {:?} and bg3 priority to {}, bg tile sizes to bg1: {:?}, bg2: {:?}, bg3: {:?}, bg4: {:?}",
-                //     ppu_regs.bg_mode.get(),
-                //     ppu_regs.bg3_mode1_priority.get(),
-                //     ppu_regs.bg1_char_size.get(),
-                //     ppu_regs.bg2_char_size.get(),
-                //     ppu_regs.bg3_char_size.get(),
-                //     ppu_regs.bg4_char_size.get(),
+                // debug!("Set Bg Mode to {:?} and bg3 priority to {}, bg tile sizes to bg1: {:?}, bg2: {:?}, bg3: {:?}, bg4: {:?}",
+                //     ppu_regs.bg_mode,
+                //     ppu_regs.bg3_mode1_priority,
+                //     ppu_regs.bg1_char_size,
+                //     ppu_regs.bg2_char_size,
+                //     ppu_regs.bg3_char_size,
+                //     ppu_regs.bg4_char_size,
                 // );
             }
 
@@ -528,7 +473,7 @@ impl<'a> CpuBus<'a> {
                     TilemapCount::One
                 };
 
-                // println!("Set Bg1 vram base addr to ${:04X}, count_x: {:?}, count_y: {:?}",
+                // debug!("Set Bg1 vram base addr to ${:04X}, count_x: {:?}, count_y: {:?}",
                 //     (ppu_regs.bg1_vram_addr as u16) << 10,
                 //     ppu_regs.bg1_tilemap_count_x,
                 //     ppu_regs.bg1_tilemap_count_y
@@ -548,10 +493,10 @@ impl<'a> CpuBus<'a> {
                     TilemapCount::One
                 };
 
-                // println!("Set Bg2 vram base addr to ${:04X}, count_x: {:?}, count_y: {:?}",
-                //     (ppu_regs.bg2_vram_addr.get() as u16) << 10,
-                //     ppu_regs.bg2_tilemap_count_x.get(),
-                //     ppu_regs.bg2_tilemap_count_y.get()
+                // debug!("Set Bg2 vram base addr to ${:04X}, count_x: {:?}, count_y: {:?}",
+                //     (ppu_regs.bg2_vram_addr as u16) << 10,
+                //     ppu_regs.bg2_tilemap_count_x,
+                //     ppu_regs.bg2_tilemap_count_y
                 // );
             }
 
@@ -568,11 +513,11 @@ impl<'a> CpuBus<'a> {
                     TilemapCount::One
                 };
 
-                // println!("Set Bg3 vram base addr to ${:04X}, count_x: {:?}, count_y: {:?}",
-                //     (ppu_regs.bg3_vram_addr.get() as u16) << 10,
-                //     ppu_regs.bg3_tilemap_count_x.get(),
-                //     ppu_regs.bg3_tilemap_count_y.get()
-                // );
+                debug!("Set Bg3 vram base addr to ${:04X}, count_x: {:?}, count_y: {:?}",
+                    (ppu_regs.bg3_vram_addr as u16) << 10,
+                    ppu_regs.bg3_tilemap_count_x,
+                    ppu_regs.bg3_tilemap_count_y
+                );
             }
 
             0x210A => {
@@ -588,10 +533,10 @@ impl<'a> CpuBus<'a> {
                     TilemapCount::One
                 };
 
-                // println!("Set Bg4 vram base addr to ${:04X}, count_x: {:?}, count_y: {:?}",
-                //     (ppu_regs.bg4_vram_addr.get() as u16) << 10,
-                //     ppu_regs.bg4_tilemap_count_x.get(),
-                //     ppu_regs.bg4_tilemap_count_y.get()
+                // debug!("Set Bg4 vram base addr to ${:04X}, count_x: {:?}, count_y: {:?}",
+                //     (ppu_regs.bg4_vram_addr as u16) << 10,
+                //     ppu_regs.bg4_tilemap_count_x,
+                //     ppu_regs.bg4_tilemap_count_y
                 // );
             }
 
@@ -916,12 +861,12 @@ impl<'a> CpuBus<'a> {
                 ppu_regs.bg2_main_en = get_bit_n!(value, 1);
                 ppu_regs.bg1_main_en = get_bit_n!(value, 0);
 
-                // println!("Set main en flags to Bg1: {}, Bg2: {}, Bg3: {}, Bg4: {}, Obj: {}",
-                //     ppu_regs.bg1_main_enabled.get(),
-                //     ppu_regs.bg2_main_enabled.get(),
-                //     ppu_regs.bg3_main_enabled.get(),
-                //     ppu_regs.bg4_main_enabled.get(),
-                //     ppu_regs.obj_main_enabled.get(),
+                // debug!("Set main en flags to Bg1: {}, Bg2: {}, Bg3: {}, Bg4: {}, Obj: {}",
+                //     ppu_regs.bg1_main_en,
+                //     ppu_regs.bg2_main_en,
+                //     ppu_regs.bg3_main_en,
+                //     ppu_regs.bg4_main_en,
+                //     ppu_regs.obj_main_en,
                 // );
             }
 
@@ -931,6 +876,14 @@ impl<'a> CpuBus<'a> {
                 ppu_regs.bg3_sub_en = get_bit_n!(value, 2);
                 ppu_regs.bg2_sub_en = get_bit_n!(value, 1);
                 ppu_regs.bg1_sub_en = get_bit_n!(value, 0);
+                
+                // debug!("Set sub en flags to Bg1: {}, Bg2: {}, Bg3: {}, Bg4: {}, Obj: {}",
+                //     ppu_regs.bg1_sub_en,
+                //     ppu_regs.bg2_sub_en,
+                //     ppu_regs.bg3_sub_en,
+                //     ppu_regs.bg4_sub_en,
+                //     ppu_regs.obj_sub_en,
+                // );
             }
 
             0x212E => {
@@ -1144,7 +1097,7 @@ impl<'a> CpuBus<'a> {
                 for i in 0..8 {
                     self.dma_regs[i].dma_en = get_bit_n!(value, i);
                     
-                    if self.dma_regs[i].dma_en {
+                    if self.dma_regs[i].dma_en { 
                         self.dma_regs[i].transfer_pattern_step = 0;
                     }
                 }
@@ -1179,7 +1132,7 @@ impl<'a> CpuBus<'a> {
         
         match offset & 0xF {
             0x0 => channel.params_raw,
-            0x1 => channel.b_bus_addr.offset as u8,
+            0x1 => channel.b_bus_addr,
             0x2 => get_byte_n!(channel.a_bus_addr.offset, 0),
             0x3 => get_byte_n!(channel.a_bus_addr.offset, 1),
             0x4 => channel.a_bus_addr.bank,
@@ -1202,9 +1155,12 @@ impl<'a> CpuBus<'a> {
     fn write_dma_regs(&mut self, offset: u16, value: u8) {
         let channel_idx = ((offset >> 4) & 0xF) as usize;
         
+        // debug!("Write to DMA regs: channel_idx = {}, offset = ${:04X}, value = ${:02X}", channel_idx, offset, value);
+        
         if channel_idx >= 7 {
             return; // TODO: Maybe mirror channel_idx & 7?
         }
+        
         
         let channel = &mut self.dma_regs[channel_idx];
         
@@ -1213,8 +1169,8 @@ impl<'a> CpuBus<'a> {
                 channel.params_raw = value;
                 
                 channel.direction = match get_bit_n!(value, 7) {
-                    true => Direction::AtoB,
-                    false => Direction::BtoA,
+                    false => Direction::AtoB,
+                    true => Direction::BtoA,
                 };
                 channel.indirect_hdma = get_bit_n!(value, 6);
                 channel.inc_mode = match (value >> 3) & 3 {
@@ -1237,7 +1193,7 @@ impl<'a> CpuBus<'a> {
                 };
             },
             
-            0x1 => { channel.b_bus_addr = Address { bank: 0, offset: value as u16 }; },
+            0x1 => { channel.b_bus_addr = value; },
             0x2 => { set_byte_n!(channel.a_bus_addr.offset, value as u16, 0); },
             0x3 => { set_byte_n!(channel.a_bus_addr.offset, value as u16, 1); },
             0x4 => { channel.a_bus_addr.bank = value; },

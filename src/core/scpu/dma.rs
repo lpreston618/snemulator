@@ -62,7 +62,7 @@ pub struct DmaRegs {
     pub transfer_pattern_step: u8,
 
     // $43n1
-    pub b_bus_addr: Address,
+    pub b_bus_addr: u8,
 
     // $43n2..=$43n4
     pub a_bus_addr: Address,
@@ -96,46 +96,34 @@ impl DmaRegs {
     // each of which are written to/read from differently, these modes are designed
     // to interface with those registers. Ex: writing to VRAM involves writing two
     // bytes to two adjacent addresses over and over, so Pattern1 would be used.
-    pub fn get_b_with_offset(&mut self) -> Address {
+    pub fn get_b_with_offset(&self) -> Address {
         let step = self.transfer_pattern_step;
 
-        self.transfer_pattern_step += 1;
-
-        match self.transfer_pattern {
+        let low_byte = match self.transfer_pattern {
             TransferPattern::Pattern0 | TransferPattern::Pattern2 | TransferPattern::Pattern6 => {
                 self.b_bus_addr
             }
 
             TransferPattern::Pattern1 | TransferPattern::Pattern5 => {
-                let offset = self.b_bus_addr.to_u32() + (step & 1) as u32;
-
-                Address {
-                    bank: 0,
-                    offset: (offset & 0xFF) as u16,
-                }
+                self.b_bus_addr + (step & 1)
             }
 
             TransferPattern::Pattern3 | TransferPattern::Pattern7 => {
                 if (step & 3) < 2 {
                     self.b_bus_addr
                 } else {
-                    let offset = self.b_bus_addr.to_u32() + (step & 1) as u32;
-
-                    Address {
-                        bank: 0,
-                        offset: (offset & 0xFF) as u16,
-                    }
+                    self.b_bus_addr + (step & 1)
                 }
             }
 
             TransferPattern::Pattern4 => {
-                let offset = self.b_bus_addr.to_u32() + (step & 3) as u32;
-
-                Address {
-                    bank: 0,
-                    offset: (offset & 0xFF) as u16,
-                }
+                self.b_bus_addr + (step & 3)
             }
+        };
+        
+        Address {
+            bank: 0,
+            offset: 0x2100 | low_byte as u16,
         }
     }
 

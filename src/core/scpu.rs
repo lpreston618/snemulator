@@ -1,4 +1,4 @@
-use log::{debug, trace};
+use log::{debug, info, trace};
 
 use crate::core::scpu::{bus::{CpuBus}, disassembler::disassemble};
 
@@ -138,6 +138,10 @@ impl Cpu65c816 {
         if self.stopped || self.halted || self.waiting_for_interrupt {
             self.clocks += Self::CYCLE_CLOCKS;
             return;
+        }
+        
+        if self.pb == 0x00 && self.pc == 0x9394 {
+            info!("pc: ${:02X}{:04X}, sp: 0x{:04X}, p: {:02X}, x: 0x{:04X}, y: 0x{:04X}", self.pb, self.pc, self.sp, self.p, self.x, self.y);
         }
         
         self.execute(bus);
