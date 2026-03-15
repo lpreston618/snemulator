@@ -7,7 +7,7 @@ const ABOUT_WINDOW_WIDTH: u32 = 400;
 const ABOUT_WINDOW_HEIGHT: u32 = 400;
 
 pub struct AboutWindow {
-    pub egui_window: UiWindow,
+    egui_window: UiWindow,
 }
 
 impl AboutWindow {
@@ -22,8 +22,8 @@ impl AboutWindow {
         })
     }
         
-    pub fn render(&mut self) {
-        self.egui_window.render(|ctx| {
+    pub fn update_and_render(&mut self) {
+        let full_output = self.egui_window.update_ui(|ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     ui.vertical_centered(|ui| {
                         // ui.add_space(20.0);
@@ -42,10 +42,13 @@ impl AboutWindow {
                 });
             },
         );
+        
+        self.egui_window.clear();
+        self.egui_window.render(full_output);
     }
     
     pub fn id(&self) -> u32 {
-        self.egui_window.window.id()
+        self.egui_window.window().id()
     }
     
     pub fn handle_event(&mut self, event: &sdl3::event::Event) {

@@ -5,7 +5,7 @@ use crate::app::utils::sdl_to_egui_mouse_button;
 
 // Generic egui window wrapper
 pub struct UiWindow {
-    pub window: sdl3::video::Window,
+    window: sdl3::video::Window,
     raw_input: Option<egui::RawInput>,
     egui_ctx: egui::Context,
     egui_painter: egui_glow::Painter,
@@ -70,16 +70,21 @@ impl UiWindow {
             ui_scale,
         })
     }
-
-    pub fn render<F>(&mut self, ui_func: F)
+    
+    /// Updates the UI with the given function and returns the full output to be used during rendering.
+    pub fn update_ui<F>(&mut self, ui_func: F) -> egui::FullOutput
     where
         F: FnMut(&egui::Context),
     {   
         self.window.gl_make_current(&self.gl_context).ok();
         
         let raw_input = self.raw_input.take().unwrap_or(self.new_raw_input());
-        let full_output = self.egui_ctx.run(raw_input, ui_func);
-
+        
+        self.egui_ctx.run(raw_input, ui_func)
+    }
+    
+    /// Clears the screen with the default background color. Should be called before rendering.
+    pub fn clear(&mut self) {
         let (width, height) = self.window.size();
 
         unsafe {
@@ -87,7 +92,12 @@ impl UiWindow {
             self.gl.clear_color(0.2, 0.2, 0.2, 1.0);
             self.gl.clear(glow::COLOR_BUFFER_BIT);
         }
-
+    }
+    
+    /// Renders the given `egui::FullOutput` to the window.
+    pub fn render(&mut self, full_output: egui::FullOutput) {
+        let (width, height) = self.window.size();
+        
         let clipped = self.egui_ctx.tessellate(full_output.shapes, full_output.pixels_per_point);
         self.egui_painter.paint_and_update_textures(
             [width, height],
@@ -99,7 +109,8 @@ impl UiWindow {
         self.window.gl_swap_window();
     }
     
-    pub fn handle_sdl_mouse_event(&mut self, event: &sdl3::event::Event) {
+    /// Adds any sdl mouse events to the egui raw input. Returns a bool if the event was handled.
+    pub fn handle_sdl_mouse_event(&mut self, event: &sdl3::event::Event) -> bool {
         let mut new_event = None;
         
         match event {
@@ -142,7 +153,11 @@ impl UiWindow {
             
             let raw_input = self.raw_input.as_mut().unwrap();
             raw_input.events.push(event);
+            
+            return true;
         }
+        
+        false
     }
     
     fn new_raw_input(&mut self) -> egui::RawInput {
@@ -157,6 +172,22 @@ impl UiWindow {
             )),
             ..Default::default()
         }
+    }
+    
+    pub fn window(&self) -> &sdl3::video::Window {
+        &self.window
+    }
+    
+    pub fn window_mut(&mut self) -> &mut sdl3::video::Window {
+        &mut self.window
+    }
+    
+    pub fn gl(&self) -> &glow::Context {
+        &self.gl
+    }
+    
+    pub fn ui_scale(&self) -> f32 {
+        self.ui_scale
     }
 }
 

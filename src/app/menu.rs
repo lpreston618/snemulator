@@ -6,35 +6,13 @@ fn button_with_shortcut(ui: &mut egui::Ui, label: &str, shortcut: &str) -> egui:
     ui.add(egui::Button::new(label).right_text(egui::RichText::new(shortcut).weak()))
 }
 
-pub struct MainMenuBar {
-    pub egui_context: egui::Context,
-    pub egui_painter: egui_glow::Painter,
-    pub ui_scale: f32,
-}
+pub struct MainMenuBar;
 
 impl MainMenuBar {
-    pub fn new(ui_scale: f32, gl: std::sync::Arc<glow::Context>) -> Result<Self> {
-        let egui_context = egui::Context::default();
-        
-        egui_context.set_pixels_per_point(ui_scale);
-        
-        let egui_painter = egui_glow::Painter::new(
-            gl.clone(),
-            "",
-            None,
-            false,
-        ).map_err(|e| anyhow::anyhow!("Failed to create egui painter: {}", e))?;
-        
-        Ok(Self {
-            egui_context,
-            egui_painter,
-            ui_scale,
-        })
-    }
+    pub fn new() -> Self { Self {} }
 
-    pub fn render(&self, app_state: &AppState) -> AppAction {
+    pub fn render(&self, ctx: &egui::Context, app_state: &AppState) -> AppAction {
         let mut app_action = AppAction::Continue;
-        let ctx = &self.egui_context;
     
         // Top menu bar
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {

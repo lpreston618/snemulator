@@ -11,9 +11,10 @@ use crate::core::sysinfo::{SCREEN_WIDTH, SCREEN_HEIGHT};
 use crate::core::snemcore::Snemulator;
 use crate::core::controller::{ControllerPlayer, JoypadButton};
 
-mod ui_window;
 mod about_window;
+mod debug_window;
 mod main_window;
+mod ui_window;
 mod menu;
 mod settings;
 mod utils;
@@ -83,10 +84,12 @@ impl SnemulatorApp {
         
         let sdl_context = sdl3::init()?;
         let video_subsystem = sdl_context.video()?;
-        let settings = SnemulatorApp::try_find_settings().unwrap_or_default();
+        let mut settings = SnemulatorApp::try_find_settings().unwrap_or_default();
         let frame_buffer = Box::new([0u8; FRAME_BUF_SIZE]);
         
         let main_window = MainWindow::new(&video_subsystem, &settings)?;
+        
+        // settings.always_show_menu = true;
         
         Ok(Self {
             sdl_context,
@@ -113,8 +116,6 @@ impl SnemulatorApp {
         'running: loop {
             let frame_start = Instant::now();
             
-            let (window_width, window_height) = self.main_window.window.size();
-            
             let app_action = self.handle_input();
             
             match app_action {
@@ -134,7 +135,7 @@ impl SnemulatorApp {
                 self.render_load_rom_screen();
             }
             
-            let app_action = self.main_window.render(&self.state, &self.settings, &self.frame_buffer[..])?;
+            let app_action = self.main_window.update_and_render(&self.state, &self.settings, &self.frame_buffer[..]);
 
             match app_action {
                 AppAction::Continue => {}
@@ -143,13 +144,17 @@ impl SnemulatorApp {
             }
             
             if let Some(about_window) = &mut self.about_window {
-                about_window.render();
+                about_window.update_and_render();
+            }
+            
+            if let Some(settings_window) = &mut self.settings_window {
+                settings_window.update_and_render(&mut self.settings);
             }
             
             self.state.show_menu = self.settings.always_show_menu || (self.state.frame_count - self.state.last_mouse_input_frame < FRAMES_BEFORE_HIDE_MENU);
             self.state.show_mouse = match self.sdl_context.mouse().focused_window_id() {
                 Some(id) => {
-                    id != self.main_window.window.id() || (self.state.frame_count - self.state.last_mouse_input_frame < FRAMES_BEFORE_HIDE_MOUSE)
+                    id != self.main_window.id() || (self.state.frame_count - self.state.last_mouse_input_frame < FRAMES_BEFORE_HIDE_MOUSE)
                 }
                 _ => true,
             };
@@ -201,13 +206,13 @@ impl SnemulatorApp {
                     }
                 }
                 
-                if event_win_id != self.main_window.window.id() {
+                if event_win_id != self.main_window.id() {
                     continue;
                 }
             }
 
             // Event is for main window
-            self.main_window.handle_sdl_event(&event, &mut self.state);
+            self.main_window.handle_event(&event, &mut self.state);
 
             match event {
                 Event::Quit { .. } => {
@@ -312,7 +317,28 @@ impl SnemulatorApp {
     }
     
     fn render_load_rom_screen(&mut self) {
+        self.frame_buffer.chunks_mut(4).for_each(|pixel| {
+            pixel[0] = 0;
+            pixel[1] = 0;
+            pixel[2] = 0;
+            pixel[3] = 255;
+        });
         
+        self.frame_buffer.chunks_mut(4).take(SCREEN_WIDTH as usize).for_each(|pixel| {
+            pixel[0] = 255;
+        });
+        
+        self.frame_buffer.chunks_mut(4).skip((SCREEN_HEIGHT - 1) as usize * SCREEN_WIDTH as usize).for_each(|pixel| {
+            pixel[0] = 255;
+        });
+        
+        self.frame_buffer.chunks_mut(4 * SCREEN_WIDTH as usize).for_each(|row| {
+            let lpixel = &mut row[0..4];
+            lpixel[0] = 255;
+            
+            let rpixel = &mut row[4 * (SCREEN_WIDTH as usize - 1)..];
+            rpixel[0] = 255;
+        });
     }
     
     fn load_rom(&mut self) {
@@ -369,20 +395,13 @@ impl SnemulatorApp {
     }
     
     fn toggle_fullscreen(&mut self) {
-        if let Err(e) = self.try_toggle_fullscreen() {
+        self.state.is_fullscreen = !self.state.is_fullscreen;
+        
+        if let Err(e) = self.main_window.set_fullscreen(self.state.is_fullscreen) {
+            self.state.is_fullscreen = !self.state.is_fullscreen;
+            
             error!("Failed to toggle fullscreen: {}", e);
         }
-    }
-    
-    fn try_toggle_fullscreen(&mut self) -> Result<()> {
-        self.state.is_fullscreen = match self.main_window.window.fullscreen_state() {
-            sdl3::video::FullscreenType::Off => true, // off -> on
-            _ => false, // on -> off
-        };
-        
-        self.main_window.window.set_fullscreen(self.state.is_fullscreen)?;
-        
-        Ok(())
     }
     
     fn show_about(&mut self) {

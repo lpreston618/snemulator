@@ -6,10 +6,8 @@ use crate::core::scpu::dma::{AddressIncMode, Direction, DmaRegs, TransferPattern
 use crate::core::scpu::ioregs::{CpuIoRegs, HVTimerIRQ};
 use crate::core::scpu::mult::Mult5A22;
 use crate::core::sppu::color::Color;
-use crate::core::sppu::regs::{
-    AddressRemapping, BgMode, CMathOperator, IncrSize, M7FillMode, MasterSlave, ObjectSizeSelect,
-    PpuRegs, TileSize, TilemapCount, VideoType, VramIncMode, WindowColorRegion, WindowLogic,
-};
+use crate::core::sppu::types::*;
+use crate::core::sppu::regs::PpuRegs;
 use crate::core::ssmp::ioports::ApuIoPorts;
 use crate::core::sysinfo::{CGRAM_SIZE, OAM_SIZE, VRAM_SIZE, WRAM_SIZE};
 use crate::{get_bit_n, get_byte_n, set_byte_n};

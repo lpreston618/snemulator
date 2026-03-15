@@ -3,13 +3,14 @@ use crate::core::scpu::CpuInterrupt;
 use crate::core::scpu::ioregs::HVTimerIRQ;
 use crate::core::sppu::bus::PpuBus;
 use crate::core::sppu::color::Color;
-use crate::core::sppu::regs::{
-    BgMode, CMathOperator, ColorDepth, ObjectSize, ObjectSizeSelect, PpuRegs, TileSize, TilemapCount, WindowColorRegion, WindowLogic
-};
+use crate::core::sppu::regs::PpuRegs;
+
+pub use crate::core::sppu::types::*;
 
 pub mod bus;
 pub mod color;
 pub mod regs;
+pub mod types;
 
 pub const VBLANK_START_SCANLINE: usize = 225;
 const VBLANK_END_SCANLINE_NTSC: usize = 261;

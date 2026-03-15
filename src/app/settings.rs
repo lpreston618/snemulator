@@ -44,14 +44,17 @@ impl SettingsWindow {
         })
     }
     
-    pub fn render(&mut self, settings: &mut Settings) {
-        self.egui_window.render(|ui| {
+    pub fn update_and_render(&mut self, settings: &mut Settings) {
+        let full_output = self.egui_window.update_ui(|ctx| {
             
         });
+        
+        self.egui_window.clear();
+        self.egui_window.render(full_output);
     }
     
     pub fn id(&self) -> u32 {
-        self.egui_window.window.id()
+        self.egui_window.window().id()
     }
     
     pub fn handle_event(&mut self, event: &sdl3::event::Event) {
