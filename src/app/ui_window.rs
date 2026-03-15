@@ -52,6 +52,8 @@ impl UiWindow {
         let egui_ctx = egui::Context::default();
         let egui_painter = egui_glow::Painter::new(gl.clone(), "", None, false)?;
 
+        egui_ctx.set_pixels_per_point(window.display_scale());
+        
         Ok(Self {
             window,
             egui_ctx,
@@ -68,11 +70,12 @@ impl UiWindow {
         self.window.gl_make_current(&self.gl_context).ok();
         
         let (width, height) = self.window.size();
+        
         let raw_input = raw_input.unwrap_or(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
-                    egui::vec2(width as f32, height as f32)
+                    egui::vec2((width as f32) / self.window.display_scale(), (height as f32) / self.window.display_scale())
                 )),
                 ..Default::default()
             }
