@@ -173,7 +173,7 @@ impl SnemulatorApp {
             self.state.frame_count += 1;
             let elapsed = frame_start.elapsed();
             
-            // info!("Frame time: {} us, Time left: {} us", elapsed.as_micros(), FRAME_DURATION.as_micros() - elapsed.as_micros());
+            info!("Frame time: {} us, Time left: {} us", elapsed.as_micros(), FRAME_DURATION.as_micros() - elapsed.as_micros());
             
             if elapsed < FRAME_DURATION {
                 std::thread::sleep(FRAME_DURATION - elapsed);

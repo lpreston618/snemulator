@@ -552,7 +552,7 @@ impl<'a> CpuBus<'a> {
                 ppu_regs.bg4_chr_base_addr = value >> 4;
                 ppu_regs.bg3_chr_base_addr = value & 0x0F;
 
-                // println!("Set Bg3 chr base address to ${:04X}", (ppu_regs.bg3_chr_base_addr.get() as u16) << 12);
+                println!("Set Bg3 chr base address to ${:04X}", (ppu_regs.bg3_chr_base_addr as u16) << 12);
                 // println!("Set Bg4 chr base address to ${:04X}", (ppu_regs.bg4_chr_base_addr.get() as u16) << 12);
             }
 
