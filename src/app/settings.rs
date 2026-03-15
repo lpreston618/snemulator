@@ -45,12 +45,16 @@ impl SettingsWindow {
     }
     
     pub fn render(&mut self, settings: &mut Settings) {
-        self.egui_window.render(None, |ui| {
+        self.egui_window.render(|ui| {
             
         });
     }
     
     pub fn id(&self) -> u32 {
         self.egui_window.window.id()
+    }
+    
+    pub fn handle_event(&mut self, event: &sdl3::event::Event) {
+        self.egui_window.handle_sdl_mouse_event(event);
     }
 }

@@ -2,19 +2,11 @@ use glow::HasContext;
 use anyhow::Result;
 use sdl3::video::GLProfile;
 
-use crate::{app::{self, AppState, AppAction, WINDOW_HEIGHT, WINDOW_WIDTH, settings::Settings}, core::sysinfo::{SCREEN_HEIGHT, SCREEN_WIDTH}};
-
-fn sdl_to_egui_mouse_button(button: sdl3::mouse::MouseButton) -> Option<egui::PointerButton> {
-    match button {
-        sdl3::mouse::MouseButton::Left => Some(egui::PointerButton::Primary),
-        sdl3::mouse::MouseButton::Right => Some(egui::PointerButton::Secondary),
-        sdl3::mouse::MouseButton::Middle => Some(egui::PointerButton::Middle),
-        _ => None,
-    }
-}
+use crate::{app::{self, AppAction, AppState, WINDOW_HEIGHT, WINDOW_WIDTH, settings::Settings, utils::sdl_to_egui_mouse_button}, core::sysinfo::{SCREEN_HEIGHT, SCREEN_WIDTH}};
 
 pub struct MainWindow {
     pub window: sdl3::video::Window,
+    raw_input: Option<egui::RawInput>,
     menu: app::menu::MainMenuBar,
     gl: std::sync::Arc<glow::Context>,
     gl_context: sdl3::video::GLContext,
@@ -115,6 +107,7 @@ impl MainWindow {
         
         Ok(Self {
             window,
+            raw_input: None,
             menu,
             gl,
             gl_context,
@@ -211,19 +204,21 @@ impl MainWindow {
         }
     }
     
-    pub fn handle_sdl_event(&mut self, event: &sdl3::event::Event, raw_input: &mut egui::RawInput, app_state: &mut AppState) {        
+    pub fn handle_sdl_event(&mut self, event: &sdl3::event::Event, app_state: &mut AppState) {        
+        let mut new_event = None;
+        
         match event {
             sdl3::event::Event::MouseMotion { x, y, .. } => {
                 let logical_x = *x as f32 / self.menu.ui_scale;
                 let logical_y = *y as f32 / self.menu.ui_scale;
-                raw_input.events.push(egui::Event::PointerMoved(egui::Pos2::new(logical_x, logical_y)));
+                new_event = Some(egui::Event::PointerMoved(egui::Pos2::new(logical_x, logical_y)));
                 app_state.last_mouse_input_frame = app_state.frame_count;
             }
             sdl3::event::Event::MouseButtonDown { mouse_btn, x, y, .. } => {
                 if let Some(button) = sdl_to_egui_mouse_button(*mouse_btn) {
                     let logical_x = *x as f32 / self.menu.ui_scale;
                     let logical_y = *y as f32 / self.menu.ui_scale;
-                    raw_input.events.push(egui::Event::PointerButton {
+                    new_event = Some(egui::Event::PointerButton {
                         pos: egui::Pos2::new(logical_x, logical_y),
                         button,
                         pressed: true,
@@ -236,7 +231,7 @@ impl MainWindow {
                 if let Some(button) = sdl_to_egui_mouse_button(*mouse_btn) {
                     let logical_x = *x as f32 / self.menu.ui_scale;
                     let logical_y = *y as f32 / self.menu.ui_scale;
-                    raw_input.events.push(egui::Event::PointerButton {
+                    new_event = Some(egui::Event::PointerButton {
                         pos: egui::Pos2::new(logical_x, logical_y),
                         button,
                         pressed: false,
@@ -246,6 +241,26 @@ impl MainWindow {
                 app_state.last_mouse_input_frame = app_state.frame_count;
             }
             _ => {}
+        }
+        
+        if let Some(event) = new_event {
+            if self.raw_input.is_none() {
+                let (window_width, window_height) = self.window.size();
+                
+                self.raw_input = Some(egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::Vec2::new(
+                            window_width as f32,
+                            window_height as f32
+                        ),
+                    )),
+                    ..Default::default()
+                });
+            }
+            
+            let raw_input = self.raw_input.as_mut().unwrap();
+            raw_input.events.push(event);
         }
     }
     
@@ -344,13 +359,26 @@ impl MainWindow {
         }
     }
     
-    pub fn render(&mut self, app_state: &AppState, app_settings: &Settings, raw_input: egui::RawInput, frame_buffer: &[u8]) -> Result<AppAction> {
+    pub fn render(&mut self, app_state: &AppState, app_settings: &Settings, frame_buffer: &[u8]) -> Result<AppAction> {
         self.window.gl_make_current(&self.gl_context).ok();
         
         let (window_width, window_height) = self.window.size();
 
         // Update game texture
         self.update_game_texture(frame_buffer);
+        
+        let raw_input = self.raw_input.take().unwrap_or(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::Vec2::new(
+                        window_width as f32,
+                        window_height as f32
+                    ),
+                )),
+                ..Default::default()
+            }
+        );
 
         // Run egui
         let mut app_action = AppAction::Continue;

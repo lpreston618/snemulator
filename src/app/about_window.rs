@@ -23,8 +23,7 @@ impl AboutWindow {
     }
         
     pub fn render(&mut self) {
-        self.egui_window.render(None,
-            |ctx| {
+        self.egui_window.render(|ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     ui.vertical_centered(|ui| {
                         // ui.add_space(20.0);
@@ -47,5 +46,9 @@ impl AboutWindow {
     
     pub fn id(&self) -> u32 {
         self.egui_window.window.id()
+    }
+    
+    pub fn handle_event(&mut self, event: &sdl3::event::Event) {
+        self.egui_window.handle_sdl_mouse_event(event);
     }
 }

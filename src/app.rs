@@ -16,6 +16,7 @@ mod about_window;
 mod main_window;
 mod menu;
 mod settings;
+mod utils;
 
 pub const FRAME_BUF_SIZE: usize = (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize;
 pub const AUDIO_SAMPLE_HZ: usize = 44100;
@@ -113,18 +114,8 @@ impl SnemulatorApp {
             let frame_start = Instant::now();
             
             let (window_width, window_height) = self.main_window.window.size();
-            let mut raw_input = egui::RawInput {
-                screen_rect: Some(egui::Rect::from_min_size(
-                    egui::Pos2::ZERO,
-                    egui::Vec2::new(
-                        window_width as f32,
-                        window_height as f32
-                    ),
-                )),
-                ..Default::default()
-            };
             
-            let app_action = self.handle_input(&mut raw_input);
+            let app_action = self.handle_input();
             
             match app_action {
                 AppAction::Continue => {},
@@ -143,7 +134,7 @@ impl SnemulatorApp {
                 self.render_load_rom_screen();
             }
             
-            let app_action = self.main_window.render(&self.state, &self.settings, raw_input, &self.frame_buffer[..])?;
+            let app_action = self.main_window.render(&self.state, &self.settings, &self.frame_buffer[..])?;
 
             match app_action {
                 AppAction::Continue => {}
@@ -179,7 +170,7 @@ impl SnemulatorApp {
         Ok(())
     }
     
-    fn handle_input(&mut self, raw_input: &mut egui::RawInput) -> AppAction {
+    fn handle_input(&mut self) -> AppAction {
         let mut app_action = AppAction::Continue;
         
         let mut event_pump = self.sdl_context.event_pump().unwrap();
@@ -216,7 +207,7 @@ impl SnemulatorApp {
             }
 
             // Event is for main window
-            self.main_window.handle_sdl_event(&event, raw_input, &mut self.state);
+            self.main_window.handle_sdl_event(&event, &mut self.state);
 
             match event {
                 Event::Quit { .. } => {
@@ -242,7 +233,9 @@ impl SnemulatorApp {
             Event::Window { win_event: sdl3::event::WindowEvent::CloseRequested, .. } => {
                 self.about_window = None;
             }
-            _ => {}
+            _ => {
+                self.about_window.as_mut().unwrap().handle_event(event);
+            }
         }
     }
     
@@ -251,7 +244,9 @@ impl SnemulatorApp {
             Event::Window { win_event: sdl3::event::WindowEvent::CloseRequested, .. } => {
                 self.settings_window = None;
             }
-            _ => {}
+            _ => {
+                self.settings_window.as_mut().unwrap().handle_event(event);
+            }
         }
     }
     
