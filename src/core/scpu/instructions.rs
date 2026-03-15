@@ -461,7 +461,7 @@ impl Cpu65c816 {
             0xD9 => op_case_flagm!(self, bus, absolute_y, cmp, inc_addr),
             0xDA => self.phx(bus),
             0xDB => self.stp(),
-            0xDC => op_case_br!(self, bus, long_indirect, jmp),
+            0xDC => op_case_br!(self, bus, long_indirect, jmp_long),
             0xDD => op_case_flagm!(self, bus, absolute_x, cmp, inc_addr),
             0xDE => op_case_flagm!(self, bus, absolute_x, dec_mem, inc_addr),
             0xDF => op_case_flagm!(self, bus, long_x, cmp, inc_addr),
