@@ -33,15 +33,10 @@ pub struct SettingsWindow {
 }
 
 impl SettingsWindow {
-    pub fn new(
-        video_subsystem: &sdl3::VideoSubsystem, 
-        gl: std::sync::Arc<glow::Context>, 
-        gl_context: std::rc::Rc<sdl3::video::GLContext>) -> Result<Self> {
+    pub fn new(video_subsystem: &sdl3::VideoSubsystem) -> Result<Self> {
         Ok(Self {
             egui_window: UiWindow::new(
                 video_subsystem,
-                gl,
-                gl_context,
                 "Settings",
                 SETTINGS_WINDOW_WIDTH,
                 SETTINGS_WINDOW_HEIGHT,

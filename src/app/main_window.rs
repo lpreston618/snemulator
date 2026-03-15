@@ -1,6 +1,5 @@
 use glow::HasContext;
 use anyhow::Result;
-use log::info;
 use sdl3::video::GLProfile;
 
 use crate::{app::{self, AppState, AppAction, WINDOW_HEIGHT, WINDOW_WIDTH, settings::Settings}, core::sysinfo::{SCREEN_HEIGHT, SCREEN_WIDTH}};
@@ -18,7 +17,7 @@ pub struct MainWindow {
     pub window: sdl3::video::Window,
     menu: app::menu::MainMenuBar,
     gl: std::sync::Arc<glow::Context>,
-    gl_context: std::rc::Rc<sdl3::video::GLContext>,
+    gl_context: sdl3::video::GLContext,
     shader_program: glow::Program,
     vao: glow::VertexArray,
     vbo: glow::Buffer,
@@ -58,7 +57,7 @@ impl MainWindow {
         
         // Create the shared GL context
         let gl_context = window.gl_create_context()?;
-        let gl_context = std::rc::Rc::new(gl_context);
+        window.gl_make_current(&gl_context)?;
         
         let gl = unsafe {
             glow::Context::from_loader_function(|s| {
@@ -69,8 +68,6 @@ impl MainWindow {
             })
         };
         let gl = std::sync::Arc::new(gl);
-        
-        window.gl_make_current(gl_context.as_ref())?;
         
         video_subsystem.gl_set_swap_interval(
             if settings.vsync_en {
@@ -348,7 +345,7 @@ impl MainWindow {
     }
     
     pub fn render(&mut self, app_state: &AppState, app_settings: &Settings, raw_input: egui::RawInput, frame_buffer: &[u8]) -> Result<AppAction> {
-        self.window.gl_make_current(self.gl_context.as_ref()).ok();
+        self.window.gl_make_current(&self.gl_context).ok();
         
         let (window_width, window_height) = self.window.size();
 
@@ -395,18 +392,11 @@ impl MainWindow {
 
         Ok(app_action)
     }
-    
-    pub fn gl(&self) -> std::sync::Arc<glow::Context> {
-        self.gl.clone()
-    }
-    
-    pub fn gl_context(&self) -> std::rc::Rc<sdl3::video::GLContext> {
-        self.gl_context.clone()
-    }
 }
 
 impl Drop for MainWindow {
     fn drop(&mut self) {
+        self.window.gl_make_current(&self.gl_context).ok();
         self.menu.egui_painter.destroy();
     }
 }

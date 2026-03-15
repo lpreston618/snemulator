@@ -11,15 +11,10 @@ pub struct AboutWindow {
 }
 
 impl AboutWindow {
-    pub fn new(
-        video_subsystem: &sdl3::VideoSubsystem, 
-        gl: std::sync::Arc<glow::Context>, 
-        gl_context: std::rc::Rc<sdl3::video::GLContext>) -> Result<Self> {
+    pub fn new(video_subsystem: &sdl3::VideoSubsystem) -> Result<Self> {
         Ok(Self {
             egui_window: UiWindow::new(
                 video_subsystem,
-                gl,
-                gl_context,
                 "About",
                 ABOUT_WINDOW_WIDTH,
                 ABOUT_WINDOW_HEIGHT,

@@ -7,14 +7,12 @@ pub struct UiWindow {
     egui_ctx: egui::Context,
     egui_painter: egui_glow::Painter,
     gl: std::sync::Arc<glow::Context>,
-    gl_context: std::rc::Rc<sdl3::video::GLContext>,
+    gl_context: sdl3::video::GLContext,
 }
 
 impl UiWindow {
     pub fn new(
         video_subsystem: &sdl3::VideoSubsystem,
-        gl: std::sync::Arc<glow::Context>,
-        gl_context: std::rc::Rc<sdl3::video::GLContext>,
         title: &str,
         width: u32,
         height: u32,
@@ -38,12 +36,21 @@ impl UiWindow {
         );
         let window = window; // No longer mutable
         
-        window.gl_make_current(gl_context.as_ref())?;
+        let gl_context = window.gl_create_context()?;
+        window.gl_make_current(&gl_context)?;
+        
+        let gl = unsafe {
+            glow::Context::from_loader_function(|s| {
+                match video_subsystem.gl_get_proc_address(s) {
+                    Some(ptr) => ptr as *const _,
+                    None => std::ptr::null(),
+                }
+            })
+        };
+        let gl = std::sync::Arc::new(gl);
         
         let egui_ctx = egui::Context::default();
         let egui_painter = egui_glow::Painter::new(gl.clone(), "", None, false)?;
-        
-        egui_ctx.set_pixels_per_point(win_scale);
 
         Ok(Self {
             window,
@@ -58,10 +65,18 @@ impl UiWindow {
     where
         F: FnMut(&egui::Context),
     {   
-        self.window.gl_make_current(self.gl_context.as_ref()).ok();
+        self.window.gl_make_current(&self.gl_context).ok();
         
         let (width, height) = self.window.size();
-        let raw_input = raw_input.unwrap_or_default();
+        let raw_input = raw_input.unwrap_or(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(width as f32, height as f32)
+                )),
+                ..Default::default()
+            }
+        );
 
         let full_output = self.egui_ctx.run(raw_input, ui_func);
 
@@ -85,6 +100,7 @@ impl UiWindow {
 
 impl Drop for UiWindow {
     fn drop(&mut self) {
+        self.window.gl_make_current(&self.gl_context).ok();
         self.egui_painter.destroy();
     }
 }

@@ -56,8 +56,6 @@ pub struct AppState {
 pub struct SnemulatorApp {
     sdl_context: sdl3::Sdl,
     video_subsystem: sdl3::VideoSubsystem,
-    gl: std::sync::Arc<glow::Context>,
-    gl_context: std::rc::Rc<sdl3::video::GLContext>,
     
     main_window: MainWindow,
     about_window: Option<AboutWindow>,
@@ -92,8 +90,6 @@ impl SnemulatorApp {
         Ok(Self {
             sdl_context,
             video_subsystem,
-            gl: main_window.gl(),
-            gl_context: main_window.gl_context(),
             
             main_window,
             about_window: None,
@@ -399,7 +395,7 @@ impl SnemulatorApp {
             return;
         }
         
-        match AboutWindow::new(&self.video_subsystem, self.gl.clone(), self.gl_context.clone()) {
+        match AboutWindow::new(&self.video_subsystem) {
             Ok(window) => self.about_window = Some(window),
             Err(e) => error!("Failed to create about window: {}", e),
         }
@@ -410,7 +406,7 @@ impl SnemulatorApp {
             return;
         }
         
-        match SettingsWindow::new(&self.video_subsystem, self.gl.clone(), self.gl_context.clone()) {
+        match SettingsWindow::new(&self.video_subsystem) {
             Ok(window) => self.settings_window = Some(window),
             Err(e) => error!("Failed to create settings window: {}", e),
         }
