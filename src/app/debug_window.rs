@@ -247,7 +247,9 @@ impl DebugWindow {
         let pc = (snem_core.cpu.pb as u32) << 16 | snem_core.cpu.pc as u32;
         
         ui.vertical(|ui| {
-            ui.horizontal(|ui| { 
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut self.disasm.options.use_hw_reg_names, "Use HW Reg Names");
+                
                 ui.checkbox(&mut self.disasm.follow_pc, "Follow PC");
                 
                 if ui.button("Go to PC").clicked() {

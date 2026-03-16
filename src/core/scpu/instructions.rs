@@ -4,7 +4,6 @@ use crate::{
     set_byte_n,
     get_bit_n,
 };
-use log::{debug, trace};
 use paste::paste;
 
 /// Set the N and Z flags based on an 8-bit value.
