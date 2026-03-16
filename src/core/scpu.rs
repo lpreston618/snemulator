@@ -261,7 +261,7 @@ impl Cpu65c816 {
         self.push(bus, value as u8);
     }
     
-    fn is_flag_set(&self, flag: Flag) -> bool {
+    pub fn is_flag_set(&self, flag: Flag) -> bool {
         self.p & (flag as u8) != 0
     }
 

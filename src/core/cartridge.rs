@@ -3,7 +3,7 @@ use log::trace;
 use crate::core::scpu::bus::Address;
 
 #[derive(Debug, Clone, Copy, Default)]
-enum MappingMode {
+pub enum MappingMode {
     #[default]
     LoROM,
     HiROM,
@@ -34,6 +34,10 @@ pub struct Cartridge {
 
 
 impl Cartridge {
+    pub fn mapping_mode(&self) -> MappingMode {
+        self.mapping_mode
+    }
+    
     /// Read in a cartridge from the given spc or sfc rom
     pub fn from_rom(mut cart_rom: Vec<u8>) -> Result<Cartridge, String> {
         // Ignore optional 512 byte header
@@ -126,6 +130,10 @@ impl Cartridge {
     
     pub fn write(&mut self, addr: Address, value: u8) {
         
+    }
+    
+    pub fn rom_slice(&self) -> &[u8] {
+        &self.rom[..]
     }
 }
 

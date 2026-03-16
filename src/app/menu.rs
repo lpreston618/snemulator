@@ -70,6 +70,13 @@ impl MainMenuBar {
                         ui.close();
                     }
                     
+                    ui.separator();
+                    
+                    if ui.button("Debug").clicked() {
+                        app_action = AppAction::OpenDebug;
+                        ui.close();
+                    }
+                    
                 });
                 
                 ui.menu_button("View", |ui| {

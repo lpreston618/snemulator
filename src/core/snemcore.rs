@@ -68,14 +68,14 @@ pub struct Snemulator {
     p1_controller: SnemController,
     p2_controller: SnemController,
     
-    cpu: Cpu65c816,
-    ppu: Ppu5C7x,
-    ssmp: Ssmp,
+    pub cpu: Cpu65c816,
+    pub ppu: Ppu5C7x,
+    pub ssmp: Ssmp,
     
-    wram: Box<[u8; WRAM_SIZE]>,
-    vram: Box<[u16; VRAM_SIZE]>,
-    cgram: Box<[Color; CGRAM_SIZE]>,
-    oam: Box<[u8; OAM_SIZE]>,
+    pub wram: Box<[u8; WRAM_SIZE]>,
+    pub vram: Box<[u16; VRAM_SIZE]>,
+    pub cgram: Box<[Color; CGRAM_SIZE]>,
+    pub oam: Box<[u8; OAM_SIZE]>,
     ppu_regs: PpuRegs,
     cpu_regs: CpuIoRegs,
     apu_ports: ApuIoPorts,
@@ -99,7 +99,7 @@ pub struct Snemulator {
     
     frame_ready: bool,
     
-    cart: Option<Cartridge>,
+    pub cart: Option<Cartridge>,
 }
 
 impl Snemulator {
@@ -182,6 +182,15 @@ impl Snemulator {
         while !self.frame_ready {
             self.cycle(frame_buffer, audio_buffer);
         }
+    }
+    
+    pub fn single_step(&mut self, frame_buffer: &mut [u8], audio_buffer: &mut Vec<i16>) {
+        // Cycle until the CPU is the next to cycle
+        while self.cpu.clocks > self.ppu.clocks {
+            self.cycle(frame_buffer, audio_buffer);
+        }
+        // Then cycle cpu
+        self.cycle(frame_buffer, audio_buffer);
     }
     
     fn cycle(&mut self, frame_buffer: &mut [u8], audio_buffer: &mut Vec<i16>) {
@@ -406,5 +415,9 @@ impl Snemulator {
         // if dst_addr.offset == 0x2118 || dst_addr.offset == 0x2119 {
         //     debug!("DMA transfered 0x{:02X} from ${:06X} to VRAM[{:04X}]", data, src_addr.to_u32(), bus.ppu_regs.vram_addr);
         // }
+    }
+    
+    pub fn rom_slice(&self) -> &[u8] {
+        self.cart.as_ref().unwrap().rom_slice()
     }
 }

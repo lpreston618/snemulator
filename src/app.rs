@@ -5,6 +5,7 @@ use sdl3::event::Event;
 use sdl3::keyboard::{Keycode, Mod};
 use std::time::{Duration, Instant};
 use crate::app::about_window::AboutWindow;
+use crate::app::debug_window::{DebugAction, DebugWindow};
 use crate::app::main_window::MainWindow;
 use crate::app::settings::{Settings, SettingsWindow};
 use crate::core::sysinfo::{SCREEN_WIDTH, SCREEN_HEIGHT};
@@ -41,6 +42,7 @@ enum AppAction {
     LoadState,
     OpenAbout,
     OpenSettings,
+    OpenDebug,
     Exit,
 }
 
@@ -62,6 +64,7 @@ pub struct SnemulatorApp {
     main_window: MainWindow,
     about_window: Option<AboutWindow>,
     settings_window: Option<SettingsWindow>,
+    debug_window: Option<DebugWindow>,
     state: AppState,
     settings: Settings,
     
@@ -84,12 +87,9 @@ impl SnemulatorApp {
         
         let sdl_context = sdl3::init()?;
         let video_subsystem = sdl_context.video()?;
-        let mut settings = SnemulatorApp::try_find_settings().unwrap_or_default();
+        let settings = SnemulatorApp::try_find_settings().unwrap_or_default();
         let frame_buffer = Box::new([0u8; FRAME_BUF_SIZE]);
-        
         let main_window = MainWindow::new(&video_subsystem, &settings)?;
-        
-        // settings.always_show_menu = true;
         
         Ok(Self {
             sdl_context,
@@ -98,6 +98,7 @@ impl SnemulatorApp {
             main_window,
             about_window: None,
             settings_window: None,
+            debug_window: None,
             state,
             settings,
             
@@ -116,6 +117,8 @@ impl SnemulatorApp {
         'running: loop {
             let frame_start = Instant::now();
             
+            let mut temp = Vec::new(); // temp audio buffer
+            
             let app_action = self.handle_input();
             
             match app_action {
@@ -126,9 +129,7 @@ impl SnemulatorApp {
             
             // Emulate one frame
             if self.state.rom_loaded {
-                if !self.state.is_paused && (!self.state.is_minimized || !self.settings.pause_on_minimize){
-                    let mut temp = Vec::new();
-                    
+                if !self.state.is_paused && (!self.state.is_minimized || !self.settings.pause_on_minimize) {                    
                     self.snem_core.run_frame(&mut self.frame_buffer[..], &mut temp);
                 }
             } else {
@@ -151,6 +152,23 @@ impl SnemulatorApp {
                 settings_window.update_and_render(&mut self.settings);
             }
             
+            if let Some(debug_window) = &mut self.debug_window {
+                let debug_action = debug_window.update_and_render(&self.snem_core, &self.state);
+                
+                match debug_action {
+                    DebugAction::SingleStep => {
+                        self.snem_core.single_step(&mut self.frame_buffer[..], &mut temp);
+                    }
+                    DebugAction::StepFrame => {
+                        self.snem_core.run_frame(&mut self.frame_buffer[..], &mut temp);
+                    }
+                    DebugAction::TogglePause => {
+                        self.toggle_pause();
+                    }
+                    _ => {}
+                }
+            }
+            
             self.state.show_menu = self.settings.always_show_menu || (self.state.frame_count - self.state.last_mouse_input_frame < FRAMES_BEFORE_HIDE_MENU);
             self.state.show_mouse = match self.sdl_context.mouse().focused_window_id() {
                 Some(id) => {
@@ -165,7 +183,7 @@ impl SnemulatorApp {
             self.state.frame_count += 1;
             let elapsed = frame_start.elapsed();
             
-            info!("Frame time: {} us, Time left: {} us", elapsed.as_micros(), FRAME_DURATION.as_micros() - elapsed.as_micros());
+            // info!("Frame time: {} us, Time left: {} us", elapsed.as_micros(), FRAME_DURATION.as_micros() - elapsed.as_micros());
             
             if elapsed < FRAME_DURATION {
                 std::thread::sleep(FRAME_DURATION - elapsed);
@@ -202,6 +220,13 @@ impl SnemulatorApp {
                 if let Some(settings_window) = &mut self.settings_window {
                     if event_win_id == settings_window.id() {
                         self.handle_settings_window_event(&event);
+                        continue;
+                    }
+                }
+                
+                if let Some(debug_window) = &mut self.debug_window {
+                    if event_win_id == debug_window.id() {
+                        self.handle_debug_window_event(&event);
                         continue;
                     }
                 }
@@ -255,14 +280,26 @@ impl SnemulatorApp {
         }
     }
     
+    fn handle_debug_window_event(&mut self, event: &Event) {
+        match &event {
+            Event::Window { win_event: sdl3::event::WindowEvent::CloseRequested, .. } => {
+                self.debug_window = None;
+            }
+            _ => {
+                self.debug_window.as_mut().unwrap().handle_event(event);
+            }
+        }
+    }
+    
     fn do_action(&mut self, app_action: AppAction) {
         match app_action {
             AppAction::LoadRom => self.load_rom(),
-            AppAction::LoadState => self.save_state(),
-            AppAction::SaveState => self.load_state(),
+            AppAction::LoadState => self.load_state(),
+            AppAction::SaveState => self.save_state(),
             AppAction::ResetCore => self.reset_emulation(),
             AppAction::OpenAbout => self.show_about(),
             AppAction::OpenSettings => self.show_settings(),
+            AppAction::OpenDebug => self.show_debug(),
             AppAction::ToggleFullscreen => self.toggle_fullscreen(),
             AppAction::TogglePause => self.toggle_pause(),
             _ => {}
@@ -423,6 +460,21 @@ impl SnemulatorApp {
         match SettingsWindow::new(&self.video_subsystem) {
             Ok(window) => self.settings_window = Some(window),
             Err(e) => error!("Failed to create settings window: {}", e),
+        }
+    }
+    
+    fn show_debug(&mut self) {
+        if self.debug_window.is_some() {
+            return;
+        }
+        
+        match DebugWindow::new(&self.video_subsystem, self.snem_core.cart.as_ref().unwrap().mapping_mode()) {
+            Ok(window) => self.debug_window = Some(window),
+            Err(e) => error!("Failed to create debug window: {}", e),
+        }
+        
+        if self.debug_window.is_some() {
+            self.state.is_paused = true;
         }
     }
 }
