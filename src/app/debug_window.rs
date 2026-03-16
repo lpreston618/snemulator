@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::collections::HashSet;
 
+use crate::app::debug::BreakpointInfo;
 use crate::app::ui_window::UiWindow;
 use crate::core::scpu::disassembler::{MemoryRegion, get_memory_region};
 use crate::{app, core};
@@ -9,48 +10,8 @@ const DISASM_BLOCK_SIZE: usize = 64;
 const DEBUG_WINDOW_WIDTH: u32 = 800;
 const DEBUG_WINDOW_HEIGHT: u32 = 600;
 
-pub enum DebugAction {
-    SingleStep,
-    StepFrame,
-    TogglePause,
-    None,
-}
-
-#[derive(Clone, Copy)]
-struct BreakpointInfo {
-    addr: u32,
-    force_m: bool,
-    force_x: bool,
-    force_e: bool,
-}
-
-impl BreakpointInfo {
-    fn new(addr: u32) -> Self {
-        Self {
-            addr,
-            force_m: false,
-            force_x: false,
-            force_e: false,
-        }
-    }
-}
-
-impl std::hash::Hash for BreakpointInfo {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.addr.hash(state);
-    }
-}
-
-impl PartialEq for BreakpointInfo {
-    fn eq(&self, other: &Self) -> bool {
-        self.addr == other.addr
-    }
-}
-
-impl Eq for BreakpointInfo {}
-
 pub struct DisassemblyView {
-    cached_lines: Vec<core::scpu::disassembler::DisasmLine>,
+    cached_lines: Option<Vec<core::scpu::disassembler::DisasmLine>>,
     // scroll_offset: usize,
     breakpoints: HashSet<BreakpointInfo>,
     options: core::scpu::disassembler::DisassemblyOptions,
@@ -61,7 +22,7 @@ pub struct DisassemblyView {
 impl DisassemblyView {
     fn new(rom_mapping_mode: core::cartridge::MappingMode) -> Self {        
         Self {
-            cached_lines: Vec::new(),
+            cached_lines: None,
             // scroll_offset: 0,
             breakpoints: HashSet::new(),
             options: core::scpu::disassembler::DisassemblyOptions {
@@ -133,7 +94,7 @@ impl DisassemblyView {
             self.current_addr = pc;
         }
         
-        self.cached_lines = Self::decode_forward(self.current_addr, memory, memory_region, options, snem_core);
+        self.cached_lines = Some(Self::decode_forward(self.current_addr, memory, memory_region, options, snem_core));
     }
 }
 
@@ -166,9 +127,8 @@ pub struct DebugWindow {
     egui_window: Option<UiWindow>,
     disasm: DisassemblyView,
     // chr_viewer: ChrViewer,
-    selected_tab: DebugTab,
-    // mem_region: MemoryRegion,
-    mem_scroll: f32,
+    selected_tab: DebugTab,    
+    bp_input: String,
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -202,7 +162,7 @@ impl DebugWindow {
             // chr_viewer: ChrViewer::new(),
             selected_tab: DebugTab::Cpu,
             // mem_region: MemoryRegion::default(),
-            mem_scroll: 0.0,
+            bp_input: String::new(),
         })
     }
 
@@ -210,12 +170,12 @@ impl DebugWindow {
         &mut self, 
         snem_core: &core::snemcore::Snemulator, 
         app_state: &app::AppState
-    ) -> DebugAction {
+    ) -> app::DebugAction {
         // let gl = self.egui_window.gl();
         // self.chr_viewer.update_texture(gl, snem_core.vram(), snem_core.cgram());
         
         let mut egui_window = self.egui_window.take().unwrap();
-        let mut debug_action = DebugAction::None;
+        let mut debug_action = app::DebugAction::None;
         
         let full_output = egui_window.update_ui(|ctx| {
             egui::TopBottomPanel::top("tabs").show(ctx, |ui| {
@@ -232,7 +192,7 @@ impl DebugWindow {
                     }
                 });
             });
-            egui::CentralPanel::default().show(ctx, |ui| {
+            egui::CentralPanel::default().show(ctx, |ui| {                
                 debug_action = match self.selected_tab {
                     // DebugTab::Memory     => self.render_memory_viewer(ui, snes),
                     DebugTab::Disassembly => {
@@ -242,10 +202,10 @@ impl DebugWindow {
                     // DebugTab::ChrRam     => self.render_chr_viewer(ui),
                     // DebugTab::Cpu        => self.render_cpu_state(ui, snes),
                     DebugTab::Breakpoints => {
-                        self.render_breakpoints(ui);
-                        DebugAction::None
+                        self.render_breakpoints(ui, snem_core);
+                        app::DebugAction::None
                     },
-                    _ => DebugAction::None,
+                    _ => app::DebugAction::None,
                 };
             });
         });
@@ -277,15 +237,15 @@ impl DebugWindow {
     }
     
     fn render_disassembly(
-        &mut self, 
-        ui: &mut egui::Ui, 
+        &mut self,
+        ui: &mut egui::Ui,
         snem_core: &core::snemcore::Snemulator,
         app_state: &app::AppState
-    ) -> DebugAction {    
-        let mut debug_action = DebugAction::None;
+    ) -> app::DebugAction {
+        let mut debug_action = app::DebugAction::None;
         
         let pc = (snem_core.cpu.pb as u32) << 16 | snem_core.cpu.pc as u32;
-    
+        
         ui.vertical(|ui| {
             ui.horizontal(|ui| { 
                 ui.checkbox(&mut self.disasm.follow_pc, "Follow PC");
@@ -299,24 +259,22 @@ impl DebugWindow {
                 }
                 
                 if ui.button("Step Instruction").clicked() {
-                    debug_action = DebugAction::SingleStep;
+                    debug_action = app::DebugAction::SingleStep;
                 }
                 
                 if ui.button("Step Frame").clicked() {
-                    debug_action = DebugAction::StepFrame;
+                    debug_action = app::DebugAction::StepFrame;
                 }
     
                 let pause_text = if app_state.is_paused { "Resume" } else { "Pause" };
                 if ui.button(pause_text).clicked() {
-                    debug_action = DebugAction::TogglePause;
+                    debug_action = app::DebugAction::TogglePause;
                 }
             });
             
             ui.add_space(5.0);
         
             ui.horizontal(|ui| {
-                
-                
                 egui::ComboBox::from_id_salt(0)
                     .selected_text( 
                         match self.disasm.options.forced_e {
@@ -376,51 +334,88 @@ impl DebugWindow {
         ui.separator();
     
         egui::ScrollArea::vertical().show(ui, |ui| {
-            for line in &self.disasm.cached_lines {
-                let is_pc  = line.addr == pc;
-                let has_bp = self.disasm.breakpoints.contains(&BreakpointInfo::new(line.addr));
-                let addr   = line.addr;
-    
-                ui.horizontal(|ui| {
-                    let dot = if has_bp { "🔴" } else { "⚪" };
-                    if ui.small_button(dot).clicked() {
-                        if has_bp { 
-                            self.disasm.breakpoints.remove(&BreakpointInfo::new(addr));
+            let lines = self.disasm.cached_lines.take();
+            
+            if let Some(lines) = lines {
+                for line in lines {
+                    let is_pc  = line.addr == pc;
+                    let has_bp = self.disasm.breakpoints.contains(&BreakpointInfo::new(line.addr));
+                    let addr   = line.addr;
+        
+                    ui.horizontal(|ui| {
+                        let dot = if has_bp { "🔴" } else { "⚪" };
+                        if ui.small_button(dot).clicked() {
+                            if has_bp { 
+                                self.disasm.breakpoints.remove(&BreakpointInfo::new(addr));
+                            }
+                            else {
+                                self.add_breakpoint(addr, snem_core);
+                            }
                         }
-                        else {
-                            let mut breakpoint = BreakpointInfo::new(addr);
-                            breakpoint.force_x = snem_core.cpu.is_flag_set(core::scpu::Flag::FlagX);
-                            breakpoint.force_m = snem_core.cpu.is_flag_set(core::scpu::Flag::FlagM);
-                            breakpoint.force_e = snem_core.cpu.e;
-                            
-                            self.disasm.breakpoints.insert(breakpoint);
-                        }
-                    }
-    
-                    ui.label(if is_pc { "▶" } else { "  " });
-                    
-                    let addr_text = egui::RichText::new(format!("{:06X}", line.addr)).monospace()
-                        .color(if is_pc { egui::Color32::YELLOW } else { ui.visuals().text_color() });
-                    ui.label(addr_text);
-                    
-                    let bytes_str: String = line.bytes.iter().map(|b| format!("{:02X} ", b)).collect();
-                    ui.label(egui::RichText::new(format!("{:<12}", bytes_str)).monospace().weak());
-                    
-                    let disasm_text = egui::RichText::new(&line.disasm_str).monospace()
-                        .color(if is_pc { egui::Color32::YELLOW } else { ui.visuals().text_color() });
-                    ui.label(disasm_text);
-                });
+        
+                        ui.label(if is_pc { "▶" } else { "  " });
+                        
+                        let addr_text_col = if has_bp {
+                            egui::Color32::RED
+                        } else if is_pc {
+                            egui::Color32::YELLOW
+                        } else {
+                            ui.visuals().text_color()
+                        };
+                        let addr_text = egui::RichText::new(format!("{:06X}", line.addr))
+                            .monospace()
+                            .color(addr_text_col);
+                        ui.label(addr_text);
+                        
+                        let disasm_col = if has_bp && addr == self.disasm.current_addr {
+                            egui::Color32::RED
+                        } else if is_pc {
+                            egui::Color32::YELLOW
+                        } else {
+                            ui.visuals().text_color()
+                        };
+                        let bytes_str: String = line.bytes.iter().map(|b| format!("{:02X} ", b)).collect();
+                        ui.label(egui::RichText::new(format!("{:<12}", bytes_str))
+                            .monospace()
+                            .color(disasm_col)
+                            .weak());
+                        
+                        let disasm_text = egui::RichText::new(&line.disasm_str)
+                            .monospace()
+                            .color(disasm_col);
+                        ui.label(disasm_text);
+                        
+                        ui.add_space(10.0);
+                    });
+                }
+            } else {
+                ui.label("No disassembly available");
             }
         });
         
         debug_action
     }
     
-    fn render_breakpoints(&mut self, ui: &mut egui::Ui) {        
+    fn render_breakpoints(&mut self, ui: &mut egui::Ui, snem_core: &core::snemcore::Snemulator) {        
         ui.horizontal(|ui| {
             ui.heading("Breakpoints");
             if ui.button("Clear All").clicked() {
                 self.disasm.breakpoints.clear();
+            }
+        });
+        ui.separator();
+        
+        ui.horizontal(|ui| {
+            ui.label("Add:");
+            let response = ui.add(
+                egui::TextEdit::singleline(&mut self.bp_input).hint_text("XXXXXX").char_limit(6)
+            );
+            let submitted = response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            if ui.button("Add").clicked() || submitted {
+                if let Ok(addr) = u32::from_str_radix(self.bp_input.trim(), 16) {
+                    self.add_breakpoint(addr, snem_core);
+                    self.bp_input.clear();
+                }
             }
         });
         ui.separator();
@@ -442,7 +437,11 @@ impl DebugWindow {
                     }
                     // Clicking the address jumps the disassembly view to it
                     if ui.button(egui::RichText::new(format!("{:06X}", breakpoint.addr)).monospace()).clicked() {
+                        let pc = ((snem_core.cpu.pb as u32) << 16) | snem_core.cpu.pc as u32;
+                        
                         self.selected_tab = DebugTab::Disassembly;
+                        self.disasm.follow_pc = breakpoint.addr == pc;
+                        self.disasm.current_addr = breakpoint.addr;
                         self.disasm.options.forced_flag_m = Some(breakpoint.force_m);
                         self.disasm.options.forced_flag_x = Some(breakpoint.force_x);
                         self.disasm.options.forced_e = Some(breakpoint.force_e);
@@ -456,11 +455,34 @@ impl DebugWindow {
         }
     }
     
+    fn add_breakpoint(&mut self, addr: u32, snem_core: &core::snemcore::Snemulator) {
+        let mut breakpoint = BreakpointInfo::new(addr);
+        breakpoint.force_x = match self.disasm.options.forced_flag_x {
+            Some(v) => v,
+            None => snem_core.cpu.is_flag_set(core::scpu::Flag::FlagX)
+        };
+        breakpoint.force_m = match self.disasm.options.forced_flag_m {
+            Some(v) => v,
+            None => snem_core.cpu.is_flag_set(core::scpu::Flag::FlagM)
+        };
+        breakpoint.force_e = match self.disasm.options.forced_e {
+            Some(v) => v,
+            None => snem_core.cpu.e
+        };
+        
+        self.disasm.breakpoints.insert(breakpoint);
+    }
+    
     pub fn id(&self) -> u32 {
         self.egui_window.as_ref().unwrap().window().id()
     }
     
     pub fn handle_event(&mut self, event: &sdl3::event::Event) {
         self.egui_window.as_mut().unwrap().handle_sdl_mouse_event(event);
+        self.egui_window.as_mut().unwrap().handle_sdl_keyboard_event(event);
+    }
+    
+    pub fn breakpoints(&self) -> &HashSet<BreakpointInfo> {
+        &self.disasm.breakpoints
     }
 }

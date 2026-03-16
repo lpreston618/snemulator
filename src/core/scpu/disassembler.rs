@@ -775,14 +775,14 @@ fn _disassemble(mem: &MemBlock, state: ExecuteState, options: &DisassemblyOption
     
     let new_state = ExecuteState {
         dp: state.dp,
-        pc: pc + bytes.len() as u16,
+        pc: state.pc + bytes.len() as u16,
         flag_m: state.flag_m,
         flag_x: state.flag_x,
         memory_region: state.memory_region,
     };
     
     let disasm_line = DisasmLine {
-        addr: (mem.bank as u32) << 16 | pc as u32,
+        addr: (mem.bank as u32) << 16 | state.pc as u32,
         bytes,
         disasm_str: instr_str,
     };

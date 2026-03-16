@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use anyhow::{Result, anyhow};
 use crate::core::cartridge::Cartridge;
 use crate::core::controller::{ControllerPlayer, JoypadButton, JoypadCmd, SnemController};
@@ -15,7 +17,7 @@ use crate::core::sysinfo::{
 };
 use crate::core::sppu::color::Color;
 use crate::core::sppu::regs::PpuRegs;
-use crate::get_bit_n;
+use crate::{app, get_bit_n};
 use log::{debug, info, trace};
 
 macro_rules! cpu_bus {
@@ -171,26 +173,63 @@ impl Snemulator {
         // }
         // debug!("");
         
-        if self.ppu.frame == 80 {
-            let vram_addr = ((self.ppu_regs.bg3_vram_addr as u16) << 10) as usize;
+        // if self.ppu.frame == 80 {
+        //     let vram_addr = ((self.ppu_regs.bg3_vram_addr as u16) << 10) as usize;
             
-            crate::utils::hexdump16_to_file(&self.vram[vram_addr..vram_addr+0x400], vram_addr, "bg3_tilemap.bin");
+        //     crate::utils::hexdump16_to_file(&self.vram[vram_addr..vram_addr+0x400], vram_addr, "bg3_tilemap.bin");
             
-            info!("Dumped vram[{:04X}..{:04X}]", vram_addr, vram_addr + 0x400);
-        }
+        //     info!("Dumped vram[{:04X}..{:04X}]", vram_addr, vram_addr + 0x400);
+        // }
         
         while !self.frame_ready {
             self.cycle(frame_buffer, audio_buffer);
         }
     }
     
-    pub fn single_step(&mut self, frame_buffer: &mut [u8], audio_buffer: &mut Vec<i16>) {
+    pub fn debug_run_frame(
+        &mut self, 
+        frame_buffer: &mut [u8], 
+        audio_buffer: &mut Vec<i16>, 
+        breakpoints: &HashSet<app::debug::BreakpointInfo>
+    ) -> app::DebugAction {        
+        self.frame_ready = false;
+        
+        self.ssmp.start_frame();
+        
+        while !self.frame_ready {
+            let action = self.debug_single_step(frame_buffer, audio_buffer, breakpoints);
+            
+            match action {
+                app::DebugAction::BreakpointHit => {
+                    return app::DebugAction::BreakpointHit;
+                }
+                _ => {}
+            }
+        }
+        
+        app::DebugAction::None
+    }
+    
+    pub fn debug_single_step(
+        &mut self, 
+        frame_buffer: &mut [u8], 
+        audio_buffer: &mut Vec<i16>, 
+        breakpoints: &HashSet<app::debug::BreakpointInfo>
+    ) -> app::DebugAction {        
         // Cycle until the CPU is the next to cycle
         while self.cpu.clocks > self.ppu.clocks {
             self.cycle(frame_buffer, audio_buffer);
         }
         // Then cycle cpu
         self.cycle(frame_buffer, audio_buffer);
+        
+        let cpu_pc = scpu::Address { bank: self.cpu.pb, offset: self.cpu.pc }.to_u32();
+        
+        if breakpoints.contains(&app::debug::BreakpointInfo::new(cpu_pc)) {
+            app::DebugAction::BreakpointHit
+        } else {
+            app::DebugAction::None
+        }
     }
     
     fn cycle(&mut self, frame_buffer: &mut [u8], audio_buffer: &mut Vec<i16>) {

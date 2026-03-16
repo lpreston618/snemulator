@@ -5,9 +5,10 @@ use sdl3::event::Event;
 use sdl3::keyboard::{Keycode, Mod};
 use std::time::{Duration, Instant};
 use crate::app::about_window::AboutWindow;
-use crate::app::debug_window::{DebugAction, DebugWindow};
+use crate::app::debug_window::DebugWindow;
 use crate::app::main_window::MainWindow;
 use crate::app::settings::{Settings, SettingsWindow};
+use crate::core::cartridge::MappingMode;
 use crate::core::sysinfo::{SCREEN_WIDTH, SCREEN_HEIGHT};
 use crate::core::snemcore::Snemulator;
 use crate::core::controller::{ControllerPlayer, JoypadButton};
@@ -19,6 +20,8 @@ mod ui_window;
 mod menu;
 mod settings;
 mod utils;
+
+pub mod debug;
 
 pub const FRAME_BUF_SIZE: usize = (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize;
 pub const AUDIO_SAMPLE_HZ: usize = 44100;
@@ -44,6 +47,14 @@ enum AppAction {
     OpenSettings,
     OpenDebug,
     Exit,
+}
+
+pub enum DebugAction {
+    SingleStep,
+    StepFrame,
+    TogglePause,
+    BreakpointHit,
+    None,
 }
 
 pub struct AppState {
@@ -127,14 +138,52 @@ impl SnemulatorApp {
                 _ => { self.do_action(app_action); }
             }
             
-            // Emulate one frame
-            if self.state.rom_loaded {
-                if !self.state.is_paused && (!self.state.is_minimized || !self.settings.pause_on_minimize) {                    
-                    self.snem_core.run_frame(&mut self.frame_buffer[..], &mut temp);
+            if let Some(debug_window) = &mut self.debug_window {
+                if !self.state.is_paused {
+                    match self.snem_core.debug_run_frame(
+                        &mut self.frame_buffer[..], 
+                        &mut temp,
+                        debug_window.breakpoints()
+                    ) {
+                        DebugAction::BreakpointHit => {
+                            self.state.is_paused = true;
+                        }
+                        _ => {}
+                    }
+                }
+                
+                let debug_action = debug_window.update_and_render(&self.snem_core, &self.state);
+                
+                match debug_action {
+                    DebugAction::SingleStep if self.state.is_paused => {
+                        self.snem_core.debug_single_step(
+                            &mut self.frame_buffer[..], 
+                            &mut temp,
+                            debug_window.breakpoints()
+                        );
+                    }
+                    DebugAction::StepFrame if self.state.is_paused => {
+                        self.snem_core.debug_run_frame(
+                            &mut self.frame_buffer[..], 
+                            &mut temp,
+                            debug_window.breakpoints()
+                        );
+                    }
+                    DebugAction::TogglePause => {
+                        self.toggle_pause();
+                    }
+                    _ => {}
                 }
             } else {
-                self.render_load_rom_screen();
-            }
+                // Emulate one frame
+                if self.state.rom_loaded {
+                    if !self.state.is_paused && (!self.state.is_minimized || !self.settings.pause_on_minimize) {                    
+                        self.snem_core.run_frame(&mut self.frame_buffer[..], &mut temp);
+                    }
+                } else {
+                    self.render_load_rom_screen();
+                }
+            }            
             
             let app_action = self.main_window.update_and_render(&self.state, &self.settings, &self.frame_buffer[..]);
 
@@ -150,23 +199,6 @@ impl SnemulatorApp {
             
             if let Some(settings_window) = &mut self.settings_window {
                 settings_window.update_and_render(&mut self.settings);
-            }
-            
-            if let Some(debug_window) = &mut self.debug_window {
-                let debug_action = debug_window.update_and_render(&self.snem_core, &self.state);
-                
-                match debug_action {
-                    DebugAction::SingleStep => {
-                        self.snem_core.single_step(&mut self.frame_buffer[..], &mut temp);
-                    }
-                    DebugAction::StepFrame => {
-                        self.snem_core.run_frame(&mut self.frame_buffer[..], &mut temp);
-                    }
-                    DebugAction::TogglePause => {
-                        self.toggle_pause();
-                    }
-                    _ => {}
-                }
             }
             
             self.state.show_menu = self.settings.always_show_menu || (self.state.frame_count - self.state.last_mouse_input_frame < FRAMES_BEFORE_HIDE_MENU);
@@ -205,6 +237,9 @@ impl SnemulatorApp {
                 Event::MouseMotion { window_id, .. } => Some(*window_id),
                 Event::MouseButtonDown { window_id, .. } => Some(*window_id),
                 Event::MouseButtonUp { window_id, .. } => Some(*window_id),
+                Event::KeyDown { window_id, .. } => Some(*window_id),
+                Event::KeyUp { window_id, .. } => Some(*window_id),
+                Event::TextInput { window_id, .. } => Some(*window_id),
                 _ => None,
             };
 
@@ -468,7 +503,16 @@ impl SnemulatorApp {
             return;
         }
         
-        match DebugWindow::new(&self.video_subsystem, self.snem_core.cart.as_ref().unwrap().mapping_mode()) {
+        if self.snem_core.cart.is_none() {
+            if let Err(e) = self.try_load_rom() {
+                error!("Cannot debug without ROM loaded: {}", e);
+                return;
+            }
+        }
+        
+        let mapping_mode = self.snem_core.cart.as_ref().unwrap().mapping_mode();
+        
+        match DebugWindow::new(&self.video_subsystem, mapping_mode) {
             Ok(window) => self.debug_window = Some(window),
             Err(e) => error!("Failed to create debug window: {}", e),
         }

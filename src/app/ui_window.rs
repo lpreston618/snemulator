@@ -1,12 +1,13 @@
 use anyhow::{Result};
 use glow::HasContext;
 
-use crate::app::utils::sdl_to_egui_mouse_button;
+use crate::app::utils::{sdl_to_egui_keycode, sdl_to_egui_modifiers, sdl_to_egui_mouse_button};
 
 // Generic egui window wrapper
 pub struct UiWindow {
     window: sdl3::video::Window,
     raw_input: Option<egui::RawInput>,
+    text_input: sdl3::keyboard::TextInputUtil,
     egui_ctx: egui::Context,
     egui_painter: egui_glow::Painter,
     gl: std::sync::Arc<glow::Context>,
@@ -40,6 +41,8 @@ impl UiWindow {
         );
         let window = window; // No longer mutable
         
+        let text_input = video_subsystem.text_input();
+        
         let gl_context = window.gl_create_context()?;
         window.gl_make_current(&gl_context)?;
         
@@ -63,6 +66,7 @@ impl UiWindow {
         Ok(Self {
             window,
             raw_input: None,
+            text_input,
             egui_ctx,
             egui_painter,
             gl,
@@ -80,7 +84,18 @@ impl UiWindow {
         
         let raw_input = self.raw_input.take().unwrap_or(self.new_raw_input());
         
-        self.egui_ctx.run(raw_input, ui_func)
+        let full_output = self.egui_ctx.run(raw_input, ui_func);
+        
+        let wants_text = full_output.platform_output.ime.is_some()
+            || self.egui_ctx.memory(|m| m.focused().is_some());
+        
+        if wants_text {
+            self.text_input.start(&self.window);
+        } else {
+            self.text_input.stop(&self.window);
+        }
+        
+        full_output
     }
     
     /// Clears the screen with the default background color. Should be called before rendering.
@@ -141,6 +156,57 @@ impl UiWindow {
                         pressed: false,
                         modifiers: Default::default(),
                     });
+                }
+            }
+            _ => {}
+        }
+        
+        if let Some(event) = new_event {
+            if self.raw_input.is_none() {
+                self.raw_input = Some(self.new_raw_input());
+            }
+            
+            let raw_input = self.raw_input.as_mut().unwrap();
+            raw_input.events.push(event);
+            
+            return true;
+        }
+        
+        false
+    }
+    
+    /// Adds any sdl keyboard events to the egui raw input. Returns a bool if the event was handled.
+    pub fn handle_sdl_keyboard_event(&mut self, event: &sdl3::event::Event) -> bool {
+        let mut new_event = None;
+        
+        match event {
+            sdl3::event::Event::TextInput { text, .. } => {
+                new_event = Some(egui::Event::Text(text.clone()));
+            }
+            sdl3::event::Event::KeyDown { keycode, keymod, repeat, .. } => {
+                if let Some(keycode) = keycode {
+                    if let Some(key) = sdl_to_egui_keycode(*keycode) {
+                        new_event = Some(egui::Event::Key {
+                            key,
+                            pressed: true,
+                            modifiers: sdl_to_egui_modifiers(*keymod),
+                            repeat: *repeat,
+                            physical_key: None,
+                        });
+                    }
+                }
+            }
+            sdl3::event::Event::KeyUp { keycode, keymod, repeat, .. } => {
+                if let Some(keycode) = keycode {
+                    if let Some(key) = sdl_to_egui_keycode(*keycode) {
+                        new_event = Some(egui::Event::Key {
+                            key,
+                            pressed: false,
+                            modifiers: sdl_to_egui_modifiers(*keymod),
+                            repeat: *repeat,
+                            physical_key: None,
+                        });
+                    }
                 }
             }
             _ => {}
