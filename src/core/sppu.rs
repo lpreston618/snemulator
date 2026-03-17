@@ -2,10 +2,10 @@ use paste::paste;
 use crate::core::scpu::CpuInterrupt;
 use crate::core::scpu::ioregs::HVTimerIRQ;
 use crate::core::sppu::bus::PpuBus;
-use crate::core::sppu::color::Color;
 use crate::core::sppu::regs::PpuRegs;
 
 pub use crate::core::sppu::types::*;
+pub use crate::core::sppu::color::Color;
 
 pub mod bus;
 pub mod color;

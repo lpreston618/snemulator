@@ -1,5 +1,7 @@
+use std::fmt::format;
+
 use anyhow::Result;
-use std::collections::HashSet;
+use glow::HasContext;
 
 use crate::app::debug::BreakpointInfo;
 use crate::app::ui_window::UiWindow;
@@ -13,7 +15,7 @@ const DEBUG_WINDOW_HEIGHT: u32 = 600;
 pub struct DisassemblyView {
     cached_lines: Option<Vec<core::scpu::disassembler::DisasmLine>>,
     // scroll_offset: usize,
-    breakpoints: HashSet<BreakpointInfo>,
+    breakpoints: std::collections::HashSet<BreakpointInfo>,
     options: core::scpu::disassembler::DisassemblyOptions,
     follow_pc: bool,
     current_addr: u32,
@@ -24,7 +26,7 @@ impl DisassemblyView {
         Self {
             cached_lines: None,
             // scroll_offset: 0,
-            breakpoints: HashSet::new(),
+            breakpoints: std::collections::HashSet::new(),
             options: core::scpu::disassembler::DisassemblyOptions {
                 use_hw_reg_names: true,
                 show_rel_addr_dest: true,
@@ -98,6 +100,40 @@ impl DisassemblyView {
     }
 }
 
+#[derive(PartialEq, Clone, Copy)]
+enum MemViewRegion { Wram, Rom, Vram, Oam, Cgram }
+
+impl MemViewRegion {
+    fn label(&self) -> &'static str {
+        match self {
+            MemViewRegion::Wram  => "WRAM",
+            MemViewRegion::Rom   => "ROM",
+            MemViewRegion::Vram  => "VRAM",
+            MemViewRegion::Oam   => "OAM",
+            MemViewRegion::Cgram => "CGRAM",
+        }
+    }
+    // Address display width: WRAM/ROM are 24-bit, rest are 16-bit offsets into their own space
+    fn addr_width(&self) -> usize {
+        match self { MemViewRegion::Wram | MemViewRegion::Rom => 6, _ => 4 }
+    }
+    
+    fn row_units(&self) -> usize {
+        match self { MemViewRegion::Cgram => 8, _ => 16 }
+    }
+}
+
+struct MemoryView {
+    region: MemViewRegion,
+    addr_input: String,
+}
+
+impl MemoryView {
+    fn new() -> Self {
+        Self { region: MemViewRegion::Wram, addr_input: String::new() }
+    }
+}
+
 // pub struct ChrViewer {
 //     texture: Option<glow::Texture>,
 //     bpp_mode: core::sppu::ColorDepth,
@@ -105,8 +141,27 @@ impl DisassemblyView {
 // }
 
 // impl ChrViewer {
+//     pub fn new() -> Self {
+//         Self {
+//             texture: None,
+//             bpp_mode: core::sppu::ColorDepth::Bpp4,
+//             palette_index: 0,
+//         }
+//     }
+    
 //     // Call once during DebugWindow::new(), same pattern as game_texture init
-//     pub fn init_texture(gl: &glow::Context) -> Option<glow::Texture> { ... }
+//     pub fn init_texture(gl: &glow::Context) -> Option<glow::Texture> {
+//         unsafe {
+//             let texture = gl.create_texture()?;
+//             gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+//             gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::LINEAR as i32);
+//             gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::LINEAR as i32);
+//             gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE as i32);
+//             gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE as i32);
+//             gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::RGBA as i32, TILES_WIDE as i32, TILES_TALL as i32, 0, glow::RGBA, glow::UNSIGNED_BYTE, None);
+//             Some(texture)
+//         }
+//     }
 
 //     // Decode VRAM tiles -> RGBA pixels, upload via tex_sub_image_2d
 //     pub fn update_texture(&self, gl: &glow::Context, vram: &[u8], cgram: &[u8]) {
@@ -126,6 +181,7 @@ impl DisassemblyView {
 pub struct DebugWindow {
     egui_window: Option<UiWindow>,
     disasm: DisassemblyView,
+    mem: MemoryView,
     // chr_viewer: ChrViewer,
     selected_tab: DebugTab,
     bp_input: String,
@@ -160,7 +216,7 @@ impl DebugWindow {
             disasm: DisassemblyView::new(rom_mapping_mode),
             // chr_viewer: ChrViewer::new(),
             selected_tab: DebugTab::Cpu,
-            // mem_region: MemoryRegion::default(),
+            mem: MemoryView::new(),
             bp_input: String::new(),
         })
     }
@@ -190,13 +246,42 @@ impl DebugWindow {
                     }
                 });
             });
+            
+            egui::TopBottomPanel::top("commands").show(ctx, |ui| {
+                ui.add_space(5.0);
+                
+                ui.horizontal(|ui| {
+                    if ui.button("Step Instruction").clicked() {
+                        debug_action = app::DebugAction::SingleStep;
+                    }
+    
+                    if ui.button("Step Frame").clicked() {
+                        debug_action = app::DebugAction::StepFrame;
+                    }
+    
+                    let pause_text = if app_state.is_paused { "Resume" } else { "Pause" };
+                    if ui.button(pause_text).clicked() {
+                        debug_action = app::DebugAction::TogglePause;
+                    }
+                    
+                    ui.label(format!("Frame: {}", snem_core.frame));
+                    
+                    ui.label(format!("Cycles: {}", snem_core.total_cycles));
+                });
+                
+                ui.add_space(3.0);
+            });
+            
             egui::CentralPanel::default().show(ctx, |ui| {
-                debug_action = match self.selected_tab {
+                match self.selected_tab {
                     DebugTab::Cpu => {
                         self.update_disassembly(snem_core);
                         self.render_cpu_tab(ui, snem_core, app_state)
                     },
-                    // DebugTab::Memory     => self.render_memory_viewer(ui, snes),
+                    DebugTab::Memory     => {
+                        self.render_memory_viewer(ui, snem_core);
+                        app::DebugAction::None
+                    },
                     // DebugTab::ChrRam     => self.render_chr_viewer(ui),
                     // DebugTab::Cpu        => self.render_cpu_state(ui, snes),
                     _ => app::DebugAction::None,
@@ -250,24 +335,24 @@ impl DebugWindow {
 
                 if ui.button("Go to PC").clicked() {
                     self.disasm.current_addr = pc;
-                    self.disasm.follow_pc = true;
+                    // self.disasm.follow_pc = true;
                     self.disasm.options.forced_flag_x = None;
                     self.disasm.options.forced_flag_m = None;
                     self.disasm.options.forced_e = None;
                 }
 
-                if ui.button("Step Instruction").clicked() {
-                    debug_action = app::DebugAction::SingleStep;
-                }
+                // if ui.button("Step Instruction").clicked() {
+                //     debug_action = app::DebugAction::SingleStep;
+                // }
 
-                if ui.button("Step Frame").clicked() {
-                    debug_action = app::DebugAction::StepFrame;
-                }
+                // if ui.button("Step Frame").clicked() {
+                //     debug_action = app::DebugAction::StepFrame;
+                // }
 
-                let pause_text = if app_state.is_paused { "Resume" } else { "Pause" };
-                if ui.button(pause_text).clicked() {
-                    debug_action = app::DebugAction::TogglePause;
-                }
+                // let pause_text = if app_state.is_paused { "Resume" } else { "Pause" };
+                // if ui.button(pause_text).clicked() {
+                //     debug_action = app::DebugAction::TogglePause;
+                // }
             });
 
             ui.add_space(5.0);
@@ -578,6 +663,130 @@ impl DebugWindow {
 
         self.disasm.breakpoints.insert(breakpoint);
     }
+    
+    fn render_memory_viewer(&mut self, ui: &mut egui::Ui, snem_core: &core::snemcore::Snemulator) {
+        egui::ComboBox::from_id_salt("mem_region")
+            .selected_text(self.mem.region.label())
+            .show_ui(ui, |ui| {
+                for region in [
+                    MemViewRegion::Wram, 
+                    MemViewRegion::Rom,
+                    MemViewRegion::Vram,
+                    MemViewRegion::Oam,
+                    MemViewRegion::Cgram,
+                ] {
+                    ui.selectable_value(&mut self.mem.region, region, region.label());
+                }
+            });
+        ui.separator();
+    
+        let addr_w = self.mem.region.addr_width();
+    
+        match self.mem.region {
+            MemViewRegion::Vram  => Self::render_vram_dump(ui, &snem_core.vram[..]),
+            MemViewRegion::Cgram => Self::render_cgram_dump(ui, &snem_core.cgram[..]),
+            _ => {
+                let data: &[u8] = match self.mem.region {
+                    MemViewRegion::Wram => &snem_core.wram[..],
+                    MemViewRegion::Rom  => &snem_core.rom_slice(),
+                    MemViewRegion::Oam  => &snem_core.oam[..],
+                    _               => unreachable!(),
+                };
+                Self::render_byte_dump(ui, data, addr_w);
+            }
+        }
+    }
+    
+    fn render_vram_dump(ui: &mut egui::Ui, vram: &[u16]) {
+        const COLS: usize = 8;
+        let total_rows = vram.len().div_ceil(COLS);
+        let row_height = ui.text_style_height(&egui::TextStyle::Monospace) + 2.0;
+    
+        egui::ScrollArea::vertical().auto_shrink([false, false])
+            .show_rows(ui, row_height, total_rows, |ui, row_range| {
+                for row in row_range {
+                    let base  = row * COLS;
+                    let chunk = &vram[base..vram.len().min(base + COLS)];
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(format!("{:04X}:", base)).monospace().weak());
+                        for word in chunk {
+                            ui.label(egui::RichText::new(format!(" {:04X}", word)).monospace());
+                        }
+                    });
+                }
+            });
+    }
+    
+    fn render_cgram_dump(ui: &mut egui::Ui, cgram: &[core::sppu::Color]) {
+        const COLS: usize = 16;
+        let total_rows = cgram.len().div_ceil(COLS);
+        let row_height = ui.text_style_height(&egui::TextStyle::Monospace) + 2.0;
+    
+        egui::ScrollArea::vertical().auto_shrink([false, false])
+            .show_rows(ui, row_height, total_rows, |ui, row_range| {
+                for row in row_range {
+                    let base  = row * COLS;
+                    let chunk = &cgram[base..cgram.len().min(base + COLS)];
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(format!("{:03X}:", base)).monospace().weak());
+                        for color in chunk {
+                            let egui_color = egui::Color32::from_rgb(color.r, color.g, color.b);
+                            // Color swatch
+                            let (rect, response) = ui.allocate_exact_size(
+                                egui::vec2(row_height, row_height),
+                                egui::Sense::hover()
+                            );
+                            ui.painter().rect_filled(rect, 1.0, egui_color);
+                            response.on_hover_text(format!("#{:02X}{:02X}{:02X}", color.r, color.g, color.b));
+                        }
+                    });
+                }
+            });
+    }
+    
+    fn render_byte_dump(ui: &mut egui::Ui, data: &[u8], addr_w: usize) {
+        const COLS: usize = 16;
+    
+        // let anchor = self.mem.anchor() as usize;
+        let total_rows  = data.len().div_ceil(COLS);
+        let row_height  = ui.text_style_height(&egui::TextStyle::Monospace) + 2.0;
+            
+        egui::ScrollArea::vertical().auto_shrink([false, false])
+            .show_rows(ui, row_height, total_rows, |ui, row_range| {
+                for row in row_range {
+                    let base = row * COLS;
+                    let chunk = &data[base..data.len().min(base + COLS)];
+        
+                    ui.horizontal(|ui| {
+                        // Address gutter
+                        ui.label(egui::RichText::new(
+                            format!("{:0>width$X}:", base, width = addr_w)
+                            // Note: for ROM/WRAM the base IS the absolute offset since data starts at 0
+                            // For banked views you'd add a base_addr offset here
+                        ).monospace().weak());
+        
+                        // Hex bytes — group in sets of 8 for readability
+                        for (i, byte) in chunk.iter().enumerate() {
+                            if i == 8 { ui.label(egui::RichText::new("·").weak()); }
+                            ui.label(egui::RichText::new(format!("{:02X}", byte)).monospace());
+                        }
+                        // Pad if last row is short
+                        for i in chunk.len()..COLS {
+                            if i == 8 { ui.label(egui::RichText::new("·").weak()); }
+                            ui.label(egui::RichText::new("   ").monospace());
+                        }
+        
+                        ui.separator();
+        
+                        // ASCII sidebar
+                        let ascii: String = chunk.iter().map(|&b| {
+                            if b.is_ascii_graphic() || b == b' ' { b as char } else { '.' }
+                        }).collect();
+                        ui.label(egui::RichText::new(ascii).monospace().weak());
+                    });
+                }
+            });
+    }
 
     pub fn id(&self) -> u32 {
         self.egui_window.as_ref().unwrap().window().id()
@@ -588,7 +797,7 @@ impl DebugWindow {
         self.egui_window.as_mut().unwrap().handle_sdl_keyboard_event(event);
     }
 
-    pub fn breakpoints(&self) -> &HashSet<BreakpointInfo> {
+    pub fn breakpoints(&self) -> &std::collections::HashSet<BreakpointInfo> {
         &self.disasm.breakpoints
     }
 }

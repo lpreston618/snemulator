@@ -102,6 +102,8 @@ pub struct Snemulator {
     frame_ready: bool,
     
     pub cart: Option<Cartridge>,
+    pub total_cycles: u64,
+    pub frame: u64,
 }
 
 impl Snemulator {
@@ -136,12 +138,16 @@ impl Snemulator {
             cpu_interrupt: None,
             frame_ready: false,
             cart: None,
+            total_cycles: 0,
+            frame: 0,
         }
     }
     
     fn power_on(&mut self) {
         self.ssmp.power_on();
         self.mult.power_on();
+        self.total_cycles = 0;
+        self.frame = 0;
         
         let mut bus = cpu_bus!(self);
         self.cpu.power_on(&mut bus);
@@ -184,6 +190,8 @@ impl Snemulator {
         while !self.frame_ready {
             self.cycle(frame_buffer, audio_buffer);
         }
+        
+        self.frame += 1;
     }
     
     pub fn debug_run_frame(
@@ -207,6 +215,8 @@ impl Snemulator {
             }
         }
         
+        self.frame += 1;
+        
         app::DebugAction::None
     }
     
@@ -218,9 +228,11 @@ impl Snemulator {
     ) -> app::DebugAction {        
         // Cycle until the CPU is the next to cycle
         while self.cpu.clocks > self.ppu.clocks {
+            self.total_cycles += self.ppu.clocks as u64;
             self.cycle(frame_buffer, audio_buffer);
         }
         // Then cycle cpu
+        self.total_cycles += self.cpu.clocks as u64;
         self.cycle(frame_buffer, audio_buffer);
         
         let cpu_pc = scpu::Address { bank: self.cpu.pb, offset: self.cpu.pc }.to_u32();
@@ -237,6 +249,7 @@ impl Snemulator {
         
         self.cpu.clocks -= clocks;
         self.ppu.clocks -= clocks;
+        self.total_cycles += clocks as u64;
         
         if self.cpu.clocks == 0 {
             self.cycle_cpu();
