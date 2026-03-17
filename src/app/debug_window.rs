@@ -132,17 +132,16 @@ pub struct DebugWindow {
 }
 
 #[derive(PartialEq, Clone, Copy)]
-enum DebugTab { Cpu, Memory, Disassembly, ChrRam, Ppu, Breakpoints }
+enum DebugTab { Cpu, Memory, ChrRam, Ppu, Watchpoints }
 
 impl DebugTab {
     fn label(&self) -> &'static str {
         match self {
             DebugTab::Cpu         => "CPU",
             DebugTab::Memory      => "Memory",
-            DebugTab::Disassembly => "Disassembly",
             DebugTab::ChrRam      => "CHR RAM",
             DebugTab::Ppu         => "PPU",
-            DebugTab::Breakpoints => "Breakpoints",
+            DebugTab::Watchpoints => "Watchpoints",
         }
     }
 }
@@ -183,10 +182,9 @@ impl DebugWindow {
                     for tab in [
                         DebugTab::Cpu,
                         DebugTab::Memory,
-                        DebugTab::Disassembly,
                         DebugTab::ChrRam,
                         DebugTab::Ppu,
-                        DebugTab::Breakpoints
+                        DebugTab::Watchpoints,
                     ] {
                         ui.selectable_value(&mut self.selected_tab, tab, tab.label());
                     }
@@ -194,17 +192,13 @@ impl DebugWindow {
             });
             egui::CentralPanel::default().show(ctx, |ui| {
                 debug_action = match self.selected_tab {
-                    // DebugTab::Memory     => self.render_memory_viewer(ui, snes),
-                    DebugTab::Disassembly => {
+                    DebugTab::Cpu => {
                         self.update_disassembly(snem_core);
                         self.render_cpu_tab(ui, snem_core, app_state)
                     },
+                    // DebugTab::Memory     => self.render_memory_viewer(ui, snes),
                     // DebugTab::ChrRam     => self.render_chr_viewer(ui),
                     // DebugTab::Cpu        => self.render_cpu_state(ui, snes),
-                    DebugTab::Breakpoints => {
-                        // self.render_breakpoints_tab(ui, snem_core);
-                        app::DebugAction::None
-                    },
                     _ => app::DebugAction::None,
                 };
             });
@@ -549,8 +543,6 @@ impl DebugWindow {
                             // Clicking the address jumps the disassembly view to it
                             if ui.button(egui::RichText::new(format!("{:06X}", breakpoint.addr)).monospace()).clicked() {
                                 let pc = ((snem_core.cpu.pb as u32) << 16) | snem_core.cpu.pc as u32;
-        
-                                self.selected_tab = DebugTab::Disassembly;
                                 self.disasm.follow_pc = breakpoint.addr == pc;
                                 self.disasm.current_addr = breakpoint.addr;
                                 self.disasm.options.forced_flag_m = Some(breakpoint.force_m);
