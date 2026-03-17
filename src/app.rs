@@ -134,7 +134,9 @@ impl SnemulatorApp {
             
             match app_action {
                 AppAction::Continue => {},
-                AppAction::Exit => break 'running,
+                AppAction::Exit => {
+                    break 'running;
+                },
                 _ => { self.do_action(app_action); }
             }
             
@@ -235,6 +237,7 @@ impl SnemulatorApp {
             let event_window_id = match &event {
                 Event::Window { window_id, .. } => Some(*window_id),
                 Event::MouseMotion { window_id, .. } => Some(*window_id),
+                Event::MouseWheel { window_id, .. } => Some(*window_id),
                 Event::MouseButtonDown { window_id, .. } => Some(*window_id),
                 Event::MouseButtonUp { window_id, .. } => Some(*window_id),
                 Event::KeyDown { window_id, .. } => Some(*window_id),
@@ -264,10 +267,6 @@ impl SnemulatorApp {
                         self.handle_debug_window_event(&event);
                         continue;
                     }
-                }
-                
-                if event_win_id != self.main_window.id() {
-                    continue;
                 }
             }
 
@@ -508,6 +507,11 @@ impl SnemulatorApp {
                 error!("Cannot debug without ROM loaded: {}", e);
                 return;
             }
+        }
+        
+        // File dialog closed without selecting a ROM
+        if self.snem_core.cart.is_none() {
+            return;
         }
         
         let mapping_mode = self.snem_core.cart.as_ref().unwrap().mapping_mode();

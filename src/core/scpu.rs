@@ -1,25 +1,25 @@
 use log::{debug, info, trace};
 
-use crate::core::scpu::{bus::{CpuBus}, disassembler::disassemble};
+use crate::core::scpu::{bus::CpuBus, disassembler::disassemble};
 
 pub mod bus;
-pub mod ioregs;
-pub mod dma;
-pub mod mult;
 pub mod disassembler;
+pub mod dma;
 mod instructions;
+pub mod ioregs;
+pub mod mult;
 
 pub use bus::Address;
 
 pub enum Flag {
-    FlagC = 1 << 0,   // Carry
-    FlagZ = 1 << 1,   // Zero
-    FlagI = 1 << 2,   // IRQ Disable
-    FlagD = 1 << 3,   // Decimal Mode
-    FlagX = 1 << 4,   // X Register Size (Native mode only; 0: 16-bit, 1: 8-bit)
-    FlagM = 1 << 5,   // Accumulator Size (Native mode only; 0: 16-bit, 1: 8-bit)
-    FlagV = 1 << 6,   // Overflow
-    FlagN = 1 << 7,   // Negative
+    FlagC = 1 << 0, // Carry
+    FlagZ = 1 << 1, // Zero
+    FlagI = 1 << 2, // IRQ Disable
+    FlagD = 1 << 3, // Decimal Mode
+    FlagX = 1 << 4, // X Register Size (Native mode only; 0: 16-bit, 1: 8-bit)
+    FlagM = 1 << 5, // Accumulator Size (Native mode only; 0: 16-bit, 1: 8-bit)
+    FlagV = 1 << 6, // Overflow
+    FlagN = 1 << 7, // Negative
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -34,32 +34,29 @@ pub enum CpuInterrupt {
 
 pub struct Cpu65c816 {
     // Internal Registers
-    pub a: u16,       // Accumulator
-    pub x: u16,       // X index
-    pub y: u16,       // Y index
-    pub sp: u16,      // Stack pointer
-    pub pc: u16,      // Program counter
-    pub pb: u8,       // Program bank
-    pub db: u8,       // Data bank
-    pub dp: u16,      // Direct page
-    pub p: u8,        // Processor status
-    pub e: bool,      // Emulation mode
-    
+    pub a: u16,  // Accumulator
+    pub x: u16,  // X index
+    pub y: u16,  // Y index
+    pub sp: u16, // Stack pointer
+    pub pc: u16, // Program counter
+    pub pb: u8,  // Program bank
+    pub db: u8,  // Data bank
+    pub dp: u16, // Direct page
+    pub p: u8,   // Processor status
+    pub e: bool, // Emulation mode
+
     // Internal state
     pub halted: bool,
     pub stopped: bool,
     pub waiting_for_interrupt: bool,
     pub irq_pending: bool,
     pub nmi_pending: bool,
-    
+
     /// The number of clocks before the next instruction is executed
     pub clocks: usize,
-        
-    fast_rom_en: bool,
-    branch_taken: bool,
-    page_crossed: bool,    
-    
-    debug_cnt: usize,
+
+    pub branch_taken: bool,
+    pub page_crossed: bool,
 }
 
 // SNES System Functionality
@@ -68,7 +65,7 @@ impl Cpu65c816 {
     const SLOW_CYCLE_CLOCKS: usize = 8;
     /// Number of system clocks in a single cpu cycle
     const CYCLE_CLOCKS: usize = 6;
-    
+
     // Creates a new, uninitialized 65c816 CPU
     pub fn new() -> Cpu65c816 {
         Cpu65c816 {
@@ -82,22 +79,19 @@ impl Cpu65c816 {
             dp: 0,
             p: 0,
             e: false,
-            
+
             // Internal state
             halted: false,
             waiting_for_interrupt: false,
             irq_pending: false,
             nmi_pending: false,
-            
+
             // Cycle tracking
             clocks: 0,
-                
-            fast_rom_en: false,
+
             branch_taken: false,
             page_crossed: false,
             stopped: false,
-            
-            debug_cnt: 0,
         }
     }
 
@@ -115,11 +109,10 @@ impl Cpu65c816 {
         self.waiting_for_interrupt = false;
         self.irq_pending = false;
         self.nmi_pending = false;
-        self.fast_rom_en = false;
         self.stopped = false;
         self.handle_interrupt(bus, CpuInterrupt::Reset); // TODO: Check this?
     }
-    
+
     /// Cycles the cpu for a given number of clocks. If the number of clocks is 0 after cycling, the next instructions is executed.
     pub fn cycle(&mut self, bus: &mut CpuBus) {
         if self.nmi_pending {
@@ -128,46 +121,54 @@ impl Cpu65c816 {
             self.waiting_for_interrupt = false;
             return;
         }
-        
+
         if self.irq_pending && !self.is_flag_set(Flag::FlagI) {
             self.handle_interrupt(bus, CpuInterrupt::IRQ);
             self.waiting_for_interrupt = false;
             return;
         }
-        
+
         if self.stopped || self.halted || self.waiting_for_interrupt {
             self.clocks += Self::CYCLE_CLOCKS;
             return;
         }
-        
+
         if self.pb == 0x00 && self.pc == 0x9394 {
-            info!("pc: ${:02X}{:04X}, sp: 0x{:04X}, p: {:02X}, x: 0x{:04X}, y: 0x{:04X}", self.pb, self.pc, self.sp, self.p, self.x, self.y);
+            info!(
+                "pc: ${:02X}{:04X}, sp: 0x{:04X}, p: {:02X}, x: 0x{:04X}, y: 0x{:04X}",
+                self.pb, self.pc, self.sp, self.p, self.x, self.y
+            );
         }
-        
+
         self.execute(bus);
     }
-    
+
     pub fn handle_interrupt(&mut self, bus: &mut CpuBus, interrupt: CpuInterrupt) {
-        debug!("handling interrupt: {:?}, ${:02X}{:04X}, sp: 0x{:04X}, p: {:02X}, e: {}", interrupt, self.pb, self.pc, self.sp, self.p, self.e);
-        
+        debug!(
+            "handling interrupt: {:?}, ${:02X}{:04X}, sp: 0x{:04X}, p: {:02X}, e: {}",
+            interrupt, self.pb, self.pc, self.sp, self.p, self.e
+        );
+
         match interrupt {
-            CpuInterrupt::Reset => { self.e = true; }
+            CpuInterrupt::Reset => {
+                self.e = true;
+            }
             CpuInterrupt::BRK => {
                 panic!("BRK");
-            },
+            }
             _ => {}
         }
-        
+
         if !self.e {
             self.push(bus, self.pb);
         }
-        
+
         self.push_word(bus, self.pc);
         self.push(bus, self.p);
-        
+
         self.set_flag_to_bool(Flag::FlagI, true);
         self.set_flag_to_bool(Flag::FlagD, false);
-        
+
         let vector_offset = if self.e {
             match interrupt {
                 CpuInterrupt::IRQ => 0xFFFE,
@@ -187,10 +188,16 @@ impl Cpu65c816 {
                 CpuInterrupt::Abort => 0xFFE8,
             }
         };
-        
-        let vector_lo = Address { bank: 0, offset: vector_offset };
-        let vector_hi = Address { bank: 0, offset: vector_offset + 1 };
-        
+
+        let vector_lo = Address {
+            bank: 0,
+            offset: vector_offset,
+        };
+        let vector_hi = Address {
+            bank: 0,
+            offset: vector_offset + 1,
+        };
+
         self.pb = 0;
         self.pc = self.read_word(bus, vector_lo, vector_hi)
     }
@@ -203,64 +210,74 @@ impl Cpu65c816 {
         self.clocks += Self::SLOW_CYCLE_CLOCKS;
         bus.read(addr)
     }
-    
+
     /// Write a byte to the bus at a given address. Adds to cpu clocks.
     fn write(&mut self, bus: &mut CpuBus, addr: Address, value: u8) {
         self.clocks += Self::SLOW_CYCLE_CLOCKS;
         bus.write(addr, value);
     }
-    
+
     fn read_prg(&mut self, bus: &mut CpuBus) -> u8 {
         let pc = self.pc;
         self.pc += 1;
         self.clocks += Self::SLOW_CYCLE_CLOCKS;
-        bus.read(Address { bank: self.pb, offset: pc })
+        bus.read(Address {
+            bank: self.pb,
+            offset: pc,
+        })
     }
-    
+
     fn read_word(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) -> u16 {
-        u16::from_le_bytes([
-            self.read(bus, addr_lo),
-            self.read(bus, addr_hi),
-        ])
+        u16::from_le_bytes([self.read(bus, addr_lo), self.read(bus, addr_hi)])
     }
-    
+
     fn write_word(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address, value: u16) {
         self.write(bus, addr_lo, value as u8);
         self.write(bus, addr_hi, (value >> 8) as u8);
     }
-    
+
     fn pop(&mut self, bus: &mut CpuBus) -> u8 {
         self.sp += 1;
-        
+
         if self.e {
             self.sp = 0x100 | (self.sp & 0xFF);
         }
-        
-        self.read(bus, Address { bank: 0, offset: self.sp })
+
+        self.read(
+            bus,
+            Address {
+                bank: 0,
+                offset: self.sp,
+            },
+        )
     }
-    
+
     fn push(&mut self, bus: &mut CpuBus, value: u8) {
-        self.write(bus, Address { bank: 0, offset: self.sp }, value);
-        
+        self.write(
+            bus,
+            Address {
+                bank: 0,
+                offset: self.sp,
+            },
+            value,
+        );
+
         self.sp -= 1;
-        
+
         if self.e {
             self.sp = 0x100 | (self.sp & 0xFF);
         }
     }
-    
+
     fn pop_word(&mut self, bus: &mut CpuBus) -> u16 {
-        u16::from_le_bytes([
-            self.pop(bus),
-            self.pop(bus),
-        ])
+        u16::from_le_bytes([self.pop(bus), self.pop(bus)])
     }
-    
+
     fn push_word(&mut self, bus: &mut CpuBus, value: u16) {
         self.push(bus, (value >> 8) as u8);
         self.push(bus, value as u8);
     }
-    
+
     pub fn is_flag_set(&self, flag: Flag) -> bool {
         self.p & (flag as u8) != 0
     }

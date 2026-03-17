@@ -158,6 +158,13 @@ impl UiWindow {
                     });
                 }
             }
+            sdl3::event::Event::MouseWheel { y, .. } => {
+                new_event = Some(egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Line,
+                    delta: egui::Vec2::new(0.0, *y as f32),
+                    modifiers: Default::default(),
+                });
+            }
             _ => {}
         }
         

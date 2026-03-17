@@ -47,7 +47,7 @@ pub struct MemBlock<'a> {
 #[derive(Clone)]
 pub struct DisassemblyOptions {
     pub use_hw_reg_names: bool,
-    pub show_pc: bool,
+    pub show_rel_addr_dest: bool,
     pub max_instr_count: usize,
     pub rom_mapping_mode: cartridge::MappingMode,
     pub forced_flag_x: Option<bool>,
@@ -631,6 +631,22 @@ fn format_direct(dp: u16, dp_offset: u8, options: &DisassemblyOptions) -> String
     }
 }
 
+fn format_rel8(pc: u16, offset_byte: u8, options: &DisassemblyOptions) -> String {
+    if options.show_rel_addr_dest {
+        return format!("${:04X}", pc as u16 + ((offset_byte as i8) as i16) as u16);
+    }
+    
+    format!("#${:02X}", offset_byte as u8)
+}
+
+fn format_rel16(pc: u16, offset_word: u16, options: &DisassemblyOptions) -> String {
+    if options.show_rel_addr_dest {
+        return format!("${:04X}", pc as u16 + offset_word as u16);
+    }
+    
+    format!("#${:04X}", offset_word as u16)
+}
+
 fn _disassemble(mem: &MemBlock, state: ExecuteState, options: &DisassemblyOptions) -> (DisasmLine, ExecuteState) {
     let addr = ((mem.bank as u32) << 16) | state.pc as u32;
     let addr = match state.memory_region {
@@ -677,15 +693,13 @@ fn _disassemble(mem: &MemBlock, state: ExecuteState, options: &DisassemblyOption
         }
         
         AddressingMode::Relative8 => {
-            let offset = read_byte!(mem, bytes, pc + 1) as i8;
-            let target = pc + 1 + offset as u16;
-            format!("${:04X}", target)
+            let offset_byte = read_byte!(mem, bytes, pc + 1);
+            format_rel8(state.pc + 2, offset_byte, options)
         }
         
         AddressingMode::Relative16 => {
-            let offset = read_word!(mem, bytes, pc + 1) as i16;
-            let target = pc + 2 + offset as u16;
-            format!("${:04X}", target)
+            let offset_word = read_word!(mem, bytes, pc + 1);
+            format_rel16(state.pc + 2, offset_word, options)
         }
         
         AddressingMode::Direct => {
