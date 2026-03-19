@@ -1,6 +1,6 @@
 use crate::{app::{self, utils::{self, monospace_text}, watchpoints::types::*}, core::{scpu, snemcore}};
 use egui::{Color32, Pos2, Rect, Stroke, Vec2};
-use std::collections::{HashMap, HashSet};
+use std::{cell::Cell, collections::{HashMap, HashSet}, ops::DerefMut};
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -85,6 +85,7 @@ pub struct Editor {
     selection: Selection,
     cond_edit_arg1_text: String,
     cond_edit_arg2_text: String,
+    editing_text: bool,
 }
 
 impl Editor {
@@ -98,6 +99,7 @@ impl Editor {
             selection: Selection::None,
             cond_edit_arg1_text: String::new(),
             cond_edit_arg2_text: String::new(),
+            editing_text: false,
         }
     }
     
@@ -108,7 +110,7 @@ impl Editor {
         }
         
         let input_id = self.graph.add_node(NodeKind::Condition(kind), Pos2::ZERO);
-        let output_id = self.graph.add_node(NodeKind::Output { lit: false }, Pos2::ZERO);
+        let output_id = self.graph.add_node(NodeKind::Break { lit: false }, Pos2::ZERO);
         
         self.graph.add_wire(Wire {
             from: Port::new(input_id, 0),
@@ -130,7 +132,7 @@ impl Editor {
             NodeKind::And => NodeKind::And,
             NodeKind::Or => NodeKind::Or,
             NodeKind::Not => NodeKind::Not,
-            NodeKind::Output { lit } => NodeKind::Output { lit },
+            NodeKind::Break { lit } => NodeKind::Break { lit },
             NodeKind::Condition(_) => { return; }, // Watchpoint nodes created via create_new_watchpoint
         }, Pos2::ZERO);
         
@@ -155,6 +157,7 @@ impl Editor {
     pub fn show(&mut self, ui: &mut egui::Ui, app_state: &app::AppState, snem_core: &snemcore::Snemulator) -> bool {
         let mut modified = false;
         
+        self.editing_text = false;
         if app_state.is_paused {
             match self.selection {
                 Selection::SingleNode(id) => {
@@ -168,7 +171,7 @@ impl Editor {
                                 ui.heading("Edit Condition");
                                 ui.separator();
                                 
-                                self.draw_condition_editor(ui, id);
+                                self.draw_condition_editor(ui, id, snem_core);
                                 modified = true; // If condition editor opened, assume the graph is being changed
                                                  // This is purely to avoid the hassle of tracking when each button
                                                  // or input in the condition editor is changed.
@@ -188,7 +191,6 @@ impl Editor {
         let origin = canvas_response.rect.min;
 
         let pointer_screen = canvas_response.hover_pos().unwrap_or(origin);
-        let pointer_canvas = self.to_canvas(origin, pointer_screen);
         
         // ── Scroll-to-zoom ────────────────────────────────────────────────────
         // Zoom toward the cursor: the canvas point under the cursor must remain
@@ -258,7 +260,7 @@ impl Editor {
         }
 
         // ── Delete key ────────────────────────────────────────────────────────
-        if ui.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
+        if ui.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) && !self.editing_text {
             match &self.selection {
                 Selection::SingleNode(id) => {
                     let id = *id;
@@ -322,28 +324,27 @@ impl Editor {
         modified
     }
 
-    pub fn draw_condition_editor(&mut self, ui: &mut egui::Ui, id: NodeId) -> bool {
-        let mut modified = false;
-
+    pub fn draw_condition_editor(&mut self, ui: &mut egui::Ui, id: NodeId, snem_core: &snemcore::Snemulator) {
         // 1. Get a mutable reference to the node
         let node = match self.graph.nodes.get_mut(id) {
             Some(n) => n,
-            None => return false,
+            None => return,
         };
 
         // 2. Ensure it's actually a Condition node
         let NodeKind::Condition(wp_kind) = &mut node.kind else {
-            return false;
+            return;
         };
 
         // 3. Determine the current broad category for our radio/selectable buttons
-        #[derive(PartialEq)]
-        enum Category { CpuReg, Flag, Ram, Vram, HwReg }
+        #[derive(PartialEq, Clone, Copy)]
+        enum Category { CpuReg, Flag, Ram, Vram, HwReg, SysInfo }
         let mut current_cat = match wp_kind {
-            WatchpointKind::WPCpuReg8 { .. } => Category::CpuReg,
-            WatchpointKind::WPCpuReg16 { .. } => Category::CpuReg,
-            WatchpointKind::WPCpuFlag { .. } => Category::Flag,
+            WatchpointKind::CpuReg { .. } => Category::CpuReg,
+            WatchpointKind::CpuFlag { .. } => Category::Flag,
+            WatchpointKind::System { .. } => Category::SysInfo,
         };
+        let old_cat = current_cat;
 
         // --- Category Selection ---
         ui.horizontal(|ui| {
@@ -357,6 +358,7 @@ impl Editor {
                         Category::Ram => "RAM",
                         Category::Vram => "VRAM",
                         Category::HwReg => "Hardware Register",
+                        Category::SysInfo => "System Info",
                     })
                 .show_ui(ui, |ui| {
                     ui.selectable_value(&mut current_cat, Category::CpuReg, "CPU Register");
@@ -364,105 +366,94 @@ impl Editor {
                     ui.selectable_value(&mut current_cat, Category::Ram, "RAM");
                     ui.selectable_value(&mut current_cat, Category::Vram, "VRAM");
                     ui.selectable_value(&mut current_cat, Category::HwReg, "Hardware Register");
+                    ui.selectable_value(&mut current_cat, Category::SysInfo, "System Info");
                 })
         });
 
         ui.separator();
 
+        if old_cat != current_cat {
+            match current_cat {
+                Category::CpuReg => *wp_kind = WatchpointKind::CpuReg { reg: CpuReg::A, cond: WatchpointCond::Equal(0) },
+                Category::Flag => *wp_kind = WatchpointKind::CpuFlag { flag: CpuFlag::C, cond: WatchpointCondFlag::Set },
+                Category::SysInfo => *wp_kind = WatchpointKind::System { variable: SystemVariable::Frame, cond: WatchpointCond::Equal(0) },
+                // Category::Ram => WatchpointKind::WPRam {  },
+                // Category::Vram => WatchpointKind::WPVram {  },
+                // Category::HwReg => WatchpointKind::WPHwReg {  },
+                _ => {},
+            };
+        }
+        
         // --- Specific Variant Editing ---
         match wp_kind {
-            WatchpointKind::WPCpuReg8 { .. } | WatchpointKind::WPCpuReg16 { .. } => {
+            WatchpointKind::CpuReg { .. } => {
                 self.cpu_reg_wp_edit(ui, id);
             }
 
-            WatchpointKind::WPCpuFlag { flag, cond } => {
-                // Implement your flag toggles here 
-                // (e.g. a simple Checkbox if cond is just WatchpointCondFlag::Equals(bool))
+            WatchpointKind::CpuFlag { .. } => {
+                self.cpu_flag_wp_edit(ui, id, snem_core);
+            }
+            
+            WatchpointKind::System { .. } => {
+                self.system_wp_edit(ui, id);
             }
         }
-
-        modified
     }
     
-    // Returns a bool telling whether the condition was modified
-    fn cpu_reg_wp_edit(&mut self, ui: &mut egui::Ui, wp_node_id: NodeId) -> bool {
+    fn cpu_reg_wp_edit(&mut self, ui: &mut egui::Ui, wp_node_id: NodeId) {
         #[derive(PartialEq)]
-        enum CpuReg { DB, PB, P, A, X, Y, DP, PC, SP }
-        
-        #[derive(PartialEq)]
-        enum CondType { Eq, AndEq, OrEq }
+        enum CondType { Eq, NEq, Gt, GtEq, AndEq, OrEq }
         
         enum RegSize { Byte, Word }
         
-        let mut modified = false;
-        
         let node = match self.graph.nodes.get_mut(wp_node_id) {
             Some(n) => n,
-            None => return false,
+            None => return,
         };
 
         // 2. Ensure it's actually a Condition node
         let NodeKind::Condition(wp_kind) = &mut node.kind else {
-            return false;
+            return;
         };
         
-        let mut arg1_u8: Option<u8> = None;
-        let mut arg2_u8: Option<u8> = None;
-        let mut arg1_u16: Option<u16> = None;
-        let mut arg2_u16: Option<u16> = None;
-        let (mut reg, mut c_type, reg_size) = match wp_kind {
-            WatchpointKind::WPCpuReg8 { reg, cond } => {
-                let r = match reg {
-                    CpuRegU8::DB => CpuReg::DB,
-                    CpuRegU8::PB => CpuReg::PB,
-                    CpuRegU8::P => CpuReg::P,
+        let mut arg1: Option<usize> = None;
+        let mut arg2: Option<usize> = None;
+        let (reg, mut c_type, reg_size) = match wp_kind {
+            WatchpointKind::CpuReg { reg, cond } => {
+                let size = match reg {
+                    CpuReg::PB | CpuReg::DB | CpuReg::P => RegSize::Byte,
+                    _ => RegSize::Word,
                 };
                 let c = match cond {
-                    WatchpointCondU8::Equal(arg1) => {
-                        arg1_u8 = Some(*arg1);
+                    WatchpointCond::Equal(cond_arg1) => {
+                        arg1 = Some(*cond_arg1);
                         CondType::Eq
                     },
-                    WatchpointCondU8::OrEqual(arg1, arg2) => {
-                        arg1_u8 = Some(*arg1);
-                        arg2_u8 = Some(*arg2);
+                    WatchpointCond::NotEqual(cond_arg1) => {
+                        arg1 = Some(*cond_arg1);
+                        CondType::NEq
+                    },
+                    WatchpointCond::GreaterThan(cond_arg1) => {
+                        arg1 = Some(*cond_arg1);
+                        CondType::Gt
+                    },
+                    WatchpointCond::GreaterThanOrEqual(cond_arg1) => {
+                        arg1 = Some(*cond_arg1);
+                        CondType::GtEq
+                    },
+                    WatchpointCond::OrEqual(cond_arg1, cond_arg2) => {
+                        arg1 = Some(*cond_arg1);
+                        arg2 = Some(*cond_arg2);
                         CondType::OrEq
                     },
-                    WatchpointCondU8::AndEqual(arg1, arg2) => {
-                        arg1_u8 = Some(*arg1);
-                        arg2_u8 = Some(*arg2);
+                    WatchpointCond::AndEqual(cond_arg1, cond_arg2) => {
+                        arg1 = Some(*cond_arg1);
+                        arg2 = Some(*cond_arg2);
                         CondType::AndEq
                     },
                 };
                 
-                (r, c, RegSize::Byte)
-            }
-            WatchpointKind::WPCpuReg16 { reg, cond } => {
-                let r = match reg {
-                    CpuRegU16::A => CpuReg::A,
-                    CpuRegU16::X => CpuReg::X,
-                    CpuRegU16::Y => CpuReg::Y,
-                    CpuRegU16::DP => CpuReg::DP,
-                    CpuRegU16::PC => CpuReg::PC,
-                    CpuRegU16::SP => CpuReg::SP
-                };
-                let c = match cond {
-                    WatchpointCondU16::Equal(arg1) => {
-                        arg1_u16 = Some(*arg1);
-                        CondType::Eq
-                    },
-                    WatchpointCondU16::OrEqual(arg1, arg2) => {
-                        arg1_u16 = Some(*arg1);
-                        arg2_u16 = Some(*arg2);
-                        CondType::OrEq
-                    },
-                    WatchpointCondU16::AndEqual(arg1, arg2) => {
-                        arg1_u16 = Some(*arg1);
-                        arg2_u16 = Some(*arg2);
-                        CondType::AndEq
-                    },
-                };
-                
-                (r, c, RegSize::Word)
+                (reg, c, size)
             }
             _ => unreachable!(),
         };
@@ -471,7 +462,7 @@ impl Editor {
             ui.label(utils::monospace_text("If".to_string()));
             
             // Register Selection
-            egui::ComboBox::from_id_salt("reg_combo").width(20.0)
+            egui::ComboBox::from_id_salt("reg_sel").width(20.0)
                 .selected_text(match reg {
                     CpuReg::DB => "DB",
                     CpuReg::PB => "PB",
@@ -484,28 +475,34 @@ impl Editor {
                     CpuReg::SP => "SP",
                 })
                 .show_ui(ui, |ui| {
-                    modified |= ui.selectable_value(&mut reg, CpuReg::DB, "DB (Data Bank)"      ).changed();
-                    modified |= ui.selectable_value(&mut reg, CpuReg::PB, "PB (Program Bank)"   ).changed();
-                    modified |= ui.selectable_value(&mut reg, CpuReg::P,  "P (Processor Status)").changed();
-                    modified |= ui.selectable_value(&mut reg, CpuReg::A,  "A (Accumulator)"     ).changed();
-                    modified |= ui.selectable_value(&mut reg, CpuReg::X,  "X (X Index)"         ).changed();
-                    modified |= ui.selectable_value(&mut reg, CpuReg::Y,  "Y (Y Index)"         ).changed();
-                    modified |= ui.selectable_value(&mut reg, CpuReg::DP, "DP (Direct Page)"    ).changed();
-                    modified |= ui.selectable_value(&mut reg, CpuReg::PC, "PC (Program Counter)").changed();
-                    modified |= ui.selectable_value(&mut reg, CpuReg::SP, "SP (Stack Pointer)"  ).changed();
+                    ui.selectable_value(reg, CpuReg::DB, "DB (Data Bank)"      );
+                    ui.selectable_value(reg, CpuReg::PB, "PB (Program Bank)"   );
+                    ui.selectable_value(reg, CpuReg::P,  "P (Processor Status)");
+                    ui.selectable_value(reg, CpuReg::A,  "A (Accumulator)"     );
+                    ui.selectable_value(reg, CpuReg::X,  "X (X Index)"         );
+                    ui.selectable_value(reg, CpuReg::Y,  "Y (Y Index)"         );
+                    ui.selectable_value(reg, CpuReg::DP, "DP (Direct Page)"    );
+                    ui.selectable_value(reg, CpuReg::PC, "PC (Program Counter)");
+                    ui.selectable_value(reg, CpuReg::SP, "SP (Stack Pointer)"  );
                 });
 
             ui.horizontal(|ui| {
-                egui::ComboBox::from_id_salt("reg_op").width(20.0)
+                egui::ComboBox::from_id_salt("reg_cond").width(20.0)
                     .selected_text(
                         match c_type {
                             CondType::Eq => "==",
+                            CondType::NEq => "!=",
+                            CondType::Gt => ">",
+                            CondType::GtEq => ">=",
                             CondType::AndEq => "&",
                             CondType::OrEq => "|",
                         }
                     )
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut c_type, CondType::Eq, "== (Equals)");
+                        ui.selectable_value(&mut c_type, CondType::NEq, "!= (Not Equal)");
+                        ui.selectable_value(&mut c_type, CondType::Gt, "> (Greater Than)");
+                        ui.selectable_value(&mut c_type, CondType::GtEq, ">= (Greater Than or Equal)");
                         ui.selectable_value(&mut c_type, CondType::AndEq, "& (Bitwise AND)");
                         ui.selectable_value(&mut c_type, CondType::OrEq, "| (Bitwise OR)");
                     });
@@ -515,18 +512,22 @@ impl Editor {
                 RegSize::Byte => 20.0,
                 RegSize::Word => 40.0,
             };
-            let hint_text = match reg_size {
-                RegSize::Byte => "XX",
-                RegSize::Word => "XXXX",
+            let arg1_hint_text = match reg_size {
+                RegSize::Byte => format!("{:02x}", arg1.unwrap_or_default()),
+                RegSize::Word => format!("{:04x}", arg1.unwrap_or_default()),
+            };
+            let arg2_hint_text = match reg_size {
+                RegSize::Byte => format!("{:02x}", arg2.unwrap_or_default()),
+                RegSize::Word => format!("{:04x}", arg2.unwrap_or_default()),
             };
             
             ui.horizontal(|ui| {
                 match c_type {
-                    CondType::Eq => {
+                    CondType::Eq | CondType::NEq | CondType::Gt | CondType::GtEq => {
                         let response = ui.add(
                             egui::TextEdit::singleline(&mut self.cond_edit_arg1_text)
                                 .desired_width(desired_width)
-                                .hint_text(hint_text)
+                                .hint_text(arg1_hint_text)
                         );
                         
                         let submitted = response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
@@ -534,24 +535,26 @@ impl Editor {
                             match reg_size {
                                 RegSize::Byte => {
                                     if let Ok(val) = u8::from_str_radix(self.cond_edit_arg1_text.trim(), 16) {
-                                        arg1_u8 = Some(val);
+                                        arg1 = Some(val as usize);
                                     }
                                 },
                                 RegSize::Word => {
                                     if let Ok(val) = u16::from_str_radix(self.cond_edit_arg1_text.trim(), 16) {
-                                        arg1_u16 = Some(val);
+                                        arg1 = Some(val as usize);
                                     }
                                 },
                             }
                             self.cond_edit_arg1_text.clear()
-                        }                        
+                        }
+            
+                        self.editing_text = response.has_focus();
                     }
                     CondType::OrEq | CondType::AndEq => {
                         ui.horizontal(|ui| {                        
                             let arg1_response = ui.add(
                                 egui::TextEdit::singleline(&mut self.cond_edit_arg1_text)
                                     .desired_width(desired_width)
-                                    .hint_text(hint_text)
+                                    .hint_text(arg1_hint_text)
                             );
                             
                             ui.label(monospace_text("==".to_string()));
@@ -559,7 +562,7 @@ impl Editor {
                             let arg2_response = ui.add(
                                 egui::TextEdit::singleline(&mut self.cond_edit_arg2_text)
                                     .desired_width(desired_width)
-                                    .hint_text(hint_text)
+                                    .hint_text(arg2_hint_text)
                             );
                             
                             let arg1_submitted = arg1_response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
@@ -567,12 +570,12 @@ impl Editor {
                                 match reg_size {
                                     RegSize::Byte => {
                                         if let Ok(val) = u8::from_str_radix(self.cond_edit_arg1_text.trim(), 16) {
-                                            arg1_u8 = Some(val);
+                                            arg1 = Some(val as usize);
                                         }
                                     },
                                     RegSize::Word => {
                                         if let Ok(val) = u16::from_str_radix(self.cond_edit_arg1_text.trim(), 16) {
-                                            arg1_u16 = Some(val);
+                                            arg1 = Some(val as usize);
                                         }
                                     },
                                 }
@@ -584,78 +587,263 @@ impl Editor {
                                 match reg_size {
                                     RegSize::Byte => {
                                         if let Ok(val) = u8::from_str_radix(self.cond_edit_arg2_text.trim(), 16) {
-                                            arg2_u8 = Some(val);
+                                            arg2 = Some(val as usize);
                                         }
                                     },
                                     RegSize::Word => {
                                         if let Ok(val) = u16::from_str_radix(self.cond_edit_arg2_text.trim(), 16) {
-                                            arg2_u16 = Some(val);
+                                            arg2 = Some(val as usize);
                                         }
                                     },
                                 }
                                 self.cond_edit_arg2_text.clear()
                             }
+                            
+                            self.editing_text = arg1_response.has_focus() || arg2_response.has_focus();
                         });
                     }
                 }
             });
         });
         
-        let new_wp = match reg {
-            CpuReg::DB | CpuReg::PB | CpuReg::P => {
-                let reg = match reg {
-                    CpuReg::DB => CpuRegU8::DB,
-                    CpuReg::PB => CpuRegU8::PB,
-                    CpuReg::P => CpuRegU8::P,
-                    _ => unreachable!()
-                };
-                
-                match c_type {
-                    CondType::Eq => WatchpointKind::WPCpuReg8 {
-                        reg,
-                        cond: WatchpointCondU8::Equal(arg1_u8.unwrap_or_default())
-                    },
-                    CondType::OrEq => WatchpointKind::WPCpuReg8 {
-                        reg,
-                        cond: WatchpointCondU8::OrEqual(arg1_u8.unwrap_or_default(), arg2_u8.unwrap_or_default())
-                    },
-                    CondType::AndEq => WatchpointKind::WPCpuReg8 {
-                        reg,
-                        cond: WatchpointCondU8::AndEqual(arg1_u8.unwrap_or_default(), arg2_u8.unwrap_or_default())
-                    }
-                }
-            },
-            _ => {
-                let reg = match reg {
-                    CpuReg::A => CpuRegU16::A,
-                    CpuReg::X => CpuRegU16::X,
-                    CpuReg::Y => CpuRegU16::Y,
-                    CpuReg::DP => CpuRegU16::DP,
-                    CpuReg::PC => CpuRegU16::PC,
-                    CpuReg::SP => CpuRegU16::SP,
-                    _ => unreachable!()
-                };
-                
-                match c_type {
-                    CondType::Eq => WatchpointKind::WPCpuReg16 {
-                        reg,
-                        cond: WatchpointCondU16::Equal(arg1_u16.unwrap_or_default())
-                    },
-                    CondType::OrEq => WatchpointKind::WPCpuReg16 {
-                        reg,
-                        cond: WatchpointCondU16::OrEqual(arg1_u16.unwrap_or_default(), arg2_u16.unwrap_or_default())
-                    },
-                    CondType::AndEq => WatchpointKind::WPCpuReg16 {
-                        reg,
-                        cond: WatchpointCondU16::AndEqual(arg1_u16.unwrap_or_default(), arg2_u16.unwrap_or_default())
-                    }
-                }
-            }
+        let reg = reg.clone();
+        let cond = match c_type {
+            CondType::Eq => WatchpointCond::Equal(arg1.unwrap_or_default()),
+            CondType::NEq => WatchpointCond::NotEqual(arg1.unwrap_or_default()),
+            CondType::Gt => WatchpointCond::GreaterThan(arg1.unwrap_or_default()),
+            CondType::GtEq => WatchpointCond::GreaterThanOrEqual(arg1.unwrap_or_default()),
+            CondType::OrEq => WatchpointCond::OrEqual(arg1.unwrap_or_default(), arg2.unwrap_or_default()),
+            CondType::AndEq => WatchpointCond::AndEqual(arg1.unwrap_or_default(), arg2.unwrap_or_default()),
         };
         
-        *wp_kind = new_wp;
+        let new_wp = WatchpointKind::CpuReg { reg, cond };
         
-        true
+        *wp_kind = new_wp;
+    }
+    
+    fn cpu_flag_wp_edit(&mut self, ui: &mut egui::Ui, wp_node_id: NodeId, snem_core: &snemcore::Snemulator) {
+        let node = match self.graph.nodes.get_mut(wp_node_id) {
+            Some(n) => n,
+            None => return,
+        };
+
+        let NodeKind::Condition(wp_kind) = &mut node.kind else {
+            return;
+        };
+        
+        let (flag, cond) = match wp_kind {
+            WatchpointKind::CpuFlag { flag, cond } => (flag, cond),
+            _ => return,
+        };
+        
+        ui.horizontal(|ui| {
+            ui.label(utils::monospace_text("If".to_string()));
+            
+            // Register Selection
+            egui::ComboBox::from_id_salt("flag_sel").width(20.0)
+                .selected_text(match flag {
+                    CpuFlag::C => "C",
+                    CpuFlag::Z => "Z",
+                    CpuFlag::I => "I",
+                    CpuFlag::D => "D",
+                    CpuFlag::X => "X",
+                    CpuFlag::M => "M",
+                    CpuFlag::V => "V",
+                    CpuFlag::N => "N",
+                    CpuFlag::Stopped => "Stopped",
+                    CpuFlag::Halted => "Halted",
+                    CpuFlag::Waiting => "Waiting",
+                    CpuFlag::NMIPending => "NMI Pending",
+                    CpuFlag::IRQPending => "IRQ Pending",
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(flag, CpuFlag::C,          "C (Carry)"    );
+                    ui.selectable_value(flag, CpuFlag::Z,          "Z (Zero)"     );
+                    ui.selectable_value(flag, CpuFlag::I,          "I (Interrupt)");
+                    ui.selectable_value(flag, CpuFlag::D,          "D (Decimal)"  );
+                    ui.selectable_value(flag, CpuFlag::X,          "X (Idx. Size)");
+                    ui.selectable_value(flag, CpuFlag::M,          "M (Acc. Size)");
+                    ui.selectable_value(flag, CpuFlag::V,          "V (Overflow)" );
+                    ui.selectable_value(flag, CpuFlag::N,          "N (Negative)" );
+                    ui.selectable_value(flag, CpuFlag::Stopped,    "Stopped"      );
+                    ui.selectable_value(flag, CpuFlag::Halted,     "Halted"       );
+                    ui.selectable_value(flag, CpuFlag::Waiting,    "Waiting"      );
+                    ui.selectable_value(flag, CpuFlag::NMIPending, "NMI Pending"   );
+                    ui.selectable_value(flag, CpuFlag::IRQPending, "IRQ Pending"   );
+                });
+            
+            ui.label(utils::monospace_text("is".to_string()));
+            
+            egui::ComboBox::from_id_salt("flag_cond").width(20.0)
+                .selected_text(match cond {
+                    WatchpointCondFlag::Set => "set",
+                    WatchpointCondFlag::Clear => "clear",
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(cond, WatchpointCondFlag::Set,   "set"  );
+                    ui.selectable_value(cond, WatchpointCondFlag::Clear, "clear");
+                });
+        });
+    }
+    
+    fn system_wp_edit(&mut self, ui: &mut egui::Ui, wp_node_id: NodeId) {
+        #[derive(PartialEq)]
+        enum CondType { Eq, NEq, Gt, GtEq, AndEq, OrEq }
+    
+        let node = match self.graph.nodes.get_mut(wp_node_id) {
+            Some(n) => n,
+            None => return,
+        };
+    
+        // 2. Ensure it's actually a Condition node
+        let NodeKind::Condition(wp_kind) = &mut node.kind else {
+            return;
+        };
+        
+        let mut arg1: Option<usize> = None;
+        let mut arg2: Option<usize> = None;
+        let (variable, mut c_type) = match wp_kind {
+            WatchpointKind::System { variable, cond } => {
+                let c = match cond {
+                    WatchpointCond::Equal(cond_arg1) => {
+                        arg1 = Some(*cond_arg1);
+                        CondType::Eq
+                    },
+                    WatchpointCond::NotEqual(cond_arg1) => {
+                        arg1 = Some(*cond_arg1);
+                        CondType::NEq
+                    },
+                    WatchpointCond::GreaterThan(cond_arg1) => {
+                        arg1 = Some(*cond_arg1);
+                        CondType::Gt
+                    },
+                    WatchpointCond::GreaterThanOrEqual(cond_arg1) => {
+                        arg1 = Some(*cond_arg1);
+                        CondType::GtEq
+                    },
+                    WatchpointCond::OrEqual(cond_arg1, cond_arg2) => {
+                        arg1 = Some(*cond_arg1);
+                        arg2 = Some(*cond_arg2);
+                        CondType::OrEq
+                    },
+                    WatchpointCond::AndEqual(cond_arg1, cond_arg2) => {
+                        arg1 = Some(*cond_arg1);
+                        arg2 = Some(*cond_arg2);
+                        CondType::AndEq
+                    },
+                };
+                
+                (variable, c)
+            }
+            _ => unreachable!(),
+        };
+        
+        ui.horizontal(|ui| {
+            ui.label(utils::monospace_text("If".to_string()));
+            
+            // Register Selection
+            egui::ComboBox::from_id_salt("reg_sel").width(20.0)
+                .selected_text(match variable {
+                    SystemVariable::Frame => "Frame",
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(variable, SystemVariable::Frame, "Frame");
+                });
+    
+            ui.horizontal(|ui| {
+                egui::ComboBox::from_id_salt("reg_cond").width(20.0)
+                    .selected_text(
+                        match c_type {
+                            CondType::Eq => "==",
+                            CondType::NEq => "!=",
+                            CondType::Gt => ">",
+                            CondType::GtEq => ">=",
+                            _ => "",
+                        }
+                    )
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut c_type, CondType::Eq, "== (Equals)");
+                        ui.selectable_value(&mut c_type, CondType::NEq, "!= (Not Equal)");
+                        ui.selectable_value(&mut c_type, CondType::Gt, "> (Greater Than)");
+                        ui.selectable_value(&mut c_type, CondType::GtEq, ">= (Greater Than or Equal)");
+                    });
+            });
+            
+            let desired_width = 40.0;
+            let arg1_hint_text = format!("{}", arg1.unwrap_or_default());
+            let arg2_hint_text = format!("{}", arg2.unwrap_or_default());
+            
+            ui.horizontal(|ui| {
+                match c_type {
+                    CondType::Eq | CondType::NEq | CondType::Gt | CondType::GtEq => {
+                        let response = ui.add(
+                            egui::TextEdit::singleline(&mut self.cond_edit_arg1_text)
+                                .desired_width(desired_width)
+                                .hint_text(arg1_hint_text)
+                        );
+                        
+                        let submitted = response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                        if submitted {
+                            if let Ok(val) = usize::from_str_radix(self.cond_edit_arg1_text.trim(), 10) {
+                                arg1 = Some(val);
+                            }
+                            self.cond_edit_arg1_text.clear()
+                        }
+            
+                        self.editing_text = response.has_focus();
+                    }
+                    CondType::OrEq | CondType::AndEq => {
+                        ui.horizontal(|ui| {                        
+                            let arg1_response = ui.add(
+                                egui::TextEdit::singleline(&mut self.cond_edit_arg1_text)
+                                    .desired_width(desired_width)
+                                    .hint_text(arg1_hint_text)
+                            );
+                            
+                            ui.label(monospace_text("==".to_string()));
+                            
+                            let arg2_response = ui.add(
+                                egui::TextEdit::singleline(&mut self.cond_edit_arg2_text)
+                                    .desired_width(desired_width)
+                                    .hint_text(arg2_hint_text)
+                            );
+                            
+                            let arg1_submitted = arg1_response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                            if arg1_submitted {
+                                if let Ok(val) = usize::from_str_radix(self.cond_edit_arg1_text.trim(), 10) {
+                                    arg1 = Some(val);
+                                }
+                                self.cond_edit_arg1_text.clear()
+                            }
+                            
+                            let arg2_submitted = arg2_response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                            if arg2_submitted {
+                                if let Ok(val) = usize::from_str_radix(self.cond_edit_arg2_text.trim(), 10) {
+                                    arg2 = Some(val);
+                                }
+                                self.cond_edit_arg2_text.clear()
+                            }
+                            
+                            self.editing_text = arg1_response.has_focus() || arg2_response.has_focus();
+                        });
+                    }
+                }
+            });
+        });
+        
+        let variable = variable.clone();
+        let cond = match c_type {
+            CondType::Eq => WatchpointCond::Equal(arg1.unwrap_or_default()),
+            CondType::NEq => WatchpointCond::NotEqual(arg1.unwrap_or_default()),
+            CondType::Gt => WatchpointCond::GreaterThan(arg1.unwrap_or_default()),
+            CondType::GtEq => WatchpointCond::GreaterThanOrEqual(arg1.unwrap_or_default()),
+            CondType::OrEq => WatchpointCond::OrEqual(arg1.unwrap_or_default(), arg2.unwrap_or_default()),
+            CondType::AndEq => WatchpointCond::AndEqual(arg1.unwrap_or_default(), arg2.unwrap_or_default()),
+        };
+        
+        let new_wp = WatchpointKind::System { variable, cond };
+        
+        *wp_kind = new_wp;
     }
 
     // ── Interaction processing ────────────────────────────────────────────────
@@ -697,8 +885,10 @@ impl Editor {
                     'snap: for &nid in &ids {
                         if let Some(node) = self.graph.nodes.get(nid) {
                             for i in 0..node.kind.input_count() {
-                                let pp = self.to_screen(origin, node.input_port_pos(i));
-                                if pp.distance(pointer_screen) < PORT_HIT_RADIUS {
+                                // let pp = self.to_screen(origin, node.input_port_pos(i));
+                                // if pp.distance(pointer_screen) < PORT_HIT_RADIUS {
+                                let pp = node.input_port_pos(i);
+                                if pp.distance(pointer_canvas) < PORT_HIT_RADIUS {
                                     snapped = Some(Port::new(nid, i));
                                     break 'snap;
                                 }
@@ -913,7 +1103,7 @@ impl Editor {
         let base_color = node.kind.color();
         let is_selected = self.selection.contains_node(id);
 
-        let fill = if let NodeKind::Output { lit: true } = node.kind {
+        let fill = if let NodeKind::Break { lit: true } = node.kind {
             Color32::from_rgb(255, 100, 80)
         } else {
             base_color.linear_multiply(0.25)
@@ -936,8 +1126,7 @@ impl Editor {
             egui::StrokeKind::Middle,
         );
 
-        // Label (font scales with zoom, clamped for legibility).
-        let font_size = (13.0 * self.zoom).clamp(8.0, 20.0);
+        let font_size = 13.0 * self.zoom;
         let label = match &node.kind {
             NodeKind::Condition(kind) => {
                 &kind.label()

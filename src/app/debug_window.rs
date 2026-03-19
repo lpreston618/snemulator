@@ -192,9 +192,9 @@ impl WatchpointView {
     
     fn add_watchpoint(&mut self) {
         self.editor.create_new_watchpoint(
-            watchpoints::types::WatchpointKind::WPCpuReg16 {
-                reg: watchpoints::types::CpuRegU16::A,
-                cond: watchpoints::types::WatchpointCondU16::Equal(0),
+            watchpoints::types::WatchpointKind::CpuReg {
+                reg: watchpoints::types::CpuReg::A,
+                cond: watchpoints::types::WatchpointCond::Equal(0),
             }
         );
         self.needs_compilation = true;
@@ -223,6 +223,7 @@ pub struct DebugWindow {
     selected_tab: DebugTab,
     bp_input: String,
     compiled_wps: watchpoints::types::CompiledGraph,
+    watchpoints_en: bool,
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -258,6 +259,7 @@ impl DebugWindow {
             selected_tab: DebugTab::Cpu,
             bp_input: String::new(),
             compiled_wps: watchpoints::types::CompiledGraph::default(),
+            watchpoints_en: true,
         })
     }
 
@@ -836,8 +838,10 @@ impl DebugWindow {
                 });
                 
                 if ui.button("Add Break").clicked() {
-                    self.wps.add_node(watchpoints::types::NodeKind::Output { lit: false });
+                    self.wps.add_node(watchpoints::types::NodeKind::Break { lit: false });
                 }
+                
+                ui.checkbox(&mut self.watchpoints_en, "Enable Watchpoints")
             });
             
         });
@@ -866,10 +870,17 @@ impl DebugWindow {
     }
     
     pub fn watchpoint_hit(&mut self) {
-        self.selected_tab = DebugTab::Watchpoints;
+        if self.watchpoints_en {
+            self.selected_tab = DebugTab::Watchpoints;
+        }
     }
     
     pub fn compile_watchpoints(&mut self) {
+        if !self.watchpoints_en {
+            self.compiled_wps = watchpoints::types::CompiledGraph::default();
+            return;
+        }
+        
         if self.wps.needs_compilation {
             self.compiled_wps = self.wps.compile();
             self.wps.needs_compilation = false;

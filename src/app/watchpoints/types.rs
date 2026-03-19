@@ -1,146 +1,192 @@
 use slotmap::{new_key_type, SlotMap};
-use std::collections::HashMap;
+use std::{cell::Cell, collections::HashMap};
 
 use crate::core::{self, scpu};
 
 new_key_type! { pub struct NodeId; }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum CpuRegU8 {
-    DB, PB, P,
+pub enum CpuReg {
+    DB, PB, P, A, X, Y, DP, PC, SP,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum CpuRegU16 {
-    A, X, Y, DP, PC, SP,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum WatchpointCondU8 {
-    Equal(u8),
-    AndEqual(u8, u8),
-    OrEqual(u8, u8),
-    // Changes,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum WatchpointCondU16 {
-    Equal(u16),
-    AndEqual(u16, u16),
-    OrEqual(u16, u16),
-    // Changes
+pub enum CpuFlag {
+    C, Z, I, D, X, M, V, N,
+    Stopped, Halted, Waiting,
+    NMIPending, IRQPending,
 }
 
 #[derive(Clone, PartialEq)]
 pub enum WatchpointCondFlag {
-    Equal(bool),
+    Set,
+    Clear,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum WatchpointCond {
+    Equal(usize),
+    NotEqual(usize),
+    GreaterThan(usize),
+    GreaterThanOrEqual(usize),
+    AndEqual(usize, usize),
+    OrEqual(usize, usize),
     // Changes
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum SystemVariable {
+    Frame,
 }
 
 #[derive(Clone)]
 pub enum WatchpointKind {
-    WPCpuReg8 {
-        reg: CpuRegU8,
-        cond: WatchpointCondU8,
+    CpuReg {
+        reg: CpuReg,
+        cond: WatchpointCond,
     },
-    WPCpuReg16 {
-        reg: CpuRegU16,
-        cond: WatchpointCondU16,
-    },
-    WPCpuFlag {
-        flag: scpu::Flag,
+    CpuFlag {
+        flag: CpuFlag,
         cond: WatchpointCondFlag,
+    },
+    System {
+        variable: SystemVariable,
+        cond: WatchpointCond,
     }
 }
 
 impl WatchpointKind {
-    fn evaluate(&self, snem_core: &core::snemcore::Snemulator) -> bool {
+    pub fn evaluate(&self, snem_core: &core::snemcore::Snemulator) -> bool {
         match self {
-            WatchpointKind::WPCpuReg8 { reg, cond } => {
+            WatchpointKind::CpuReg { reg, cond } => {
                 let reg = match reg {
-                    CpuRegU8::DB => snem_core.cpu.db,
-                    CpuRegU8::P => snem_core.cpu.p,
-                    CpuRegU8::PB => snem_core.cpu.pb,
+                    CpuReg::DB => snem_core.cpu.db as usize,
+                    CpuReg::P => snem_core.cpu.p as usize,
+                    CpuReg::PB => snem_core.cpu.pb as usize,
+                    CpuReg::A => snem_core.cpu.a as usize,
+                    CpuReg::X => snem_core.cpu.x as usize,
+                    CpuReg::Y => snem_core.cpu.y as usize,
+                    CpuReg::DP => snem_core.cpu.dp as usize,
+                    CpuReg::PC => snem_core.cpu.pc as usize,
+                    CpuReg::SP => snem_core.cpu.sp as usize,
                 };
                 match cond {
-                    WatchpointCondU8::Equal(val) => reg == *val,
-                    WatchpointCondU8::AndEqual(val1, val2) => (reg & *val1) == *val2,
-                    WatchpointCondU8::OrEqual(val1, val2) => (reg | *val1) == *val2,
+                    WatchpointCond::Equal(val) => reg == *val,
+                    WatchpointCond::NotEqual(val) => reg != *val,
+                    WatchpointCond::GreaterThan(val) => reg > *val,
+                    WatchpointCond::GreaterThanOrEqual(val) => reg >= *val,
+                    WatchpointCond::AndEqual(val1, val2) => (reg & *val1) == *val2,
+                    WatchpointCond::OrEqual(val1, val2) => (reg | *val1) == *val2,
                 }
             },
-            WatchpointKind::WPCpuReg16 { reg, cond } => {
-                let reg = match reg {
-                    CpuRegU16::A => snem_core.cpu.a,
-                    CpuRegU16::X => snem_core.cpu.x,
-                    CpuRegU16::Y => snem_core.cpu.y,
-                    CpuRegU16::DP => snem_core.cpu.dp,
-                    CpuRegU16::PC => snem_core.cpu.pc,
-                    CpuRegU16::SP => snem_core.cpu.sp,
+            WatchpointKind::CpuFlag { flag, cond } => {
+                let is_set = match flag {
+                    CpuFlag::C | CpuFlag::Z |
+                    CpuFlag::I | CpuFlag::D |
+                    CpuFlag::X | CpuFlag::M |
+                    CpuFlag::V | CpuFlag::N => {
+                        snem_core.cpu.is_flag_set(
+                            match flag {
+                                CpuFlag::C => scpu::Flag::FlagC,
+                                CpuFlag::Z => scpu::Flag::FlagZ,
+                                CpuFlag::I => scpu::Flag::FlagI,
+                                CpuFlag::D => scpu::Flag::FlagD,
+                                CpuFlag::X => scpu::Flag::FlagX,
+                                CpuFlag::M => scpu::Flag::FlagM,
+                                CpuFlag::V => scpu::Flag::FlagV,
+                                CpuFlag::N => scpu::Flag::FlagN,
+                                _ => unreachable!(),
+                            }
+                        )
+                    },
+                    CpuFlag::Halted => snem_core.cpu.halted,
+                    CpuFlag::Stopped => snem_core.cpu.stopped,
+                    CpuFlag::Waiting => snem_core.cpu.waiting_for_interrupt,
+                    CpuFlag::NMIPending => snem_core.cpu.nmi_pending,
+                    CpuFlag::IRQPending => snem_core.cpu.irq_pending,
+                };
+                
+                match cond {
+                    WatchpointCondFlag::Set => is_set,
+                    WatchpointCondFlag::Clear => !is_set,
+                }
+            },
+            WatchpointKind::System { variable, cond } => {
+                let value = match variable {
+                    SystemVariable::Frame => snem_core.frame as usize,
                 };
                 match cond {
-                    WatchpointCondU16::Equal(val) => reg == *val,
-                    WatchpointCondU16::AndEqual(val1, val2) => (reg & *val1) == *val2,
-                    WatchpointCondU16::OrEqual(val1, val2) => (reg | *val1) == *val2,
+                    WatchpointCond::Equal(val) => value == *val,
+                    WatchpointCond::NotEqual(val) => value != *val,
+                    WatchpointCond::GreaterThan(val) => value > *val,
+                    WatchpointCond::GreaterThanOrEqual(val) => value >= *val,
+                    WatchpointCond::AndEqual(val1, val2) => (value & *val1) == *val2,
+                    WatchpointCond::OrEqual(val1, val2) => (value | *val1) == *val2,
                 }
-            },
-            WatchpointKind::WPCpuFlag { flag, cond } => {
-                let flag = snem_core.cpu.is_flag_set(*flag);
-                match cond {
-                    WatchpointCondFlag::Equal(val) => flag == *val,
-                }
-            },
+            }
         }
     }
     
     pub fn label(&self) -> String {
         match self {
-            WatchpointKind::WPCpuReg8 { reg, cond } => {
+            WatchpointKind::CpuReg { reg, cond } => {
+                let two_bytes = match reg {
+                    CpuReg::DB | CpuReg::PB | CpuReg::P => false,
+                    _ => true,
+                };
                 format!("{} {}",
                     match reg {
-                        CpuRegU8::DB => "DB",
-                        CpuRegU8::P => "P",
-                        CpuRegU8::PB => "PB",
+                        CpuReg::DB => "DB",
+                        CpuReg::P => "P",
+                        CpuReg::PB => "PB",
+                        CpuReg::A => "A",
+                        CpuReg::X => "X",
+                        CpuReg::Y => "Y",
+                        CpuReg::DP => "DP",
+                        CpuReg::PC => "PC",
+                        CpuReg::SP => "SP",
                     },
                     match cond {
-                        WatchpointCondU8::Equal(val) => format!("== {}", val),
-                        WatchpointCondU8::AndEqual(val1, val2) => format!("& {} == {}", val1, val2),
-                        WatchpointCondU8::OrEqual(val1, val2) => format!("| {} == {}", val1, val2),
+                        WatchpointCond::Equal(val) => if two_bytes { format!("== {:04X}", val) } else { format!("== {:02X}", val) },
+                        WatchpointCond::NotEqual(val) => if two_bytes { format!("!= {:04X}", val) } else { format!("!= {:02X}", val) },
+                        WatchpointCond::GreaterThan(val) => if two_bytes { format!("> {:04X}", val) } else { format!("> {:02X}", val) },
+                        WatchpointCond::GreaterThanOrEqual(val) => if two_bytes { format!(">= {:04X}", val) } else { format!(">= {:02X}", val) },
+                        WatchpointCond::AndEqual(val1, val2) => if two_bytes { format!("& {:04X}\n == {:04X}", val1, val2) } else { format!("& {:02X}\n == {:02X}", val1, val2) },
+                        WatchpointCond::OrEqual(val1, val2) => if two_bytes { format!("| {:04X}\n == {:04X}", val1, val2) } else { format!("| {:02X}\n == {:02X}", val1, val2) },
                     },
                 )
             },
-            WatchpointKind::WPCpuReg16 { reg, cond } => {
-                format!("{} {}",
-                    match reg {
-                        CpuRegU16::A => "A",
-                        CpuRegU16::X => "X",
-                        CpuRegU16::Y => "Y",
-                        CpuRegU16::DP => "DP",
-                        CpuRegU16::PC => "PC",
-                        CpuRegU16::SP => "SP",
+            WatchpointKind::CpuFlag { flag, cond } => {
+                let cond_str = match cond {
+                    WatchpointCondFlag::Set => "set",
+                    WatchpointCondFlag::Clear => "cleared",
+                };
+                
+                match flag {
+                    CpuFlag::C | CpuFlag::Z |
+                    CpuFlag::I | CpuFlag::D |
+                    CpuFlag::X | CpuFlag::M |
+                    CpuFlag::V | CpuFlag::N => {
+                        format!("CPU Status\nflag {:?} is\n{}", flag, cond_str)
                     },
-                    match cond {
-                        WatchpointCondU16::Equal(val) => format!("== {}", val),
-                        WatchpointCondU16::AndEqual(val1, val2) => format!("& {} == {}", val1, val2),
-                        WatchpointCondU16::OrEqual(val1, val2) => format!("| {} == {}", val1, val2),
+                    _ => {
+                        format!("CPU Flag\n{:?} is\n{}", flag, cond_str)
                     }
-                )
+                }
             },
-            WatchpointKind::WPCpuFlag { flag, cond } => {
-                format!(
-                    "CPU Flag {} is {}",
-                    match flag {
-                        scpu::Flag::FlagC => "C",
-                        scpu::Flag::FlagZ => "Z",
-                        scpu::Flag::FlagI => "I",
-                        scpu::Flag::FlagD => "D",
-                        scpu::Flag::FlagX => "X",
-                        scpu::Flag::FlagM => "M",
-                        scpu::Flag::FlagV => "V",
-                        scpu::Flag::FlagN => "N",
+            WatchpointKind::System { variable, cond } => {
+                format!("{}\n  {}",
+                    match variable {
+                        SystemVariable::Frame => "Frame No.",
                     },
                     match cond {
-                        WatchpointCondFlag::Equal(val) => if *val { "set" } else { "cleared" },
-                    },
+                        WatchpointCond::Equal(val) => format!("== {}", val),
+                        WatchpointCond::NotEqual(val) => format!("!= {}", val),
+                        WatchpointCond::GreaterThan(val) => format!("> {}", val),
+                        WatchpointCond::GreaterThanOrEqual(val) => format!(">= {}", val),
+                        WatchpointCond::AndEqual(val1, val2) => format!("& {}\n== {}", val1, val2),
+                        WatchpointCond::OrEqual(val1, val2) => format!("| {}\n== {}", val1, val2),
+                    }
                 )
             },
         }
@@ -158,8 +204,8 @@ pub enum NodeKind {
     Or,
     /// NOT gate. Has 1 input, 1 output.
     Not,
-    /// Output indicator. Has 1 input, 0 outputs.
-    Output { lit: bool },
+    /// Break indicator. Has 1 input, 0 outputs.
+    Break { lit: bool },
 }
 
 impl NodeKind {
@@ -168,7 +214,7 @@ impl NodeKind {
             NodeKind::Condition { .. } => 0,
             NodeKind::And | NodeKind::Or => 2,
             NodeKind::Not => 1,
-            NodeKind::Output { .. } => 1,
+            NodeKind::Break { .. } => 1,
         }
     }
 
@@ -176,17 +222,17 @@ impl NodeKind {
         match self {
             NodeKind::Condition { .. } => 1,
             NodeKind::And | NodeKind::Or | NodeKind::Not => 1,
-            NodeKind::Output { .. } => 0,
+            NodeKind::Break { .. } => 0,
         }
     }
 
     pub fn label(&self) -> &'static str {
         match self {
-            NodeKind::Condition { .. } => "Switch",
+            NodeKind::Condition { .. } => "",
             NodeKind::And => "AND",
             NodeKind::Or => "OR",
             NodeKind::Not => "NOT",
-            NodeKind::Output { .. } => "Output",
+            NodeKind::Break { .. } => "Break",
         }
     }
 
@@ -196,7 +242,7 @@ impl NodeKind {
             NodeKind::And => egui::Color32::from_rgb(80, 160, 80),
             NodeKind::Or => egui::Color32::from_rgb(160, 120, 40),
             NodeKind::Not => egui::Color32::from_rgb(160, 60, 160),
-            NodeKind::Output { .. } => egui::Color32::from_rgb(200, 60, 60),
+            NodeKind::Break { .. } => egui::Color32::from_rgb(200, 60, 60),
         }
     }
 }
@@ -297,8 +343,8 @@ impl Graph {
 
         // Seed inputs from InputSwitch nodes.
         for id in &order {
-            if let Some(node) = self.nodes.get(*id) {
-                if let NodeKind::Condition(cond) = &node.kind {
+            if let Some(node) = self.nodes.get_mut(*id) {
+                if let NodeKind::Condition(cond) = &mut node.kind {
                     signals.insert(Port::new(*id, 0), cond.evaluate(snem_core));
                 }
             }
@@ -329,14 +375,14 @@ impl Graph {
                 None => continue,
             };
 
-            let output = match &node.kind {
+            let output = match &mut node.kind {
                 NodeKind::Condition(cond) => Some(cond.evaluate(snem_core)),
                 NodeKind::And => Some(inputs.iter().all(|&b| b)),
                 NodeKind::Or => Some(inputs.iter().any(|&b| b)),
                 NodeKind::Not => Some(!inputs.first().copied().unwrap_or(false)),
-                NodeKind::Output { .. } => {
+                NodeKind::Break { .. } => {
                     let val = inputs.first().copied().unwrap_or(false);
-                    node.kind = NodeKind::Output { lit: val };
+                    node.kind = NodeKind::Break { lit: val };
                     None
                 }
             };
@@ -412,7 +458,7 @@ impl Graph {
                 NodeKind::And => FastOp::And(inputs[0], inputs[1]),
                 NodeKind::Or  => FastOp::Or(inputs[0], inputs[1]),
                 NodeKind::Not => FastOp::Not(inputs[0]),
-                NodeKind::Output { .. } => FastOp::Output(inputs[0]),
+                NodeKind::Break { .. } => FastOp::Output(inputs[0]),
                 _ => FastOp::Constant(false),
             };
 
