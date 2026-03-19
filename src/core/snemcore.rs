@@ -198,21 +198,22 @@ impl Snemulator {
         &mut self, 
         frame_buffer: &mut [u8], 
         audio_buffer: &mut Vec<i16>, 
-        breakpoints: &HashSet<app::debug::BreakpointInfo>
+        breakpoints: &HashSet<app::debug::BreakpointInfo>,
+        watchpoints: &app::watchpoints::types::CompiledGraph,
     ) -> app::DebugAction {        
         self.frame_ready = false;
         
         self.ssmp.start_frame();
         
         while !self.frame_ready {
-            let action = self.debug_single_step(frame_buffer, audio_buffer, breakpoints);
+            let action = self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints);
             
             match action {
-                app::DebugAction::BreakpointHit => {
-                    return app::DebugAction::BreakpointHit;
+                app::DebugAction::BreakpointHit | app::DebugAction::WatchpointHit => {
+                    return action;
                 }
                 _ => {}
-            }
+            }            
         }
         
         self.frame += 1;
@@ -220,11 +221,46 @@ impl Snemulator {
         app::DebugAction::None
     }
     
-    pub fn debug_single_step(
+    fn debug_cycle(
         &mut self, 
         frame_buffer: &mut [u8], 
         audio_buffer: &mut Vec<i16>, 
-        breakpoints: &HashSet<app::debug::BreakpointInfo>
+        breakpoints: &HashSet<app::debug::BreakpointInfo>,
+        watchpoints: &app::watchpoints::types::CompiledGraph,
+    ) -> app::DebugAction {
+        let clocks = self.cpu.clocks.min(self.ppu.clocks);
+        
+        self.cpu.clocks -= clocks;
+        self.ppu.clocks -= clocks;
+        self.total_cycles += clocks as u64;
+        
+        if self.cpu.clocks == 0 {
+            self.cycle_cpu();
+        }
+        
+        if self.ppu.clocks == 0 {
+            self.cycle_ppu(frame_buffer);
+        }
+        
+        self.ssmp.clock(clocks, audio_buffer, &mut self.apu_ports);
+        
+        let cpu_pc = scpu::Address { bank: self.cpu.pb, offset: self.cpu.pc }.to_u32();
+        
+        if breakpoints.contains(&app::debug::BreakpointInfo::new(cpu_pc)) {
+            app::DebugAction::BreakpointHit
+        } else if watchpoints.evaluate(self) {
+            app::DebugAction::WatchpointHit
+        } else {
+            app::DebugAction::None
+        }
+    }
+    
+    pub fn debug_step_instruction(
+        &mut self, 
+        frame_buffer: &mut [u8], 
+        audio_buffer: &mut Vec<i16>, 
+        breakpoints: &HashSet<app::debug::BreakpointInfo>,
+        watchpoints: &app::watchpoints::types::CompiledGraph,
     ) -> app::DebugAction {        
         // Cycle until the CPU is the next to cycle
         while self.cpu.clocks > self.ppu.clocks {
@@ -239,6 +275,8 @@ impl Snemulator {
         
         if breakpoints.contains(&app::debug::BreakpointInfo::new(cpu_pc)) {
             app::DebugAction::BreakpointHit
+        } else if watchpoints.evaluate(self) {
+            app::DebugAction::WatchpointHit
         } else {
             app::DebugAction::None
         }

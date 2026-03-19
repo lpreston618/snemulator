@@ -11,6 +11,7 @@ pub mod mult;
 
 pub use bus::Address;
 
+#[derive(Clone, Copy)]
 pub enum Flag {
     FlagC = 1 << 0, // Carry
     FlagZ = 1 << 1, // Zero

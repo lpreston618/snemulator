@@ -21,6 +21,7 @@ mod menu;
 mod settings;
 mod utils;
 
+pub mod watchpoints;
 pub mod debug;
 
 pub const FRAME_BUF_SIZE: usize = (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize;
@@ -54,6 +55,7 @@ pub enum DebugAction {
     StepFrame,
     TogglePause,
     BreakpointHit,
+    WatchpointHit,
     None,
 }
 
@@ -140,15 +142,23 @@ impl SnemulatorApp {
                 _ => { self.do_action(app_action); }
             }
             
-            if let Some(debug_window) = &mut self.debug_window {
+            if let Some(debug_window) = &mut self.debug_window {                
                 if !self.state.is_paused {
+                    debug_window.compile_watchpoints();
+                    
                     match self.snem_core.debug_run_frame(
                         &mut self.frame_buffer[..], 
                         &mut temp,
-                        debug_window.breakpoints()
+                        debug_window.breakpoints(),
+                        debug_window.watchpoints(),
                     ) {
                         DebugAction::BreakpointHit => {
                             self.state.is_paused = true;
+                            debug_window.breakpoint_hit(&self.snem_core);
+                        },
+                        DebugAction::WatchpointHit => {
+                            self.state.is_paused = true;
+                            debug_window.watchpoint_hit();
                         }
                         _ => {}
                     }
@@ -158,18 +168,44 @@ impl SnemulatorApp {
                 
                 match debug_action {
                     DebugAction::SingleStep if self.state.is_paused => {
-                        self.snem_core.debug_single_step(
+                        debug_window.compile_watchpoints();
+                        
+                        match self.snem_core.debug_step_instruction(
                             &mut self.frame_buffer[..], 
                             &mut temp,
-                            debug_window.breakpoints()
-                        );
+                            debug_window.breakpoints(),
+                            debug_window.watchpoints(),
+                        ) {
+                            DebugAction::BreakpointHit => {
+                                self.state.is_paused = true;
+                                debug_window.breakpoint_hit(&self.snem_core);
+                            },
+                            DebugAction::WatchpointHit => {
+                                self.state.is_paused = true;
+                                debug_window.watchpoint_hit();
+                            }
+                            _ => {}
+                        }
                     }
                     DebugAction::StepFrame if self.state.is_paused => {
-                        self.snem_core.debug_run_frame(
+                        debug_window.compile_watchpoints();
+                        
+                        match self.snem_core.debug_run_frame(
                             &mut self.frame_buffer[..], 
                             &mut temp,
-                            debug_window.breakpoints()
-                        );
+                            debug_window.breakpoints(),
+                            debug_window.watchpoints(),
+                        ) {
+                            DebugAction::BreakpointHit => {
+                                self.state.is_paused = true;
+                                debug_window.breakpoint_hit(&self.snem_core);
+                            },
+                            DebugAction::WatchpointHit => {
+                                self.state.is_paused = true;
+                                debug_window.watchpoint_hit();
+                            }
+                            _ => {}
+                        }
                     }
                     DebugAction::TogglePause => {
                         self.toggle_pause();

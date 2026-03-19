@@ -1,10 +1,8 @@
-use std::fmt::format;
-
 use anyhow::Result;
-use glow::HasContext;
 
 use crate::app::debug::BreakpointInfo;
 use crate::app::ui_window::UiWindow;
+use crate::app::watchpoints;
 use crate::core::scpu::disassembler::{MemoryRegion, get_memory_region};
 use crate::{app, core};
 
@@ -43,7 +41,7 @@ impl DisassemblyView {
 
     /// Call when PC changes significantly or user navigates manually.
     /// Decodes `count` instructions forward from `start_addr`.
-    pub fn decode_forward(
+    fn decode_forward(
         start_addr: u32,
         memory: &[u8],
         memory_region: core::scpu::disassembler::MemoryRegion,
@@ -85,7 +83,7 @@ impl DisassemblyView {
         core::scpu::disassembler::disassemble_block(&mem, options, Some(state))
     }
 
-    pub fn update(&mut self,
+    fn update(&mut self,
         pc: u32,
         memory: &[u8],
         memory_region: core::scpu::disassembler::MemoryRegion,
@@ -178,13 +176,53 @@ impl MemoryView {
 //     // NOTE: You'll need to register the raw GL texture with egui_glow to get a TextureId
 // }
 
+
+struct WatchpointView {
+    editor: watchpoints::editor::Editor,
+    needs_compilation: bool,
+}
+
+impl WatchpointView {
+    pub fn new() -> Self {
+        Self {
+            editor: watchpoints::editor::Editor::new(),
+            needs_compilation: false,
+        }
+    }
+    
+    fn add_watchpoint(&mut self) {
+        self.editor.create_new_watchpoint(
+            watchpoints::types::WatchpointKind::WPCpuReg16 {
+                reg: watchpoints::types::CpuRegU16::A,
+                cond: watchpoints::types::WatchpointCondU16::Equal(0),
+            }
+        );
+        self.needs_compilation = true;
+    }
+    
+    fn add_node(&mut self, kind: watchpoints::types::NodeKind) {
+        match kind {
+            watchpoints::types::NodeKind::Condition { .. } => {},
+            _ => self.editor.create_new_logic(kind),
+        }
+        self.needs_compilation = true;
+    }
+    
+    fn compile(&mut self) -> watchpoints::types::CompiledGraph {
+        self.editor.graph.compile()
+    }
+}
+
+
 pub struct DebugWindow {
     egui_window: Option<UiWindow>,
     disasm: DisassemblyView,
     mem: MemoryView,
     // chr_viewer: ChrViewer,
+    wps: WatchpointView,
     selected_tab: DebugTab,
     bp_input: String,
+    compiled_wps: watchpoints::types::CompiledGraph,
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -214,10 +252,12 @@ impl DebugWindow {
         Ok(Self {
             egui_window: Some(egui_window),
             disasm: DisassemblyView::new(rom_mapping_mode),
-            // chr_viewer: ChrViewer::new(),
-            selected_tab: DebugTab::Cpu,
             mem: MemoryView::new(),
+            // chr_viewer: ChrViewer::new(),
+            wps: WatchpointView::new(),
+            selected_tab: DebugTab::Cpu,
             bp_input: String::new(),
+            compiled_wps: watchpoints::types::CompiledGraph::default(),
         })
     }
 
@@ -276,15 +316,16 @@ impl DebugWindow {
                 match self.selected_tab {
                     DebugTab::Cpu => {
                         self.update_disassembly(snem_core);
-                        self.render_cpu_tab(ui, snem_core, app_state)
+                        self.render_cpu_tab(ui, snem_core);
                     },
                     DebugTab::Memory     => {
                         self.render_memory_viewer(ui, snem_core);
-                        app::DebugAction::None
                     },
                     // DebugTab::ChrRam     => self.render_chr_viewer(ui),
-                    // DebugTab::Cpu        => self.render_cpu_state(ui, snes),
-                    _ => app::DebugAction::None,
+                    DebugTab::Watchpoints => {
+                        self.render_watchpoint_viewer(ui, snem_core, app_state);
+                    },
+                    _ => {},
                 };
             });
         });
@@ -318,11 +359,8 @@ impl DebugWindow {
     fn render_cpu_tab(
         &mut self,
         ui: &mut egui::Ui,
-        snem_core: &core::snemcore::Snemulator,
-        app_state: &app::AppState
-    ) -> app::DebugAction {
-        let mut debug_action = app::DebugAction::None;
-
+        snem_core: &core::snemcore::Snemulator
+    ) {
         let pc = (snem_core.cpu.pb as u32) << 16 | snem_core.cpu.pc as u32;
 
         ui.vertical(|ui| {
@@ -340,25 +378,12 @@ impl DebugWindow {
                     self.disasm.options.forced_flag_m = None;
                     self.disasm.options.forced_e = None;
                 }
-
-                // if ui.button("Step Instruction").clicked() {
-                //     debug_action = app::DebugAction::SingleStep;
-                // }
-
-                // if ui.button("Step Frame").clicked() {
-                //     debug_action = app::DebugAction::StepFrame;
-                // }
-
-                // let pause_text = if app_state.is_paused { "Resume" } else { "Pause" };
-                // if ui.button(pause_text).clicked() {
-                //     debug_action = app::DebugAction::TogglePause;
-                // }
             });
 
             ui.add_space(5.0);
 
             ui.horizontal(|ui| {
-                egui::ComboBox::from_id_salt(0)
+                egui::ComboBox::from_id_salt("cpu_mode_sel")
                     .selected_text(
                         match self.disasm.options.forced_e {
                             Some(true) => "Emulation",
@@ -397,7 +422,7 @@ impl DebugWindow {
                     }
                 };
 
-                egui::ComboBox::from_id_salt(1)
+                egui::ComboBox::from_id_salt("m_flag_sel")
                     .selected_text(m_text)
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut self.disasm.options.forced_flag_m, Some(true), "m8");
@@ -405,7 +430,7 @@ impl DebugWindow {
                         ui.selectable_value(&mut self.disasm.options.forced_flag_m, None, "Current in Program");
                     });
 
-                egui::ComboBox::from_id_salt(2)
+                egui::ComboBox::from_id_salt("x_flag_sel")
                     .selected_text(x_text)
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut self.disasm.options.forced_flag_x, Some(true), "x8");
@@ -489,8 +514,6 @@ impl DebugWindow {
                 self.breakpoints_section(ui, snem_core);
             });
         });
-
-        debug_action
     }
     
     fn cpu_state_section(&mut self, ui: &mut egui::Ui, snem_core: &core::snemcore::Snemulator) {
@@ -787,6 +810,42 @@ impl DebugWindow {
                 }
             });
     }
+    
+    fn render_watchpoint_viewer(&mut self, ui: &mut egui::Ui, snem_core: &core::snemcore::Snemulator, app_state: &app::AppState) {
+        ui.horizontal(|ui| {
+            ui.add_enabled_ui(app_state.is_paused, |ui| {
+                if ui.button("Add Watchpoint").clicked() {
+                    self.wps.add_watchpoint();
+                }
+                
+                ui.menu_button("Add Logic", |ui| {
+                    if ui.button("And").clicked() {
+                        self.wps.add_node(watchpoints::types::NodeKind::And);
+                        ui.close();
+                    }
+                    
+                    if ui.button("Or").clicked() {
+                        self.wps.add_node(watchpoints::types::NodeKind::Or);
+                        ui.close();
+                    }
+                    
+                    if ui.button("Not").clicked() {
+                        self.wps.add_node(watchpoints::types::NodeKind::Not);
+                        ui.close();
+                    }
+                });
+                
+                if ui.button("Add Break").clicked() {
+                    self.wps.add_node(watchpoints::types::NodeKind::Output { lit: false });
+                }
+            });
+            
+        });
+        
+        ui.separator();
+        
+        self.wps.needs_compilation |= self.wps.editor.show(ui, app_state, snem_core);
+    }
 
     pub fn id(&self) -> u32 {
         self.egui_window.as_ref().unwrap().window().id()
@@ -799,5 +858,25 @@ impl DebugWindow {
 
     pub fn breakpoints(&self) -> &std::collections::HashSet<BreakpointInfo> {
         &self.disasm.breakpoints
+    }
+    
+    pub fn breakpoint_hit(&mut self, snem_core: &core::snemcore::Snemulator) {
+        self.disasm.current_addr = (snem_core.cpu.pb as u32) << 16 | snem_core.cpu.pc as u32;
+        self.selected_tab = DebugTab::Cpu;
+    }
+    
+    pub fn watchpoint_hit(&mut self) {
+        self.selected_tab = DebugTab::Watchpoints;
+    }
+    
+    pub fn compile_watchpoints(&mut self) {
+        if self.wps.needs_compilation {
+            self.compiled_wps = self.wps.compile();
+            self.wps.needs_compilation = false;
+        }
+    }
+    
+    pub fn watchpoints(&self) -> &watchpoints::types::CompiledGraph {
+        &self.compiled_wps
     }
 }

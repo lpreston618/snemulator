@@ -377,7 +377,7 @@ impl Cpu65c816 {
             0x86 => op_case_flagx!(self, bus, direct, stx, inc_addr16),
             0x87 => op_case_flagm!(self, bus, direct_indirect_long, sta, inc_addr),
             0x88 => self.dey(),
-            0x89 => op_case_flagm_imm!(self, bus, bit),
+            0x89 => op_case_flagm_imm!(self, bus, bit_imm),
             0x8A => self.txa(),
             0x8B => self.phb(bus),
             0x8C => op_case_flagx!(self, bus, absolute, sty, inc_addr),
