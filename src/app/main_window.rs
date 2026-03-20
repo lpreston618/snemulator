@@ -2,7 +2,10 @@ use glow::HasContext;
 use anyhow::Result;
 use sdl3::video::GLProfile;
 
-use crate::{app::{self, AppAction, AppState, WINDOW_HEIGHT, WINDOW_WIDTH, settings::Settings, ui_window::UiWindow}, core::sysinfo::{SCREEN_HEIGHT, SCREEN_WIDTH}};
+use crate::app;
+use crate::core::sysinfo;
+use crate::app::settings::Settings;
+use crate::app::ui_window::UiWindow;
 
 pub struct MainWindow {
     egui_window: UiWindow,
@@ -29,8 +32,8 @@ impl MainWindow {
         let egui_window = UiWindow::new(
             video_subsystem, 
             "Snemulator", 
-            WINDOW_WIDTH, 
-            WINDOW_HEIGHT
+            app::WINDOW_WIDTH, 
+            app::WINDOW_HEIGHT
         )?;
         
         video_subsystem.gl_set_swap_interval(
@@ -63,8 +66,8 @@ impl MainWindow {
                 glow::TEXTURE_2D,
                 0,
                 glow::RGBA as i32,
-                SCREEN_WIDTH as i32,
-                SCREEN_HEIGHT as i32,
+                sysinfo::SCREEN_WIDTH as i32,
+                sysinfo::SCREEN_HEIGHT as i32,
                 0,
                 glow::RGBA,
                 glow::UNSIGNED_BYTE,
@@ -182,8 +185,8 @@ impl MainWindow {
                     0,
                     0,
                     0,
-                    SCREEN_WIDTH as i32,
-                    SCREEN_HEIGHT as i32,
+                    sysinfo::SCREEN_WIDTH as i32,
+                    sysinfo::SCREEN_HEIGHT as i32,
                     glow::RGBA,
                     glow::UNSIGNED_BYTE,
                     glow::PixelUnpackData::Slice(Some(frame_buffer)),
@@ -211,7 +214,7 @@ impl MainWindow {
                 //     )
                 // );
                             
-                let game_aspect = SCREEN_WIDTH as f32 / SCREEN_HEIGHT as f32;
+                let game_aspect = sysinfo::SCREEN_WIDTH as f32 / sysinfo::SCREEN_HEIGHT as f32;
                 let available_width = available_rect.width();
                 let available_height = available_rect.height();
                 let available_aspect = available_width / available_height;
@@ -268,8 +271,8 @@ impl MainWindow {
         }
     }
     
-    pub fn update_and_render(&mut self, app_state: &AppState, app_settings: &Settings, frame_buffer: &[u8]) -> AppAction {
-        let mut app_action = AppAction::Continue;
+    pub fn update_and_render(&mut self, app_state: &app::AppState, app_settings: &Settings, frame_buffer: &[u8]) -> app::AppAction {
+        let mut app_action = app::AppAction::Continue;
         let mut game_rect = egui::Rect::NOTHING;
         let ui_scale = self.egui_window.ui_scale();
         
@@ -301,7 +304,7 @@ impl MainWindow {
         self.egui_window.window().id()
     }
     
-    pub fn handle_event(&mut self, event: &sdl3::event::Event, modifiers: &egui::Modifiers, app_state: &mut AppState) {        
+    pub fn handle_event(&mut self, event: &sdl3::event::Event, modifiers: &egui::Modifiers, app_state: &mut app::AppState) {        
         if self.egui_window.handle_sdl_mouse_event(event, modifiers) {
             app_state.last_mouse_input_frame = app_state.frame_count;
         }

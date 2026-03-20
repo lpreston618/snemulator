@@ -1,4 +1,5 @@
-use std::{cell::Cell, collections::HashMap, str::FromStr};
+use std::str::FromStr;
+use std::collections::HashMap;
 
 use crate::core::{self, scpu, snemcore};
 
@@ -368,7 +369,7 @@ pub enum WatchpointKind {
     System {
         variable: SystemVariable,
         cond: WatchpointCond,
-    }
+    },
 }
 
 impl Default for WatchpointKind {
@@ -564,6 +565,12 @@ pub enum NodeKind {
     Or,
     /// NOT gate. Has 1 input, 1 output.
     Not,
+    /// Counter. Has 1 input, 1 output.
+    Counter {
+        prev: bool,
+        count: usize,
+        cond: WatchpointCond,
+    },
     /// Break indicator. Has 1 input, 0 outputs.
     Break { lit: bool },
     /// Log indicator. Has 1 input, 0 outputs.
@@ -576,6 +583,7 @@ impl NodeKind {
             NodeKind::Condition { .. } => 0,
             NodeKind::And | NodeKind::Or => 2,
             NodeKind::Not => 1,
+            NodeKind::Counter { .. } => 1,
             NodeKind::Break { .. } => 1,
             NodeKind::Log { .. } => 1,
         }
@@ -584,7 +592,7 @@ impl NodeKind {
     pub fn output_count(&self) -> usize {
         match self {
             NodeKind::Condition { .. } => 1,
-            NodeKind::And | NodeKind::Or | NodeKind::Not => 1,
+            NodeKind::And | NodeKind::Or | NodeKind::Not | NodeKind::Counter { .. } => 1,
             NodeKind::Break { .. } => 0,
             NodeKind::Log { .. } => 0,
         }
@@ -596,6 +604,7 @@ impl NodeKind {
             NodeKind::And => "AND",
             NodeKind::Or => "OR",
             NodeKind::Not => "NOT",
+            NodeKind::Counter { .. } => "",
             NodeKind::Break { .. } => "Break",
             NodeKind::Log { .. } => "",
         }
@@ -603,12 +612,13 @@ impl NodeKind {
 
     pub fn color(&self) -> egui::Color32 {
         match self {
-            NodeKind::Condition { .. } => egui::Color32::from_rgb(60, 120, 200),
-            NodeKind::And => egui::Color32::from_rgb(80, 160, 80),
-            NodeKind::Or => egui::Color32::from_rgb(160, 120, 40),
-            NodeKind::Not => egui::Color32::from_rgb(160, 60, 160),
-            NodeKind::Break { .. } => egui::Color32::from_rgb(200, 60, 60),
-            NodeKind::Log { .. } => egui::Color32::from_rgb(220, 220, 220),
+            NodeKind::Condition { .. } => egui::Color32::from_rgb(0xBD, 0xB2, 0xFF),
+            NodeKind::And => egui::Color32::from_rgb(0xCA, 0xFF, 0xBF),
+            NodeKind::Or => egui::Color32::from_rgb(0x9B, 0xF6, 0xFF),
+            NodeKind::Not => egui::Color32::from_rgb(0xFF, 0xC6, 0xFF),
+            NodeKind::Counter { .. } => egui::Color32::from_rgb(0xFF, 0xD6, 0xA5),
+            NodeKind::Log { .. } => egui::Color32::from_rgb(0xDC, 0xDC, 0xDC),
+            NodeKind::Break { .. } => egui::Color32::from_rgb(0xFF, 0xAD, 0xAD),
         }
     }
 }
@@ -742,11 +752,11 @@ impl Graph {
             };
 
             let output = match &mut node.kind {
-                // Don't update changed nodes when evaluated by editor
                 NodeKind::Condition(cond) => Some(cond.evaluate(snem_core)),
                 NodeKind::And => Some(inputs.iter().all(|&b| b)),
                 NodeKind::Or => Some(inputs.iter().any(|&b| b)),
                 NodeKind::Not => Some(!inputs.first().copied().unwrap_or(false)),
+                NodeKind::Counter { cond, count, .. } => Some(cond.evaluate(*count)),
                 NodeKind::Break { .. } => {
                     let val = inputs.first().copied().unwrap_or(false);
                     node.kind = NodeKind::Break { lit: val };
@@ -847,6 +857,9 @@ impl Graph {
                 NodeKind::And => FastOp::And(inputs[0], inputs[1]),
                 NodeKind::Or  => FastOp::Or(inputs[0], inputs[1]),
                 NodeKind::Not => FastOp::Not(inputs[0]),
+                NodeKind::Changed { prev, count, cond } => {
+                    
+                },
                 NodeKind::Break { .. } => FastOp::Output(inputs[0]),
                 NodeKind::Log(kind) => FastOp::Log(inputs[0], kind.clone()),
                 // _ => FastOp::Constant(false),
@@ -866,6 +879,7 @@ impl Graph {
 pub enum FastOp {
     Constant(bool),
     Cond(WatchpointKind),
+    Counter(usize, bool, usize, WatchpointCond),
     And(usize, usize),
     Or(usize, usize),
     Not(usize),
