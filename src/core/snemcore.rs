@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
 use anyhow::{Result, anyhow};
+use crate::app::debug::breakpoints::BreakpointInfo;
+use crate::app::debug::watchpoints::types::CompiledGraph;
 use crate::core::cartridge::Cartridge;
 use crate::core::controller::{ControllerPlayer, JoypadButton, JoypadCmd, SnemController};
 use crate::core::scpu::dma::{self, DmaRegs};
@@ -17,8 +19,8 @@ use crate::core::sysinfo::{
 };
 use crate::core::sppu::color::Color;
 use crate::core::sppu::regs::PpuRegs;
-use crate::{app, get_bit_n};
-use log::{debug, info, trace};
+use crate::get_bit_n;
+use crate::app;
 
 macro_rules! cpu_bus {
     ($core:ident) => {
@@ -198,8 +200,8 @@ impl Snemulator {
         &mut self, 
         frame_buffer: &mut [u8], 
         audio_buffer: &mut Vec<i16>, 
-        breakpoints: &HashSet<app::debug::BreakpointInfo>,
-        watchpoints: &app::watchpoints::types::CompiledGraph,
+        breakpoints: &HashSet<BreakpointInfo>,
+        watchpoints: &CompiledGraph,
     ) -> app::DebugAction {        
         self.frame_ready = false;
         
@@ -225,8 +227,8 @@ impl Snemulator {
         &mut self, 
         frame_buffer: &mut [u8], 
         audio_buffer: &mut Vec<i16>, 
-        breakpoints: &HashSet<app::debug::BreakpointInfo>,
-        watchpoints: &app::watchpoints::types::CompiledGraph,
+        breakpoints: &HashSet<BreakpointInfo>,
+        watchpoints: &CompiledGraph,
     ) -> app::DebugAction {
         let clocks = self.cpu.clocks.min(self.ppu.clocks);
         
@@ -246,7 +248,7 @@ impl Snemulator {
         
         let cpu_pc = scpu::Address { bank: self.cpu.pb, offset: self.cpu.pc }.to_u32();
         
-        if breakpoints.contains(&app::debug::BreakpointInfo::new(cpu_pc)) {
+        if breakpoints.contains(&BreakpointInfo::new(cpu_pc)) {
             app::DebugAction::BreakpointHit
         } else if watchpoints.evaluate(self) {
             app::DebugAction::WatchpointHit
@@ -259,8 +261,8 @@ impl Snemulator {
         &mut self, 
         frame_buffer: &mut [u8], 
         audio_buffer: &mut Vec<i16>, 
-        breakpoints: &HashSet<app::debug::BreakpointInfo>,
-        watchpoints: &app::watchpoints::types::CompiledGraph,
+        breakpoints: &HashSet<BreakpointInfo>,
+        watchpoints: &CompiledGraph,
     ) -> app::DebugAction {        
         // Cycle until the CPU is the next to cycle
         while self.cpu.clocks > self.ppu.clocks {
@@ -273,7 +275,7 @@ impl Snemulator {
         
         let cpu_pc = scpu::Address { bank: self.cpu.pb, offset: self.cpu.pc }.to_u32();
         
-        if breakpoints.contains(&app::debug::BreakpointInfo::new(cpu_pc)) {
+        if breakpoints.contains(&BreakpointInfo::new(cpu_pc)) {
             app::DebugAction::BreakpointHit
         } else if watchpoints.evaluate(self) {
             app::DebugAction::WatchpointHit

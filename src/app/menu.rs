@@ -20,14 +20,16 @@ impl MainMenuBar {
                 ui.menu_button("File", |ui| {
                     ui.set_width(100.0);
                     
-                    if ui.button("Load Rom").clicked() {
-                        app_action = AppAction::LoadRom;
-                        ui.close();
-                    }
-                    if ui.button("Recent ROMs").clicked() {
-                        warn!("Recent ROMs clicked.");
-                        ui.close();
-                    }
+                    ui.add_enabled_ui(!app_state.debug_active, |ui| {
+                        if ui.button("Load Rom").clicked() {
+                            app_action = AppAction::LoadRom;
+                            ui.close();
+                        }
+                        if ui.button("Recent ROMs").clicked() {
+                            warn!("Recent ROMs clicked.");
+                            ui.close();
+                        }
+                    });
                     
                     ui.separator();
                     
@@ -49,26 +51,29 @@ impl MainMenuBar {
                 ui.menu_button("Emulation", |ui| {
                     ui.set_width(100.0);
                     
-                    let pause_text = if app_state.is_paused { "Resume" } else { "Pause" };
-                    if ui.button(pause_text).clicked() {
-                        app_action = AppAction::TogglePause;
-                        ui.close();
-                    }
-                    if ui.button("Reset").clicked() {
-                        app_action = AppAction::ResetCore;
-                        ui.close();
-                    }
+                    ui.add_enabled_ui(!app_state.debug_active, |ui| {
+                        let pause_text = if app_state.is_paused { "Resume" } else { "Pause" };
+                        if ui.button(pause_text).clicked() {
+                            app_action = AppAction::TogglePause;
+                            ui.close();
+                        }
+                        if ui.button("Reset").clicked() {
+                            app_action = AppAction::ResetCore;
+                            ui.close();
+                        }
+                        
+                        ui.separator();
+                        
+                        if ui.button("Save State").clicked() {
+                            app_action = AppAction::SaveState;
+                            ui.close();
+                        }
+                        if ui.button("Load State").clicked() {
+                            app_action = AppAction::LoadState;
+                            ui.close();
+                        }
+                    });
                     
-                    ui.separator();
-                    
-                    if ui.button("Save State").clicked() {
-                        app_action = AppAction::SaveState;
-                        ui.close();
-                    }
-                    if ui.button("Load State").clicked() {
-                        app_action = AppAction::LoadState;
-                        ui.close();
-                    }
                     
                     ui.separator();
                     

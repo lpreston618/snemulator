@@ -5,7 +5,7 @@ use sdl3::event::Event;
 use sdl3::keyboard::{Keycode, Mod};
 use std::time::{Duration, Instant};
 use crate::app::about_window::AboutWindow;
-use crate::app::debug_window::DebugWindow;
+use crate::app::debug::window::DebugWindow;
 use crate::app::main_window::MainWindow;
 use crate::app::settings::{Settings, SettingsWindow};
 use crate::core::cartridge::MappingMode;
@@ -14,14 +14,12 @@ use crate::core::snemcore::Snemulator;
 use crate::core::controller::{ControllerPlayer, JoypadButton};
 
 mod about_window;
-mod debug_window;
 mod main_window;
 mod ui_window;
 mod menu;
 mod settings;
 mod utils;
 
-pub mod watchpoints;
 pub mod debug;
 
 pub const FRAME_BUF_SIZE: usize = (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize;
@@ -68,6 +66,7 @@ pub struct AppState {
     is_fullscreen: bool,
     is_minimized: bool,
     rom_loaded: bool,
+    debug_active: bool,
 }
 
 pub struct SnemulatorApp {
@@ -94,6 +93,7 @@ impl SnemulatorApp {
             show_menu: true,
             show_mouse: true,
             is_paused: false,
+            debug_active: false,
             is_fullscreen: false,
             is_minimized: false,
             rom_loaded: false,
@@ -133,6 +133,8 @@ impl SnemulatorApp {
         'running: loop {
             let frame_start = Instant::now();
             
+            self.state.debug_active = self.debug_window.is_some();
+            
             let mut temp = Vec::new(); // temp audio buffer
             
             let app_action = self.handle_input();
@@ -147,8 +149,6 @@ impl SnemulatorApp {
             
             if let Some(debug_window) = &mut self.debug_window {                
                 if !self.state.is_paused {
-                    debug_window.compile_watchpoints();
-                    
                     match self.snem_core.debug_run_frame(
                         &mut self.frame_buffer[..], 
                         &mut temp,
@@ -171,8 +171,6 @@ impl SnemulatorApp {
                 
                 match debug_action {
                     DebugAction::SingleStep if self.state.is_paused => {
-                        debug_window.compile_watchpoints();
-                        
                         match self.snem_core.debug_step_instruction(
                             &mut self.frame_buffer[..], 
                             &mut temp,
@@ -191,8 +189,6 @@ impl SnemulatorApp {
                         }
                     }
                     DebugAction::StepFrame if self.state.is_paused => {
-                        debug_window.compile_watchpoints();
-                        
                         match self.snem_core.debug_run_frame(
                             &mut self.frame_buffer[..], 
                             &mut temp,
