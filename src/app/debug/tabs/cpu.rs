@@ -1,4 +1,5 @@
 use crate::app::debug::breakpoints::BreakpointInfo;
+use crate::app::utils::monospace_text;
 use crate::core::{cartridge, scpu, snemcore};
 
 const DISASM_BLOCK_SIZE: usize = 64;
@@ -358,6 +359,24 @@ impl CpuTab {
             ui.add_enabled(false,
                 egui::Checkbox::new(&mut nmi_pending, "NMI Pending")
             );
+        });
+        
+        ui.separator();
+        
+        ui.horizontal(|ui| {
+            ui.label(monospace_text("(APU→CPU)".to_string()));
+            ui.label(monospace_text(format!("APUIO0: {:02X}", snem_core.apu_ports.apuio0)));
+            ui.label(monospace_text(format!("APUIO1: {:02X}", snem_core.apu_ports.apuio1)));
+            ui.label(monospace_text(format!("APUIO2: {:02X}", snem_core.apu_ports.apuio2)));
+            ui.label(monospace_text(format!("APUIO3: {:02X}", snem_core.apu_ports.apuio3)));
+        });
+        
+        ui.horizontal(|ui| {
+            ui.label(monospace_text("(CPU→APU)".to_string()));
+            ui.label(monospace_text(format!("CPUIO0: {:02X}", snem_core.apu_ports.cpuio0)));
+            ui.label(monospace_text(format!("CPUIO1: {:02X}", snem_core.apu_ports.cpuio1)));
+            ui.label(monospace_text(format!("CPUIO2: {:02X}", snem_core.apu_ports.cpuio2)));
+            ui.label(monospace_text(format!("CPUIO3: {:02X}", snem_core.apu_ports.cpuio3)));
         });
     }
 

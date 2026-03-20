@@ -8,7 +8,6 @@ use crate::app::about_window::AboutWindow;
 use crate::app::debug::window::DebugWindow;
 use crate::app::main_window::MainWindow;
 use crate::app::settings::{Settings, SettingsWindow};
-use crate::core::cartridge::MappingMode;
 use crate::core::sysinfo::{SCREEN_WIDTH, SCREEN_HEIGHT};
 use crate::core::snemcore::Snemulator;
 use crate::core::controller::{ControllerPlayer, JoypadButton};

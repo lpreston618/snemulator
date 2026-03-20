@@ -233,7 +233,7 @@ impl<'a> CpuBus<'a> {
 
                 match ppu_regs.vram_addr_inc_mode {
                     VramIncMode::LowByte => {
-                        ppu_regs.vram_latch = if ppu_regs.in_fblank || ppu_regs.in_vblank {
+                        ppu_regs.vram_latch = if ppu_regs.in_fblank || self.cpu_regs.vblank_flag {
                             self.vram[ppu_regs.get_vram_addr() as usize]
                         } else {
                             0
@@ -252,7 +252,7 @@ impl<'a> CpuBus<'a> {
 
                 match ppu_regs.vram_addr_inc_mode {
                     VramIncMode::HighByte => {
-                        ppu_regs.vram_latch = if ppu_regs.in_fblank || ppu_regs.in_vblank {
+                        ppu_regs.vram_latch = if ppu_regs.in_fblank || self.cpu_regs.vblank_flag {
                             self.vram[ppu_regs.get_vram_addr() as usize]
                         } else {
                             0
@@ -659,7 +659,7 @@ impl<'a> CpuBus<'a> {
             }
 
             0x2118 => {
-                if ppu_regs.in_fblank || ppu_regs.in_vblank {
+                if ppu_regs.in_fblank || self.cpu_regs.vblank_flag {
                     set_byte_n!(self.vram[ppu_regs.get_vram_addr() as usize], value as u16, 0);
                 }
 
@@ -670,7 +670,7 @@ impl<'a> CpuBus<'a> {
             }
 
             0x2119 => {
-                if ppu_regs.in_fblank || ppu_regs.in_vblank {
+                if ppu_regs.in_fblank || self.cpu_regs.vblank_flag {
                     set_byte_n!(self.vram[ppu_regs.get_vram_addr() as usize], value as u16, 1);
                 }
 

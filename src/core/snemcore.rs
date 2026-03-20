@@ -80,9 +80,9 @@ pub struct Snemulator {
     pub vram: Box<[u16; VRAM_SIZE]>,
     pub cgram: Box<[Color; CGRAM_SIZE]>,
     pub oam: Box<[u8; OAM_SIZE]>,
-    ppu_regs: PpuRegs,
-    cpu_regs: CpuIoRegs,
-    apu_ports: ApuIoPorts,
+    pub ppu_regs: PpuRegs,
+    pub cpu_regs: CpuIoRegs,
+    pub apu_ports: ApuIoPorts,
     
     mult: Mult5A22,
     dma_regs: [DmaRegs; 8],
@@ -218,8 +218,6 @@ impl Snemulator {
             }            
         }
         
-        self.frame += 1;
-        
         app::DebugAction::None
     }
     
@@ -242,6 +240,10 @@ impl Snemulator {
         
         if self.ppu.clocks == 0 {
             self.cycle_ppu(frame_buffer);
+            
+            if self.frame_ready {
+                self.frame += 1;
+            }
         }
         
         self.ssmp.clock(clocks, audio_buffer, &mut self.apu_ports);
@@ -266,22 +268,17 @@ impl Snemulator {
     ) -> app::DebugAction {        
         // Cycle until the CPU is the next to cycle
         while self.cpu.clocks > self.ppu.clocks {
-            self.total_cycles += self.ppu.clocks as u64;
-            self.cycle(frame_buffer, audio_buffer);
+            let action = self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints);
+            
+            match action {
+                app::DebugAction::BreakpointHit | app::DebugAction::WatchpointHit => {
+                    return action;
+                }
+                _ => {}
+            }
         }
-        // Then cycle cpu
-        self.total_cycles += self.cpu.clocks as u64;
-        self.cycle(frame_buffer, audio_buffer);
-        
-        let cpu_pc = scpu::Address { bank: self.cpu.pb, offset: self.cpu.pc }.to_u32();
-        
-        if breakpoints.contains(&BreakpointInfo::new(cpu_pc)) {
-            app::DebugAction::BreakpointHit
-        } else if watchpoints.evaluate(self) {
-            app::DebugAction::WatchpointHit
-        } else {
-            app::DebugAction::None
-        }
+
+        self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints)
     }
     
     fn cycle(&mut self, frame_buffer: &mut [u8], audio_buffer: &mut Vec<i16>) {

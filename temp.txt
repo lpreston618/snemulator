@@ -1,9 +1,5 @@
-use crate::core::sppu::color::Color;
-use crate::core::sppu::types::*;
-
-/// Contains all of the shared data (registers, memory, etc.) between the S-CPU and S-PPU.
-#[derive(Default)]
 pub struct PpuRegs {
+    pub in_vblank: bool,
     pub h_counter: u16,
     pub v_counter: u16,
 
@@ -390,52 +386,31 @@ pub struct PpuRegs {
     pub ppu2_version: u8,
 }
 
-impl PpuRegs {
-    pub fn update_multiply_result(&mut self) {
-        let lhs = self.mult_factor_16 as i16;
-        let rhs = self.mult_factor_8 as i8;
-        let result = ((lhs as i32) * (rhs as i32)) as u32;
-
-        self.multiply_result = result & 0xFFFFFF;
-    }
-
-    pub fn get_vram_addr(&self) -> u16 {
-        match self.addr_remap_mode {
-            AddressRemapping::None => self.vram_addr & 0x7FFF,
-            AddressRemapping::ColDepth2 => {
-                // rrrrrrrr YYYccccc -> rrrrrrrr cccccYYY
-                let r = self.vram_addr & 0x7F00;
-                let y = (self.vram_addr & 0x00E0) >> 5;
-                let c = (self.vram_addr & 0x1F) << 3;
-
-                r | c | y
-            }
-            AddressRemapping::ColDepth4 => {
-                // rrrrrrrY YYcccccP -> rrrrrrrc ccccPYYY
-                let r = self.vram_addr & 0x7E00;
-                let y = (self.vram_addr & 0x01C0) >> 6;
-                let cp = (self.vram_addr & 0x003F) << 3;
-
-                r | cp | y
-            }
-            AddressRemapping::ColDepth8 => {
-                // rrrrrrYY YcccccPP -> rrrrrrcc cccPPYYY
-                let r = self.vram_addr & 0x7C00;
-                let y = (self.vram_addr & 0x0380) >> 7;
-                let cp = (self.vram_addr & 0x007F) << 3;
-
-                r | cp | y
-            }
-        }
-    }
-
-    pub fn inc_vram_addr(&mut self) {
-        let inc = match self.addr_inc_size {
-            IncrSize::Bytes2 => 1,
-            IncrSize::Bytes64 => 32,
-            IncrSize::Bytes256 => 128,
-        };
-
-        self.vram_addr += inc;
-    }
+pub struct CpuIoRegs {    
+    // $4016
+    pub latch_controllers: bool,
+    
+    // $4200
+    pub vblank_nmi_en: bool,
+    pub hv_timer_irq_mode: HVTimerIRQ,
+    pub joypad_autoread_en: bool,
+    
+    // $4207-$4208
+    pub h_counter_target: u16,
+    // $4209-$420A
+    pub v_counter_target: u16,
+    
+    // $4210
+    pub vblank_nmi_flag: bool,
+    
+    // $4211
+    pub hv_timer_irq_flag: bool,
+    
+    // $4212
+    pub vblank_flag: bool,
+    pub hblank_flag: bool,
+    pub joypad_autoread_flag: bool,
+    
+    // $4213
+    pub rdio: u8,
 }

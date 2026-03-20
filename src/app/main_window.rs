@@ -2,7 +2,7 @@ use glow::HasContext;
 use anyhow::Result;
 use sdl3::video::GLProfile;
 
-use crate::{app::{self, AppAction, AppState, WINDOW_HEIGHT, WINDOW_WIDTH, settings::Settings, ui_window::UiWindow, utils::sdl_to_egui_mouse_button}, core::sysinfo::{SCREEN_HEIGHT, SCREEN_WIDTH}};
+use crate::{app::{self, AppAction, AppState, WINDOW_HEIGHT, WINDOW_WIDTH, settings::Settings, ui_window::UiWindow}, core::sysinfo::{SCREEN_HEIGHT, SCREEN_WIDTH}};
 
 pub struct MainWindow {
     egui_window: UiWindow,

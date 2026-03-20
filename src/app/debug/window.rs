@@ -78,7 +78,7 @@ impl DebugWindow {
                         debug_action = app::DebugAction::StepFrame;
                     }
                     
-                    if app_state.is_paused && ui.button("Unpause").clicked() {
+                    if app_state.is_paused && ui.button("Resume").clicked() {
                         self.compile_watchpoints(&snem_core);
                         debug_action = app::DebugAction::TogglePause;
                     }
