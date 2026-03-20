@@ -1,4 +1,4 @@
-use crate::{app::{self, utils::{self, monospace_text}, watchpoints::types::*}, core::{scpu, snemcore}};
+use crate::{app::{self, utils::{self, monospace_text}, watchpoints::{notes::{self, C_NOTE}, types::*}}, core::{scpu, snemcore}};
 use egui::{Color32, Pos2, Rect, Stroke, Vec2};
 use std::{cell::Cell, collections::{HashMap, HashSet}, ops::DerefMut};
 
@@ -206,7 +206,9 @@ impl Editor {
         }
 
         // ── Pan ───────────────────────────────────────────────────────────────
-        if canvas_response.dragged_by(egui::PointerButton::Middle) {
+        let shift_held = ui.input(|i| i.modifiers.shift);
+        
+        if canvas_response.dragged_by(egui::PointerButton::Middle) || (canvas_response.dragged_by(egui::PointerButton::Primary) && shift_held) {
             self.pan += canvas_response.drag_delta();
         }
         
@@ -219,7 +221,7 @@ impl Editor {
         self.draw_grid(&painter, canvas_response.rect);
 
         // ── Node interactions + draw ──────────────────────────────────────────
-        modified |= self.process_interactions(&painter, &canvas_response, origin);
+        modified |= self.process_interactions(&painter, &canvas_response, origin, shift_held);
 
         // ── Draw wires ────────────────────────────────────────────────────────
         for (idx, wire) in self.graph.wires.iter().enumerate() {
@@ -304,15 +306,7 @@ impl Editor {
         }
 
         // ── Status bar ───────────────────────────────────────────────────────
-        let hint = match &self.selection {
-            Selection::Wire(_) => "Wire selected — Delete to remove",
-            Selection::MultiNode(s) => {
-                // Can't embed the count cleanly in a &'static str, handle below.
-                let _ = s;
-                "Multiple nodes selected — Delete removes, drag moves all"
-            }
-            _ => "Scroll to zoom  •  Middle/Right-drag to pan  •  Click input port to select its wire",
-        };
+        let hint = "Scroll to zoom  •  Shift+drag to pan  •  Click port to select its wire";
         painter.text(
             canvas_response.rect.left_bottom() + Vec2::new(8.0, -8.0),
             egui::Align2::LEFT_BOTTOM,
@@ -437,7 +431,7 @@ impl Editor {
                         arg1 = Some(*cond_arg1);
                         CondType::Gt
                     },
-                    WatchpointCond::GreaterThanOrEqual(cond_arg1) => {
+                    WatchpointCond::LessThan(cond_arg1) => {
                         arg1 = Some(*cond_arg1);
                         CondType::GtEq
                     },
@@ -611,7 +605,7 @@ impl Editor {
             CondType::Eq => WatchpointCond::Equal(arg1.unwrap_or_default()),
             CondType::NEq => WatchpointCond::NotEqual(arg1.unwrap_or_default()),
             CondType::Gt => WatchpointCond::GreaterThan(arg1.unwrap_or_default()),
-            CondType::GtEq => WatchpointCond::GreaterThanOrEqual(arg1.unwrap_or_default()),
+            CondType::GtEq => WatchpointCond::LessThan(arg1.unwrap_or_default()),
             CondType::OrEq => WatchpointCond::OrEqual(arg1.unwrap_or_default(), arg2.unwrap_or_default()),
             CondType::AndEq => WatchpointCond::AndEqual(arg1.unwrap_or_default(), arg2.unwrap_or_default()),
         };
@@ -684,6 +678,27 @@ impl Editor {
                     ui.selectable_value(cond, WatchpointCondFlag::Clear, "clear");
                 });
         });
+        
+        let note = match flag {
+            CpuFlag::C => Some(notes::C_NOTE),
+            CpuFlag::Z => Some(notes::Z_NOTE),
+            CpuFlag::I => Some(notes::I_NOTE),
+            CpuFlag::D => Some(notes::D_NOTE),
+            CpuFlag::X => Some(notes::X_NOTE),
+            CpuFlag::M => Some(notes::M_NOTE),
+            CpuFlag::V => Some(notes::V_NOTE),
+            CpuFlag::N => Some(notes::N_NOTE),
+            CpuFlag::Stopped => Some(notes::STOPPED_NOTE),
+            CpuFlag::NMIPending => Some(notes::NMIPENDING_NOTE),
+            CpuFlag::IRQPending => Some(notes::IRQPENDING_NOTE),
+            _ => None,
+        };
+        
+        if let Some(note) = note {
+            ui.separator();
+            ui.label(utils::monospace_text("NOTES:".to_string()));
+            ui.label(utils::monospace_text(note.to_string()));
+        }
     }
     
     fn system_wp_edit(&mut self, ui: &mut egui::Ui, wp_node_id: NodeId) {
@@ -717,7 +732,7 @@ impl Editor {
                         arg1 = Some(*cond_arg1);
                         CondType::Gt
                     },
-                    WatchpointCond::GreaterThanOrEqual(cond_arg1) => {
+                    WatchpointCond::LessThan(cond_arg1) => {
                         arg1 = Some(*cond_arg1);
                         CondType::GtEq
                     },
@@ -745,9 +760,13 @@ impl Editor {
             egui::ComboBox::from_id_salt("reg_sel").width(20.0)
                 .selected_text(match variable {
                     SystemVariable::Frame => "Frame",
+                    SystemVariable::Dot => "Dot",
+                    SystemVariable::Scanline => "Scanline",
                 })
                 .show_ui(ui, |ui| {
                     ui.selectable_value(variable, SystemVariable::Frame, "Frame");
+                    ui.selectable_value(variable, SystemVariable::Dot, "Dot");
+                    ui.selectable_value(variable, SystemVariable::Scanline, "Scanline");
                 });
     
             ui.horizontal(|ui| {
@@ -831,12 +850,29 @@ impl Editor {
             });
         });
         
+        match variable {
+            SystemVariable::Dot => {
+                ui.separator();
+                
+                ui.label(monospace_text("NOTES:".to_string()));
+                ui.label(monospace_text(notes::DOT_NOTE.to_string()));
+            }
+            SystemVariable::Scanline => {
+                ui.separator();
+                
+                ui.label(monospace_text("NOTES: (NTSC)".to_string()));
+                ui.label(monospace_text(notes::SCANLINE_NOTE.to_string()));
+            }
+            _ => {}
+        }
+        
+        
         let variable = variable.clone();
         let cond = match c_type {
             CondType::Eq => WatchpointCond::Equal(arg1.unwrap_or_default()),
             CondType::NEq => WatchpointCond::NotEqual(arg1.unwrap_or_default()),
             CondType::Gt => WatchpointCond::GreaterThan(arg1.unwrap_or_default()),
-            CondType::GtEq => WatchpointCond::GreaterThanOrEqual(arg1.unwrap_or_default()),
+            CondType::GtEq => WatchpointCond::LessThan(arg1.unwrap_or_default()),
             CondType::OrEq => WatchpointCond::OrEqual(arg1.unwrap_or_default(), arg2.unwrap_or_default()),
             CondType::AndEq => WatchpointCond::AndEqual(arg1.unwrap_or_default(), arg2.unwrap_or_default()),
         };
@@ -854,6 +890,7 @@ impl Editor {
         painter: &egui::Painter,
         response: &egui::Response,
         origin: Pos2,
+        shift_held: bool,
     ) -> bool {
         let mut modified = false;
         
@@ -1007,7 +1044,7 @@ impl Editor {
 
             // ── Click on input/output port → select its wire ─────────────────────────
             // (Only when we're not in the middle of a drag.)
-            if matches!(self.drag, DragState::Idle) && response.clicked_by(egui::PointerButton::Primary) {
+            if matches!(self.drag, DragState::Idle) && response.clicked_by(egui::PointerButton::Primary) && !shift_held {
                 let node = self.graph.nodes.get(id).unwrap();
                 for i in 0..node.kind.input_count() {
                     let pp = self.to_screen(origin, node.input_port_pos(i));

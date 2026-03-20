@@ -1,9 +1,8 @@
-use slotmap::{new_key_type, SlotMap};
-use std::{cell::Cell, collections::HashMap};
+use std::collections::HashMap;
 
 use crate::core::{self, scpu};
 
-new_key_type! { pub struct NodeId; }
+slotmap::new_key_type! { pub struct NodeId; }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum CpuReg {
@@ -28,7 +27,7 @@ pub enum WatchpointCond {
     Equal(usize),
     NotEqual(usize),
     GreaterThan(usize),
-    GreaterThanOrEqual(usize),
+    LessThan(usize),
     AndEqual(usize, usize),
     OrEqual(usize, usize),
     // Changes
@@ -37,6 +36,8 @@ pub enum WatchpointCond {
 #[derive(Clone, Debug, PartialEq)]
 pub enum SystemVariable {
     Frame,
+    Dot,
+    Scanline,
 }
 
 #[derive(Clone)]
@@ -74,7 +75,7 @@ impl WatchpointKind {
                     WatchpointCond::Equal(val) => reg == *val,
                     WatchpointCond::NotEqual(val) => reg != *val,
                     WatchpointCond::GreaterThan(val) => reg > *val,
-                    WatchpointCond::GreaterThanOrEqual(val) => reg >= *val,
+                    WatchpointCond::LessThan(val) => reg < *val,
                     WatchpointCond::AndEqual(val1, val2) => (reg & *val1) == *val2,
                     WatchpointCond::OrEqual(val1, val2) => (reg | *val1) == *val2,
                 }
@@ -114,12 +115,14 @@ impl WatchpointKind {
             WatchpointKind::System { variable, cond } => {
                 let value = match variable {
                     SystemVariable::Frame => snem_core.frame as usize,
+                    SystemVariable::Dot => snem_core.ppu.dot as usize,
+                    SystemVariable::Scanline => snem_core.ppu.scanline as usize,
                 };
                 match cond {
                     WatchpointCond::Equal(val) => value == *val,
                     WatchpointCond::NotEqual(val) => value != *val,
                     WatchpointCond::GreaterThan(val) => value > *val,
-                    WatchpointCond::GreaterThanOrEqual(val) => value >= *val,
+                    WatchpointCond::LessThan(val) => value < *val,
                     WatchpointCond::AndEqual(val1, val2) => (value & *val1) == *val2,
                     WatchpointCond::OrEqual(val1, val2) => (value | *val1) == *val2,
                 }
@@ -150,7 +153,7 @@ impl WatchpointKind {
                         WatchpointCond::Equal(val) => if two_bytes { format!("== {:04X}", val) } else { format!("== {:02X}", val) },
                         WatchpointCond::NotEqual(val) => if two_bytes { format!("!= {:04X}", val) } else { format!("!= {:02X}", val) },
                         WatchpointCond::GreaterThan(val) => if two_bytes { format!("> {:04X}", val) } else { format!("> {:02X}", val) },
-                        WatchpointCond::GreaterThanOrEqual(val) => if two_bytes { format!(">= {:04X}", val) } else { format!(">= {:02X}", val) },
+                        WatchpointCond::LessThan(val) => if two_bytes { format!(">= {:04X}", val) } else { format!(">= {:02X}", val) },
                         WatchpointCond::AndEqual(val1, val2) => if two_bytes { format!("& {:04X}\n == {:04X}", val1, val2) } else { format!("& {:02X}\n == {:02X}", val1, val2) },
                         WatchpointCond::OrEqual(val1, val2) => if two_bytes { format!("| {:04X}\n == {:04X}", val1, val2) } else { format!("| {:02X}\n == {:02X}", val1, val2) },
                     },
@@ -178,12 +181,14 @@ impl WatchpointKind {
                 format!("{}\n  {}",
                     match variable {
                         SystemVariable::Frame => "Frame No.",
+                        SystemVariable::Dot => "Dot",
+                        SystemVariable::Scanline => "Scanline",
                     },
                     match cond {
                         WatchpointCond::Equal(val) => format!("== {}", val),
                         WatchpointCond::NotEqual(val) => format!("!= {}", val),
                         WatchpointCond::GreaterThan(val) => format!("> {}", val),
-                        WatchpointCond::GreaterThanOrEqual(val) => format!(">= {}", val),
+                        WatchpointCond::LessThan(val) => format!(">= {}", val),
                         WatchpointCond::AndEqual(val1, val2) => format!("& {}\n== {}", val1, val2),
                         WatchpointCond::OrEqual(val1, val2) => format!("| {}\n== {}", val1, val2),
                     }
@@ -304,14 +309,14 @@ pub struct Wire {
 
 /// The complete simulation graph.
 pub struct Graph {
-    pub nodes: SlotMap<NodeId, Node>,
+    pub nodes: slotmap::SlotMap<NodeId, Node>,
     pub wires: Vec<Wire>,
 }
 
 impl Graph {
     pub fn new() -> Self {
         Self {
-            nodes: SlotMap::with_key(),
+            nodes: slotmap::SlotMap::with_key(),
             wires: Vec::new(),
         }
     }

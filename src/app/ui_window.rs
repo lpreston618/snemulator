@@ -125,7 +125,7 @@ impl UiWindow {
     }
     
     /// Adds any sdl mouse events to the egui raw input. Returns a bool if the event was handled.
-    pub fn handle_sdl_mouse_event(&mut self, event: &sdl3::event::Event) -> bool {
+    pub fn handle_sdl_mouse_event(&mut self, event: &sdl3::event::Event, modifiers: &egui::Modifiers) -> bool {
         let mut new_event = None;
         
         match event {
@@ -142,7 +142,7 @@ impl UiWindow {
                         pos: egui::Pos2::new(logical_x, logical_y),
                         button,
                         pressed: true,
-                        modifiers: Default::default(),
+                        modifiers: egui::Modifiers::default(),
                     });
                 }
             }
@@ -154,7 +154,7 @@ impl UiWindow {
                         pos: egui::Pos2::new(logical_x, logical_y),
                         button,
                         pressed: false,
-                        modifiers: Default::default(),
+                        modifiers: egui::Modifiers::default(),
                     });
                 }
             }
@@ -162,7 +162,7 @@ impl UiWindow {
                 new_event = Some(egui::Event::MouseWheel {
                     unit: egui::MouseWheelUnit::Line,
                     delta: egui::Vec2::new(0.0, *y as f32),
-                    modifiers: Default::default(),
+                    modifiers: egui::Modifiers::default(),
                 });
             }
             _ => {}
@@ -175,6 +175,7 @@ impl UiWindow {
             
             let raw_input = self.raw_input.as_mut().unwrap();
             raw_input.events.push(event);
+            raw_input.modifiers = *modifiers;
             
             return true;
         }

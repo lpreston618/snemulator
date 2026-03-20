@@ -855,8 +855,8 @@ impl DebugWindow {
         self.egui_window.as_ref().unwrap().window().id()
     }
 
-    pub fn handle_event(&mut self, event: &sdl3::event::Event) {
-        self.egui_window.as_mut().unwrap().handle_sdl_mouse_event(event);
+    pub fn handle_event(&mut self, event: &sdl3::event::Event, modifiers: &egui::Modifiers) {
+        self.egui_window.as_mut().unwrap().handle_sdl_mouse_event(event, modifiers);
         self.egui_window.as_mut().unwrap().handle_sdl_keyboard_event(event);
     }
 

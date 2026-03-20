@@ -301,8 +301,8 @@ impl MainWindow {
         self.egui_window.window().id()
     }
     
-    pub fn handle_event(&mut self, event: &sdl3::event::Event, app_state: &mut AppState) {        
-        if self.egui_window.handle_sdl_mouse_event(event) {
+    pub fn handle_event(&mut self, event: &sdl3::event::Event, modifiers: &egui::Modifiers, app_state: &mut AppState) {        
+        if self.egui_window.handle_sdl_mouse_event(event, modifiers) {
             app_state.last_mouse_input_frame = app_state.frame_count;
         }
     }

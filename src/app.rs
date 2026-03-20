@@ -73,6 +73,7 @@ pub struct AppState {
 pub struct SnemulatorApp {
     sdl_context: sdl3::Sdl,
     video_subsystem: sdl3::VideoSubsystem,
+    event_pump: Option<sdl3::EventPump>,
     
     main_window: MainWindow,
     about_window: Option<AboutWindow>,
@@ -100,6 +101,7 @@ impl SnemulatorApp {
         
         let sdl_context = sdl3::init()?;
         let video_subsystem = sdl_context.video()?;
+        let event_pump = Some(sdl_context.event_pump()?);
         let settings = SnemulatorApp::try_find_settings().unwrap_or_default();
         let frame_buffer = Box::new([0u8; FRAME_BUF_SIZE]);
         let main_window = MainWindow::new(&video_subsystem, &settings)?;
@@ -107,6 +109,7 @@ impl SnemulatorApp {
         Ok(Self {
             sdl_context,
             video_subsystem,
+            event_pump,
             
             main_window,
             about_window: None,
@@ -266,9 +269,18 @@ impl SnemulatorApp {
     fn handle_input(&mut self) -> AppAction {
         let mut app_action = AppAction::Continue;
         
-        let mut event_pump = self.sdl_context.event_pump().unwrap();
+        let mut event_pump = self.event_pump.take().unwrap();
+        let keyboard_state = event_pump.keyboard_state();
         
-        for event in event_pump.poll_iter() {            
+        let modifiers = egui::Modifiers {
+            alt: keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::LAlt) || keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::RAlt),
+            ctrl: keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::LCtrl) || keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::RCtrl),
+            shift: keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::LShift) || keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::RShift),
+            mac_cmd: keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::LGui) || keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::RGui),
+            command: keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::LGui) || keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::RGui),
+        };
+        
+        for event in event_pump.poll_iter() {        
             // Route events to windows
             let event_window_id = match &event {
                 Event::Window { window_id, .. } => Some(*window_id),
@@ -286,28 +298,28 @@ impl SnemulatorApp {
             if let Some(event_win_id) = event_window_id {
                 if let Some(about_window) = &mut self.about_window {
                     if event_win_id == about_window.id() {
-                        self.handle_about_window_event(&event);
+                        self.handle_about_window_event(&event, &modifiers);
                         continue;
                     }
                 }
                 
                 if let Some(settings_window) = &mut self.settings_window {
                     if event_win_id == settings_window.id() {
-                        self.handle_settings_window_event(&event);
+                        self.handle_settings_window_event(&event, &modifiers);
                         continue;
                     }
                 }
                 
                 if let Some(debug_window) = &mut self.debug_window {
                     if event_win_id == debug_window.id() {
-                        self.handle_debug_window_event(&event);
+                        self.handle_debug_window_event(&event, &modifiers);
                         continue;
                     }
                 }
             }
 
             // Event is for main window
-            self.main_window.handle_event(&event, &mut self.state);
+            self.main_window.handle_event(&event, &modifiers, &mut self.state);
 
             match event {
                 Event::Quit { .. } => {
@@ -325,38 +337,40 @@ impl SnemulatorApp {
             }
         }
         
+        self.event_pump = Some(event_pump);
+        
         app_action
     }
     
-    fn handle_about_window_event(&mut self, event: &Event) {
+    fn handle_about_window_event(&mut self, event: &Event, modifiers: &egui::Modifiers) {
         match &event {
             Event::Window { win_event: sdl3::event::WindowEvent::CloseRequested, .. } => {
                 self.about_window = None;
             }
             _ => {
-                self.about_window.as_mut().unwrap().handle_event(event);
+                self.about_window.as_mut().unwrap().handle_event(event, modifiers);
             }
         }
     }
     
-    fn handle_settings_window_event(&mut self, event: &Event) {
+    fn handle_settings_window_event(&mut self, event: &Event, modifiers: &egui::Modifiers) {
         match &event {
             Event::Window { win_event: sdl3::event::WindowEvent::CloseRequested, .. } => {
                 self.settings_window = None;
             }
             _ => {
-                self.settings_window.as_mut().unwrap().handle_event(event);
+                self.settings_window.as_mut().unwrap().handle_event(event, modifiers);
             }
         }
     }
     
-    fn handle_debug_window_event(&mut self, event: &Event) {
+    fn handle_debug_window_event(&mut self, event: &Event,modifiers: &egui::Modifiers) {
         match &event {
             Event::Window { win_event: sdl3::event::WindowEvent::CloseRequested, .. } => {
                 self.debug_window = None;
             }
             _ => {
-                self.debug_window.as_mut().unwrap().handle_event(event);
+                self.debug_window.as_mut().unwrap().handle_event(event, modifiers);
             }
         }
     }

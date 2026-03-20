@@ -57,7 +57,7 @@ impl SettingsWindow {
         self.egui_window.window().id()
     }
     
-    pub fn handle_event(&mut self, event: &sdl3::event::Event) {
-        self.egui_window.handle_sdl_mouse_event(event);
+    pub fn handle_event(&mut self, event: &sdl3::event::Event, modifiers: &egui::Modifiers) {
+        self.egui_window.handle_sdl_mouse_event(event, modifiers);
     }
 }
