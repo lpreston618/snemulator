@@ -1,10 +1,11 @@
 use crate::app;
+use crate::app::debug::watchpoints::types::Counter;
+use crate::app::debug::watchpoints::types::Logpoint;
+use crate::app::debug::watchpoints::types::Watchpoint;
 use crate::core::snemcore;
 use crate::app::debug::watchpoints::editor::Editor;
-use crate::app::debug::watchpoints::types::LogKind;
 use crate::app::debug::watchpoints::types::NodeKind;
 use crate::app::debug::watchpoints::types::CompiledGraph;
-use crate::app::debug::watchpoints::types::WatchpointKind;
 
 pub struct WatchpointsTab {
     editor: Editor,
@@ -21,7 +22,7 @@ impl WatchpointsTab {
         }
     }
     
-    pub fn render(&mut self, ui: &mut egui::Ui, snem_core: &snemcore::Snemulator, app_state: &app::AppState) {
+    pub fn render(&mut self, ui: &mut egui::Ui, snem_core: &snemcore::Snemulator, app_state: &app::AppState, jump_to_wps_on_hit: &mut bool) {
         ui.horizontal(|ui| {
             ui.add_enabled_ui(app_state.is_paused, |ui| {
                 if ui.button("Add Watchpoint").clicked() {
@@ -43,6 +44,11 @@ impl WatchpointsTab {
                         self.add_node(NodeKind::Not);
                         ui.close();
                     }
+                    
+                    if ui.button("Counter").clicked() {
+                        self.add_node(NodeKind::Counter(Counter::default()));
+                        ui.close();
+                    }
                 });
                 
                 if ui.button("Add Break").clicked() {
@@ -50,10 +56,14 @@ impl WatchpointsTab {
                 }
                 
                 if ui.button("Add Log Point").clicked() {
-                    self.add_node(NodeKind::Log(LogKind::default()));
+                    self.add_node(NodeKind::Log(Logpoint::default()));
                 }
                 
-                ui.checkbox(&mut self.watchpoints_en, "Enable Watchpoints")
+                ui.checkbox(&mut self.watchpoints_en, "Enable Watchpoints");
+                
+                ui.add_space(5.0);
+                
+                ui.checkbox(jump_to_wps_on_hit, "Jump to Watchpoints on Hit");
             });
             
         });
@@ -64,7 +74,7 @@ impl WatchpointsTab {
     }
     
     fn add_watchpoint(&mut self) {
-        self.editor.create_new_watchpoint(WatchpointKind::default());
+        self.editor.create_new_watchpoint(Watchpoint::default());
     }
     
     fn add_node(&mut self, kind: NodeKind) {
@@ -74,13 +84,18 @@ impl WatchpointsTab {
         }
     }
     
-    pub fn compile_watchpoints(&mut self, snem_core: &snemcore::Snemulator) {
-        if !self.watchpoints_en {
-            self.compiled_wps = CompiledGraph::default();
-            return;
-        }
-        
+    pub fn compile_watchpoints(&mut self, snem_core: &snemcore::Snemulator) {        
         self.compiled_wps = self.editor.graph.compile(snem_core);
+        log::debug!("Compiled watchpoints");
+    }
+    
+    pub fn clear_compiled_watchpoints(&mut self) {
+        self.compiled_wps = CompiledGraph::default();
+        log::debug!("Cleared compiled watchpoints");
+    }
+    
+    pub fn update_watchpoint_graph(&mut self) {
+        self.editor.update_watchpoints(&self.compiled_wps);
     }
     
     pub fn watchpoints(&self) -> &CompiledGraph {

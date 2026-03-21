@@ -113,7 +113,7 @@ impl CpuTab {
         self.disasm.current_addr = addr;
     }
     
-    pub fn render(&mut self, ui: &mut egui::Ui, snem_core: &snemcore::Snemulator) {
+    pub fn render(&mut self, ui: &mut egui::Ui, snem_core: &snemcore::Snemulator, jump_to_bps_on_hit: &mut bool) {
         self.update_disasm(snem_core);
         
         let pc = (snem_core.cpu.pb as u32) << 16 | snem_core.cpu.pc as u32;
@@ -266,7 +266,7 @@ impl CpuTab {
                 
                 ui.add_space(10.0);
                 
-                self.breakpoints_section(ui, snem_core);
+                self.breakpoints_section(ui, snem_core, jump_to_bps_on_hit);
             });
         });
     }
@@ -380,12 +380,17 @@ impl CpuTab {
         });
     }
 
-    fn breakpoints_section(&mut self, ui: &mut egui::Ui, snem_core: &snemcore::Snemulator) {
+    fn breakpoints_section(&mut self, ui: &mut egui::Ui, snem_core: &snemcore::Snemulator, jump_to_bps_on_hit: &mut bool) {
         ui.horizontal(|ui| {
             ui.heading("Breakpoints");
+            
             if ui.button("Clear All").clicked() {
                 self.disasm.breakpoints.clear();
             }
+            
+            ui.add_space(5.0);
+            
+            ui.checkbox(jump_to_bps_on_hit, "Show Breakpoints on Hit");
         });
         ui.separator();
 

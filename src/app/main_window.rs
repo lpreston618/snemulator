@@ -202,18 +202,6 @@ impl MainWindow {
                 
         unsafe {
             if let Some(texture) = self.game_texture {                
-                // // Only scale top y because the menu bar is the only thing we are accouting for
-                // let available_rect = egui::Rect::from_min_max(
-                //     egui::pos2(
-                //         available_rect.min.x,
-                //         available_rect.min.y
-                //     ),
-                //     egui::pos2(
-                //         available_rect.max.x,
-                //         available_rect.max.y
-                //     )
-                // );
-                            
                 let game_aspect = sysinfo::SCREEN_WIDTH as f32 / sysinfo::SCREEN_HEIGHT as f32;
                 let available_width = available_rect.width();
                 let available_height = available_rect.height();

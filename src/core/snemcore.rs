@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use anyhow::{Result, anyhow};
 use crate::app::debug::breakpoints::BreakpointInfo;
 use crate::app::debug::watchpoints::types::CompiledGraph;
+use crate::app::debug::window::DebugAction;
 use crate::core::cartridge::Cartridge;
 use crate::core::controller::{ControllerPlayer, JoypadButton, JoypadCmd, SnemController};
 use crate::core::scpu::dma::{self, DmaRegs};
@@ -20,7 +21,6 @@ use crate::core::sysinfo::{
 use crate::core::sppu::color::Color;
 use crate::core::sppu::regs::PpuRegs;
 use crate::get_bit_n;
-use crate::app;
 
 macro_rules! cpu_bus {
     ($core:ident) => {
@@ -194,91 +194,6 @@ impl Snemulator {
         }
         
         self.frame += 1;
-    }
-    
-    pub fn debug_run_frame(
-        &mut self, 
-        frame_buffer: &mut [u8], 
-        audio_buffer: &mut Vec<i16>, 
-        breakpoints: &HashSet<BreakpointInfo>,
-        watchpoints: &CompiledGraph,
-    ) -> app::DebugAction {        
-        self.frame_ready = false;
-        
-        self.ssmp.start_frame();
-        
-        while !self.frame_ready {
-            let action = self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints);
-            
-            match action {
-                app::DebugAction::BreakpointHit | app::DebugAction::WatchpointHit => {
-                    return action;
-                }
-                _ => {}
-            }            
-        }
-        
-        app::DebugAction::None
-    }
-    
-    fn debug_cycle(
-        &mut self, 
-        frame_buffer: &mut [u8], 
-        audio_buffer: &mut Vec<i16>, 
-        breakpoints: &HashSet<BreakpointInfo>,
-        watchpoints: &CompiledGraph,
-    ) -> app::DebugAction {
-        let clocks = self.cpu.clocks.min(self.ppu.clocks);
-        
-        self.cpu.clocks -= clocks;
-        self.ppu.clocks -= clocks;
-        self.total_cycles += clocks as u64;
-        
-        if self.cpu.clocks == 0 {
-            self.cycle_cpu();
-        }
-        
-        if self.ppu.clocks == 0 {
-            self.cycle_ppu(frame_buffer);
-            
-            if self.frame_ready {
-                self.frame += 1;
-            }
-        }
-        
-        self.ssmp.clock(clocks, audio_buffer, &mut self.apu_ports);
-        
-        let cpu_pc = scpu::Address { bank: self.cpu.pb, offset: self.cpu.pc }.to_u32();
-        
-        if breakpoints.contains(&BreakpointInfo::new(cpu_pc)) {
-            app::DebugAction::BreakpointHit
-        } else if watchpoints.evaluate(self) {
-            app::DebugAction::WatchpointHit
-        } else {
-            app::DebugAction::None
-        }
-    }
-    
-    pub fn debug_step_instruction(
-        &mut self, 
-        frame_buffer: &mut [u8], 
-        audio_buffer: &mut Vec<i16>, 
-        breakpoints: &HashSet<BreakpointInfo>,
-        watchpoints: &CompiledGraph,
-    ) -> app::DebugAction {        
-        // Cycle until the CPU is the next to cycle
-        while self.cpu.clocks > self.ppu.clocks {
-            let action = self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints);
-            
-            match action {
-                app::DebugAction::BreakpointHit | app::DebugAction::WatchpointHit => {
-                    return action;
-                }
-                _ => {}
-            }
-        }
-
-        self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints)
     }
     
     fn cycle(&mut self, frame_buffer: &mut [u8], audio_buffer: &mut Vec<i16>) {
@@ -508,5 +423,93 @@ impl Snemulator {
     
     pub fn rom_slice(&self) -> &[u8] {
         self.cart.as_ref().unwrap().rom_slice()
+    }
+}
+
+// Debug functionality
+impl Snemulator {
+    pub fn debug_run_frame(
+        &mut self, 
+        frame_buffer: &mut [u8], 
+        audio_buffer: &mut Vec<i16>, 
+        breakpoints: &HashSet<BreakpointInfo>,
+        watchpoints: &CompiledGraph,
+    ) -> DebugAction {        
+        self.frame_ready = false;
+        
+        self.ssmp.start_frame();
+        
+        while !self.frame_ready {
+            let action = self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints);
+            
+            match action {
+                DebugAction::BreakpointHit | DebugAction::WatchpointHit => {
+                    return action;
+                }
+                _ => {}
+            }            
+        }
+        
+        DebugAction::None
+    }
+    
+    fn debug_cycle(
+        &mut self, 
+        frame_buffer: &mut [u8], 
+        audio_buffer: &mut Vec<i16>, 
+        breakpoints: &HashSet<BreakpointInfo>,
+        watchpoints: &CompiledGraph,
+    ) -> DebugAction {
+        let clocks = self.cpu.clocks.min(self.ppu.clocks);
+        
+        self.cpu.clocks -= clocks;
+        self.ppu.clocks -= clocks;
+        self.total_cycles += clocks as u64;
+        
+        if self.cpu.clocks == 0 {
+            self.cycle_cpu();
+        }
+        
+        if self.ppu.clocks == 0 {
+            self.cycle_ppu(frame_buffer);
+            
+            if self.frame_ready {
+                self.frame += 1;
+            }
+        }
+        
+        self.ssmp.clock(clocks, audio_buffer, &mut self.apu_ports);
+        
+        let cpu_pc = scpu::Address { bank: self.cpu.pb, offset: self.cpu.pc }.to_u32();
+        
+        if breakpoints.contains(&BreakpointInfo::new(cpu_pc)) {
+            DebugAction::BreakpointHit
+        } else if watchpoints.evaluate(self) {
+            DebugAction::WatchpointHit
+        } else {
+            DebugAction::None
+        }
+    }
+    
+    pub fn debug_step_instruction(
+        &mut self, 
+        frame_buffer: &mut [u8], 
+        audio_buffer: &mut Vec<i16>, 
+        breakpoints: &HashSet<BreakpointInfo>,
+        watchpoints: &CompiledGraph,
+    ) -> DebugAction {        
+        // Cycle until the CPU is the next to cycle
+        while self.cpu.clocks > self.ppu.clocks {
+            let action = self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints);
+            
+            match action {
+                DebugAction::BreakpointHit | DebugAction::WatchpointHit => {
+                    return action;
+                }
+                _ => {}
+            }
+        }
+
+        self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints)
     }
 }

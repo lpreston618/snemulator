@@ -10,6 +10,15 @@ use crate::app::debug::watchpoints::types::CompiledGraph;
 const DEBUG_WINDOW_WIDTH: u32 = 800;
 const DEBUG_WINDOW_HEIGHT: u32 = 600;
 
+pub enum DebugAction {
+    SingleStep,
+    StepFrame,
+    TogglePause,
+    BreakpointHit,
+    WatchpointHit,
+    None,
+}
+
 pub struct DebugWindow {
     egui_window: Option<Box<UiWindow>>,
     cpu_tab: Box<tabs::CpuTab>,
@@ -17,6 +26,8 @@ pub struct DebugWindow {
     chr_tab: Box<tabs::ChrTab>,
     wp_tab: Box<tabs::WatchpointsTab>,
     selected_tab: tabs::DebugTab,
+    jump_to_bps_on_hit: bool,
+    jump_to_wps_on_hit: bool,
 }
 
 impl DebugWindow {
@@ -35,19 +46,47 @@ impl DebugWindow {
             chr_tab: Box::new(tabs::ChrTab::new()),
             wp_tab: Box::new(tabs::WatchpointsTab::new()),
             selected_tab: tabs::DebugTab::Cpu,
+            jump_to_bps_on_hit: true,
+            jump_to_wps_on_hit: true,
         })
     }
 
     pub fn update_and_render(
         &mut self,
-        snem_core: &core::snemcore::Snemulator,
-        app_state: &app::AppState
-    ) -> app::DebugAction {
-        // let gl = self.egui_window.gl();
-        // self.chr_viewer.update_texture(gl, snem_core.vram(), snem_core.cgram());
+        snem_core: &mut core::snemcore::Snemulator,
+        app_state: &mut app::AppState,
+        frame_buffer: &mut [u8],
+        audio_buffer: &mut Vec<i16>,
+    ) -> app::AppAction {
+        
+        let mut clear_watchpoints = false;
+        let mut app_action = app::AppAction::Continue;
+        
+        if !app_state.is_paused {
+            match snem_core.debug_run_frame(
+                frame_buffer, 
+                audio_buffer,
+                self.breakpoints(),
+                self.watchpoints(),
+            ) {
+                DebugAction::BreakpointHit => {
+                    app_state.is_paused = true;
+                    self.breakpoint_hit(&snem_core);
+                    clear_watchpoints = true;
+                },
+                DebugAction::WatchpointHit => {
+                    app_state.is_paused = true;
+                    self.watchpoint_hit();
+                    clear_watchpoints = true;
+                }
+                _ => {}
+            }
+        }
+        
+        self.wp_tab.update_watchpoint_graph();
 
         let mut egui_window = self.egui_window.take().unwrap();
-        let mut debug_action = app::DebugAction::None;
+        let mut debug_action = DebugAction::None;
 
         let full_output = egui_window.update_ui(|ctx| {
             egui::TopBottomPanel::top("tabs").show(ctx, |ui| {
@@ -70,21 +109,22 @@ impl DebugWindow {
                 ui.horizontal(|ui| {
                     if ui.button("Step Instruction").clicked() {
                         self.compile_watchpoints(&snem_core);
-                        debug_action = app::DebugAction::SingleStep;
+                        debug_action = DebugAction::SingleStep;
                     }
     
                     if ui.button("Step Frame").clicked() {
                         self.compile_watchpoints(&snem_core);
-                        debug_action = app::DebugAction::StepFrame;
+                        debug_action = DebugAction::StepFrame;
                     }
                     
                     if app_state.is_paused && ui.button("Resume").clicked() {
                         self.compile_watchpoints(&snem_core);
-                        debug_action = app::DebugAction::TogglePause;
+                        debug_action = DebugAction::TogglePause;
                     }
                     
                     if !app_state.is_paused && ui.button("Pause").clicked() {
-                        debug_action = app::DebugAction::TogglePause;
+                        debug_action = DebugAction::TogglePause;
+                        clear_watchpoints = true;
                     }
                     
                     ui.label(format!("Frame: {}", snem_core.frame));
@@ -97,10 +137,10 @@ impl DebugWindow {
             
             egui::CentralPanel::default().show(ctx, |ui| {
                 match self.selected_tab {
-                    tabs::DebugTab::Cpu => self.cpu_tab.render(ui, snem_core),
+                    tabs::DebugTab::Cpu => self.cpu_tab.render(ui, snem_core, &mut self.jump_to_bps_on_hit),
                     tabs::DebugTab::Memory => self.mem_tab.render(ui, snem_core),
                     tabs::DebugTab::ChrRam => self.chr_tab.render(ui, snem_core),
-                    tabs::DebugTab::Watchpoints => self.wp_tab.render(ui, snem_core, app_state),
+                    tabs::DebugTab::Watchpoints => self.wp_tab.render(ui, snem_core, app_state, &mut self.jump_to_wps_on_hit),
                     _ => {},
                 };
             });
@@ -110,7 +150,59 @@ impl DebugWindow {
         egui_window.render(full_output);
 
         self.egui_window = Some(egui_window);
-        debug_action
+        
+        match debug_action {
+            DebugAction::SingleStep if app_state.is_paused => {
+                match snem_core.debug_step_instruction(
+                    frame_buffer, 
+                    audio_buffer,
+                    self.breakpoints(),
+                    self.watchpoints(),
+                ) {
+                    DebugAction::BreakpointHit => {
+                        app_state.is_paused = true;
+                        self.breakpoint_hit(&snem_core);
+                    },
+                    DebugAction::WatchpointHit => {
+                        app_state.is_paused = true;
+                        self.watchpoint_hit();
+                    }
+                    _ => {}
+                }
+                
+                clear_watchpoints = true;
+            }
+            DebugAction::StepFrame if app_state.is_paused => {
+                match snem_core.debug_run_frame(
+                    frame_buffer, 
+                    audio_buffer,
+                    self.breakpoints(),
+                    self.watchpoints(),
+                ) {
+                    DebugAction::BreakpointHit => {
+                        app_state.is_paused = true;
+                        self.breakpoint_hit(&snem_core);
+                    },
+                    DebugAction::WatchpointHit => {
+                        app_state.is_paused = true;
+                        self.watchpoint_hit();
+                    }
+                    _ => {}
+                }
+                
+                clear_watchpoints = true;
+            }
+            DebugAction::TogglePause => {
+                app_action = app::AppAction::TogglePause;
+            }
+            _ => {}
+        }
+        
+        if clear_watchpoints {
+            self.wp_tab.clear_compiled_watchpoints();
+        }
+        
+        app_action
     }
 
     pub fn id(&self) -> u32 {
@@ -124,11 +216,16 @@ impl DebugWindow {
     
     pub fn breakpoint_hit(&mut self, snem_core: &core::snemcore::Snemulator) {
         self.cpu_tab.breakpoint_hit((snem_core.cpu.pb as u32) << 16 | snem_core.cpu.pc as u32);
-        self.selected_tab = tabs::DebugTab::Cpu;
+        
+        if self.jump_to_bps_on_hit {
+            self.selected_tab = tabs::DebugTab::Cpu;
+        }
     }
     
     pub fn watchpoint_hit(&mut self) {
-        self.selected_tab = tabs::DebugTab::Watchpoints;
+        if self.jump_to_wps_on_hit {
+            self.selected_tab = tabs::DebugTab::Watchpoints;
+        }
     }
     
     pub fn breakpoints(&self) -> &std::collections::HashSet<BreakpointInfo> {
@@ -139,7 +236,7 @@ impl DebugWindow {
         self.wp_tab.watchpoints()
     }
     
-    pub fn compile_watchpoints(&mut self, snem_core: &core::snemcore::Snemulator) {
+    fn compile_watchpoints(&mut self, snem_core: &core::snemcore::Snemulator) {
         self.wp_tab.compile_watchpoints(snem_core);
     }
 }

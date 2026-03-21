@@ -33,7 +33,7 @@ const SECS_BEFORE_HIDE_MOUSE: f32 = 3.0;
 const FRAMES_BEFORE_HIDE_MENU: u64 = (SECS_BEFORE_HIDE_MENU * TARGET_FPS as f32) as u64;
 const FRAMES_BEFORE_HIDE_MOUSE: u64 = (SECS_BEFORE_HIDE_MOUSE * TARGET_FPS as f32) as u64;
 
-enum AppAction {
+pub enum AppAction {
     Continue,
     TogglePause,
     ToggleFullscreen,
@@ -45,15 +45,6 @@ enum AppAction {
     OpenSettings,
     OpenDebug,
     Exit,
-}
-
-pub enum DebugAction {
-    SingleStep,
-    StepFrame,
-    TogglePause,
-    BreakpointHit,
-    WatchpointHit,
-    None,
 }
 
 pub struct AppState {
@@ -147,65 +138,10 @@ impl SnemulatorApp {
             }
             
             if let Some(debug_window) = &mut self.debug_window {                
-                if !self.state.is_paused {
-                    match self.snem_core.debug_run_frame(
-                        &mut self.frame_buffer[..], 
-                        &mut temp,
-                        debug_window.breakpoints(),
-                        debug_window.watchpoints(),
-                    ) {
-                        DebugAction::BreakpointHit => {
-                            self.state.is_paused = true;
-                            debug_window.breakpoint_hit(&self.snem_core);
-                        },
-                        DebugAction::WatchpointHit => {
-                            self.state.is_paused = true;
-                            debug_window.watchpoint_hit();
-                        }
-                        _ => {}
-                    }
-                }
+                let app_action = debug_window.update_and_render(&mut self.snem_core, &mut self.state, &mut self.frame_buffer[..], &mut temp);
                 
-                let debug_action = debug_window.update_and_render(&self.snem_core, &self.state);
-                
-                match debug_action {
-                    DebugAction::SingleStep if self.state.is_paused => {
-                        match self.snem_core.debug_step_instruction(
-                            &mut self.frame_buffer[..], 
-                            &mut temp,
-                            debug_window.breakpoints(),
-                            debug_window.watchpoints(),
-                        ) {
-                            DebugAction::BreakpointHit => {
-                                self.state.is_paused = true;
-                                debug_window.breakpoint_hit(&self.snem_core);
-                            },
-                            DebugAction::WatchpointHit => {
-                                self.state.is_paused = true;
-                                debug_window.watchpoint_hit();
-                            }
-                            _ => {}
-                        }
-                    }
-                    DebugAction::StepFrame if self.state.is_paused => {
-                        match self.snem_core.debug_run_frame(
-                            &mut self.frame_buffer[..], 
-                            &mut temp,
-                            debug_window.breakpoints(),
-                            debug_window.watchpoints(),
-                        ) {
-                            DebugAction::BreakpointHit => {
-                                self.state.is_paused = true;
-                                debug_window.breakpoint_hit(&self.snem_core);
-                            },
-                            DebugAction::WatchpointHit => {
-                                self.state.is_paused = true;
-                                debug_window.watchpoint_hit();
-                            }
-                            _ => {}
-                        }
-                    }
-                    DebugAction::TogglePause => {
+                match app_action {
+                    AppAction::TogglePause => {
                         self.toggle_pause();
                     }
                     _ => {}

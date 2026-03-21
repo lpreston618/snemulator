@@ -1,4 +1,5 @@
-use std::str::FromStr;
+use std::ops::Deref;
+use std::{cell::Cell, str::FromStr};
 use std::collections::HashMap;
 
 use crate::core::{self, scpu, snemcore};
@@ -13,62 +14,90 @@ pub const HWVAL_NAMES: [&str; 10] = [
 
 slotmap::new_key_type! { pub struct NodeId; }
 
+pub trait WatchpointValueClone {
+    fn clone_box(&self) -> Box<dyn WatchpointValue>;
+}
+
+pub trait WatchpointAsAnyMut {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
+}
+
+pub trait WatchpointAsAny {
+    fn as_any(&self) -> &dyn std::any::Any;
+}
+
+pub trait WatchpointValue: WatchpointValueClone + WatchpointAsAnyMut + WatchpointAsAny {
+    fn get_value(&self, snem_core: &snemcore::Snemulator) -> usize;
+    fn reg_size(&self) -> RegSize;
+    fn label(&self) -> String;
+    fn category(&self) -> RegCategory;
+    fn value_str(&self, snem_core: &snemcore::Snemulator) -> String {
+        let val = self.get_value(snem_core);
+        self.reg_size().format_val(val)
+    }
+}
+
+impl<T: 'static + WatchpointValue + Clone> WatchpointAsAnyMut for T {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self as &mut dyn std::any::Any
+    }
+}
+
+impl<T: 'static + WatchpointValue + Clone> WatchpointAsAny for T {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self as &dyn std::any::Any
+    }
+}
+
+impl<T: 'static + WatchpointValue + Clone> WatchpointValueClone for T {
+    fn clone_box(&self) -> Box<dyn WatchpointValue> {
+        Box::new(self.clone())
+    }
+}
+
+impl Clone for Box<dyn WatchpointValue> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
+}
+
 #[derive(PartialEq, Clone, Copy)]
-pub enum RegCategory { CpuReg, Flag, Ram, Vram, HwRegOrFlag, SysInfo, LogMessageOnly }
+pub enum RegCategory { CpuReg, CpuFlag, Ram, Vram, HwReg, HwFlag, SysInfo }
 
 impl RegCategory {
     pub fn label(&self) -> &'static str {
         match self {
             RegCategory::CpuReg => "CPU Register",
-            RegCategory::Flag => "CPU Flag",
+            RegCategory::CpuFlag => "CPU Flag",
             RegCategory::Ram => "RAM",
             RegCategory::Vram => "VRAM",
-            RegCategory::HwRegOrFlag => "Hardware Register",
+            RegCategory::HwReg | RegCategory::HwFlag => "Hardware Register",
             RegCategory::SysInfo => "System Info",
-            RegCategory::LogMessageOnly => "Log Message Only",
         }
     }
 }
 
 #[derive(PartialEq, Clone, Copy)]
-pub enum RegCondType { Eq, NEq, Gt, Lt, AndEq, OrEq, Changed }
+pub enum RegSize { Bool, Byte, Word, Num }
 
-impl RegCondType {
-    pub fn selected_label(&self) -> &'static str {
+impl RegSize {
+    pub fn format_val(&self, val: usize) -> String {
         match self {
-            RegCondType::Eq => "==",
-            RegCondType::NEq => "!=",
-            RegCondType::Gt => ">",
-            RegCondType::Lt => "<",
-            RegCondType::AndEq => "&",
-            RegCondType::OrEq => "|",
-            RegCondType::Changed => "Changed",
-        }
-    }
-    
-    pub fn label(&self) -> &'static str {
-        match self {
-            RegCondType::Eq => "== (Equals)",
-            RegCondType::NEq => "!= (Not Equal)",
-            RegCondType::Gt => "> (Greater Than)",
-            RegCondType::Lt => "< (Less Than)",
-            RegCondType::AndEq => "& (Bitwise AND)",
-            RegCondType::OrEq => "| (Bitwise OR)",
-            RegCondType::Changed => "Changed",
+            RegSize::Bool => if val != 0 { "Set" } else { "Clear" }.to_string(),
+            RegSize::Byte => format!("{:02X}", val),
+            RegSize::Word => format!("{:04X}", val),
+            RegSize::Num => format!("{}", val),
         }
     }
 }
-
-#[derive(PartialEq, Clone, Copy)]
-pub enum RegSize { Byte, Word, Num }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum CpuReg {
     DB, PB, P, A, X, Y, DP, PC, SP,
 }
 
-impl CpuReg {
-    pub fn get_value(&self, snem_core: &core::snemcore::Snemulator) -> usize {
+impl WatchpointValue for CpuReg {
+    fn get_value(&self, snem_core: &core::snemcore::Snemulator) -> usize {
         match self {
             CpuReg::DB => snem_core.cpu.db as usize,
             CpuReg::PB => snem_core.cpu.pb as usize,
@@ -82,7 +111,7 @@ impl CpuReg {
         }
     }
     
-    pub fn label(&self) -> String {
+    fn label(&self) -> String {
         format!("{:?}", self)
     }
     
@@ -91,6 +120,10 @@ impl CpuReg {
             CpuReg::DB | CpuReg::PB | CpuReg::P => RegSize::Byte,
             _ => RegSize::Word,
         }
+    }
+    
+    fn category(&self) -> RegCategory {
+        RegCategory::CpuReg
     }
 }
 
@@ -101,9 +134,9 @@ pub enum CpuFlag {
     NMIPending, IRQPending,
 }
 
-impl CpuFlag {
-    pub fn get_value(&self, snem_core: &core::snemcore::Snemulator) -> bool {
-        match self {
+impl WatchpointValue for CpuFlag {
+    fn get_value(&self, snem_core: &core::snemcore::Snemulator) -> usize {
+        let val = match self {
             CpuFlag::C => snem_core.cpu.is_flag_set(scpu::Flag::FlagC),
             CpuFlag::Z => snem_core.cpu.is_flag_set(scpu::Flag::FlagZ),
             CpuFlag::I => snem_core.cpu.is_flag_set(scpu::Flag::FlagI),
@@ -117,10 +150,12 @@ impl CpuFlag {
             CpuFlag::Waiting => snem_core.cpu.waiting_for_interrupt,
             CpuFlag::NMIPending => snem_core.cpu.nmi_pending,
             CpuFlag::IRQPending => snem_core.cpu.irq_pending,
-        }
+        };
+        
+        if val { 1 } else { 0 }
     }
     
-    pub fn label(&self) -> String {
+    fn label(&self) -> String {
         match self {
             CpuFlag::C => "C",
             CpuFlag::Z => "Z",
@@ -136,6 +171,14 @@ impl CpuFlag {
             CpuFlag::NMIPending => "NMI Pending",
             CpuFlag::IRQPending => "IRQ Pending",
         }.to_string()
+    }
+    
+    fn reg_size(&self) -> RegSize {
+        RegSize::Bool
+    }
+    
+    fn category(&self) -> RegCategory {
+        RegCategory::CpuFlag
     }
 }
 
@@ -169,8 +212,8 @@ impl FromStr for HardwareReg {
     }
 }
 
-impl HardwareReg {
-    pub fn get_value(&self, snem_core: &core::snemcore::Snemulator) -> usize {
+impl WatchpointValue for HardwareReg {
+    fn get_value(&self, snem_core: &core::snemcore::Snemulator) -> usize {
         match self {
             HardwareReg::ApuIo0 => snem_core.apu_ports.apuio0 as usize,
             HardwareReg::ApuIo1 => snem_core.apu_ports.apuio1 as usize,
@@ -183,7 +226,7 @@ impl HardwareReg {
         }
     }
     
-    pub fn label(&self) -> String {
+    fn label(&self) -> String {
         match self {
             HardwareReg::ApuIo0 => "APUIO0",
             HardwareReg::ApuIo1 => "APUIO1",
@@ -196,7 +239,7 @@ impl HardwareReg {
         }.to_string()
     }
     
-    pub fn reg_size(&self) -> RegSize {
+    fn reg_size(&self) -> RegSize {
         match self {
             HardwareReg::ApuIo0 => RegSize::Byte,
             HardwareReg::ApuIo1 => RegSize::Byte,
@@ -207,6 +250,10 @@ impl HardwareReg {
             HardwareReg::CpuIo2 => RegSize::Byte,
             HardwareReg::CpuIo3 => RegSize::Byte,
         }
+    }
+    
+    fn category(&self) -> RegCategory {
+        RegCategory::HwReg
     }
 }
 
@@ -228,16 +275,26 @@ impl FromStr for HardwareFlag {
     }
 }
 
-impl HardwareFlag {
-    pub fn get_value(&self, snem_core: &core::snemcore::Snemulator) -> bool {
-        match self {
+impl WatchpointValue for HardwareFlag {
+    fn get_value(&self, snem_core: &core::snemcore::Snemulator) -> usize {
+        let val = match self {
             HardwareFlag::VBlank => snem_core.cpu_regs.vblank_flag,
             HardwareFlag::FBlank => snem_core.ppu_regs.in_fblank,
-        }
+        };
+        
+        if val { 1 } else { 0 }
     }
     
-    pub fn label(&self) -> String {
+    fn label(&self) -> String {
         format!("{:?}", self)
+    }
+    
+    fn reg_size(&self) -> RegSize {
+        RegSize::Bool
+    }
+    
+    fn category(&self) -> RegCategory {
+        RegCategory::HwFlag
     }
 }
 
@@ -248,8 +305,8 @@ pub enum SystemVariable {
     Scanline,
 }
 
-impl SystemVariable {
-    pub fn get_value(&self, snem_core: &core::snemcore::Snemulator) -> usize {
+impl WatchpointValue for SystemVariable {
+    fn get_value(&self, snem_core: &core::snemcore::Snemulator) -> usize {
         match self {
             SystemVariable::Frame => snem_core.frame as usize,
             SystemVariable::Dot => snem_core.ppu.dot as usize,
@@ -257,300 +314,219 @@ impl SystemVariable {
         }
     }
     
-    pub fn label(&self) -> String {
+    fn label(&self) -> String {
         format!("{:?}", self)
     }
     
-    fn variable_size(&self) -> RegSize {
+    fn reg_size(&self) -> RegSize {    
         RegSize::Num
     }
-}
-
-#[derive(Clone, PartialEq)]
-pub enum WatchpointCondFlag {
-    Set,
-    Clear,
-    Changed(bool),
-}
-
-impl WatchpointCondFlag {
-    pub fn evaluate(&self, value: bool) -> bool {
-        match self {
-            WatchpointCondFlag::Set => value,
-            WatchpointCondFlag::Clear => !value,
-            WatchpointCondFlag::Changed(prev) => value != *prev,
-        }
-    }
     
-    pub fn label(&self) -> String {
-        match self {
-            WatchpointCondFlag::Set => "Set".to_string(),
-            WatchpointCondFlag::Clear => "Clear".to_string(),
-            WatchpointCondFlag::Changed(_) => "Changed".to_string(),
-        }
+    fn category(&self) -> RegCategory {
+        RegCategory::SysInfo
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum WatchpointCond {
-    Equal(usize),
-    NotEqual(usize),
-    GreaterThan(usize),
-    LessThan(usize),
-    AndEqual(usize, usize),
-    OrEqual(usize, usize),
-    Changed(usize),
+    Set,
+    Clear,
+    Equal,
+    NotEqual,
+    GreaterThan,
+    LessThan,
+    AndEqual,
+    OrEqual,
+    Changed,
 }
 
-impl WatchpointCond {
-    pub fn evaluate(&self, value: usize) -> bool {
-        match self {
-            WatchpointCond::Equal(cond_val) => value == *cond_val,
-            WatchpointCond::NotEqual(cond_val) => value != *cond_val,
-            WatchpointCond::GreaterThan(cond_val) => value > *cond_val,
-            WatchpointCond::LessThan(cond_val) => value < *cond_val,
-            WatchpointCond::AndEqual(operand, cond_val) => value & *operand == *cond_val,
-            WatchpointCond::OrEqual(operand, cond_val) => value | *operand == *cond_val,
-            WatchpointCond::Changed(prev) => value != *prev,
+impl WatchpointCond {    
+    pub fn label(&self, reg_size: RegSize, arg1: usize, arg2: usize) -> String {
+        match reg_size {
+            RegSize::Byte => match self {
+                WatchpointCond::Equal => format!("== {:02X}", arg1),
+                WatchpointCond::NotEqual => format!("!= {:02X}", arg1),
+                WatchpointCond::GreaterThan => format!("> {:02X}", arg1),
+                WatchpointCond::LessThan => format!("< {:02X}", arg1),
+                WatchpointCond::AndEqual => format!("& {:02X}\n == {:02X}", arg1, arg2),
+                WatchpointCond::OrEqual => format!("| {:02X}\n == {:02X}", arg1, arg2),
+                WatchpointCond::Changed => "Changed".to_string(),
+                _ => "".to_string(),
+            },
+            RegSize::Word => match self {
+                WatchpointCond::Equal => format!("== {:04X}", arg1),
+                WatchpointCond::NotEqual => format!("!= {:04X}", arg1),
+                WatchpointCond::GreaterThan => format!("> {:04X}", arg1),
+                WatchpointCond::LessThan => format!("< {:04X}", arg1),
+                WatchpointCond::AndEqual => format!("& {:04X}\n == {:04X}", arg1, arg2),
+                WatchpointCond::OrEqual => format!("| {:04X}\n == {:04X}", arg1, arg2),
+                WatchpointCond::Changed => "Changed".to_string(),
+                _ => "".to_string(),
+            },
+            RegSize::Num => match self {
+                WatchpointCond::Equal => format!("== {}", arg1),
+                WatchpointCond::NotEqual => format!("!= {}", arg1),
+                WatchpointCond::GreaterThan => format!("> {}", arg1),
+                WatchpointCond::LessThan => format!("< {}", arg1),
+                WatchpointCond::AndEqual => format!("& {}\n == {}", arg1, arg2),
+                WatchpointCond::OrEqual => format!("| {}\n == {}", arg1, arg2),
+                WatchpointCond::Changed => "Changed".to_string(),
+                _ => "".to_string(),
+            },
+            RegSize::Bool => match self {
+                WatchpointCond::Set => "Set".to_string(),
+                WatchpointCond::Clear => "Clear".to_string(),
+                WatchpointCond::Changed => "Changed".to_string(),
+                _ => "".to_string(),
+            },
         }
     }
     
-    fn label(&self, num_cond_fmt: RegSize) -> String {
-        match num_cond_fmt {
-            RegSize::Byte => match self {
-                WatchpointCond::Equal(val) => format!("== {:02X}", val),
-                WatchpointCond::NotEqual(val) => format!("!= {:02X}", val),
-                WatchpointCond::GreaterThan(val) => format!("> {:02X}", val),
-                WatchpointCond::LessThan(val) => format!("< {:02X}", val),
-                WatchpointCond::AndEqual(val1, val2) => format!("& {:02X}\n == {:02X}", val1, val2),
-                WatchpointCond::OrEqual(val1, val2) => format!("| {:02X}\n == {:02X}", val1, val2),
-                WatchpointCond::Changed(_) => "Changed".to_string(),
-            },
-            RegSize::Word => match self {
-                WatchpointCond::Equal(val) => format!("== {:04X}", val),
-                WatchpointCond::NotEqual(val) => format!("!= {:04X}", val),
-                WatchpointCond::GreaterThan(val) => format!("> {:04X}", val),
-                WatchpointCond::LessThan(val) => format!("< {:04X}", val),
-                WatchpointCond::AndEqual(val1, val2) => format!("& {:04X}\n == {:04X}", val1, val2),
-                WatchpointCond::OrEqual(val1, val2) => format!("| {:04X}\n == {:04X}", val1, val2),
-                WatchpointCond::Changed(_) => "Changed".to_string(),
-            },
-            RegSize::Num => match self {
-                WatchpointCond::Equal(val) => format!("== {}", val),
-                WatchpointCond::NotEqual(val) => format!("!= {}", val),
-                WatchpointCond::GreaterThan(val) => format!("> {}", val),
-                WatchpointCond::LessThan(val) => format!("< {}", val),
-                WatchpointCond::AndEqual(val1, val2) => format!("& {}\n == {}", val1, val2),
-                WatchpointCond::OrEqual(val1, val2) => format!("| {}\n == {}", val1, val2),
-                WatchpointCond::Changed(_) => "Changed".to_string(),
-            },
+    pub fn dropdown_label(&self) -> &'static str {
+        match self {
+            WatchpointCond::Set => "Set",
+            WatchpointCond::Clear => "Clear",
+            WatchpointCond::Equal => "==",
+            WatchpointCond::NotEqual => "!=",
+            WatchpointCond::GreaterThan => ">",
+            WatchpointCond::LessThan => "<",
+            WatchpointCond::AndEqual => "&",
+            WatchpointCond::OrEqual => "|",
+            WatchpointCond::Changed => "Changed",
+        }
+    }
+    
+    pub fn evaluate(cond: &Self, val: usize, arg1: usize, arg2: usize) -> bool {
+        match cond {
+            WatchpointCond::Set => val != 0,
+            WatchpointCond::Clear => val == 0,
+            WatchpointCond::Equal => val == arg1,
+            WatchpointCond::NotEqual => val != arg1,
+            WatchpointCond::GreaterThan => val > arg1,
+            WatchpointCond::LessThan => val < arg1,
+            WatchpointCond::AndEqual => val & arg1 == arg2,
+            WatchpointCond::OrEqual => val | arg1 == arg2,
+            WatchpointCond::Changed => val != arg1,
         }
     }
 }
 
 #[derive(Clone)]
-pub enum WatchpointKind {
-    CpuReg {
-        reg: CpuReg,
-        cond: WatchpointCond,
-    },
-    CpuFlag {
-        flag: CpuFlag,
-        cond: WatchpointCondFlag,
-    },
-    HardwareReg {
-        reg: HardwareReg,
-        cond: WatchpointCond,
-    },
-    HardwareFlag {
-        flag: HardwareFlag,
-        cond: WatchpointCondFlag,
-    },
-    System {
-        variable: SystemVariable,
-        cond: WatchpointCond,
-    },
+pub struct Watchpoint {
+    pub val: Box<dyn WatchpointValue>,
+    pub kind: RegCategory,
+    pub cond: WatchpointCond,
+    pub arg1: usize,
+    pub arg2: usize,
+    pub arg1_input_text: String,
+    pub arg2_input_text: String,
+    pub hw_reg_search: String,
 }
 
-impl Default for WatchpointKind {
+impl Default for Watchpoint {
     fn default() -> Self {
-        Self::CpuReg {
-            reg: CpuReg::A,
-            cond: WatchpointCond::Equal(0),
+        Self {
+            val: Box::new(CpuReg::A),
+            kind: RegCategory::CpuReg,
+            cond: WatchpointCond::Equal,
+            arg1: 0,
+            arg2: 0,
+            arg1_input_text: String::new(),
+            arg2_input_text: String::new(),
+            hw_reg_search: String::new(),
         }
     }
 }
 
-impl WatchpointKind {
-    pub fn evaluate(&self, snem_core: &core::snemcore::Snemulator) -> bool {
-        match self {
-            WatchpointKind::CpuReg { reg, cond } => {
-                cond.evaluate(reg.get_value(snem_core))
-            },
-            WatchpointKind::CpuFlag { flag, cond } => {
-                cond.evaluate(flag.get_value(snem_core))
-            },
-            WatchpointKind::HardwareReg { reg, cond } => {
-                cond.evaluate(reg.get_value(snem_core))
-            }
-            WatchpointKind::HardwareFlag { flag, cond } => {
-                cond.evaluate(flag.get_value(snem_core))
-            }
-            WatchpointKind::System { variable, cond } => {
-                cond.evaluate(variable.get_value(snem_core))
-            }
-        }
+impl Watchpoint {
+    pub fn evaluate(&self, snem_core: &snemcore::Snemulator) -> bool {
+        let val = self.val.get_value(snem_core);
+        
+        WatchpointCond::evaluate(&self.cond, val, self.arg1, self.arg2)
     }
     
     pub fn label(&self) -> String {
-        match self {
-            WatchpointKind::CpuReg { reg, cond } => {
-                let num_cond_fmt = reg.reg_size();
-                
-                format!("{} {}", reg.label(), cond.label(num_cond_fmt))
-            },
-            WatchpointKind::CpuFlag { flag, cond } => {
-                match flag {
-                    CpuFlag::C | CpuFlag::Z |
-                    CpuFlag::I | CpuFlag::D |
-                    CpuFlag::X | CpuFlag::M |
-                    CpuFlag::V | CpuFlag::N => {
-                        format!("CPU Status\nflag {:?} is\n{}", flag, cond.label())
-                    },
-                    _ => {
-                        format!("CPU Flag\n{:?} is\n{}", flag, cond.label())
-                    }
-                }
-            },
-            WatchpointKind::HardwareReg { reg, cond } => {
-                let num_cond_fmt = reg.reg_size();
-                
-                format!("{} {}", reg.label(), cond.label(num_cond_fmt))
-            }
-            WatchpointKind::HardwareFlag { flag, cond } => {
-                format!("{} is {}", flag.label(), cond.label())
-            },
-            WatchpointKind::System { variable, cond } => {
-                let num_cond_fmt = variable.variable_size();
-                
-                format!("{} {}", variable.label(), cond.label(num_cond_fmt))
-            },
+        format!("{} {}", self.val.label(), self.cond.label(self.val.reg_size(), self.arg1, self.arg2))
+    }
+}
+
+#[derive(Clone)]
+pub struct Counter {
+    pub fired: bool,
+    pub prev: bool,
+    pub count: usize,
+    pub arg: usize,
+    pub cond: WatchpointCond,
+    pub reset_on_cond: bool,
+    pub reset: usize,
+    pub input_text: String,
+    pub reset_input_text: String,
+}
+
+impl Default for Counter {
+    fn default() -> Self {
+        Self {
+            fired: false,
+            prev: false,
+            count: 0,
+            arg: 100,
+            cond: WatchpointCond::Equal,
+            reset_on_cond: true,
+            reset: 100,
+            input_text: String::new(),
+            reset_input_text: String::new(),
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum LogKind {
-    CpuReg {
-        reg: CpuReg,
-        msg: String,
-    },
-    CpuFlag {
-        flag: CpuFlag,
-        msg: String,
-    },
-    System {
-        variable: SystemVariable,
-        msg: String,
-    },
-    Message {
-        msg: String,
-    },
+impl Counter {
+    pub fn evaluate(&self) -> bool {
+        self.fired
+    }
+    
+    pub fn label(&self) -> String {
+        format!("Counter\n{} {}", self.count, self.cond.label(RegSize::Num, self.arg, 0))
+    }
 }
 
-impl Default for LogKind {
+#[derive(Clone)]
+pub struct Logpoint {
+    pub reg: Box<dyn WatchpointValue>,
+    pub reg_type: RegCategory,
+    pub message_only: bool,
+    pub msg: String,
+}
+
+impl Default for Logpoint {
     fn default() -> Self {
-        Self::CpuReg {
-            reg: CpuReg::A,
+        Self {
+            reg: Box::new(CpuReg::A),
+            reg_type: RegCategory::CpuReg,
+            message_only: false,
             msg: String::new(),
         }
     }
 }
 
-impl LogKind {
-    pub fn message(&self, snem_core: &snemcore::Snemulator) -> String {
-        match self {
-            LogKind::CpuReg { reg, msg } => {
-                enum RegSize { Byte, Word }
-                
-                let (reg_val, reg_size) = match reg {
-                    CpuReg::DB => (snem_core.cpu.db as u16, RegSize::Byte),
-                    CpuReg::PB => (snem_core.cpu.pb as u16, RegSize::Byte),
-                    CpuReg::P => (snem_core.cpu.p as u16, RegSize::Byte),
-                    CpuReg::A => (snem_core.cpu.a as u16, RegSize::Word),
-                    CpuReg::X => (snem_core.cpu.x as u16, RegSize::Word),
-                    CpuReg::Y => (snem_core.cpu.y as u16, RegSize::Word),
-                    CpuReg::DP => (snem_core.cpu.dp as u16, RegSize::Word),
-                    CpuReg::PC => (snem_core.cpu.pc as u16, RegSize::Word),
-                    CpuReg::SP => (snem_core.cpu.sp as u16, RegSize::Word),
-                };
-                match reg_size {
-                    RegSize::Byte => {
-                        if msg.is_empty() {
-                            format!("{:?} == {:02X}", reg, reg_val)
-                        } else {
-                            format!("{:?} == {:02X}: {}", reg, reg_val, msg)
-                        }
-                    }
-                    RegSize::Word => {
-                        if msg.is_empty() {
-                            format!("{:?} == {:04X}", reg, reg_val)
-                        } else {
-                            format!("{:?} == {:04X}: {}", reg, reg_val, msg)
-                        }
-                    },
-                }
-            },
-            LogKind::CpuFlag { flag, msg } => {
-                let flag_val = match flag {
-                    CpuFlag::C => snem_core.cpu.is_flag_set(scpu::Flag::FlagC),
-                    CpuFlag::Z => snem_core.cpu.is_flag_set(scpu::Flag::FlagZ),
-                    CpuFlag::I => snem_core.cpu.is_flag_set(scpu::Flag::FlagI),
-                    CpuFlag::D => snem_core.cpu.is_flag_set(scpu::Flag::FlagD),
-                    CpuFlag::X => snem_core.cpu.is_flag_set(scpu::Flag::FlagX),
-                    CpuFlag::M => snem_core.cpu.is_flag_set(scpu::Flag::FlagM),
-                    CpuFlag::V => snem_core.cpu.is_flag_set(scpu::Flag::FlagV),
-                    CpuFlag::N => snem_core.cpu.is_flag_set(scpu::Flag::FlagN),
-                    CpuFlag::Halted => snem_core.cpu.halted,
-                    CpuFlag::Stopped => snem_core.cpu.stopped,
-                    CpuFlag::Waiting => snem_core.cpu.waiting_for_interrupt,
-                    CpuFlag::NMIPending => snem_core.cpu.nmi_pending,
-                    CpuFlag::IRQPending => snem_core.cpu.irq_pending,
-                };
-                let flag_txt = if flag_val { "set" } else { "clear" };
-                
-                if msg.is_empty() {
-                    format!("{:?} == {}", flag, flag_txt)
-                } else {
-                    format!("{:?} == {}: {}", flag, flag_txt, msg)
-                }
-            },
-            LogKind::System { variable, msg } => {
-                let value = match variable {
-                    SystemVariable::Frame => snem_core.frame as usize,
-                    SystemVariable::Dot => snem_core.ppu.dot as usize,
-                    SystemVariable::Scanline => snem_core.ppu.scanline as usize,
-                };
-                
-                if msg.is_empty() {
-                    format!("{:?} == {}", variable, value)
-                } else {
-                    format!("{:?} == {}: {}", variable, value, msg)
-                }
-            },
-            LogKind::Message { msg } => {
-                format!("{}", msg)
-            }
+impl Logpoint {
+    pub fn label(&self) -> String {
+        if self.message_only {
+            "Log".to_string()
+        } else {
+            format!("Log\n{}", self.reg.label())
         }
     }
     
-    pub fn label(&self) -> String {
-        format!("Log\n{}", match self {
-            LogKind::CpuReg { reg, .. } => format!("{:?}", reg),
-            LogKind::CpuFlag { flag, .. } => format!("{:?}", flag),
-            LogKind::System { variable, .. } => format!("{:?}", variable),
-            LogKind::Message { .. } => "Message".to_string(),
-        })
+    pub fn log_message(&self, snem_core: &snemcore::Snemulator) {
+        log::debug!("{}", if self.message_only {
+            self.msg.clone()
+        } else {
+            if self.msg.is_empty() {
+                format!("{} is {}", self.reg.label(), self.reg.get_value(snem_core))
+            } else {
+                format!("{} is {}: {}", self.reg.label(), self.reg.get_value(snem_core), self.msg)
+            }
+        });
     }
 }
 
@@ -558,7 +534,7 @@ impl LogKind {
 #[derive(Clone)]
 pub enum NodeKind {
     /// A togglable input switch. Has 0 inputs, 1 output.
-    Condition(WatchpointKind),
+    Condition(Watchpoint),
     /// AND gate. Has 2 inputs, 1 output.
     And,
     /// OR gate. Has 2 inputs, 1 output.
@@ -566,15 +542,11 @@ pub enum NodeKind {
     /// NOT gate. Has 1 input, 1 output.
     Not,
     /// Counter. Has 1 input, 1 output.
-    Counter {
-        prev: bool,
-        count: usize,
-        cond: WatchpointCond,
-    },
+    Counter(Counter),
     /// Break indicator. Has 1 input, 0 outputs.
     Break { lit: bool },
     /// Log indicator. Has 1 input, 0 outputs.
-    Log(LogKind)
+    Log(Logpoint)
 }
 
 impl NodeKind {
@@ -598,15 +570,15 @@ impl NodeKind {
         }
     }
 
-    pub fn label(&self) -> &'static str {
+    pub fn label(&self) -> String {
         match self {
-            NodeKind::Condition { .. } => "",
-            NodeKind::And => "AND",
-            NodeKind::Or => "OR",
-            NodeKind::Not => "NOT",
-            NodeKind::Counter { .. } => "",
-            NodeKind::Break { .. } => "Break",
-            NodeKind::Log { .. } => "",
+            NodeKind::Condition { .. } => "".to_string(),
+            NodeKind::And => "AND".to_string(),
+            NodeKind::Or => "OR".to_string(),
+            NodeKind::Not => "NOT".to_string(),
+            NodeKind::Counter(cnt) => cnt.label(),
+            NodeKind::Break { .. } => "Break".to_string(),
+            NodeKind::Log { .. } => "".to_string(),
         }
     }
 
@@ -752,11 +724,11 @@ impl Graph {
             };
 
             let output = match &mut node.kind {
-                NodeKind::Condition(cond) => Some(cond.evaluate(snem_core)),
+                NodeKind::Condition(wp) => Some(wp.evaluate(snem_core)),
                 NodeKind::And => Some(inputs.iter().all(|&b| b)),
                 NodeKind::Or => Some(inputs.iter().any(|&b| b)),
                 NodeKind::Not => Some(!inputs.first().copied().unwrap_or(false)),
-                NodeKind::Counter { cond, count, .. } => Some(cond.evaluate(*count)),
+                NodeKind::Counter(cnt) => Some(cnt.evaluate()),
                 NodeKind::Break { .. } => {
                     let val = inputs.first().copied().unwrap_or(false);
                     node.kind = NodeKind::Break { lit: val };
@@ -821,47 +793,50 @@ impl Graph {
                 Some(n) => n,
                 None => continue,
             };
-
-            // Map inputs to the index of previously evaluated results
-            let inputs: Vec<usize> = (0..node.kind.input_count()).map(|i| {
+            
+            let input_ids: Vec<Option<NodeId>> = (0..node.kind.input_count()).map(|i| {
                 let target = Port::new(id, i);
                 self.wires.iter()
                     .find(|w| w.to == target)
-                    .and_then(|w| node_to_idx.get(&w.from.node).copied())
+                    .map(|w| w.from.node)
+            }).collect();
+            
+            // Map inputs to the index of previously evaluated results
+            let inputs: Vec<usize> = input_ids.iter().map(|maybe_id| {
+                maybe_id
+                    .and_then(|w| node_to_idx.get(&w).copied())
                     .unwrap_or(0) // Default to index 0 (FastOp::Constant(false))
             }).collect();
 
-            let op = match &mut node.kind {
-                NodeKind::Condition(cond) => {
-                    match cond {
-                        WatchpointKind::CpuReg { reg, cond: WatchpointCond::Changed(prev) } => {                            
-                            *prev = reg.get_value(snem_core);
-                        },
-                        WatchpointKind::CpuFlag { flag, cond: WatchpointCondFlag::Changed(prev) } => {
-                            *prev = flag.get_value(snem_core);
-                        },
-                        WatchpointKind::HardwareReg { reg, cond: WatchpointCond::Changed(prev) } => {
-                            *prev = reg.get_value(snem_core);
+            let mut op = match &mut node.kind {
+                NodeKind::Condition(wp) => {
+                    match &mut wp.cond {
+                        WatchpointCond::Changed => {
+                            wp.arg1 = wp.val.get_value(snem_core);
+                            FastOp::CondChanged {
+                                prev_value: Cell::new(wp.arg1),
+                                value: wp.val.clone(),
+                                id: id,
+                            }
                         }
-                        WatchpointKind::HardwareFlag { flag, cond: WatchpointCondFlag::Changed(prev) } => {
-                            *prev = flag.get_value(snem_core);
-                        }
-                        WatchpointKind::System { variable, cond: WatchpointCond::Changed(prev) } => {
-                            *prev = variable.get_value(snem_core);
-                        }
-                        _ => {}
-                    };
-                    
-                    FastOp::Cond(cond.clone())
+                        _ => FastOp::Cond(wp.clone()),
+                    }
                 },
                 NodeKind::And => FastOp::And(inputs[0], inputs[1]),
                 NodeKind::Or  => FastOp::Or(inputs[0], inputs[1]),
                 NodeKind::Not => FastOp::Not(inputs[0]),
-                NodeKind::Changed { prev, count, cond } => {
-                    
+                NodeKind::Counter(cnt) => FastOp::Counter {
+                    input: inputs[0],
+                    prev: Cell::new(cnt.prev),
+                    count: Cell::new(cnt.count),
+                    arg: cnt.arg,
+                    cond: cnt.cond.clone(),
+                    reset: cnt.reset,
+                    fired: Cell::new(false),
+                    id,
                 },
                 NodeKind::Break { .. } => FastOp::Output(inputs[0]),
-                NodeKind::Log(kind) => FastOp::Log(inputs[0], kind.clone()),
+                NodeKind::Log(lp) => FastOp::Log(inputs[0], lp.clone()),
                 // _ => FastOp::Constant(false),
             };
 
@@ -875,49 +850,90 @@ impl Graph {
 
 
 // Add this to types.rs
-#[derive(Clone)]
 pub enum FastOp {
     Constant(bool),
-    Cond(WatchpointKind),
-    Counter(usize, bool, usize, WatchpointCond),
+    // Need a special case for changed watchpoints
+    CondChanged {
+        prev_value: Cell<usize>,
+        value: Box<dyn WatchpointValue>,
+        id: NodeId,
+    },
+    Cond(Watchpoint),
+    Counter {
+        input: usize,
+        prev: Cell<bool>,
+        count: Cell<usize>,
+        arg: usize,
+        reset: usize,
+        cond: WatchpointCond,
+        fired: Cell<bool>,
+        id: NodeId,
+    },
     And(usize, usize),
     Or(usize, usize),
     Not(usize),
     Output(usize),
-    Log(usize, LogKind)
+    Log(usize, Logpoint)
 }
 
-#[derive(Clone, Default)]
+#[derive(Default)]
 pub struct CompiledGraph {
     ops: Vec<FastOp>,
 }
 
 impl CompiledGraph {
-    /// Extremely fast, allocation-free evaluation for the hot CPU loop.
     pub fn evaluate(&self, snem_core: &core::snemcore::Snemulator) -> bool {
         if self.ops.is_empty() { return false; }
         
-        // Use a fixed-size array or small vec to store intermediate results
         let mut results = vec![false; self.ops.len()];
         let mut break_triggered = false;
 
-        for (i, op) in self.ops.iter().enumerate() {
+        for (i, op) in self.iter().enumerate() {
             results[i] = match op {
-                FastOp::Constant(val) => *val,
-                FastOp::Cond(cond) => cond.evaluate(snem_core),
+                FastOp::Constant(val) => val.clone(),
+                FastOp::CondChanged { prev_value, value, .. } => {
+                    let val = value.get_value(snem_core);
+                    let prev = prev_value.replace(val);
+                    val != prev
+                }
+                FastOp::Cond(wp) => wp.evaluate(snem_core),
                 FastOp::And(a, b) => results[*a] && results[*b],
                 FastOp::Or(a, b)  => results[*a] || results[*b],
                 FastOp::Not(a)    => !results[*a],
+                FastOp::Counter { input, prev, count, arg, cond, reset, fired, .. } => {
+                    let val = results[*input];
+                    let prev_val = prev.replace(val);
+                    
+                    if val && !prev_val {
+                        count.replace(count.get() + 1);
+                    }
+                    
+                    fired.set(WatchpointCond::evaluate(cond, count.get(), *arg, 0));
+                    
+                    if count.get() == *reset {
+                        count.set(0);
+                    }
+                    
+                    fired.get()
+                }
                 FastOp::Output(a) => {
                     if results[*a] { break_triggered = true; }
                     false
                 }
-                FastOp::Log(a, kind) => {
-                    if results[*a] { log::debug!("{}", kind.message(snem_core)); }
+                FastOp::Log(a, lp) => {
+                    if results[*a] { lp.log_message(snem_core); }
                     false
                 },
             };
         }
         break_triggered
+    }
+    
+    pub fn iter(&self) -> impl Iterator<Item = &FastOp> {
+        self.ops.iter()
+    }
+    
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut FastOp> {
+        self.ops.iter_mut()
     }
 }
