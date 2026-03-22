@@ -1,11 +1,23 @@
-use log::info;
-
-use crate::{app::AUDIO_SAMPLE_HZ, core::{ssmp::{ioports::ApuIoPorts, sdsp::{SuperDSP, regs::SdspRegs, voices::VoiceRegs}, spc::{Spc700, bus::SpcBus, ioregs::SpcIoRegs}, timers::Timer}, sysinfo::{ARAM_SIZE, FAST_TIMER_CLOCK_PERIOD, MASTER_CLOCK_HZ, SLOW_TIMER_CLOCK_PERIOD, SPC_CLOCK_HZ}}};
+use crate::{
+    app::AUDIO_SAMPLE_HZ,
+    core::{
+        ssmp::{
+            ioports::ApuIoPorts,
+            sdsp::{regs::SdspRegs, voices::VoiceRegs, SuperDSP},
+            spc::{bus::SpcBus, ioregs::SpcIoRegs, Spc700},
+            timers::Timer,
+        },
+        sysinfo::{
+            ARAM_SIZE, FAST_TIMER_CLOCK_PERIOD, MASTER_CLOCK_HZ, SLOW_TIMER_CLOCK_PERIOD,
+            SPC_CLOCK_HZ,
+        },
+    },
+};
 
 pub mod ioports;
-mod timers;
-mod spc;
 mod sdsp;
+mod spc;
+mod timers;
 
 const MASTER_CLOCK_PERIOD: f32 = 1.0 / MASTER_CLOCK_HZ as f32;
 const AUDIO_SAMPLE_PERIOD: f32 = 1.0 / AUDIO_SAMPLE_HZ as f32;
@@ -15,7 +27,7 @@ const SPC_CLOCK_PERIOD: f32 = 1.0 / SPC_CLOCK_HZ as f32;
 pub struct Ssmp {
     spc: Spc700,
     sdsp: sdsp::SuperDSP,
-    
+
     aram: Box<[u8; ARAM_SIZE]>,
     spc_regs: SpcIoRegs,
     sdsp_regs: SdspRegs,
@@ -34,7 +46,7 @@ impl Ssmp {
         Ssmp {
             spc: Spc700::default(),
             sdsp: SuperDSP::new(),
-            
+
             aram: Box::new([0u8; ARAM_SIZE]),
             spc_regs: SpcIoRegs::default(),
             sdsp_regs: SdspRegs::new(),
@@ -42,7 +54,7 @@ impl Ssmp {
             timer1: Timer::new(),
             timer2: Timer::new(),
             voice_regs: [VoiceRegs::new(); 8],
-            
+
             next_sample: 0.0,
             next_spc_clock: 0.0,
             frame_time: 0.0,
@@ -51,11 +63,11 @@ impl Ssmp {
 
     pub fn power_on(&mut self) {
         log::warn!("SMP Power On not implemented!");
-        
+
         self.spc.power_on();
         self.spc_regs.power_on();
     }
-    
+
     pub fn reset(&mut self) {
         log::warn!("SMP Reset not implemented!");
     }
@@ -80,7 +92,7 @@ impl Ssmp {
 
         if self.frame_time >= self.next_spc_clock {
             self.next_spc_clock += SPC_CLOCK_PERIOD;
-            
+
             let mut bus = SpcBus {
                 aram: &mut self.aram,
                 spc_regs: &mut self.spc_regs,
@@ -93,7 +105,7 @@ impl Ssmp {
             };
 
             self.spc.clock(&mut bus);
-            
+
             self.timer0.clock();
             self.timer1.clock();
             self.timer2.clock();

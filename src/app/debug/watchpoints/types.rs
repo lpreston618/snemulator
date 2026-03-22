@@ -1,13 +1,12 @@
-use std::ops::Deref;
-use std::{cell::Cell, str::FromStr};
+use std::cell::Cell;
 use std::collections::HashMap;
+use std::str::FromStr;
 
 use crate::core::{self, scpu, snemcore};
 
 pub const HWVAL_NAMES: [&str; 10] = [
     // Regs
-    "APUIO0", "APUIO1", "APUIO2", "APUIO3",
-    "CPUIO0", "CPUIO1", "CPUIO2", "CPUIO3",
+    "APUIO0", "APUIO1", "APUIO2", "APUIO3", "CPUIO0", "CPUIO1", "CPUIO2", "CPUIO3",
     // Flags
     "VBLANK", "FBLANK",
 ];
@@ -62,7 +61,15 @@ impl Clone for Box<dyn WatchpointValue> {
 }
 
 #[derive(PartialEq, Clone, Copy)]
-pub enum RegCategory { CpuReg, CpuFlag, Ram, Vram, HwReg, HwFlag, SysInfo }
+pub enum RegCategory {
+    CpuReg,
+    CpuFlag,
+    Ram,
+    Vram,
+    HwReg,
+    HwFlag,
+    SysInfo,
+}
 
 impl RegCategory {
     pub fn label(&self) -> &'static str {
@@ -78,7 +85,12 @@ impl RegCategory {
 }
 
 #[derive(PartialEq, Clone, Copy)]
-pub enum RegSize { Bool, Byte, Word, Num }
+pub enum RegSize {
+    Bool,
+    Byte,
+    Word,
+    Num,
+}
 
 impl RegSize {
     pub fn format_val(&self, val: usize) -> String {
@@ -93,7 +105,15 @@ impl RegSize {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum CpuReg {
-    DB, PB, P, A, X, Y, DP, PC, SP,
+    DB,
+    PB,
+    P,
+    A,
+    X,
+    Y,
+    DP,
+    PC,
+    SP,
 }
 
 impl WatchpointValue for CpuReg {
@@ -110,18 +130,18 @@ impl WatchpointValue for CpuReg {
             CpuReg::SP => snem_core.cpu.sp as usize,
         }
     }
-    
+
     fn label(&self) -> String {
         format!("{:?}", self)
     }
-    
+
     fn reg_size(&self) -> RegSize {
         match self {
             CpuReg::DB | CpuReg::PB | CpuReg::P => RegSize::Byte,
             _ => RegSize::Word,
         }
     }
-    
+
     fn category(&self) -> RegCategory {
         RegCategory::CpuReg
     }
@@ -129,9 +149,19 @@ impl WatchpointValue for CpuReg {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum CpuFlag {
-    C, Z, I, D, X, M, V, N,
-    Stopped, Halted, Waiting,
-    NMIPending, IRQPending,
+    C,
+    Z,
+    I,
+    D,
+    X,
+    M,
+    V,
+    N,
+    Stopped,
+    Halted,
+    Waiting,
+    NMIPending,
+    IRQPending,
 }
 
 impl WatchpointValue for CpuFlag {
@@ -151,10 +181,14 @@ impl WatchpointValue for CpuFlag {
             CpuFlag::NMIPending => snem_core.cpu.nmi_pending,
             CpuFlag::IRQPending => snem_core.cpu.irq_pending,
         };
-        
-        if val { 1 } else { 0 }
+
+        if val {
+            1
+        } else {
+            0
+        }
     }
-    
+
     fn label(&self) -> String {
         match self {
             CpuFlag::C => "C",
@@ -170,13 +204,14 @@ impl WatchpointValue for CpuFlag {
             CpuFlag::Waiting => "Waiting",
             CpuFlag::NMIPending => "NMI Pending",
             CpuFlag::IRQPending => "IRQ Pending",
-        }.to_string()
+        }
+        .to_string()
     }
-    
+
     fn reg_size(&self) -> RegSize {
         RegSize::Bool
     }
-    
+
     fn category(&self) -> RegCategory {
         RegCategory::CpuFlag
     }
@@ -225,7 +260,7 @@ impl WatchpointValue for HardwareReg {
             HardwareReg::CpuIo3 => snem_core.apu_ports.cpuio3 as usize,
         }
     }
-    
+
     fn label(&self) -> String {
         match self {
             HardwareReg::ApuIo0 => "APUIO0",
@@ -236,9 +271,10 @@ impl WatchpointValue for HardwareReg {
             HardwareReg::CpuIo1 => "CPUIO1",
             HardwareReg::CpuIo2 => "CPUIO2",
             HardwareReg::CpuIo3 => "CPUIO3",
-        }.to_string()
+        }
+        .to_string()
     }
-    
+
     fn reg_size(&self) -> RegSize {
         match self {
             HardwareReg::ApuIo0 => RegSize::Byte,
@@ -251,7 +287,7 @@ impl WatchpointValue for HardwareReg {
             HardwareReg::CpuIo3 => RegSize::Byte,
         }
     }
-    
+
     fn category(&self) -> RegCategory {
         RegCategory::HwReg
     }
@@ -281,18 +317,22 @@ impl WatchpointValue for HardwareFlag {
             HardwareFlag::VBlank => snem_core.cpu_regs.vblank_flag,
             HardwareFlag::FBlank => snem_core.ppu_regs.in_fblank,
         };
-        
-        if val { 1 } else { 0 }
+
+        if val {
+            1
+        } else {
+            0
+        }
     }
-    
+
     fn label(&self) -> String {
         format!("{:?}", self)
     }
-    
+
     fn reg_size(&self) -> RegSize {
         RegSize::Bool
     }
-    
+
     fn category(&self) -> RegCategory {
         RegCategory::HwFlag
     }
@@ -313,15 +353,15 @@ impl WatchpointValue for SystemVariable {
             SystemVariable::Scanline => snem_core.ppu.scanline as usize,
         }
     }
-    
+
     fn label(&self) -> String {
         format!("{:?}", self)
     }
-    
-    fn reg_size(&self) -> RegSize {    
+
+    fn reg_size(&self) -> RegSize {
         RegSize::Num
     }
-    
+
     fn category(&self) -> RegCategory {
         RegCategory::SysInfo
     }
@@ -340,7 +380,7 @@ pub enum WatchpointCond {
     Changed,
 }
 
-impl WatchpointCond {    
+impl WatchpointCond {
     pub fn label(&self, reg_size: RegSize, arg1: usize, arg2: usize) -> String {
         match reg_size {
             RegSize::Byte => match self {
@@ -381,7 +421,7 @@ impl WatchpointCond {
             },
         }
     }
-    
+
     pub fn dropdown_label(&self) -> &'static str {
         match self {
             WatchpointCond::Set => "Set",
@@ -395,7 +435,7 @@ impl WatchpointCond {
             WatchpointCond::Changed => "Changed",
         }
     }
-    
+
     pub fn evaluate(cond: &Self, val: usize, arg1: usize, arg2: usize) -> bool {
         match cond {
             WatchpointCond::Set => val != 0,
@@ -441,12 +481,16 @@ impl Default for Watchpoint {
 impl Watchpoint {
     pub fn evaluate(&self, snem_core: &snemcore::Snemulator) -> bool {
         let val = self.val.get_value(snem_core);
-        
+
         WatchpointCond::evaluate(&self.cond, val, self.arg1, self.arg2)
     }
-    
+
     pub fn label(&self) -> String {
-        format!("{} {}", self.val.label(), self.cond.label(self.val.reg_size(), self.arg1, self.arg2))
+        format!(
+            "{} {}",
+            self.val.label(),
+            self.cond.label(self.val.reg_size(), self.arg1, self.arg2)
+        )
     }
 }
 
@@ -491,9 +535,13 @@ impl Counter {
     pub fn evaluate(&self) -> bool {
         self.fired
     }
-    
+
     pub fn label(&self) -> String {
-        format!("Counter\n{} {}", self.count, self.cond.label(RegSize::Num, self.arg, 0))
+        format!(
+            "Counter\n{} {}",
+            self.count,
+            self.cond.label(RegSize::Num, self.arg, 0)
+        )
     }
 }
 
@@ -527,42 +575,49 @@ impl Logpoint {
                 0 => "Log".to_string(),
                 1 => format!("Log\n{}", self.regs[0].label()),
                 2 => format!("Log\n{}, {}", self.regs[0].label(), self.regs[1].label()),
-                _ => format!("Log\n{}, {}, ...", self.regs[0].label(), self.regs[1].label()),
+                _ => format!(
+                    "Log\n{}, {}, ...",
+                    self.regs[0].label(),
+                    self.regs[1].label()
+                ),
             }
         }
     }
-    
+
     pub fn log_message(&self, snem_core: &snemcore::Snemulator) {
-        log::debug!("{}", if self.message_only {
-            self.msg.clone()
-        } else {
-            match self.regs.len() {
-                0 => {
-                    if self.msg.is_empty() {
-                        "No log values selected and no message".to_string()
-                    } else {
-                        self.msg.clone()
-                    }
-                }
-                _ => {
-                    let mut message = String::new();
-                    
-                    for (i, reg) in self.regs.iter().enumerate() {
-                        message += &format!("{} is {}", reg.label(), reg.get_value(snem_core));
-                        
-                        if i != self.regs.len() - 1 {
-                            message += ", "
+        log::debug!(
+            "{}",
+            if self.message_only {
+                self.msg.clone()
+            } else {
+                match self.regs.len() {
+                    0 => {
+                        if self.msg.is_empty() {
+                            "No log values selected and no message".to_string()
+                        } else {
+                            self.msg.clone()
                         }
                     }
-                    
-                    if !self.msg.is_empty() {
-                        message += &format!(": {}", self.msg);
+                    _ => {
+                        let mut message = String::new();
+
+                        for (i, reg) in self.regs.iter().enumerate() {
+                            message += &format!("{} is {}", reg.label(), reg.value_str(snem_core));
+
+                            if i != self.regs.len() - 1 {
+                                message += ", "
+                            }
+                        }
+
+                        if !self.msg.is_empty() {
+                            message += &format!(": {}", self.msg);
+                        }
+
+                        message
                     }
-                    
-                    message
                 }
             }
-        });
+        );
     }
 }
 
@@ -582,7 +637,7 @@ pub enum NodeKind {
     /// Break indicator. Has 1 input, 0 outputs.
     Break { lit: bool },
     /// Log indicator. Has 1 input, 0 outputs.
-    Log(Logpoint)
+    Log(Logpoint),
 }
 
 impl NodeKind {
@@ -706,8 +761,7 @@ impl Graph {
 
     pub fn remove_node(&mut self, id: NodeId) {
         self.nodes.remove(id);
-        self.wires
-            .retain(|w| w.from.node != id && w.to.node != id);
+        self.wires.retain(|w| w.from.node != id && w.to.node != id);
     }
 
     /// Add a wire, preventing duplicates and fan-in conflicts (one driver per input).
@@ -783,8 +837,7 @@ impl Graph {
 
     /// Kahn's algorithm for topological sort. Cycles are broken by skipping them.
     fn topological_order(&self) -> Vec<NodeId> {
-        let mut in_degree: HashMap<NodeId, usize> =
-            self.nodes.keys().map(|id| (id, 0)).collect();
+        let mut in_degree: HashMap<NodeId, usize> = self.nodes.keys().map(|id| (id, 0)).collect();
 
         for wire in &self.wires {
             *in_degree.entry(wire.to.node).or_insert(0) += 1;
@@ -818,10 +871,10 @@ impl Graph {
 
         order
     }
-    
+
     pub fn compile(&mut self, snem_core: &core::snemcore::Snemulator) -> CompiledGraph {
         // Index 0 is always a fallback 'false' for unconnected input ports.
-        let mut ops = vec![FastOp::Constant(false)]; 
+        let mut ops = vec![FastOp::Constant(false)];
         let mut node_to_idx = HashMap::new();
 
         for id in self.topological_order() {
@@ -829,32 +882,33 @@ impl Graph {
                 Some(n) => n,
                 None => continue,
             };
-            
+
             // Map inputs to the index of previously evaluated results
-            let inputs: Vec<usize> = (0..node.kind.input_count()).map(|i| {
-                let target = Port::new(id, i);
-                self.wires.iter()
-                    .find(|w| w.to == target)
-                    .and_then(|w| node_to_idx.get(&w.from.node).copied())
-                    .unwrap_or(0) // Default to index 0 (FastOp::Constant(false))
-            }).collect();
+            let inputs: Vec<usize> = (0..node.kind.input_count())
+                .map(|i| {
+                    let target = Port::new(id, i);
+                    self.wires
+                        .iter()
+                        .find(|w| w.to == target)
+                        .and_then(|w| node_to_idx.get(&w.from.node).copied())
+                        .unwrap_or(0) // Default to index 0 (FastOp::Constant(false))
+                })
+                .collect();
 
             let op = match &mut node.kind {
-                NodeKind::Condition(wp) => {
-                    match &mut wp.cond {
-                        WatchpointCond::Changed => {
-                            wp.arg1 = wp.val.get_value(snem_core);
-                            FastOp::CondChanged {
-                                prev_value: Cell::new(wp.arg1),
-                                value: wp.val.clone(),
-                                id: id,
-                            }
+                NodeKind::Condition(wp) => match &mut wp.cond {
+                    WatchpointCond::Changed => {
+                        wp.arg1 = wp.val.get_value(snem_core);
+                        FastOp::CondChanged {
+                            prev_value: Cell::new(wp.arg1),
+                            value: wp.val.clone(),
+                            id: id,
                         }
-                        _ => FastOp::Cond(wp.clone()),
                     }
+                    _ => FastOp::Cond(wp.clone()),
                 },
                 NodeKind::And => FastOp::And(inputs[0], inputs[1]),
-                NodeKind::Or  => FastOp::Or(inputs[0], inputs[1]),
+                NodeKind::Or => FastOp::Or(inputs[0], inputs[1]),
                 NodeKind::Not => FastOp::Not(inputs[0]),
                 NodeKind::Counter(cnt) => match cnt.mode {
                     CounterMode::IncOnChange => FastOp::CounterRisingEdge {
@@ -890,7 +944,6 @@ impl Graph {
     }
 }
 
-
 // Add this to types.rs
 pub enum FastOp {
     Constant(bool),
@@ -924,7 +977,7 @@ pub enum FastOp {
     Or(usize, usize),
     Not(usize),
     Output(usize),
-    Log(usize, Logpoint)
+    Log(usize, Logpoint),
 }
 
 #[derive(Default)]
@@ -934,69 +987,94 @@ pub struct CompiledGraph {
 
 impl CompiledGraph {
     pub fn evaluate(&self, snem_core: &core::snemcore::Snemulator) -> bool {
-        if self.ops.is_empty() { return false; }
-        
+        if self.ops.is_empty() {
+            return false;
+        }
+
         let mut results = vec![false; self.ops.len()];
         let mut break_triggered = false;
 
         for (i, op) in self.iter().enumerate() {
             results[i] = match op {
                 FastOp::Constant(val) => val.clone(),
-                FastOp::CondChanged { prev_value, value, .. } => {
+                FastOp::CondChanged {
+                    prev_value, value, ..
+                } => {
                     let val = value.get_value(snem_core);
                     let prev = prev_value.replace(val);
                     val != prev
                 }
                 FastOp::Cond(wp) => wp.evaluate(snem_core),
                 FastOp::And(a, b) => results[*a] && results[*b],
-                FastOp::Or(a, b)  => results[*a] || results[*b],
-                FastOp::Not(a)    => !results[*a],
-                FastOp::CounterRisingEdge { input, prev, count, arg, cond, reset, fired, .. } => {
+                FastOp::Or(a, b) => results[*a] || results[*b],
+                FastOp::Not(a) => !results[*a],
+                FastOp::CounterRisingEdge {
+                    input,
+                    prev,
+                    count,
+                    arg,
+                    cond,
+                    reset,
+                    fired,
+                    ..
+                } => {
                     let val = results[*input];
                     let prev_val = prev.replace(val);
-                    
+
                     if val && !prev_val {
                         count.replace(count.get() + 1);
                     }
-                    
+
                     fired.set(WatchpointCond::evaluate(cond, count.get(), *arg, 0));
-                    
+
                     if count.get() == *reset {
                         count.set(0);
                     }
-                    
+
                     fired.get()
                 }
-                FastOp::CounterHigh { input, count, arg, cond, reset, fired, .. } => {                    
+                FastOp::CounterHigh {
+                    input,
+                    count,
+                    arg,
+                    cond,
+                    reset,
+                    fired,
+                    ..
+                } => {
                     if results[*input] {
                         count.replace(count.get() + 1);
                     }
-                    
+
                     fired.set(WatchpointCond::evaluate(cond, count.get(), *arg, 0));
-                    
+
                     if count.get() == *reset {
                         count.set(0);
                     }
-                    
+
                     fired.get()
                 }
                 FastOp::Output(a) => {
-                    if results[*a] { break_triggered = true; }
+                    if results[*a] {
+                        break_triggered = true;
+                    }
                     false
                 }
                 FastOp::Log(a, lp) => {
-                    if results[*a] { lp.log_message(snem_core); }
+                    if results[*a] {
+                        lp.log_message(snem_core);
+                    }
                     false
-                },
+                }
             };
         }
         break_triggered
     }
-    
+
     pub fn iter(&self) -> impl Iterator<Item = &FastOp> {
         self.ops.iter()
     }
-    
+
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut FastOp> {
         self.ops.iter_mut()
     }

@@ -1,5 +1,5 @@
-use crate::core::sppu;
 use crate::core::snemcore;
+use crate::core::sppu;
 
 pub struct ChrTab {
     texture: Option<glow::Texture>,
@@ -15,11 +15,9 @@ impl ChrTab {
             palette_index: 0,
         }
     }
-    
-    pub fn render(&mut self, ui: &mut egui::Ui, snem_core: &snemcore::Snemulator) {
-        
-    }
-    
+
+    pub fn render(&mut self, ui: &mut egui::Ui, snem_core: &snemcore::Snemulator) {}
+
     // // Call once during DebugWindow::new(), same pattern as game_texture init
     // pub fn init_texture(gl: &glow::Context) -> Option<glow::Texture> {
     //     unsafe {

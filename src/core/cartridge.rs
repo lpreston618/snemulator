@@ -32,12 +32,11 @@ pub struct Cartridge {
     interrupt_vectors: [u8; 32],
 }
 
-
 impl Cartridge {
     pub fn mapping_mode(&self) -> MappingMode {
         self.mapping_mode
     }
-    
+
     /// Read in a cartridge from the given spc or sfc rom
     pub fn from_rom(mut cart_rom: Vec<u8>) -> Result<Cartridge, String> {
         // Ignore optional 512 byte header
@@ -46,20 +45,20 @@ impl Cartridge {
         }
 
         let cart_rom = pad_rom(cart_rom)?;
-        
+
         Self::from_padded_rom(cart_rom)
     }
-    
+
     fn from_padded_rom(cart_rom: Vec<u8>) -> Result<Self, String> {
         let mut cart = Cartridge {
             rom: cart_rom,
             ..Default::default()
         };
-        
+
         let header_start = find_header(&cart.rom)?;
         let header_end = header_start + 0x40 as usize;
         let header_bytes = &cart.rom[header_start..header_end];
-        
+
         cart.title.copy_from_slice(&header_bytes[..0x15]);
         cart.fast_rom = (header_bytes[0x15] & 0x10) > 0;
         cart.mapping_mode = match header_bytes[0x15] & 0x0F {
@@ -71,67 +70,103 @@ impl Cartridge {
             }
         };
         (cart.extra_ram, cart.battery, cart.coprocessor) = match header_bytes[0x16] & 0x0F {
-            0 => (false, false, false),  // $00 - ROM only
-            1 => ( true, false, false),  // $01 - ROM + RAM
-            2 => ( true,  true, false),  // $02 - ROM + RAM + battery
-            3 => (false, false,  true),  // $x3 - ROM + coprocessor
-            4 => ( true, false,  true),  // $x4 - ROM + coprocessor + RAM
-            5 => ( true,  true,  true),  // $x5 - ROM + coprocessor + RAM + battery
-            6 => (false,  true,  true),  // $x6 - ROM + coprocessor + battery
-            _ => (false, false, false),  // Should not happen?
+            0 => (false, false, false), // $00 - ROM only
+            1 => (true, false, false),  // $01 - ROM + RAM
+            2 => (true, true, false),   // $02 - ROM + RAM + battery
+            3 => (false, false, true),  // $x3 - ROM + coprocessor
+            4 => (true, false, true),   // $x4 - ROM + coprocessor + RAM
+            5 => (true, true, true),    // $x5 - ROM + coprocessor + RAM + battery
+            6 => (false, true, true),   // $x6 - ROM + coprocessor + battery
+            _ => (false, false, false), // Should not happen?
         };
         cart.coprocessor_id = header_bytes[0x16] >> 4;
         cart.rom_size = header_bytes[0x17];
         cart.ram_size = header_bytes[0x18];
         cart.is_ntsc = header_bytes[0x19] > 0;
-        cart.interrupt_vectors.copy_from_slice(&header_bytes[0x20..0x40]);
-        
-        trace!("Title: '{}'", std::str::from_utf8(&cart.title).unwrap_or("<FAILED TO READ TITLE>"));
+        cart.interrupt_vectors
+            .copy_from_slice(&header_bytes[0x20..0x40]);
+
+        trace!(
+            "Title: '{}'",
+            std::str::from_utf8(&cart.title).unwrap_or("<FAILED TO READ TITLE>")
+        );
         trace!("  fast_rom: {}", cart.fast_rom);
         trace!("  mapping_mode: {:?}", cart.mapping_mode);
         trace!("  extra_ram: {}", cart.extra_ram);
         trace!("  battery: {}", cart.battery);
         trace!("  coprocessor: {}", cart.coprocessor);
         trace!("  coprocessor_id: {}", cart.coprocessor_id);
-        trace!("  rom_size: {} (= {} KiB)", cart.rom_size, 1 << cart.rom_size);
-        trace!("  ram_size: {} (= {} KiB)", cart.ram_size, 1 << cart.ram_size);
+        trace!(
+            "  rom_size: {} (= {} KiB)",
+            cart.rom_size,
+            1 << cart.rom_size
+        );
+        trace!(
+            "  ram_size: {} (= {} KiB)",
+            cart.ram_size,
+            1 << cart.ram_size
+        );
         trace!("  is_ntsc: {}", cart.is_ntsc);
         trace!("  padded rom size: 0x{:X}", cart.rom.len());
         trace!("  vectors:    NAT    EMU ");
-        trace!("    COP      ${:02X}{:02X}  ${:02X}{:02X}", cart.interrupt_vectors[0x05], cart.interrupt_vectors[0x04], cart.interrupt_vectors[0x15], cart.interrupt_vectors[0x14]);
-        trace!("    BRK      ${:02X}{:02X}  .....", cart.interrupt_vectors[0x07], cart.interrupt_vectors[0x06]);
-        trace!("    ABORT    ${:02X}{:02X}  ${:02X}{:02X}", cart.interrupt_vectors[0x09], cart.interrupt_vectors[0x08], cart.interrupt_vectors[0x19], cart.interrupt_vectors[0x18]);
-        trace!("    NMI      ${:02X}{:02X}  ${:02X}{:02X}", cart.interrupt_vectors[0x0B], cart.interrupt_vectors[0x0A], cart.interrupt_vectors[0x1B], cart.interrupt_vectors[0x1A]);
-        trace!("    RESET    .....  ${:02X}{:02X}", cart.interrupt_vectors[0x1D], cart.interrupt_vectors[0x1C]);
-        trace!("    IRQ      ${:02X}{:02X}  ${:02X}{:02X}", cart.interrupt_vectors[0x0F], cart.interrupt_vectors[0x0E], cart.interrupt_vectors[0x1F], cart.interrupt_vectors[0x1E]);
-        
+        trace!(
+            "    COP      ${:02X}{:02X}  ${:02X}{:02X}",
+            cart.interrupt_vectors[0x05],
+            cart.interrupt_vectors[0x04],
+            cart.interrupt_vectors[0x15],
+            cart.interrupt_vectors[0x14]
+        );
+        trace!(
+            "    BRK      ${:02X}{:02X}  .....",
+            cart.interrupt_vectors[0x07],
+            cart.interrupt_vectors[0x06]
+        );
+        trace!(
+            "    ABORT    ${:02X}{:02X}  ${:02X}{:02X}",
+            cart.interrupt_vectors[0x09],
+            cart.interrupt_vectors[0x08],
+            cart.interrupt_vectors[0x19],
+            cart.interrupt_vectors[0x18]
+        );
+        trace!(
+            "    NMI      ${:02X}{:02X}  ${:02X}{:02X}",
+            cart.interrupt_vectors[0x0B],
+            cart.interrupt_vectors[0x0A],
+            cart.interrupt_vectors[0x1B],
+            cart.interrupt_vectors[0x1A]
+        );
+        trace!(
+            "    RESET    .....  ${:02X}{:02X}",
+            cart.interrupt_vectors[0x1D],
+            cart.interrupt_vectors[0x1C]
+        );
+        trace!(
+            "    IRQ      ${:02X}{:02X}  ${:02X}{:02X}",
+            cart.interrupt_vectors[0x0F],
+            cart.interrupt_vectors[0x0E],
+            cart.interrupt_vectors[0x1F],
+            cart.interrupt_vectors[0x1E]
+        );
+
         Ok(cart)
     }
-    
+
     pub fn read(&mut self, addr: Address) -> u8 {
         let addr = addr.to_u32();
-        
+
         let mapped_addr = match self.mapping_mode {
-            MappingMode::LoROM => {
-                ((addr & 0x7F0000) >> 1) | (addr & 0x7FFF)
-            }
-            MappingMode::HiROM => {
-                addr & 0x3FFFFF
-            }
-            MappingMode::ExHiROM => {
-                (((addr & 0x800000) ^ 0x800000) >> 1) | (addr & 0x3FFFFF)
-            }
+            MappingMode::LoROM => ((addr & 0x7F0000) >> 1) | (addr & 0x7FFF),
+            MappingMode::HiROM => addr & 0x3FFFFF,
+            MappingMode::ExHiROM => (((addr & 0x800000) ^ 0x800000) >> 1) | (addr & 0x3FFFFF),
         };
-        
+
         let mapped_addr = (mapped_addr as usize) & (self.rom.len() - 1);
-        
+
         self.rom[mapped_addr]
     }
-    
-    pub fn write(&mut self, addr: Address, value: u8) {
-        
-    }
-    
+
+    pub fn write(&mut self, addr: Address, value: u8) {}
+
     pub fn rom_slice(&self) -> &[u8] {
         &self.rom[..]
     }
@@ -201,7 +236,7 @@ fn find_header(cart_rom: &Vec<u8>) -> Result<usize, String> {
 
     let rom_mirror = cart_rom.len() - 1;
 
-    let read_rom = |addr: usize| { cart_rom[addr & rom_mirror] };
+    let read_rom = |addr: usize| cart_rom[addr & rom_mirror];
 
     let maybe_checksum = u16::from_le_bytes([
         read_rom(LOROM_POS + CHECKSUM_OFFSET + 0),
@@ -223,7 +258,10 @@ fn find_header(cart_rom: &Vec<u8>) -> Result<usize, String> {
         read_rom(HIROM_POS + COMPLEMENT_OFFSET + 0),
         read_rom(HIROM_POS + COMPLEMENT_OFFSET + 1),
     ]);
-    if (checksum == maybe_checksum) && (complement == maybe_complement) && rom_mapping_mode.is_none() {
+    if (checksum == maybe_checksum)
+        && (complement == maybe_complement)
+        && rom_mapping_mode.is_none()
+    {
         rom_mapping_mode = Some(MappingMode::HiROM);
     }
 
@@ -235,7 +273,10 @@ fn find_header(cart_rom: &Vec<u8>) -> Result<usize, String> {
         read_rom(EXHIROM_POS + COMPLEMENT_OFFSET + 0),
         read_rom(EXHIROM_POS + COMPLEMENT_OFFSET + 1),
     ]);
-    if (checksum == maybe_checksum) && (complement == maybe_complement) && rom_mapping_mode.is_none() {
+    if (checksum == maybe_checksum)
+        && (complement == maybe_complement)
+        && rom_mapping_mode.is_none()
+    {
         rom_mapping_mode = Some(MappingMode::ExHiROM);
     }
 
@@ -272,7 +313,10 @@ fn find_header(cart_rom: &Vec<u8>) -> Result<usize, String> {
             _ => unreachable!(),
         };
 
-        let err_msg = format!("found header in {} pos, but header wants {}", map_mode_str, expected_map_mode_str);
+        let err_msg = format!(
+            "found header in {} pos, but header wants {}",
+            map_mode_str, expected_map_mode_str
+        );
 
         return Err(err_msg);
     }

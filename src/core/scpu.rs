@@ -1,6 +1,4 @@
-use log::{debug, info, trace};
-
-use crate::{core::scpu::{bus::CpuBus, disassembler::disassemble}, set_byte_n};
+use crate::core::scpu::bus::CpuBus;
 
 pub mod bus;
 pub mod disassembler;
@@ -113,7 +111,7 @@ impl Cpu65c816 {
         self.stopped = false;
         self.handle_interrupt(bus, CpuInterrupt::Reset); // TODO: Check this?
     }
-    
+
     pub fn reset(&mut self, bus: &mut CpuBus) {
         self.stopped = false;
         self.irq_pending = false;
@@ -142,21 +140,14 @@ impl Cpu65c816 {
             return;
         }
 
-        if self.pb == 0x00 && self.pc == 0x9394 {
-            info!(
-                "pc: ${:02X}{:04X}, sp: 0x{:04X}, p: {:02X}, x: 0x{:04X}, y: 0x{:04X}",
-                self.pb, self.pc, self.sp, self.p, self.x, self.y
-            );
-        }
-
         self.execute(bus);
     }
 
     pub fn handle_interrupt(&mut self, bus: &mut CpuBus, interrupt: CpuInterrupt) {
-        log::debug!(
-            "handling interrupt: {:?}, ${:02X}{:04X}, sp: 0x{:04X}, p: {:02X}, e: {}",
-            interrupt, self.pb, self.pc, self.sp, self.p, self.e
-        );
+        // log::debug!(
+        //     "handling interrupt: {:?}, ${:02X}{:04X}, sp: 0x{:04X}, p: {:02X}, e: {}",
+        //     interrupt, self.pb, self.pc, self.sp, self.p, self.e
+        // );
 
         match interrupt {
             CpuInterrupt::Reset => {

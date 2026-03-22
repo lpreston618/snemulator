@@ -1,6 +1,8 @@
-use log::trace;
 
-use crate::{core::ssmp::spc::{Flag, Spc700, bus::{self, SpcBus}}, get_bit_n, get_byte_n};
+use crate::core::ssmp::spc::Flag;
+use crate::core::ssmp::spc::Spc700;
+use crate::core::ssmp::spc::bus::SpcBus;
+use crate::{get_bit_n, get_byte_n};
 
 // Flag functions
 impl Spc700 {
@@ -1338,7 +1340,7 @@ impl Spc700 {
         ((self.read_prg(bus) + self.y) as u16) | self.dir_page
     }
 
-    fn indirect(&mut self, bus: &mut SpcBus) -> u16 {
+    fn indirect(&mut self, _bus: &mut SpcBus) -> u16 {
         (self.x as u16) | self.dir_page
     }
 
@@ -1355,7 +1357,7 @@ impl Spc700 {
         (src_addr, dst_addr)
     }
 
-    fn indirect_to_indirect(&mut self, bus: &mut SpcBus) -> (u16, u16) {
+    fn indirect_to_indirect(&mut self, _bus: &mut SpcBus) -> (u16, u16) {
         let arg1_addr = (self.x as u16) | self.dir_page;
         let arg2_addr = (self.y as u16) | self.dir_page;
 
