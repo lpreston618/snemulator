@@ -50,9 +50,14 @@ impl Ssmp {
     }
 
     pub fn power_on(&mut self) {
+        log::warn!("SMP Power On not implemented!");
+        
         self.spc.power_on();
         self.spc_regs.power_on();
-        // self.sdsp.power_on();
+    }
+    
+    pub fn reset(&mut self) {
+        log::warn!("SMP Reset not implemented!");
     }
 
     pub fn start_frame(&mut self) {

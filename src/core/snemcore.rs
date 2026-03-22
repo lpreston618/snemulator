@@ -33,7 +33,6 @@ macro_rules! cpu_bus {
             cpu_regs: &mut $core.cpu_regs,
             apu_ports: &mut $core.apu_ports,
             
-            mult: &mut $core.mult,
             dma_regs: &mut $core.dma_regs,
             dma_en: &mut $core.dma_en,
             hdma_pending: &mut $core.hdma_pending,
@@ -84,7 +83,6 @@ pub struct Snemulator {
     pub cpu_regs: CpuIoRegs,
     pub apu_ports: ApuIoPorts,
     
-    mult: Mult5A22,
     dma_regs: [DmaRegs; 8],
     dma_en: bool,
     hdma_en: bool,
@@ -108,7 +106,7 @@ pub struct Snemulator {
     pub frame: u64,
 }
 
-impl Snemulator {
+impl Snemulator {    
     pub fn new() -> Self {
         Self {
             p1_controller: SnemController::new(),
@@ -123,7 +121,6 @@ impl Snemulator {
             ppu_regs: PpuRegs::default(),
             cpu_regs: CpuIoRegs::default(),
             apu_ports: ApuIoPorts::default(),
-            mult: Mult5A22::default(),
             dma_regs: [DmaRegs::default(); 8],
             dma_en: false,
             hdma_en: false,
@@ -145,15 +142,67 @@ impl Snemulator {
         }
     }
     
-    fn power_on(&mut self) {
-        self.ssmp.power_on();
-        self.mult.power_on();
-        self.total_cycles = 0;
-        self.frame = 0;
+    pub fn power_on(&mut self) {
+        self.clear_regs();
+        
+        self.wram.fill(0);
+        self.vram.fill(0);
+        self.cgram.fill(Color::BLACK);
+        self.oam.fill(0);
+        
+        self.ppu_regs.power_on();
+        self.cpu_regs.power_on();
+        self.apu_ports.power_on();
+        
+        for regs in self.dma_regs.iter_mut() {
+            regs.power_on();
+        }
         
         let mut bus = cpu_bus!(self);
         self.cpu.power_on(&mut bus);
         
+        self.ssmp.power_on();
+        self.ppu.power_on();
+    }
+    
+    pub fn reset(&mut self) {        
+        self.clear_regs();
+        
+        self.ppu_regs.reset();
+        self.cpu_regs.reset();
+        self.apu_ports.reset();
+        
+        for regs in self.dma_regs.iter_mut() {
+            regs.reset();
+        }
+       
+        let mut bus = cpu_bus!(self);
+        self.cpu.reset(&mut bus);
+        
+        self.ssmp.reset();
+        self.ppu.reset();
+    }
+    
+    fn clear_regs(&mut self) {
+        self.dma_en = false;
+        self.hdma_en = false;
+        self.hdma_pending = false;
+        self.dma_active_ch = 8;
+        self.hdma_active_ch = 8;
+
+        self.p1_controller = SnemController::new();
+        self.p2_controller = SnemController::new();
+        self.joy1_latch = 0;
+        self.joy2_latch = 0;
+        self.joy1_data1_auto = 0;
+        self.joy2_data1_auto = 0;
+        self.joy1_data2_auto = 0;
+        self.joy2_data2_auto = 0;
+        self.joypad_cmd = None;
+        self.cpu_interrupt = None;
+        self.frame_ready = false;
+        self.frame = 0;
+        self.total_cycles = 0;
     }
     
     pub fn load_rom(&mut self, data: Vec<u8>) -> Result<()> {
@@ -497,7 +546,7 @@ impl Snemulator {
         audio_buffer: &mut Vec<i16>, 
         breakpoints: &HashSet<BreakpointInfo>,
         watchpoints: &CompiledGraph,
-    ) -> DebugAction {        
+    ) -> DebugAction {
         // Cycle until the CPU is the next to cycle
         while self.cpu.clocks > self.ppu.clocks {
             let action = self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints);
@@ -509,7 +558,7 @@ impl Snemulator {
                 _ => {}
             }
         }
-
+        
         self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints)
     }
 }

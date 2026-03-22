@@ -113,7 +113,8 @@ impl Editor {
     pub fn update_watchpoints(&mut self, compiled_wps: &CompiledGraph) {
         for op in compiled_wps.iter() {
             match op {
-                FastOp::Counter { count, id, fired, .. } => {
+                FastOp::CounterRisingEdge { count, fired, id, .. } |
+                FastOp::CounterHigh { count, fired, id, .. } => {
                     let node = self.graph.nodes.get_mut(*id).unwrap();
                     
                     match &mut node.kind {
@@ -365,8 +366,9 @@ impl Editor {
     fn draw_watchpoint_editor(ui: &mut egui::Ui, wp: &mut Watchpoint, snem_core: &snemcore::Snemulator) -> bool {        
         let mut current_reg_type = wp.val.category();
         let old_reg_type = current_reg_type;
+        let was_flag = wp.val.reg_size() == RegSize::Bool;
 
-        Self::draw_category_selector(ui, &mut current_reg_type);
+        Self::draw_category_selector(ui, &mut current_reg_type, 0);
 
         if current_reg_type != old_reg_type {
             match current_reg_type {
@@ -393,8 +395,7 @@ impl Editor {
         
         wp.kind = current_reg_type;
         
-        // --- Specific Variant Editing ---
-        match current_reg_type {
+        let editing = match current_reg_type {
             RegCategory::CpuReg => {
                 Self::cpu_reg_wp_edit(ui, wp, snem_core)
             }
@@ -406,7 +407,7 @@ impl Editor {
             }
             
             RegCategory::HwReg | RegCategory::HwFlag => {
-                Self::hardware_val_wp_edit(ui, wp, snem_core)
+                Self::hardware_val_wp_edit(ui, wp)
             }
             
             RegCategory::SysInfo => {
@@ -414,61 +415,102 @@ impl Editor {
             }
             
             _ => todo!(),
+        };
+        
+        if was_flag {
+            if wp.val.reg_size() != RegSize::Bool {
+                wp.cond = WatchpointCond::Equal;
+            }
+        } else {
+            if wp.val.reg_size() == RegSize::Bool {
+                wp.cond = WatchpointCond::Set;
+            }
         }
+        
+        editing
     }
     
     /// Returns `true` if text is currently being edited
-    fn draw_logpoint_editor(ui: &mut egui::Ui, lp: &mut Logpoint) -> bool {
-        let mut current_reg_type = lp.reg_type;
-        let old_reg_type = current_reg_type;
-        
-        Self::draw_category_selector(ui, &mut current_reg_type);
+    fn draw_logpoint_editor(ui: &mut egui::Ui, lp: &mut Logpoint) -> bool {   
+        let mut editing = false;
         
         ui.checkbox(&mut lp.message_only, "Message Only");
         
-        if old_reg_type != current_reg_type {            
-            match current_reg_type {
-                RegCategory::CpuReg => lp.reg = Box::new(CpuReg::A),
-                RegCategory::CpuFlag => lp.reg = Box::new(CpuFlag::C),
-                RegCategory::HwReg => lp.reg = Box::new(HardwareReg::ApuIo0),
-                RegCategory::SysInfo => lp.reg = Box::new(SystemVariable::Frame),
-                _ => todo!(),
-            };
-        }
+        ui.separator();
         
-        lp.reg_type = current_reg_type;
-        
-        ui.horizontal(|ui| {           
-            if !lp.message_only {
-                ui.label(monospace_text("Log the value of".to_string()));
-            } 
+        ui.horizontal(|ui| {
+            ui.label(monospace_text("Log the values:".to_string()));
             
-            match lp.reg_type {
-                RegCategory::CpuReg => {           
-                    let cpu_reg = lp.reg.as_any_mut().downcast_mut::<CpuReg>().unwrap();
-                    
-                    Self::draw_cpu_reg_selector(ui, cpu_reg);
-
-                }
-                RegCategory::CpuFlag => {
-                    let cpu_flag = lp.reg.as_any_mut().downcast_mut::<CpuFlag>().unwrap();
-                    
-                    Self::draw_cpu_flag_selector(ui, cpu_flag);
-
-                }
-                RegCategory::SysInfo => {
-                    let sys_info = lp.reg.as_any_mut().downcast_mut::<SystemVariable>().unwrap();
-                    
-                    Self::draw_system_variable_selector(ui, sys_info);
-                    
-                }
-                _ => todo!(),
+            if ui.button("Add New").clicked() {
+                lp.regs.push(Box::new(CpuReg::A));
+                lp.reg_types.push(RegCategory::CpuReg);
             }
         });
         
-        if !lp.message_only {
-            ui.separator();
-        }
+        ui.add_enabled_ui(!lp.message_only, |ui| {
+            ui.vertical(|ui| {
+                let mut to_remove = None;
+                
+                for idx in 0..lp.regs.len() {
+                    ui.horizontal(|ui| {
+                        if ui.small_button("❌").clicked() {
+                            to_remove = Some(idx);
+                        }
+                        
+                        let reg_type = &mut lp.reg_types[idx];
+                        let old_reg_type = reg_type.clone();
+                        
+                        Self::draw_category_selector(ui, reg_type, idx);
+                        
+                        let reg = &mut lp.regs[idx];
+                        
+                        if old_reg_type != *reg_type {
+                            *reg = match reg_type {
+                                RegCategory::CpuReg => Box::new(CpuReg::A),
+                                RegCategory::CpuFlag => Box::new(CpuFlag::C),
+                                RegCategory::HwReg => Box::new(HardwareReg::ApuIo0),
+                                RegCategory::HwFlag => Box::new(HardwareFlag::VBlank),
+                                RegCategory::SysInfo => Box::new(SystemVariable::Frame),
+                                _ => todo!(),
+                            };
+                        }
+                        
+                        
+                        match reg_type {
+                            RegCategory::CpuReg => {           
+                                let cpu_reg = reg.as_any_mut().downcast_mut::<CpuReg>().unwrap();
+                                
+                                Self::draw_cpu_reg_selector(ui, cpu_reg, idx);
+            
+                            }
+                            RegCategory::CpuFlag => {
+                                let cpu_flag = reg.as_any_mut().downcast_mut::<CpuFlag>().unwrap();
+                                
+                                Self::draw_cpu_flag_selector(ui, cpu_flag, idx);
+            
+                            }
+                            RegCategory::HwReg | RegCategory::HwFlag => {                            
+                                editing = Self::draw_hardware_reg_selector(ui, reg, reg_type, &mut lp.hw_reg_search_str, idx);
+                            }
+                            RegCategory::SysInfo => {
+                                let sys_info = reg.as_any_mut().downcast_mut::<SystemVariable>().unwrap();
+                                
+                                Self::draw_system_variable_selector(ui, sys_info, idx);
+                                
+                            }
+                            _ => todo!(),
+                        }
+                    });
+                }
+                
+                if let Some(idx) = to_remove {
+                    lp.regs.remove(idx);
+                    lp.reg_types.remove(idx);
+                }
+            });
+        });
+        
+        ui.separator();
         
         let response = ui.add(
             egui::TextEdit::singleline(&mut lp.msg).hint_text(
@@ -477,10 +519,10 @@ impl Editor {
         );
         
         if response.has_focus() {
-            return true;
+            editing = true;
         }
         
-        false
+        editing
     }
     
     fn draw_counter_editor(ui: &mut egui::Ui, cnt: &mut Counter) -> bool {
@@ -500,9 +542,24 @@ impl Editor {
         ui.separator();
         
         ui.horizontal(|ui| {
+            ui.label("Increment");
+            
+            egui::ComboBox::from_id_salt("counter_inc_mode_sel")
+                .selected_text(match cnt.mode {
+                    CounterMode::IncOnChange => "on rising edge",
+                    CounterMode::IncOnTrue => "on input high",
+                }).show_ui(ui, |ui| {
+                    ui.selectable_value(&mut cnt.mode, CounterMode::IncOnChange, "on rising edge");
+                    ui.selectable_value(&mut cnt.mode, CounterMode::IncOnTrue, "on input high");
+                })
+        });
+        
+        ui.separator();
+        
+        ui.horizontal(|ui| {
             ui.label(monospace_text("True when cnt".to_string()));
             
-            Self::draw_numeric_cond_selector(ui, &mut cnt.cond, false, Some("cnt_cond"));
+            Self::draw_numeric_cond_selector(ui, &mut cnt.cond, false, 0);
             
             let response = ui.add(
                 egui::TextEdit::singleline(&mut cnt.input_text).id_salt("cnt_arg")
@@ -572,15 +629,15 @@ impl Editor {
             
             let reg_ref_mut = wp.val.as_any_mut().downcast_mut::<CpuReg>().unwrap();
             
-            Self::draw_cpu_reg_selector(ui, reg_ref_mut);
+            Self::draw_cpu_reg_selector(ui, reg_ref_mut, 0);
             
-            Self::draw_numeric_cond_selector(ui, &mut wp.cond, true, None);
+            Self::draw_numeric_cond_selector(ui, &mut wp.cond, true, 0);
             
             editing = Self::draw_numeric_cond_inputs(
                 ui, &wp.cond, reg_size, 
                 &mut wp.arg1, &mut wp.arg2, 
                 &mut wp.arg1_input_text, 
-                &mut wp.arg2_input_text
+                &mut wp.arg2_input_text,
             );
         });
         
@@ -599,11 +656,11 @@ impl Editor {
         
             let flag_ref_mut = wp.val.as_any_mut().downcast_mut::<CpuFlag>().unwrap();
             
-            Self::draw_cpu_flag_selector(ui, flag_ref_mut);
+            Self::draw_cpu_flag_selector(ui, flag_ref_mut, 0);
             
             ui.label(monospace_text("is".to_string()));
             
-            Self::draw_flag_cond_selector(ui, &mut wp.cond);
+            Self::draw_flag_cond_selector(ui, &mut wp.cond, 0);
         });
         
         if matches!(wp.cond, WatchpointCond::Changed) && wp.cond != old_cond {
@@ -634,79 +691,34 @@ impl Editor {
         }
     }
     
-    fn hardware_val_wp_edit(ui: &mut egui::Ui, wp: &mut Watchpoint, snem_core: &snemcore::Snemulator) -> bool {
+    fn hardware_val_wp_edit(ui: &mut egui::Ui, wp: &mut Watchpoint) -> bool {
         let mut editing = false;
         
         ui.horizontal(|ui| {
             ui.label(monospace_text("If".to_string()));
             
-            let mut hw_reg = None;
-            let mut hw_flag = None;
-            let mut old_reg = None;
-            let mut old_flag = None;
+            let val_ref_mut = &mut wp.val;
+            
+            editing = Self::draw_hardware_reg_selector(ui, val_ref_mut, &mut wp.kind, &mut wp.hw_reg_search, 0);
             
             match wp.kind {
-                RegCategory::HwReg => {
-                    let reg = wp.val.as_any().downcast_ref::<HardwareReg>().unwrap();
-                    
-                    hw_reg = Some(reg.clone());
-                    old_reg = Some(reg.clone());
-                }
                 RegCategory::HwFlag => {
-                    let flag = wp.val.as_any().downcast_ref::<HardwareFlag>().unwrap();
+                    Self::draw_flag_cond_selector(ui, &mut wp.cond, 0);
+                }
+                RegCategory::HwReg => {
+                    Self::draw_numeric_cond_selector(ui, &mut wp.cond, true, 0);
                     
-                    hw_flag = Some(flag.clone());
-                    old_flag = Some(flag.clone());
+                    editing |= Self::draw_numeric_cond_inputs(
+                        ui, 
+                        &wp.cond, 
+                        wp.val.reg_size(), 
+                        &mut wp.arg1, 
+                        &mut wp.arg2, 
+                        &mut wp.arg1_input_text, 
+                        &mut wp.arg2_input_text,
+                    );
                 }
-                _ => unreachable!(),
-            }
-            
-            let (old_reg, old_flag) = (old_reg, old_flag); // No longer mutable
-            
-            Self::draw_hardware_reg_selector(ui, &mut hw_reg, &mut hw_flag, &mut wp.hw_reg_search);
-            
-            if hw_reg.is_some() {
-                let reg = hw_reg.unwrap();
-                let reg_size = reg.reg_size();
-                let old_cond = wp.cond.clone();
-                
-                Self::draw_numeric_cond_selector(ui, &mut wp.cond, true, None);
-                
-                editing = Self::draw_numeric_cond_inputs(
-                    ui, &wp.cond, reg_size, 
-                    &mut wp.arg1, &mut wp.arg2, 
-                    &mut wp.arg1_input_text, 
-                    &mut wp.arg2_input_text
-                );
-                
-                wp.kind = RegCategory::HwReg;
-                
-                // Only allocate if the value has changed
-                if old_reg.is_none() || old_reg.unwrap() != reg {
-                    wp.val = Box::new(reg);
-                }
-                
-                if matches!(wp.cond, WatchpointCond::Changed) && wp.cond != old_cond {
-                    wp.arg1 = wp.val.get_value(snem_core);
-                }
-            } else {
-                let flag = hw_flag.unwrap();
-                let old_cond = wp.cond.clone();
-                
-                ui.label(monospace_text("is".to_string()));
-                
-                Self::draw_flag_cond_selector(ui, &mut wp.cond);
-                
-                wp.kind = RegCategory::HwReg;
-                
-                // Only allocate if the value has changed
-                if old_flag.is_none() || old_flag.unwrap() != flag {
-                    wp.val = Box::new(flag);
-                }
-                
-                if matches!(wp.cond, WatchpointCond::Changed) && wp.cond != old_cond {
-                    wp.arg1 = wp.val.get_value(snem_core);
-                }
+                _ => {}
             }
         });
         
@@ -723,16 +735,16 @@ impl Editor {
         
             let variable_ref_mut = wp.val.as_any_mut().downcast_mut::<SystemVariable>().unwrap();
             
-            Self::draw_system_variable_selector(ui, variable_ref_mut);
+            Self::draw_system_variable_selector(ui, variable_ref_mut, 0);
     
-            Self::draw_numeric_cond_selector(ui, &mut wp.cond, false, None);
+            Self::draw_numeric_cond_selector(ui, &mut wp.cond, false, 0);
             
             editing = Self::draw_numeric_cond_inputs(
                 ui, &wp.cond, 
                 RegSize::Num, 
                 &mut wp.arg1, &mut wp.arg2, 
                 &mut wp.arg1_input_text, 
-                &mut wp.arg2_input_text
+                &mut wp.arg2_input_text,
             );
         });
         
@@ -761,11 +773,11 @@ impl Editor {
         editing
     }
     
-    fn draw_category_selector(ui: &mut egui::Ui, category: &mut RegCategory) {
+    fn draw_category_selector(ui: &mut egui::Ui, category: &mut RegCategory, egui_id: usize) {
         ui.horizontal(|ui| {
             ui.label("Target:");
             
-            egui::ComboBox::from_id_salt("target_type_sel")
+            egui::ComboBox::from_id_salt(format!("target_type_sel_{}", egui_id))
                 .selected_text(category.label())
                 .show_ui(ui, |ui| {
                     ui.selectable_value(category, RegCategory::CpuReg , RegCategory::CpuReg.label());
@@ -780,8 +792,8 @@ impl Editor {
         ui.separator();
     }
     
-    fn draw_cpu_reg_selector(ui: &mut egui::Ui, reg: &mut CpuReg) {
-        egui::ComboBox::from_id_salt("reg_sel").width(20.0)
+    fn draw_cpu_reg_selector(ui: &mut egui::Ui, reg: &mut CpuReg, egui_id: usize) {
+        egui::ComboBox::from_id_salt(format!("cpu_reg_sel_{}", egui_id)).width(20.0)
             .selected_text(reg.label())
             .show_ui(ui, |ui| {
                 ui.selectable_value(reg, CpuReg::DB, "DB (Data Bank)"      );
@@ -796,8 +808,8 @@ impl Editor {
             });
     }
     
-    fn draw_cpu_flag_selector(ui: &mut egui::Ui, flag: &mut CpuFlag) {
-        egui::ComboBox::from_id_salt("flag_sel").width(20.0)
+    fn draw_cpu_flag_selector(ui: &mut egui::Ui, flag: &mut CpuFlag, egui_id: usize) {
+        egui::ComboBox::from_id_salt(format!("flag_sel_{}", egui_id)).width(20.0)
             .selected_text(flag.label())
             .show_ui(ui, |ui| {
                 ui.selectable_value(flag, CpuFlag::C,          "C (Carry)"    );
@@ -817,7 +829,13 @@ impl Editor {
     }
     
     /// Returns `true` if the user is editing the search bar.
-    fn draw_hardware_reg_selector(ui: &mut egui::Ui, reg: &mut Option<HardwareReg>, flag: &mut Option<HardwareFlag>, search_str: &mut String) -> bool {
+    fn draw_hardware_reg_selector(
+        ui: &mut egui::Ui, 
+        reg_or_flag: &mut Box<dyn WatchpointValue>, 
+        val_category: &mut RegCategory, 
+        search_str: &mut String,
+        egui_id: usize,
+    ) -> bool {
         let mut editing = false;
         
         ui.horizontal(|ui| {
@@ -829,27 +847,53 @@ impl Editor {
                     .popup_on_focus(true)
             );
             
-            let submitted = response.lost_focus(); // && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            if response.gained_focus() {
+                search_str.clear()
+            }
+            
+            let submitted = response.lost_focus();            
             editing = response.has_focus();
+            
+            let old_category = val_category.clone();
             
             if submitted {
                 if let Some(new_reg) = search_str.trim().parse::<HardwareReg>().ok() {
-                    *flag = None;
-                    *reg = Some(new_reg);
+                    *val_category = RegCategory::HwReg;
+                    
+                    if old_category != RegCategory::HwReg {
+                        *reg_or_flag = Box::new(new_reg);
+                    } else {
+                        let reg_ref_mut = reg_or_flag.as_any_mut().downcast_mut::<HardwareReg>().unwrap();
+                        
+                        *reg_ref_mut = new_reg;
+                    }
+                    
                     search_str.clear();
                 } else if let Some(new_flag) = search_str.trim().parse::<HardwareFlag>().ok() {
-                    *flag = Some(new_flag);
-                    *reg = None;
+                    *val_category = RegCategory::HwFlag;
+                    
+                    if old_category != RegCategory::HwFlag {
+                        *reg_or_flag = Box::new(new_flag);
+                    } else {
+                        let flag_ref_mut = reg_or_flag.as_any_mut().downcast_mut::<HardwareFlag>().unwrap();
+                        
+                        *flag_ref_mut = new_flag;
+                    }
+                    
                     search_str.clear();
                 }
+            }
+            
+            if response.lost_focus() {
+                *search_str = reg_or_flag.label();
             }
         });
         
         editing
     }
     
-    fn draw_system_variable_selector(ui: &mut egui::Ui, variable: &mut SystemVariable) {
-        egui::ComboBox::from_id_salt("sys_var_sel").width(20.0)
+    fn draw_system_variable_selector(ui: &mut egui::Ui, variable: &mut SystemVariable, egui_id: usize) {
+        egui::ComboBox::from_id_salt(format!("sys_var_sel_{}", egui_id)).width(20.0)
             .selected_text(variable.label())
             .show_ui(ui, |ui| {
                 ui.selectable_value(variable, SystemVariable::Frame, "Frame");
@@ -858,8 +902,8 @@ impl Editor {
             });
     }
     
-    fn draw_numeric_cond_selector(ui: &mut egui::Ui, cond: &mut WatchpointCond, allow_bitwise: bool, egui_id: Option<&str>) {
-        egui::ComboBox::from_id_salt(egui_id.unwrap_or("num_cond_sel")).width(20.0)
+    fn draw_numeric_cond_selector(ui: &mut egui::Ui, cond: &mut WatchpointCond, allow_bitwise: bool, egui_id: usize) {
+        egui::ComboBox::from_id_salt(format!("num_cond_sel_{}", egui_id)).width(20.0)
             .selected_text(cond.dropdown_label())
             .show_ui(ui, |ui| {
                 ui.selectable_value(cond, WatchpointCond::Equal,       "== (Equal)");
@@ -876,8 +920,8 @@ impl Editor {
             });
     }
     
-    fn draw_flag_cond_selector(ui: &mut egui::Ui, cond: &mut WatchpointCond) {
-        egui::ComboBox::from_id_salt("flag_cond").width(20.0)
+    fn draw_flag_cond_selector(ui: &mut egui::Ui, cond: &mut WatchpointCond, egui_id: usize) {
+        egui::ComboBox::from_id_salt(format!("flag_cond_{}", egui_id)).width(20.0)
             .selected_text(cond.dropdown_label())
             .show_ui(ui, |ui| {
                 ui.selectable_value(cond, WatchpointCond::Set,     "Set"  );
@@ -920,15 +964,15 @@ impl Editor {
             match cond_type {
                 WatchpointCond::Equal | WatchpointCond::NotEqual | 
                 WatchpointCond::GreaterThan | WatchpointCond::LessThan => {
-                    editing = Self::reg_input_box(ui, desired_width, arg1_hint_text, reg_size, arg1, cond_edit_arg1_text);
+                    editing = Self::reg_input_box(ui, desired_width, arg1_hint_text, reg_size, arg1, cond_edit_arg1_text, 0);
                 },
                 WatchpointCond::OrEqual | WatchpointCond::AndEqual => {
                     ui.horizontal(|ui| {
-                        editing = Self::reg_input_box(ui, desired_width, arg1_hint_text, reg_size, arg1, cond_edit_arg1_text);
+                        editing = Self::reg_input_box(ui, desired_width, arg1_hint_text, reg_size, arg1, cond_edit_arg1_text, 0);
                         
                         ui.label(monospace_text("==".to_string()));
                         
-                        editing |= Self::reg_input_box(ui, desired_width, arg2_hint_text, reg_size, arg2, cond_edit_arg2_text);
+                        editing |= Self::reg_input_box(ui, desired_width, arg2_hint_text, reg_size, arg2, cond_edit_arg2_text, 1);
                     });
                 },
                 WatchpointCond::Changed | WatchpointCond::Set | WatchpointCond::Clear => {},
@@ -945,9 +989,12 @@ impl Editor {
         hint_text: String,
         reg_size: RegSize, 
         num: &mut usize, 
-        cond_edit_text: &mut String) -> bool {
+        cond_edit_text: &mut String,
+        egui_id: usize,
+    ) -> bool {
         let response = ui.add(
             egui::TextEdit::singleline(cond_edit_text)
+                .id_salt(format!("reg_input_{}", egui_id))
                 .desired_width(desired_width)
                 .hint_text(hint_text)
         );

@@ -212,6 +212,21 @@ impl Ppu5C7x {
         ppu
     }
     
+    pub fn power_on(&mut self) {
+        self.dot = 0;
+        self.scanline = 0;
+        self.x = self.screen_x();
+        self.y = self.screen_y();
+        self.frame = 0;
+        self.scanline_sprites.clear();
+        self.scanline_spr_cnt = 0;
+        self.clocks = 0;
+    }
+    
+    pub fn reset(&mut self) {
+        self.power_on(); // Maybe in the future don't reset dot & scanline, but fine for now
+    }
+    
     /// Cycles the PPU for a certain number of master clocks
     pub fn cycle(&mut self, bus: &mut PpuBus) {
         if (0 < self.scanline && self.scanline < VBLANK_START_SCANLINE)

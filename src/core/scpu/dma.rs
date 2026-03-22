@@ -91,6 +91,29 @@ pub struct DmaRegs {
 }
 
 impl DmaRegs {
+    pub fn power_on(&mut self) {
+        self.dma_en = false;
+        self.hdma_en = false;
+        self.params_raw = 0xFF;
+        self.direction = Direction::BtoA;
+        self.indirect_hdma = true;
+        self.inc_mode = AddressIncMode::Fixed;
+        self.transfer_pattern = TransferPattern::Pattern7;
+        self.transfer_pattern_step = 0;
+        self.b_bus_addr = 0xFF;
+        self.unused = 0xFF;
+        self.a_bus_addr = Address { bank: 0xFF, offset: 0xFFFF };
+        self.hdma_indirect_table_addr = Address { bank: 0xFF, offset: 0xFFFF };
+        self.hdma_table_offset = 0xFFFF;
+        self.scanline_counter = 0x7F;
+        self.hdma_reload_flag = true;
+    }
+    
+    pub fn reset(&mut self) {
+        self.dma_en = false;
+        self.hdma_en = false;
+    }
+    
     // Returns the actual B bus address we read/write based on the base B address
     // and the transfer pattern. Since the B bus is made of various kinds of registers,
     // each of which are written to/read from differently, these modes are designed

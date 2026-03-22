@@ -39,6 +39,7 @@ pub enum AppAction {
     ToggleFullscreen,
     LoadRom,
     ResetCore,
+    PowerOnCore,
     SaveState,
     LoadState,
     OpenAbout,
@@ -143,6 +144,12 @@ impl SnemulatorApp {
                 match app_action {
                     AppAction::TogglePause => {
                         self.toggle_pause();
+                    }
+                    AppAction::ResetCore => {
+                        self.reset_emulation(false);
+                    }
+                    AppAction::PowerOnCore => {
+                        self.reset_emulation(true);
                     }
                     _ => {}
                 }
@@ -311,7 +318,8 @@ impl SnemulatorApp {
             AppAction::LoadRom => self.load_rom(),
             AppAction::LoadState => self.load_state(),
             AppAction::SaveState => self.save_state(),
-            AppAction::ResetCore => self.reset_emulation(),
+            AppAction::ResetCore => self.reset_emulation(false),
+            AppAction::PowerOnCore => self.reset_emulation(true),
             AppAction::OpenAbout => self.show_about(),
             AppAction::OpenSettings => self.show_settings(),
             AppAction::OpenDebug => self.show_debug(),
@@ -434,8 +442,16 @@ impl SnemulatorApp {
         }
     }
     
-    fn reset_emulation(&mut self) {
-        warn!("Reset called");
+    fn reset_emulation(&mut self, hard_reset: bool) {        
+        if hard_reset {
+            log::info!("Reset core to power-on state");
+            
+            self.snem_core.power_on();
+        } else {
+            log::info!("Soft reset core");
+            
+            self.snem_core.reset();
+        }
     }
     
     fn save_state(&mut self) {

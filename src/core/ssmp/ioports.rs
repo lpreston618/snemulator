@@ -19,3 +19,19 @@ pub struct ApuIoPorts {
     /// S-CPU -> SPC700 register 3
     pub cpuio3: u8,
 }
+
+impl ApuIoPorts {
+    pub fn power_on(&mut self) {
+        self.apuio0 = 0;
+        self.apuio1 = 0;
+        self.apuio2 = 0;
+        self.apuio3 = 0;
+        
+        self.cpuio0 = 0;
+        self.cpuio1 = 0;
+        self.cpuio2 = 0;
+        self.cpuio3 = 0;
+    }
+    
+    pub fn reset(&mut self) {}
+}

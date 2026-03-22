@@ -450,6 +450,12 @@ impl Watchpoint {
     }
 }
 
+#[derive(Clone, PartialEq)]
+pub enum CounterMode {
+    IncOnChange,
+    IncOnTrue,
+}
+
 #[derive(Clone)]
 pub struct Counter {
     pub fired: bool,
@@ -459,6 +465,7 @@ pub struct Counter {
     pub cond: WatchpointCond,
     pub reset_on_cond: bool,
     pub reset: usize,
+    pub mode: CounterMode,
     pub input_text: String,
     pub reset_input_text: String,
 }
@@ -473,6 +480,7 @@ impl Default for Counter {
             cond: WatchpointCond::Equal,
             reset_on_cond: true,
             reset: 100,
+            mode: CounterMode::IncOnTrue,
             input_text: String::new(),
             reset_input_text: String::new(),
         }
@@ -491,19 +499,21 @@ impl Counter {
 
 #[derive(Clone)]
 pub struct Logpoint {
-    pub reg: Box<dyn WatchpointValue>,
-    pub reg_type: RegCategory,
+    pub regs: Vec<Box<dyn WatchpointValue>>,
+    pub reg_types: Vec<RegCategory>,
     pub message_only: bool,
     pub msg: String,
+    pub hw_reg_search_str: String,
 }
 
 impl Default for Logpoint {
     fn default() -> Self {
         Self {
-            reg: Box::new(CpuReg::A),
-            reg_type: RegCategory::CpuReg,
+            regs: Vec::new(),
+            reg_types: Vec::new(),
             message_only: false,
             msg: String::new(),
+            hw_reg_search_str: String::new(),
         }
     }
 }
@@ -513,7 +523,12 @@ impl Logpoint {
         if self.message_only {
             "Log".to_string()
         } else {
-            format!("Log\n{}", self.reg.label())
+            match self.regs.len() {
+                0 => "Log".to_string(),
+                1 => format!("Log\n{}", self.regs[0].label()),
+                2 => format!("Log\n{}, {}", self.regs[0].label(), self.regs[1].label()),
+                _ => format!("Log\n{}, {}, ...", self.regs[0].label(), self.regs[1].label()),
+            }
         }
     }
     
@@ -521,10 +536,31 @@ impl Logpoint {
         log::debug!("{}", if self.message_only {
             self.msg.clone()
         } else {
-            if self.msg.is_empty() {
-                format!("{} is {}", self.reg.label(), self.reg.get_value(snem_core))
-            } else {
-                format!("{} is {}: {}", self.reg.label(), self.reg.get_value(snem_core), self.msg)
+            match self.regs.len() {
+                0 => {
+                    if self.msg.is_empty() {
+                        "No log values selected and no message".to_string()
+                    } else {
+                        self.msg.clone()
+                    }
+                }
+                _ => {
+                    let mut message = String::new();
+                    
+                    for (i, reg) in self.regs.iter().enumerate() {
+                        message += &format!("{} is {}", reg.label(), reg.get_value(snem_core));
+                        
+                        if i != self.regs.len() - 1 {
+                            message += ", "
+                        }
+                    }
+                    
+                    if !self.msg.is_empty() {
+                        message += &format!(": {}", self.msg);
+                    }
+                    
+                    message
+                }
             }
         });
     }
@@ -794,21 +830,16 @@ impl Graph {
                 None => continue,
             };
             
-            let input_ids: Vec<Option<NodeId>> = (0..node.kind.input_count()).map(|i| {
+            // Map inputs to the index of previously evaluated results
+            let inputs: Vec<usize> = (0..node.kind.input_count()).map(|i| {
                 let target = Port::new(id, i);
                 self.wires.iter()
                     .find(|w| w.to == target)
-                    .map(|w| w.from.node)
-            }).collect();
-            
-            // Map inputs to the index of previously evaluated results
-            let inputs: Vec<usize> = input_ids.iter().map(|maybe_id| {
-                maybe_id
-                    .and_then(|w| node_to_idx.get(&w).copied())
+                    .and_then(|w| node_to_idx.get(&w.from.node).copied())
                     .unwrap_or(0) // Default to index 0 (FastOp::Constant(false))
             }).collect();
 
-            let mut op = match &mut node.kind {
+            let op = match &mut node.kind {
                 NodeKind::Condition(wp) => {
                     match &mut wp.cond {
                         WatchpointCond::Changed => {
@@ -825,15 +856,26 @@ impl Graph {
                 NodeKind::And => FastOp::And(inputs[0], inputs[1]),
                 NodeKind::Or  => FastOp::Or(inputs[0], inputs[1]),
                 NodeKind::Not => FastOp::Not(inputs[0]),
-                NodeKind::Counter(cnt) => FastOp::Counter {
-                    input: inputs[0],
-                    prev: Cell::new(cnt.prev),
-                    count: Cell::new(cnt.count),
-                    arg: cnt.arg,
-                    cond: cnt.cond.clone(),
-                    reset: cnt.reset,
-                    fired: Cell::new(false),
-                    id,
+                NodeKind::Counter(cnt) => match cnt.mode {
+                    CounterMode::IncOnChange => FastOp::CounterRisingEdge {
+                        input: inputs[0],
+                        prev: Cell::new(cnt.prev),
+                        count: Cell::new(cnt.count),
+                        arg: cnt.arg,
+                        cond: cnt.cond.clone(),
+                        reset: cnt.reset,
+                        fired: Cell::new(false),
+                        id,
+                    },
+                    CounterMode::IncOnTrue => FastOp::CounterHigh {
+                        input: inputs[0],
+                        count: Cell::new(cnt.count),
+                        arg: cnt.arg,
+                        cond: cnt.cond.clone(),
+                        reset: cnt.reset,
+                        fired: Cell::new(false),
+                        id,
+                    },
                 },
                 NodeKind::Break { .. } => FastOp::Output(inputs[0]),
                 NodeKind::Log(lp) => FastOp::Log(inputs[0], lp.clone()),
@@ -859,9 +901,18 @@ pub enum FastOp {
         id: NodeId,
     },
     Cond(Watchpoint),
-    Counter {
+    CounterRisingEdge {
         input: usize,
         prev: Cell<bool>,
+        count: Cell<usize>,
+        arg: usize,
+        reset: usize,
+        cond: WatchpointCond,
+        fired: Cell<bool>,
+        id: NodeId,
+    },
+    CounterHigh {
+        input: usize,
         count: Cell<usize>,
         arg: usize,
         reset: usize,
@@ -900,11 +951,24 @@ impl CompiledGraph {
                 FastOp::And(a, b) => results[*a] && results[*b],
                 FastOp::Or(a, b)  => results[*a] || results[*b],
                 FastOp::Not(a)    => !results[*a],
-                FastOp::Counter { input, prev, count, arg, cond, reset, fired, .. } => {
+                FastOp::CounterRisingEdge { input, prev, count, arg, cond, reset, fired, .. } => {
                     let val = results[*input];
                     let prev_val = prev.replace(val);
                     
                     if val && !prev_val {
+                        count.replace(count.get() + 1);
+                    }
+                    
+                    fired.set(WatchpointCond::evaluate(cond, count.get(), *arg, 0));
+                    
+                    if count.get() == *reset {
+                        count.set(0);
+                    }
+                    
+                    fired.get()
+                }
+                FastOp::CounterHigh { input, count, arg, cond, reset, fired, .. } => {                    
+                    if results[*input] {
                         count.replace(count.get() + 1);
                     }
                     

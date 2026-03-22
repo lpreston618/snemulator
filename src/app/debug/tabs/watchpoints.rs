@@ -86,12 +86,10 @@ impl WatchpointsTab {
     
     pub fn compile_watchpoints(&mut self, snem_core: &snemcore::Snemulator) {        
         self.compiled_wps = self.editor.graph.compile(snem_core);
-        log::debug!("Compiled watchpoints");
     }
     
     pub fn clear_compiled_watchpoints(&mut self) {
         self.compiled_wps = CompiledGraph::default();
-        log::debug!("Cleared compiled watchpoints");
     }
     
     pub fn update_watchpoint_graph(&mut self) {
@@ -100,5 +98,9 @@ impl WatchpointsTab {
     
     pub fn watchpoints(&self) -> &CompiledGraph {
         &self.compiled_wps
+    }
+    
+    pub fn watchpoints_enabled(&self) -> bool {
+        self.watchpoints_en
     }
 }

@@ -11,6 +11,12 @@ pub enum ObjectSizeSelect {
     Size16x32_32x32,
 }
 
+// impl From<u8> for ObjectSizeSelect {
+//     fn from(value: u8) -> Self {
+//         match
+//     }
+// }
+
 #[derive(Clone, Copy, Debug)]
 pub enum ObjectSize {
     Size8x8,

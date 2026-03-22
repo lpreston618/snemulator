@@ -16,6 +16,8 @@ pub enum DebugAction {
     TogglePause,
     BreakpointHit,
     WatchpointHit,
+    Reset,
+    HardReset,
     None,
 }
 
@@ -38,6 +40,8 @@ impl DebugWindow {
             DEBUG_WINDOW_WIDTH,
             DEBUG_WINDOW_HEIGHT,
         )?;
+        
+        log::debug!("Debugging started");
 
         Ok(Self {
             egui_window: Some(Box::new(egui_window)),
@@ -70,13 +74,11 @@ impl DebugWindow {
                 self.watchpoints(),
             ) {
                 DebugAction::BreakpointHit => {
-                    app_state.is_paused = true;
-                    self.breakpoint_hit(&snem_core);
+                    self.breakpoint_hit(&snem_core, app_state);
                     clear_watchpoints = true;
                 },
                 DebugAction::WatchpointHit => {
-                    app_state.is_paused = true;
-                    self.watchpoint_hit();
+                    self.watchpoint_hit(app_state);
                     clear_watchpoints = true;
                 }
                 _ => {}
@@ -115,6 +117,16 @@ impl DebugWindow {
                     if ui.button("Step Frame").clicked() {
                         self.compile_watchpoints(&snem_core);
                         debug_action = DebugAction::StepFrame;
+                    }
+                    
+                    if ui.button("Reset").clicked() {
+                        clear_watchpoints = true;
+                        debug_action = DebugAction::Reset;
+                    }
+                    
+                    if ui.button("Hard Reset").clicked() {
+                        clear_watchpoints = true;
+                        debug_action = DebugAction::HardReset;
                     }
                     
                     if app_state.is_paused && ui.button("Resume").clicked() {
@@ -160,12 +172,10 @@ impl DebugWindow {
                     self.watchpoints(),
                 ) {
                     DebugAction::BreakpointHit => {
-                        app_state.is_paused = true;
-                        self.breakpoint_hit(&snem_core);
+                        self.breakpoint_hit(&snem_core, app_state);
                     },
                     DebugAction::WatchpointHit => {
-                        app_state.is_paused = true;
-                        self.watchpoint_hit();
+                        self.watchpoint_hit(app_state);
                     }
                     _ => {}
                 }
@@ -181,11 +191,11 @@ impl DebugWindow {
                 ) {
                     DebugAction::BreakpointHit => {
                         app_state.is_paused = true;
-                        self.breakpoint_hit(&snem_core);
+                        self.breakpoint_hit(&snem_core, app_state);
                     },
                     DebugAction::WatchpointHit => {
                         app_state.is_paused = true;
-                        self.watchpoint_hit();
+                        self.watchpoint_hit(app_state);
                     }
                     _ => {}
                 }
@@ -194,6 +204,12 @@ impl DebugWindow {
             }
             DebugAction::TogglePause => {
                 app_action = app::AppAction::TogglePause;
+            }
+            DebugAction::Reset => {
+                app_action = app::AppAction::ResetCore;
+            }
+            DebugAction::HardReset => {
+                app_action = app::AppAction::PowerOnCore;
             }
             _ => {}
         }
@@ -214,7 +230,8 @@ impl DebugWindow {
         self.egui_window.as_mut().unwrap().handle_sdl_keyboard_event(event);
     }
     
-    pub fn breakpoint_hit(&mut self, snem_core: &core::snemcore::Snemulator) {
+    pub fn breakpoint_hit(&mut self, snem_core: &core::snemcore::Snemulator, app_state: &mut app::AppState) {
+        app_state.is_paused = true;
         self.cpu_tab.breakpoint_hit((snem_core.cpu.pb as u32) << 16 | snem_core.cpu.pc as u32);
         
         if self.jump_to_bps_on_hit {
@@ -222,9 +239,13 @@ impl DebugWindow {
         }
     }
     
-    pub fn watchpoint_hit(&mut self) {
-        if self.jump_to_wps_on_hit {
-            self.selected_tab = tabs::DebugTab::Watchpoints;
+    pub fn watchpoint_hit(&mut self, app_state: &mut app::AppState) {
+        if self.wp_tab.watchpoints_enabled() {
+            app_state.is_paused = true;
+            
+            if self.jump_to_wps_on_hit {
+                self.selected_tab = tabs::DebugTab::Watchpoints;
+            }
         }
     }
     

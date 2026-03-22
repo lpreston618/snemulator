@@ -1,6 +1,6 @@
 use log::{debug, info, trace};
 
-use crate::core::scpu::{bus::CpuBus, disassembler::disassemble};
+use crate::{core::scpu::{bus::CpuBus, disassembler::disassemble}, set_byte_n};
 
 pub mod bus;
 pub mod disassembler;
@@ -113,6 +113,14 @@ impl Cpu65c816 {
         self.stopped = false;
         self.handle_interrupt(bus, CpuInterrupt::Reset); // TODO: Check this?
     }
+    
+    pub fn reset(&mut self, bus: &mut CpuBus) {
+        self.stopped = false;
+        self.irq_pending = false;
+        self.nmi_pending = false;
+        self.waiting_for_interrupt = false;
+        self.handle_interrupt(bus, CpuInterrupt::Reset);
+    }
 
     /// Cycles the cpu for a given number of clocks. If the number of clocks is 0 after cycling, the next instructions is executed.
     pub fn cycle(&mut self, bus: &mut CpuBus) {
@@ -145,7 +153,7 @@ impl Cpu65c816 {
     }
 
     pub fn handle_interrupt(&mut self, bus: &mut CpuBus, interrupt: CpuInterrupt) {
-        debug!(
+        log::debug!(
             "handling interrupt: {:?}, ${:02X}{:04X}, sp: 0x{:04X}, p: {:02X}, e: {}",
             interrupt, self.pb, self.pc, self.sp, self.p, self.e
         );
@@ -153,6 +161,9 @@ impl Cpu65c816 {
         match interrupt {
             CpuInterrupt::Reset => {
                 self.e = true;
+                self.set_flag_to_bool(Flag::FlagM, true);
+                self.set_flag_to_bool(Flag::FlagX, true);
+                self.sp = 0x100 | (self.sp & 0xFF);
             }
             CpuInterrupt::BRK => {
                 panic!("BRK");
@@ -200,7 +211,7 @@ impl Cpu65c816 {
         };
 
         self.pb = 0;
-        self.pc = self.read_word(bus, vector_lo, vector_hi)
+        self.pc = self.read_word(bus, vector_lo, vector_hi);
     }
 }
 

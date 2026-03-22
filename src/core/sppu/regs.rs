@@ -1,5 +1,6 @@
-use crate::core::sppu::color::Color;
+use crate::{get_bit_n, utils};
 use crate::core::sppu::types::*;
+use crate::core::sppu::color::Color;
 
 /// Contains all of the shared data (registers, memory, etc.) between the S-CPU and S-PPU.
 #[derive(Default)]
@@ -391,6 +392,569 @@ pub struct PpuRegs {
 }
 
 impl PpuRegs {
+    pub fn power_on(&mut self) {
+        self.write_2100(0x80 | utils::rand_byte() & 0x0F);
+        self.write_2101(utils::rand_byte());
+        self.write_2102(utils::rand_byte());
+        self.write_2103(utils::rand_byte());
+        self.oam_data_latch = utils::rand_byte();
+        self.write_2105(0xF0 | utils::rand_byte());
+        self.write_2106(utils::rand_byte());
+        self.write_2107(utils::rand_byte());
+        self.write_2108(utils::rand_byte());
+        self.write_2109(utils::rand_byte());
+        self.write_210A(utils::rand_byte());
+        self.write_210B(utils::rand_byte());
+        self.write_210C(utils::rand_byte());
+        self.write_210D(utils::rand_byte()); self.write_210D(utils::rand_byte());
+        self.write_210E(utils::rand_byte()); self.write_210E(utils::rand_byte());
+        self.write_210F(utils::rand_byte()); self.write_210F(utils::rand_byte());
+        self.write_2110(utils::rand_byte()); self.write_2110(utils::rand_byte());
+        self.write_2111(utils::rand_byte()); self.write_2111(utils::rand_byte());
+        self.write_2112(utils::rand_byte()); self.write_2112(utils::rand_byte());
+        self.write_2113(utils::rand_byte()); self.write_2113(utils::rand_byte());
+        self.write_2114(utils::rand_byte()); self.write_2114(utils::rand_byte());
+        self.write_2115(0x0F | utils::rand_byte());
+        self.vram_addr = utils::rand_word();
+        self.vram_latch = utils::rand_word();
+        self.write_211A(utils::rand_byte());
+        self.write_211B(0xFF); self.write_211B(0xFF);
+        self.write_211C(0xFF); self.write_211C(0xFF);
+        self.write_211D(utils::rand_byte()); self.write_211D(utils::rand_byte());
+        self.write_211E(utils::rand_byte()); self.write_211E(utils::rand_byte());
+        self.write_211F(utils::rand_byte()); self.write_211F(utils::rand_byte());
+        self.write_2120(utils::rand_byte()); self.write_2120(utils::rand_byte());
+        self.write_2121(utils::rand_byte());
+        self.cgram_addr = utils::rand_byte();
+        self.cgram_latch = utils::rand_byte();
+        self.cgram_toggle = utils::rand_bool();
+        self.write_2123(utils::rand_byte());
+        self.write_2124(utils::rand_byte());
+        self.write_2125(utils::rand_byte());
+        self.write_2126(utils::rand_byte());
+        self.write_2127(utils::rand_byte());
+        self.write_2128(utils::rand_byte());
+        self.write_2129(utils::rand_byte());
+        self.write_212A(utils::rand_byte());
+        self.write_212B(utils::rand_byte());
+        self.write_212C(utils::rand_byte());
+        self.write_212D(utils::rand_byte());
+        self.write_212E(utils::rand_byte());
+        self.write_212F(utils::rand_byte());
+        self.write_2130(utils::rand_byte());
+        self.write_2131(utils::rand_byte());
+        self.write_2132(utils::rand_byte());
+        self.write_2133(0);
+        
+        self.multiply_result = 0x000001;
+        self.h_counter_latch = 0x01FF;
+        self.v_counter_latch = 0x01FF;
+    }
+    
+    pub fn reset(&mut self) {
+        let byte_2100 = self.screen_brightness;
+        
+        self.write_2100(0x80 | byte_2100);
+        self.write_2133(0);
+    }
+    
+    pub fn write_2100(&mut self, value: u8) {
+        self.in_fblank = get_bit_n!(value, 7);
+        self.screen_brightness = value & 0x0F;
+    }
+    
+    pub fn write_2101(&mut self, value: u8) {
+        let new_obj_size = match value >> 5 {
+            0 => ObjectSizeSelect::Size8x8_16x16,
+            1 => ObjectSizeSelect::Size8x8_32x32,
+            2 => ObjectSizeSelect::Size8x8_64x64,
+            3 => ObjectSizeSelect::Size16x16_32x32,
+            4 => ObjectSizeSelect::Size16x16_64x64,
+            5 => ObjectSizeSelect::Size32x32_64x64,
+            6 => ObjectSizeSelect::Size16x32_32x64,
+            7 => ObjectSizeSelect::Size16x32_32x32,
+            _ => unreachable!(),
+        };
+
+        self.obj_sprite_size = new_obj_size;
+        self.name_secondary_select = (value >> 3) & 0x03;
+        self.name_base_addr = value & 0x03;
+    }
+    
+    pub fn write_2102(&mut self, value: u8) {
+        self.priority_rotation_idx = value & 0xFE;
+        self.internal_oam_addr = (value as u16) << 1;
+    }
+    
+    pub fn write_2103(&mut self, value: u8) {
+        self.oam_write_high_table = get_bit_n!(value, 0);
+        self.priority_rotation = get_bit_n!(value, 7);
+    }
+    
+    pub fn write_2105(&mut self, value: u8) {
+        self.bg4_char_size = if get_bit_n!(value, 7) {
+            TileSize::Size16x16
+        } else {
+            TileSize::Size8x8
+        };
+        self.bg3_char_size = if get_bit_n!(value, 6) {
+            TileSize::Size16x16
+        } else {
+            TileSize::Size8x8
+        };
+        self.bg2_char_size = if get_bit_n!(value, 5) {
+            TileSize::Size16x16
+        } else {
+            TileSize::Size8x8
+        };
+        self.bg1_char_size = if get_bit_n!(value, 4) {
+            TileSize::Size16x16
+        } else {
+            TileSize::Size8x8
+        };
+        self.bg3_mode1_priority = get_bit_n!(value, 3);
+        self.bg_mode = match value & 7 {
+            0 => BgMode::Mode0,
+            1 => BgMode::Mode1,
+            2 => BgMode::Mode2,
+            3 => BgMode::Mode3,
+            4 => BgMode::Mode4,
+            5 => BgMode::Mode5,
+            6 => BgMode::Mode6,
+            7 => BgMode::Mode7,
+            _ => unreachable!(),
+        };
+
+        match self.bg_mode {
+            BgMode::Mode5 | BgMode::Mode6 => {
+                self.hi_res_en = true;
+            }
+            _ => {}
+        };
+    }
+    
+    pub fn write_2106(&mut self, value: u8) {
+        self.mosaic_size = value >> 4;
+        self.bg4_mosaic_en = get_bit_n!(value, 3);
+        self.bg3_mosaic_en = get_bit_n!(value, 2);
+        self.bg2_mosaic_en = get_bit_n!(value, 1);
+        self.bg1_mosaic_en = get_bit_n!(value, 0);
+    }
+    
+    pub fn write_2107(&mut self, value: u8) {
+        self.bg1_vram_addr = (value >> 2) as u8;
+        self.bg1_tilemap_count_y = if get_bit_n!(value, 1) {
+            TilemapCount::Two
+        } else {
+            TilemapCount::One
+        };
+        self.bg1_tilemap_count_x = if get_bit_n!(value, 0) {
+            TilemapCount::Two
+        } else {
+            TilemapCount::One
+        };
+    }
+    
+    pub fn write_2108(&mut self, value: u8) {
+        self.bg2_vram_addr = value >> 2;
+        self.bg2_tilemap_count_y = if get_bit_n!(value, 1) {
+            TilemapCount::Two
+        } else {
+            TilemapCount::One
+        };
+        self.bg2_tilemap_count_x = if get_bit_n!(value, 0) {
+            TilemapCount::Two
+        } else {
+            TilemapCount::One
+        };
+    }
+
+    pub fn write_2109(&mut self, value: u8) {
+        self.bg3_vram_addr = value >> 2;
+        self.bg3_tilemap_count_y = if get_bit_n!(value, 1) {
+            TilemapCount::Two
+        } else {
+            TilemapCount::One
+        };
+        self.bg3_tilemap_count_x = if get_bit_n!(value, 0) {
+            TilemapCount::Two
+        } else {
+            TilemapCount::One
+        };
+    }
+
+    #[allow(non_snake_case)]
+    pub fn write_210A(&mut self, value: u8) {
+        self.bg4_vram_addr = value >> 2;
+        self.bg4_tilemap_count_y = if get_bit_n!(value, 1) {
+            TilemapCount::Two
+        } else {
+            TilemapCount::One
+        };
+        self.bg4_tilemap_count_x = if get_bit_n!(value, 0) {
+            TilemapCount::Two
+        } else {
+            TilemapCount::One
+        };
+    }
+    
+    #[allow(non_snake_case)]
+    pub fn write_210B(&mut self, value: u8) {
+        self.bg2_chr_base_addr = value >> 4;
+        self.bg1_chr_base_addr = value & 0x0F;
+    }
+    
+    #[allow(non_snake_case)]
+    pub fn write_210C(&mut self, value: u8) {
+        self.bg3_chr_base_addr = value & 0x0F;
+        self.bg4_chr_base_addr = value >> 4;
+    }
+    
+    #[allow(non_snake_case)]
+    pub fn write_210D(&mut self, value: u8) {
+        let bgofs_latch = self.bg_offset_latch as u16;
+        let bghofs_latch = self.bg_offset_x_latch as u16;
+        self.bg_offset_latch = value;
+        self.bg_offset_x_latch = value;
+
+        self.bg1_m7_x_offset = (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
+    }
+    
+    #[allow(non_snake_case)]
+    pub fn write_210E(&mut self, value: u8) {
+        let bgofs_latch = self.bg_offset_latch as u16;
+        self.bg_offset_latch = value;
+
+        self.bg1_m7_y_offset = (((value & 3) as u16) << 8) | bgofs_latch;
+    }
+    
+    #[allow(non_snake_case)]
+    pub fn write_210F(&mut self, value: u8) {
+        let bgofs_latch = self.bg_offset_latch as u16;
+        let bghofs_latch = self.bg_offset_x_latch as u16;
+        self.bg_offset_latch = value;
+        self.bg_offset_x_latch = value;
+
+        self.bg2_x_offset = (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
+    }
+    
+    pub fn write_2110(&mut self, value: u8) {
+        let bgofs_latch = self.bg_offset_latch as u16;
+        self.bg_offset_latch = value;
+
+        self.bg2_y_offset = (((value & 3) as u16) << 8) | bgofs_latch;
+    }
+    
+    pub fn write_2111(&mut self, value: u8) {
+        let bgofs_latch = self.bg_offset_latch as u16;
+        let bghofs_latch = self.bg_offset_x_latch as u16;
+        self.bg_offset_latch = value;
+        self.bg_offset_x_latch = value;
+
+        self.bg3_x_offset = (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
+    }
+    
+    pub fn write_2112(&mut self, value: u8) {
+        let bgofs_latch = self.bg_offset_latch as u16;
+        self.bg_offset_latch = value;
+
+        self.bg3_y_offset = (((value & 3) as u16) << 8) | bgofs_latch;
+    }
+    
+    pub fn write_2113(&mut self, value: u8) {
+        let bgofs_latch = self.bg_offset_latch as u16;
+        let bghofs_latch = self.bg_offset_x_latch as u16;
+        self.bg_offset_latch = value;
+        self.bg_offset_x_latch = value;
+
+        self.bg4_x_offset = (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
+    }
+    
+    pub fn write_2114(&mut self, value: u8) {
+        let bgofs_latch = self.bg_offset_latch as u16;
+        self.bg_offset_latch = value;
+
+        self.bg4_y_offset = (((value & 3) as u16) << 8) | bgofs_latch;
+    }
+    
+    pub fn write_2115(&mut self, value: u8) {
+        self.vram_addr_inc_mode = if get_bit_n!(value, 7) {
+            VramIncMode::HighByte
+        } else {
+            VramIncMode::LowByte
+        };
+        self.addr_remap_mode = match (value >> 2) & 3 {
+            0 => AddressRemapping::None,
+            1 => AddressRemapping::ColDepth2,
+            2 => AddressRemapping::ColDepth4,
+            3 => AddressRemapping::ColDepth8,
+            _ => unreachable!(),
+        };
+        self.addr_inc_size = match value & 3 {
+            0 => IncrSize::Bytes2,
+            1 => IncrSize::Bytes64,
+            2 => IncrSize::Bytes256,
+            3 => IncrSize::Bytes256,
+            _ => unreachable!(),
+        };
+    }
+    
+    #[allow(non_snake_case)]
+    pub fn write_211A(&mut self, value: u8) {
+        self.m7_tilemap_repeat = get_bit_n!(value, 7);
+        self.m7_fill_mode = if get_bit_n!(value, 6) {
+            M7FillMode::Character
+        } else {
+            M7FillMode::Transparent
+        };
+        self.m7_flip_bg_y = get_bit_n!(value, 1);
+        self.m7_flip_bg_x = get_bit_n!(value, 0);
+    }
+
+    #[allow(non_snake_case)]
+    pub fn write_211B(&mut self, value: u8) {
+        let latched_val = self.m7_latch as u16;
+        self.m7_latch = value;
+
+        self.m7_matrix_a = ((value as u16) << 8) | latched_val;
+        self.mult_factor_16 = ((value as u16) << 8) | latched_val;
+
+        self.update_multiply_result();
+    }
+
+    #[allow(non_snake_case)]
+    pub fn write_211C(&mut self, value: u8) {
+        let latched_val = self.m7_latch as u16;
+        self.m7_latch = value;
+
+        self.m7_matrix_b = ((value as u16) << 8) | latched_val;
+        self.mult_factor_8 = latched_val as u8;
+
+        self.update_multiply_result();
+    }
+
+    #[allow(non_snake_case)]
+    pub fn write_211D(&mut self, value: u8) {
+        let latched_val = self.m7_latch as u16;
+        self.m7_latch = value;
+
+        self.m7_matrix_c = ((value as u16) << 8) | latched_val;
+    }
+
+    #[allow(non_snake_case)]
+    pub fn write_211E(&mut self, value: u8) {
+        let latched_val = self.m7_latch as u16;
+        self.m7_latch = value;
+
+        self.m7_matrix_d = ((value as u16) << 8) | latched_val;
+    }
+
+    #[allow(non_snake_case)]
+    pub fn write_211F(&mut self, value: u8) {
+        let latched_val = self.m7_latch as u16;
+        self.m7_latch = value;
+
+        self.m7_center_x = ((value as u16) << 8) | latched_val;
+    }
+
+    pub fn write_2120(&mut self, value: u8) {
+        let latched_val = self.m7_latch as u16;
+        self.m7_latch = value;
+
+        self.m7_center_y = ((value as u16) << 8) | latched_val;
+    }
+
+    pub fn write_2121(&mut self, value: u8) {
+        self.cgram_addr = value;
+        self.cgram_toggle = false;
+    }
+    
+    pub fn write_2123(&mut self, value: u8) {
+        self.bg2_w2_en = get_bit_n!(value, 7);
+        self.bg2_w2_inv = get_bit_n!(value, 6);
+        self.bg2_w1_en = get_bit_n!(value, 5);
+        self.bg2_w1_inv = get_bit_n!(value, 4);
+        self.bg1_w2_en = get_bit_n!(value, 3);
+        self.bg1_w2_inv = get_bit_n!(value, 2);
+        self.bg1_w1_en = get_bit_n!(value, 1);
+        self.bg1_w1_inv = get_bit_n!(value, 0);
+    }
+
+    pub fn write_2124(&mut self, value: u8) {
+        self.bg4_w2_en = get_bit_n!(value, 7);
+        self.bg4_w2_inv = get_bit_n!(value, 6);
+        self.bg4_w1_en = get_bit_n!(value, 5);
+        self.bg4_w1_inv = get_bit_n!(value, 4);
+        self.bg3_w2_en = get_bit_n!(value, 3);
+        self.bg3_w2_inv = get_bit_n!(value, 2);
+        self.bg3_w1_en = get_bit_n!(value, 1);
+        self.bg3_w1_inv = get_bit_n!(value, 0);
+    }
+
+    pub fn write_2125(&mut self, value: u8) {
+        self.col_w2_en = get_bit_n!(value, 7);
+        self.col_w2_inv = get_bit_n!(value, 6);
+        self.col_w1_en = get_bit_n!(value, 5);
+        self.col_w1_inv = get_bit_n!(value, 4);
+        self.obj_w2_en = get_bit_n!(value, 3);
+        self.obj_w2_inv = get_bit_n!(value, 2);
+        self.obj_w1_en = get_bit_n!(value, 1);
+        self.obj_w1_inv = get_bit_n!(value, 0);
+    }
+
+    pub fn write_2126(&mut self, value: u8) {
+        self.w1_left_pos = value;
+    }
+    
+    pub fn write_2127(&mut self, value: u8) {
+        self.w1_right_pos = value;
+    }
+    
+    pub fn write_2128(&mut self, value: u8) {
+        self.w2_left_pos = value;
+    }
+    
+    pub fn write_2129(&mut self, value: u8) {
+        self.w2_right_pos = value;
+    }
+
+    #[allow(non_snake_case)]
+    pub fn write_212A(&mut self, value: u8) {
+        self.bg4_win_logic = match value >> 6 {
+            0 => WindowLogic::Or,
+            1 => WindowLogic::And,
+            2 => WindowLogic::Xor,
+            3 => WindowLogic::Xnor,
+            _ => unreachable!(),
+        };
+        self.bg3_win_logic = match (value >> 4) & 3 {
+            0 => WindowLogic::Or,
+            1 => WindowLogic::And,
+            2 => WindowLogic::Xor,
+            3 => WindowLogic::Xnor,
+            _ => unreachable!(),
+        };
+        self.bg2_win_logic = match (value >> 2) & 3 {
+            0 => WindowLogic::Or,
+            1 => WindowLogic::And,
+            2 => WindowLogic::Xor,
+            3 => WindowLogic::Xnor,
+            _ => unreachable!(),
+        };
+        self.bg1_win_logic = match value & 3 {
+            0 => WindowLogic::Or,
+            1 => WindowLogic::And,
+            2 => WindowLogic::Xor,
+            3 => WindowLogic::Xnor,
+            _ => unreachable!(),
+        };
+    }
+
+    #[allow(non_snake_case)]
+    pub fn write_212B(&mut self, value: u8) {
+        self.col_win_logic = match (value >> 2) & 3 {
+            0 => WindowLogic::Or,
+            1 => WindowLogic::And,
+            2 => WindowLogic::Xor,
+            3 => WindowLogic::Xnor,
+            _ => unreachable!(),
+        };
+        self.obj_win_logic = match value & 3 {
+            0 => WindowLogic::Or,
+            1 => WindowLogic::And,
+            2 => WindowLogic::Xor,
+            3 => WindowLogic::Xnor,
+            _ => unreachable!(),
+        };
+    }
+
+    #[allow(non_snake_case)]
+    pub fn write_212C(&mut self, value: u8) {
+        self.obj_main_en = get_bit_n!(value, 4);
+        self.bg4_main_en = get_bit_n!(value, 3);
+        self.bg3_main_en = get_bit_n!(value, 2);
+        self.bg2_main_en = get_bit_n!(value, 1);
+        self.bg1_main_en = get_bit_n!(value, 0);
+    }
+
+    #[allow(non_snake_case)]
+    pub fn write_212D(&mut self, value: u8) {
+        self.obj_sub_en = get_bit_n!(value, 4);
+        self.bg4_sub_en = get_bit_n!(value, 3);
+        self.bg3_sub_en = get_bit_n!(value, 2);
+        self.bg2_sub_en = get_bit_n!(value, 1);
+        self.bg1_sub_en = get_bit_n!(value, 0);
+    }
+
+    #[allow(non_snake_case)]
+    pub fn write_212E(&mut self, value: u8) {
+        self.obj_win_main_en = get_bit_n!(value, 4);
+        self.bg4_win_main_en = get_bit_n!(value, 3);
+        self.bg3_win_main_en = get_bit_n!(value, 2);
+        self.bg2_win_main_en = get_bit_n!(value, 1);
+        self.bg1_win_main_en = get_bit_n!(value, 0);
+    }
+
+    #[allow(non_snake_case)]
+    pub fn write_212F(&mut self, value: u8) {
+        self.obj_win_sub_en = get_bit_n!(value, 4);
+        self.bg4_win_sub_en = get_bit_n!(value, 3);
+        self.bg3_win_sub_en = get_bit_n!(value, 2);
+        self.bg2_win_sub_en = get_bit_n!(value, 1);
+        self.bg1_win_sub_en = get_bit_n!(value, 0);
+    }
+
+    pub fn write_2130(&mut self, value: u8) {
+        self.col_win_main_region = match value >> 6 {
+            0 => WindowColorRegion::Nowhere,
+            1 => WindowColorRegion::Outside,
+            2 => WindowColorRegion::Inside,
+            3 => WindowColorRegion::Everywhere,
+            _ => unreachable!(),
+        };
+        self.col_win_sub_region = match (value >> 4) & 3 {
+            0 => WindowColorRegion::Nowhere,
+            1 => WindowColorRegion::Outside,
+            2 => WindowColorRegion::Inside,
+            3 => WindowColorRegion::Everywhere,
+            _ => unreachable!(),
+        };
+        self.sub_color_fixed = !get_bit_n!(value, 1);
+        self.use_direct_col = get_bit_n!(value, 0);
+    }
+
+    pub fn write_2131(&mut self, value: u8) {
+        self.cmath_operator = if get_bit_n!(value, 7) {
+            CMathOperator::Subtract
+        } else {
+            CMathOperator::Add
+        };
+        self.cmath_half = get_bit_n!(value, 6);
+        self.back_cmath_en = get_bit_n!(value, 5);
+        self.obj_cmath_en = get_bit_n!(value, 4);
+        self.bg4_cmath_en = get_bit_n!(value, 3);
+        self.bg3_cmath_en = get_bit_n!(value, 2);
+        self.bg2_cmath_en = get_bit_n!(value, 1);
+        self.bg1_cmath_en = get_bit_n!(value, 0);
+    }
+
+    pub fn write_2132(&mut self, value: u8) {
+        let new_val = value & 0x1F;
+        
+        if get_bit_n!(value, 7) { self.fixed_color.b = new_val; }
+        if get_bit_n!(value, 6) { self.fixed_color.g = new_val; }
+        if get_bit_n!(value, 5) { self.fixed_color.r = new_val; }
+    }
+
+    pub fn write_2133(&mut self, value: u8) {
+        self._external_sync = get_bit_n!(value, 7);
+        self.ext_bg_en = get_bit_n!(value, 6);
+        self.hi_res_en = get_bit_n!(value, 3);
+        self.overscan_en = get_bit_n!(value, 2);
+        self.obj_interlace_en = get_bit_n!(value, 1);
+        self.screen_interlace_en = get_bit_n!(value, 0);
+    }
+    
     pub fn update_multiply_result(&mut self) {
         let lhs = self.mult_factor_16 as i16;
         let rhs = self.mult_factor_8 as i8;

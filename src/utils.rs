@@ -35,7 +35,21 @@ macro_rules! get_bit_n {
     };
 }
 
+pub fn rand_bool() -> bool {
+    (rand_byte() & 1) != 0
+}
+
+pub fn rand_byte() -> u8 {
+    rand::rng().random()
+}
+
+pub fn rand_word() -> u16 {
+    rand::rng().random()
+}
+
 use std::io::Write;
+
+use rand::RngExt;
 
 pub fn hexdump8_str(bytes: &[u8], startval: usize) -> String {
     let mut result = "\n".to_string();
