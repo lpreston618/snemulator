@@ -223,19 +223,6 @@ impl Snemulator {
 
         self.ssmp.start_frame();
 
-        // for group in self.cgram.chunks_exact(4) {
-        //     debug!("({} {} {}) ({} {} {}) ({} {} {}) ({} {} {})", group[0].r, group[0].g, group[0].b, group[1].r, group[1].g, group[1].b, group[2].r, group[2].g, group[2].b, group[3].r, group[3].g, group[3].b);
-        // }
-        // debug!("");
-
-        // if self.ppu.frame == 80 {
-        //     let vram_addr = ((self.ppu_regs.bg3_vram_addr as u16) << 10) as usize;
-
-        //     crate::utils::hexdump16_to_file(&self.vram[vram_addr..vram_addr+0x400], vram_addr, "bg3_tilemap.bin");
-
-        //     info!("Dumped vram[{:04X}..{:04X}]", vram_addr, vram_addr + 0x400);
-        // }
-
         while !self.frame_ready {
             self.cycle(frame_buffer, audio_buffer);
         }
@@ -262,6 +249,8 @@ impl Snemulator {
     }
 
     fn cycle_cpu(&mut self) {
+        self.cpu.stopped = false;
+        
         if self.hdma_en {
             self.cpu.stopped = true;
             self.do_hdma();
@@ -489,29 +478,27 @@ impl Snemulator {
         breakpoints: &HashSet<BreakpointInfo>,
         watchpoints: &CompiledGraph,
     ) -> DebugAction {
-        if self.frame_ready {
-            self.frame += 1;
-        }
-        
+        let mut action = DebugAction::None;
+            
         self.frame_ready = false;
-
         self.ssmp.start_frame();
 
-        while !self.frame_ready {
-            let action = self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints);
+        'frame: while !self.frame_ready {
+            action = self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints);
 
             match action {
                 DebugAction::BreakpointHit | DebugAction::WatchpointHit => {
-                    return action;
+                    break 'frame;
                 }
                 _ => {}
             }
         }
         
-        self.frame += 1;
-        self.frame_ready = false;
+        if self.frame_ready {
+            self.frame += 1;
+        }
 
-        DebugAction::None
+        action
     }
 
     fn debug_cycle(
@@ -540,8 +527,7 @@ impl Snemulator {
         let cpu_pc = scpu::Address {
             bank: self.cpu.pb,
             offset: self.cpu.pc,
-        }
-        .to_u32();
+        }.to_u32();
 
         if breakpoints.contains(&BreakpointInfo::new(cpu_pc)) {
             DebugAction::BreakpointHit
