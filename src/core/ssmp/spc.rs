@@ -55,6 +55,19 @@ impl Spc700 {
         self.branch_taken = false;
         self.clocks = 0;
     }
+    
+    pub fn reset(&mut self) {
+        self.pc = 0xFFC0;
+        self.sp = 0;
+        self.a = 0;
+        self.x = 0;
+        self.y = 0;
+        self.status = 0;
+        self.dir_page = 0;
+        self.stopped = false;
+        self.branch_taken = false;
+        self.clocks = 0;
+    }
 
     pub fn clock(&mut self, bus: &mut SpcBus) {
         if self.clocks == 0 {            

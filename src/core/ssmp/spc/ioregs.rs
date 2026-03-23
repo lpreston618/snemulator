@@ -14,4 +14,10 @@ impl SpcIoRegs {
         self.sdsp_read_only = false;
         self.sdsp_addr = 0;
     }
+    
+    pub fn reset(&mut self) {
+        self.ipl_read_en = true;
+        self.sdsp_read_only = false;
+        self.sdsp_addr = 0;
+    }
 }

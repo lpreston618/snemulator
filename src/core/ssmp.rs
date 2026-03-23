@@ -70,6 +70,9 @@ impl Ssmp {
 
     pub fn reset(&mut self) {
         log::warn!("SMP Reset not implemented!");
+        
+        self.spc.reset();
+        self.spc_regs.reset();
     }
 
     pub fn start_frame(&mut self) {
