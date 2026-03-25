@@ -1,5 +1,3 @@
-use anyhow::Result;
-use log::{info, warn};
 use crate::app::{AppState, AppAction};
 
 fn button_with_shortcut(ui: &mut egui::Ui, label: &str, shortcut: &str) -> egui::Response {
@@ -26,7 +24,7 @@ impl MainMenuBar {
                             ui.close();
                         }
                         if ui.button("Recent ROMs").clicked() {
-                            warn!("Recent ROMs clicked.");
+                            log::warn!("Recent ROMs clicked.");
                             ui.close();
                         }
                     });
@@ -41,7 +39,7 @@ impl MainMenuBar {
                     ui.separator();
                     
                     if button_with_shortcut(ui, "Exit", "Ctrl + Q").clicked() {
-                        info!("Exit button clicked, exiting");
+                        log::info!("Exit button clicked, exiting");
                         
                         app_action = AppAction::Exit;
                         ui.close();
@@ -77,9 +75,16 @@ impl MainMenuBar {
                     
                     ui.separator();
                     
-                    if ui.button("Debug").clicked() {
-                        app_action = AppAction::OpenDebug;
-                        ui.close();
+                    if app_state.debug_active {
+                        if ui.button("Stop Debug").clicked() {
+                            app_action = AppAction::CloseDebug;
+                            ui.close();
+                        }
+                    } else {
+                        if ui.button("Debug").clicked() {
+                            app_action = AppAction::OpenDebug;
+                            ui.close();
+                        }
                     }
                     
                 });

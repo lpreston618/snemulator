@@ -25,7 +25,7 @@ pub struct DebugWindow {
     egui_window: Option<Box<UiWindow>>,
     cpu_tab: Box<tabs::CpuTab>,
     mem_tab: Box<tabs::MemoryTab>,
-    chr_tab: Box<tabs::ChrTab>,
+    ppu_tab: Box<tabs::PpuTab>,
     wp_tab: Box<tabs::WatchpointsTab>,
     selected_tab: tabs::DebugTab,
     jump_to_bps_on_hit: bool,
@@ -34,25 +34,37 @@ pub struct DebugWindow {
 
 impl DebugWindow {
     pub fn new(video_subsystem: &sdl3::VideoSubsystem, rom_mapping_mode: core::cartridge::MappingMode) -> Result<Self> {
-        let egui_window = UiWindow::new(
+        let mut egui_window = Box::new(UiWindow::new(
             video_subsystem,
             "Debug",
             DEBUG_WINDOW_WIDTH,
             DEBUG_WINDOW_HEIGHT,
-        )?;
+        )?);
         
         log::debug!("Debugging started");
+        
+        let mut ppu_tab = None;
+        
+        egui_window.with_painter(|_, painter| {
+            ppu_tab = Some(tabs::PpuTab::new(painter));
+        });
+        
+        let ppu_tab = Box::new(ppu_tab.unwrap());
 
-        Ok(Self {
-            egui_window: Some(Box::new(egui_window)),
+        let mut debug_window = Self {
+            egui_window: None,
             cpu_tab: Box::new(tabs::CpuTab::new(rom_mapping_mode)),
             mem_tab: Box::new(tabs::MemoryTab::new()),
-            chr_tab: Box::new(tabs::ChrTab::new()),
+            ppu_tab,
             wp_tab: Box::new(tabs::WatchpointsTab::new()),
             selected_tab: tabs::DebugTab::Cpu,
             jump_to_bps_on_hit: true,
             jump_to_wps_on_hit: true,
-        })
+        };
+        
+        debug_window.egui_window = Some(egui_window);
+        
+        Ok(debug_window)
     }
 
     pub fn update_and_render(
@@ -89,80 +101,84 @@ impl DebugWindow {
 
         let mut egui_window = self.egui_window.take().unwrap();
         let mut debug_action = DebugAction::None;
-
-        let full_output = egui_window.update_ui(|ctx| {
-            egui::TopBottomPanel::top("tabs").show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    for tab in [
-                        tabs::DebugTab::Cpu,
-                        tabs::DebugTab::Memory,
-                        tabs::DebugTab::ChrRam,
-                        tabs::DebugTab::Ppu,
-                        tabs::DebugTab::Watchpoints,
-                    ] {
-                        ui.selectable_value(&mut self.selected_tab, tab, tab.label());
-                    }
-                });
-            });
-            
-            egui::TopBottomPanel::top("commands").show(ctx, |ui| {
-                ui.add_space(5.0);
-                
-                ui.horizontal(|ui| {
-                    if ui.button("Step Instruction").clicked() {
-                        self.compile_watchpoints(&snem_core);
-                        debug_action = DebugAction::SingleStep;
-                    }
     
-                    if ui.button("Step Frame").clicked() {
-                        self.compile_watchpoints(&snem_core);
-                        debug_action = DebugAction::StepFrame;
-                    }
-                    
-                    if ui.button("Reset").clicked() {
-                        clear_watchpoints = true;
-                        debug_action = DebugAction::Reset;
-                    }
-                    
-                    if ui.button("Hard Reset").clicked() {
-                        clear_watchpoints = true;
-                        debug_action = DebugAction::HardReset;
-                    }
-                    
-                    if app_state.is_paused && ui.button("Resume").clicked() {
-                        self.compile_watchpoints(&snem_core);
-                        debug_action = DebugAction::TogglePause;
-                    }
-                    
-                    if !app_state.is_paused && ui.button("Pause").clicked() {
-                        debug_action = DebugAction::TogglePause;
-                        clear_watchpoints = true;
-                    }
-                    
-                    ui.label(format!("Frame: {}", snem_core.frame));
-                    
-                    ui.label(format!("Cycles: {}", snem_core.total_cycles));
+        let mut full_output: Option<egui::FullOutput> = None;
+    
+        egui_window.with_painter(|egui_window, painter| {
+            full_output = Some(egui_window.update_ui(|ctx| {
+                egui::TopBottomPanel::top("tabs").show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        for tab in [
+                            tabs::DebugTab::Cpu,
+                            tabs::DebugTab::Memory,
+                            tabs::DebugTab::Ppu,
+                            tabs::DebugTab::Watchpoints,
+                        ] {
+                            ui.selectable_value(&mut self.selected_tab, tab, tab.label());
+                        }
+                    });
                 });
                 
-                ui.add_space(3.0);
-            });
-            
-            egui::CentralPanel::default().show(ctx, |ui| {
-                match self.selected_tab {
-                    tabs::DebugTab::Cpu => self.cpu_tab.render(ui, snem_core, &mut self.jump_to_bps_on_hit),
-                    tabs::DebugTab::Memory => self.mem_tab.render(ui, snem_core),
-                    tabs::DebugTab::ChrRam => self.chr_tab.render(
-                        ui,
-                        snem_core,
-                        egui_window.gl(),
-                        egui_window.egui_renderer_mut(),
-                    ),
-                    tabs::DebugTab::Watchpoints => self.wp_tab.render(ui, snem_core, app_state, &mut self.jump_to_wps_on_hit),
-                    _ => {},
-                };
-            });
+                egui::TopBottomPanel::top("commands").show(ctx, |ui| {
+                    ui.add_space(5.0);
+                    
+                    ui.horizontal(|ui| {
+                        if ui.button("Step Instruction").clicked() {
+                            self.compile_watchpoints(&snem_core);
+                            debug_action = DebugAction::SingleStep;
+                        }
+        
+                        if ui.button("Step Frame").clicked() {
+                            self.compile_watchpoints(&snem_core);
+                            debug_action = DebugAction::StepFrame;
+                        }
+                        
+                        if ui.button("Reset").clicked() {
+                            clear_watchpoints = true;
+                            debug_action = DebugAction::Reset;
+                        }
+                        
+                        if ui.button("Hard Reset").clicked() {
+                            clear_watchpoints = true;
+                            debug_action = DebugAction::HardReset;
+                        }
+                        
+                        if app_state.is_paused && ui.button("Resume").clicked() {
+                            self.compile_watchpoints(&snem_core);
+                            debug_action = DebugAction::TogglePause;
+                        }
+                        
+                        if !app_state.is_paused && ui.button("Pause").clicked() {
+                            debug_action = DebugAction::TogglePause;
+                            clear_watchpoints = true;
+                        }
+                        
+                        ui.label(format!("Frame: {}", snem_core.frame));
+                        
+                        ui.label(format!("Cycles: {}", snem_core.total_cycles));
+                    });
+                    
+                    ui.add_space(3.0);
+                });
+                
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    match self.selected_tab {
+                        tabs::DebugTab::Cpu => self.cpu_tab.render(ui, snem_core, &mut self.jump_to_bps_on_hit),
+                        tabs::DebugTab::Memory => self.mem_tab.render(ui, snem_core),
+                        tabs::DebugTab::Ppu => self.ppu_tab.render(
+                            ui,
+                            snem_core,
+                            painter,
+                        ),
+                        tabs::DebugTab::Watchpoints => self.wp_tab.render(ui, snem_core, app_state, &mut self.jump_to_wps_on_hit),
+                        _ => {},
+                    };
+                });
+            }));
         });
 
+        let full_output = full_output.unwrap();
+        
         egui_window.clear();
         egui_window.render(full_output);
 

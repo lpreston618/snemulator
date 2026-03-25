@@ -45,6 +45,7 @@ pub enum AppAction {
     OpenAbout,
     OpenSettings,
     OpenDebug,
+    CloseDebug,
     Exit,
 }
 
@@ -323,6 +324,7 @@ impl SnemulatorApp {
             AppAction::OpenAbout => self.show_about(),
             AppAction::OpenSettings => self.show_settings(),
             AppAction::OpenDebug => self.show_debug(),
+            AppAction::CloseDebug => self.debug_window = None,
             AppAction::ToggleFullscreen => self.toggle_fullscreen(),
             AppAction::TogglePause => self.toggle_pause(),
             _ => {}

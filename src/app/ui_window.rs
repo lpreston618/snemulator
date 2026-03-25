@@ -9,7 +9,7 @@ pub struct UiWindow {
     raw_input: Option<egui::RawInput>,
     text_input: sdl3::keyboard::TextInputUtil,
     egui_ctx: egui::Context,
-    egui_painter: egui_glow::Painter,
+    egui_painter: Option<egui_glow::Painter>,
     gl: std::sync::Arc<glow::Context>,
     gl_context: sdl3::video::GLContext,
     ui_scale: f32,
@@ -67,12 +67,23 @@ impl UiWindow {
             window,
             raw_input: None,
             text_input,
-            egui_ctx,
-            egui_painter,
+            egui_ctx: egui_ctx,
+            egui_painter: Some(egui_painter),
             gl,
             gl_context,
             ui_scale,
         })
+    }
+    
+    pub fn with_painter<F>(&mut self, mut func: F)
+    where
+        F: FnMut(&mut Self, &mut egui_glow::Painter),
+    {
+        let mut painter = self.egui_painter.take().unwrap();
+        
+        func(self, &mut painter);
+        
+        self.egui_painter = Some(painter);
     }
     
     /// Updates the UI with the given function and returns the full output to be used during rendering.
@@ -114,7 +125,7 @@ impl UiWindow {
         let (width, height) = self.window.size();
         
         let clipped = self.egui_ctx.tessellate(full_output.shapes, full_output.pixels_per_point);
-        self.egui_painter.paint_and_update_textures(
+        self.egui_painter.as_mut().unwrap().paint_and_update_textures(
             [width, height],
             full_output.pixels_per_point,
             &clipped,
@@ -256,12 +267,12 @@ impl UiWindow {
         &mut self.window
     }
     
-    pub fn egui_renderer_mut(&mut self) -> &mut egui_glow::Painter {
-        &mut self.egui_painter
-    }
-    
     pub fn gl(&self) -> &glow::Context {
         &self.gl
+    }
+    
+    pub fn gl_clone(&self) -> std::sync::Arc<glow::Context> {
+        self.gl.clone()
     }
     
     pub fn ui_scale(&self) -> f32 {
@@ -272,6 +283,6 @@ impl UiWindow {
 impl Drop for UiWindow {
     fn drop(&mut self) {
         self.window.gl_make_current(&self.gl_context).ok();
-        self.egui_painter.destroy();
+        self.egui_painter.as_mut().unwrap().destroy();
     }
 }
