@@ -151,7 +151,12 @@ impl DebugWindow {
                 match self.selected_tab {
                     tabs::DebugTab::Cpu => self.cpu_tab.render(ui, snem_core, &mut self.jump_to_bps_on_hit),
                     tabs::DebugTab::Memory => self.mem_tab.render(ui, snem_core),
-                    tabs::DebugTab::ChrRam => self.chr_tab.render(ui, snem_core),
+                    tabs::DebugTab::ChrRam => self.chr_tab.render(
+                        ui,
+                        snem_core,
+                        egui_window.gl(),
+                        egui_window.egui_renderer_mut(),
+                    ),
                     tabs::DebugTab::Watchpoints => self.wp_tab.render(ui, snem_core, app_state, &mut self.jump_to_wps_on_hit),
                     _ => {},
                 };

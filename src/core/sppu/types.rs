@@ -70,7 +70,7 @@ pub enum AddressRemapping {
     ColDepth8,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum ColorDepth {
     #[default]
     Bpp2,

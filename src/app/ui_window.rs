@@ -256,6 +256,10 @@ impl UiWindow {
         &mut self.window
     }
     
+    pub fn egui_renderer_mut(&mut self) -> &mut egui_glow::Painter {
+        &mut self.egui_painter
+    }
+    
     pub fn gl(&self) -> &glow::Context {
         &self.gl
     }
