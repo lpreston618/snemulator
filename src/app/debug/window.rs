@@ -171,7 +171,6 @@ impl DebugWindow {
                             painter,
                         ),
                         tabs::DebugTab::Watchpoints => self.wp_tab.render(ui, snem_core, app_state, &mut self.jump_to_wps_on_hit),
-                        _ => {},
                     };
                 });
             }));

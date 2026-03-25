@@ -1,10 +1,7 @@
-use log::debug;
-
 use crate::core::cartridge::Cartridge;
 use crate::core::controller::JoypadCmd;
 use crate::core::scpu::dma::{AddressIncMode, Direction, DmaRegs, TransferPattern};
 use crate::core::scpu::ioregs::CpuIoRegs;
-use crate::core::scpu::mult::Mult5A22;
 use crate::core::sppu::color::Color;
 use crate::core::sppu::regs::PpuRegs;
 use crate::core::sppu::types::*;
@@ -488,6 +485,10 @@ impl<'a> CpuBus<'a> {
             }
 
             0x2122 => {
+                if !self.cpu_regs.vblank_flag && !self.cpu_regs.hblank_flag && !ppu_regs.in_fblank {
+                    return;
+                }
+                
                 if !ppu_regs.cgram_toggle {
                     ppu_regs.cgram_latch = value;
                 } else {

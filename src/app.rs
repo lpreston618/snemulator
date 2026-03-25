@@ -11,6 +11,7 @@ use crate::app::settings::{Settings, SettingsWindow};
 use crate::core::sysinfo::{SCREEN_WIDTH, SCREEN_HEIGHT};
 use crate::core::snemcore::Snemulator;
 use crate::core::controller::{ControllerPlayer, JoypadButton};
+pub use texture::Texture;
 
 mod about_window;
 mod main_window;
@@ -18,6 +19,7 @@ mod ui_window;
 mod menu;
 mod settings;
 mod utils;
+mod texture;
 
 pub mod debug;
 

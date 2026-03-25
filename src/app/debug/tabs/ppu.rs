@@ -1,7 +1,9 @@
 use crate::core::snemcore;
 
+mod bg;
 mod chr;
 mod layers;
+mod regs;
 
 #[derive(PartialEq, Clone, Copy)]
 enum PpuSubTab {

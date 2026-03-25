@@ -1,3 +1,5 @@
+use crate::core::sppu;
+
 #[derive(Clone, Copy, Debug, Default)]
 pub enum ObjectSizeSelect {
     #[default]
@@ -10,12 +12,6 @@ pub enum ObjectSizeSelect {
     Size16x32_32x64,
     Size16x32_32x32,
 }
-
-// impl From<u8> for ObjectSizeSelect {
-//     fn from(value: u8) -> Self {
-//         match
-//     }
-// }
 
 #[derive(Clone, Copy, Debug)]
 pub enum ObjectSize {
@@ -131,4 +127,70 @@ pub enum VideoType {
     #[default]
     Ntsc,
     Pal,
+}
+
+/// Contains all the relavent information about a sprite to be rendered
+#[derive(Debug)]
+pub struct OAMSprite {
+    pub x: u16,
+    pub max_x: u16,
+    pub y: u8,
+    pub tile_idx: u8,
+    pub use_second_obj_table: bool,
+    pub palette: u8,
+    pub priority: u8,
+    pub flip_x: bool,
+    pub flip_y: bool,
+    pub width: usize,
+    pub height: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ColorLayer {
+    Bg1,
+    Bg2,
+    Bg3,
+    Bg4,
+    Obj,
+    Back,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ColorData {
+    pub color: sppu::Color,
+    pub priority: u8,
+    pub transparent: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct TileData {
+    pub tile_addr: u16,
+    pub tile_row: u8,
+    pub tile_col: u8,
+    pub tile_size: TileSize,
+}
+
+#[derive(Debug)]
+pub struct ChrData {
+    pub chr_idx: u16,
+    pub chr_row: u8,
+    pub chr_col: u8,
+    pub chr_pal: u8,
+    pub chr_priority: u8,
+}
+
+pub struct BgData {
+    pub scroll_x: u16,
+    pub scroll_y: u16,
+    pub tilemap_cnt_x: TilemapCount,
+    pub tilemap_cnt_y: TilemapCount,
+    pub tile_size: TileSize,
+    pub tilemap_base_addr: u16,
+    pub mosaic_en: bool,
+}
+
+pub struct DotColorData {
+    pub main_col: sppu::Color,
+    pub sub_col: sppu::Color,
+    pub cmath_en: bool,
 }

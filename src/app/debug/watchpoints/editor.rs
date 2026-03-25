@@ -88,10 +88,6 @@ pub struct Editor {
     /// Cached signal values from the last evaluation pass.
     signals: HashMap<Port, bool>,
     selection: Selection,
-    cond_edit_arg1_text: String,
-    cond_edit_arg2_text: String,
-    hardware_reg_search: String,
-    editing_text: bool,
 }
 
 impl Editor {
@@ -103,10 +99,6 @@ impl Editor {
             zoom: 1.0,
             signals: HashMap::new(),
             selection: Selection::None,
-            cond_edit_arg1_text: String::new(),
-            cond_edit_arg2_text: String::new(),
-            hardware_reg_search: String::new(),
-            editing_text: false,
         }
     }
 
@@ -529,7 +521,6 @@ impl Editor {
                                     reg,
                                     reg_type,
                                     &mut lp.hw_reg_search_str,
-                                    idx,
                                 );
                             }
                             RegCategory::SysInfo => {
@@ -753,7 +744,6 @@ impl Editor {
                 val_ref_mut,
                 &mut wp.kind,
                 &mut wp.hw_reg_search,
-                0,
             );
 
             match wp.kind {
@@ -909,7 +899,6 @@ impl Editor {
         reg_or_flag: &mut Box<dyn WatchpointValue>,
         val_category: &mut RegCategory,
         search_str: &mut String,
-        egui_id: usize,
     ) -> bool {
         let mut editing = false;
 

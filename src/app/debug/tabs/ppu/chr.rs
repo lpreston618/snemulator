@@ -1,4 +1,4 @@
-use glow::HasContext;
+use crate::app;
 use crate::app::utils::monospace_text;
 use crate::core::snemcore;
 use crate::core::sppu::ColorDepth;
@@ -9,49 +9,27 @@ const ATLAS_TILES_TALL: usize = 16;
 // Total tiles we decode (all of VRAM in the given bpp)
 // 2bpp: 0x8000/8=4096, 4bpp: 0x8000/16=2048, 8bpp: 0x8000/32=1024
 const TILE_PX: usize = 8; // each tile is always 8x8 pixels in the viewer
-const ATLAS_TEXTURE_SIZE: usize = ATLAS_TILES_TALL * TILE_PX * ATLAS_TILES_WIDE * TILE_PX * 4;
-
-struct Atlas {
-    texture: glow::Texture,
-    texture_id: egui::TextureId,
-    pixels: Vec<u8>,
-}
+const ATLAS_PIXELS_WIDE: usize = ATLAS_TILES_WIDE * TILE_PX;
+const ATLAS_PIXELS_TALL: usize = ATLAS_TILES_TALL * TILE_PX;
 
 pub struct ChrViewer {
-    atlases: Vec<Atlas>,
+    atlases: [app::Texture; 6],
     bpp_mode: ColorDepth,
     bg_palette_index: usize,
     obj_palette_index: usize,
 }
 
 impl ChrViewer {
-    pub fn new(egui_renderer: &mut egui_glow::Painter) -> Self { 
-        let mut textures = [None; 6];
-        let mut texture_ids = [None; 6];
-        
-        for i in 0..6 {
-            let gl = egui_renderer.gl().as_ref();
-             
-            textures[i] = unsafe {
-                let tex = gl.create_texture().expect("Failed to create CHR texture");
-                gl.bind_texture(glow::TEXTURE_2D, Some(tex));
-                gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::NEAREST as i32);
-                gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::NEAREST as i32);
-                Some(tex)
-            };
-            
-            texture_ids[i] = Some(egui_renderer.register_native_texture(textures[i].unwrap()));
-        }
-        
-        let textures = textures.map(|t| t.unwrap());
-        let texture_ids = texture_ids.map(|t| t.unwrap());
-        
-        let atlases: Vec<Atlas> = textures.iter().zip(texture_ids.iter()).map(
-            |(tex, tex_id)| Atlas { texture: *tex, texture_id: *tex_id, pixels: vec![0u8; ATLAS_TEXTURE_SIZE] }
-        ).collect();
-        
+    pub fn new(painter: &mut egui_glow::Painter) -> Self { 
         Self {
-            atlases,
+            atlases: [
+                app::Texture::new(painter, ATLAS_PIXELS_WIDE, ATLAS_PIXELS_TALL),
+                app::Texture::new(painter, ATLAS_PIXELS_WIDE, ATLAS_PIXELS_TALL),
+                app::Texture::new(painter, ATLAS_PIXELS_WIDE, ATLAS_PIXELS_TALL),
+                app::Texture::new(painter, ATLAS_PIXELS_WIDE, ATLAS_PIXELS_TALL),
+                app::Texture::new(painter, ATLAS_PIXELS_WIDE, ATLAS_PIXELS_TALL),
+                app::Texture::new(painter, ATLAS_PIXELS_WIDE, ATLAS_PIXELS_TALL),
+            ],
             bpp_mode: ColorDepth::Bpp4,
             bg_palette_index: 0,
             obj_palette_index: 0,
@@ -89,40 +67,27 @@ impl ChrViewer {
 
         ui.separator();
 
-        
-
         let atlas_w = ATLAS_TILES_WIDE * TILE_PX;
         let atlas_h = ATLAS_TILES_TALL * TILE_PX;
         
-        Self::update_atlas(&mut self.atlases[0], snem_core, snem_core.ppu_regs.bg1_chr_base_addr, self.bpp_mode, self.bg_palette_index);
-        Self::update_atlas(&mut self.atlases[1], snem_core, snem_core.ppu_regs.bg2_chr_base_addr, self.bpp_mode, self.bg_palette_index);
-        Self::update_atlas(&mut self.atlases[2], snem_core, snem_core.ppu_regs.bg3_chr_base_addr, self.bpp_mode, self.bg_palette_index);
-        Self::update_atlas(&mut self.atlases[3], snem_core, snem_core.ppu_regs.bg4_chr_base_addr, self.bpp_mode, self.bg_palette_index);
+        let bg1_base_addr = (snem_core.ppu_regs.bg1_chr_base_addr as usize) << 12;
+        let bg2_base_addr = (snem_core.ppu_regs.bg2_chr_base_addr as usize) << 12;
+        let bg3_base_addr = (snem_core.ppu_regs.bg3_chr_base_addr as usize) << 12;
+        let bg4_base_addr = (snem_core.ppu_regs.bg4_chr_base_addr as usize) << 12;;
         
-        Self::update_atlas(
-            &mut self.atlases[4], 
-            snem_core, 
-            snem_core.ppu_regs.name_base_addr, 
-            ColorDepth::Bpp4, 
-            self.obj_palette_index);
-        Self::update_atlas(
-            &mut self.atlases[5], 
-            snem_core, 
-            snem_core.ppu_regs.name_base_addr + snem_core.ppu_regs.name_secondary_select, 
-            ColorDepth::Bpp4, 
-            self.obj_palette_index);
+        Self::update_atlas(&mut self.atlases[0], snem_core, bg1_base_addr, self.bpp_mode, self.bg_palette_index);
+        Self::update_atlas(&mut self.atlases[1], snem_core, bg2_base_addr, self.bpp_mode, self.bg_palette_index);
+        Self::update_atlas(&mut self.atlases[2], snem_core, bg3_base_addr, self.bpp_mode, self.bg_palette_index);
+        Self::update_atlas(&mut self.atlases[3], snem_core, bg4_base_addr, self.bpp_mode, self.bg_palette_index);
+        
+        let obj1_base_addr = (snem_core.ppu_regs.name_base_addr as usize) << 13;
+        let obj2_base_addr = obj1_base_addr + ((snem_core.ppu_regs.name_secondary_select as usize) << 12);
+        
+        Self::update_atlas(&mut self.atlases[4], snem_core, obj1_base_addr, ColorDepth::Bpp4, self.obj_palette_index);
+        Self::update_atlas(&mut self.atlases[5], snem_core, obj2_base_addr, ColorDepth::Bpp4, self.obj_palette_index);
 
         for i in 0..6 {
-            unsafe {
-                gl.bind_texture(glow::TEXTURE_2D, Some(self.atlases[i].texture));
-                gl.tex_image_2d(
-                    glow::TEXTURE_2D, 0,
-                    glow::RGBA as i32,
-                    atlas_w as i32, atlas_h as i32,
-                    0, glow::RGBA, glow::UNSIGNED_BYTE,
-                    glow::PixelUnpackData::Slice(Some(&self.atlases[i].pixels)),
-                );
-            }
+            self.atlases[i].update_texture(gl);
         }
 
         // Display scaled up in a scroll area
@@ -138,7 +103,7 @@ impl ChrViewer {
                 ui.vertical(|ui| {
                     ui.label(monospace_text(format!("Bg1 Chr Mem (${:04X})", (snem_core.ppu_regs.bg1_chr_base_addr as u16) << 12)));
                     
-                    ui.image(egui::load::SizedTexture::new(self.atlases[0].texture_id, image_size));
+                    ui.image(egui::load::SizedTexture::new(self.atlases[0].texture_id(), image_size));
                 });
                 
                 ui.separator();
@@ -146,7 +111,7 @@ impl ChrViewer {
                 ui.vertical(|ui| {
                     ui.label(monospace_text(format!("Bg2 Chr Mem (${:04X})", (snem_core.ppu_regs.bg2_chr_base_addr as u16) << 12)));
                     
-                    ui.image(egui::load::SizedTexture::new(self.atlases[1].texture_id, image_size));
+                    ui.image(egui::load::SizedTexture::new(self.atlases[1].texture_id(), image_size));
                 });
       
                 ui.separator();
@@ -156,7 +121,7 @@ impl ChrViewer {
                     
                     ui.label(monospace_text(format!("Obj1 Chr Mem (${:04X})", (base_addr as u16) << 12)));
                     
-                    ui.image(egui::load::SizedTexture::new(self.atlases[4].texture_id, image_size));
+                    ui.image(egui::load::SizedTexture::new(self.atlases[4].texture_id(), image_size));
                 });
             });
             
@@ -166,7 +131,7 @@ impl ChrViewer {
                 ui.vertical(|ui| {
                     ui.label(monospace_text(format!("Bg3 Chr Mem (${:04X})", (snem_core.ppu_regs.bg3_chr_base_addr as u16) << 12)));
                     
-                    ui.image(egui::load::SizedTexture::new(self.atlases[2].texture_id, image_size));
+                    ui.image(egui::load::SizedTexture::new(self.atlases[2].texture_id(), image_size));
                 });
                 
                 ui.separator();
@@ -174,7 +139,7 @@ impl ChrViewer {
                 ui.vertical(|ui| {
                     ui.label(monospace_text(format!("Bg4 Chr Mem (${:04X})", (snem_core.ppu_regs.bg4_chr_base_addr as u16) << 12)));
                     
-                    ui.image(egui::load::SizedTexture::new(self.atlases[3].texture_id, image_size));
+                    ui.image(egui::load::SizedTexture::new(self.atlases[3].texture_id(), image_size));
                 });
                 
                 ui.separator();
@@ -184,14 +149,14 @@ impl ChrViewer {
                     
                     ui.label(monospace_text(format!("Obj2 Chr Mem (${:04X})", (base_addr as u16) << 12)));
                     
-                    ui.image(egui::load::SizedTexture::new(self.atlases[5].texture_id, image_size));
+                    ui.image(egui::load::SizedTexture::new(self.atlases[5].texture_id(), image_size));
                 });
             });
         });
     }
     
-    fn update_atlas(atlas: &mut Atlas, snem_core: &snemcore::Snemulator, base_addr: u8, bpp: ColorDepth, palette_idx: usize) {
-        let base_addr = (base_addr as usize) << 12;
+    fn update_atlas(atlas: &mut app::Texture, snem_core: &snemcore::Snemulator, base_addr: usize, bpp: ColorDepth, palette_idx: usize) {
+        let pixels = atlas.pixels_mut();
         
         let words_per_tile = match bpp {
             ColorDepth::Bpp2 => 8,
@@ -272,9 +237,9 @@ impl ChrViewer {
                     // Transparent (index 0) shown as dark grey checkerboard
                     if pal_idx == 0 {
                         let checker = if (px / 2 + py / 2) % 2 == 0 { 0x50 } else { 0x30 };
-                        atlas.pixels[pixel_idx..pixel_idx+4].copy_from_slice(&[checker, checker, checker, 255]);
+                        pixels[pixel_idx..pixel_idx+4].copy_from_slice(&[checker, checker, checker, 255]);
                     } else {
-                        atlas.pixels[pixel_idx..pixel_idx+4].copy_from_slice(&[color.r, color.g, color.b, 255]);
+                        pixels[pixel_idx..pixel_idx+4].copy_from_slice(&[color.r, color.g, color.b, 255]);
                     }
                 }
             }

@@ -12,196 +12,14 @@ pub mod color;
 pub mod regs;
 pub mod types;
 
+#[macro_use]
+mod utils;
+
 pub const VBLANK_START_SCANLINE: usize = 225;
 const VBLANK_END_SCANLINE_NTSC: usize = 261;
 const VISIBLE_SCANLINE_START_DOT: usize = 22;
 pub const HBLANK_START_DOT: usize = 278;
 const SCANLINE_END_DOT: usize = 340;
-
-macro_rules! win_active_signals {
-    ($ppu:ident, $bus:ident, $bg:ident) => {
-        paste!( {
-            let win_en = if $bus.ppu_regs.[<$bg _win_main_en>] || $bus.ppu_regs.[<$bg _win_sub_en>] {
-                Ppu5C7x::win_active_signal(
-                    $bus.ppu_regs,
-                    $ppu.x,
-                    $bus.ppu_regs.[<$bg _w1_en>],
-                    $bus.ppu_regs.[<$bg _w2_en>],
-                    $bus.ppu_regs.[<$bg _w1_inv>],
-                    $bus.ppu_regs.[<$bg _w2_inv>],
-                    $bus.ppu_regs.[<$bg _win_logic>],
-                )
-            } else {
-                false
-            };
-
-            let [<$bg _win_main_en>] = win_en && $bus.ppu_regs.[<$bg _win_main_en>];
-            let [<$bg _win_sub_en>] = win_en && $bus.ppu_regs.[<$bg _win_sub_en>];
-
-            ([<$bg _win_main_en>], [<$bg _win_sub_en>])
-        } )
-    };
-}
-
-macro_rules! _bg_colors {
-    ($ppu:ident, $bus:ident, $col_depth:expr, $cgram_base_addr:expr, $bg_name:ident, $bg_layer:expr) => {
-        paste!( {
-            let ([<$bg_name _win_main>], [<$bg_name _win_sub>]) = win_active_signals!($ppu, $bus, $bg_name);
-
-            let mut bg_main_col = None;
-            let mut bg_sub_col = None;
-
-            if $bus.ppu_regs.[<$bg_name _main_en>] && ![<$bg_name _win_main>] {
-                bg_main_col = Some($ppu.bg_col(
-                    $bus,
-                    $bg_layer, $col_depth,
-                    $cgram_base_addr
-                ));
-            }
-
-            if $bus.ppu_regs.[<$bg_name _sub_en>] && ![<$bg_name _win_sub>] {
-                bg_sub_col = Some(bg_main_col.unwrap_or($ppu.bg_col(
-                    $bus,
-                    $bg_layer, $col_depth,
-                    $cgram_base_addr
-                )));
-            }
-
-            let bg_main_col = bg_main_col.unwrap_or($ppu.transparent_color_data($bus));
-            let bg_sub_col = bg_sub_col.unwrap_or($ppu.transparent_color_data($bus));
-
-            (bg_main_col, bg_sub_col)
-        } )
-    };
-}
-
-macro_rules! layer_colors {
-    ($ppu:ident, $bus:ident, $col_depth:expr, $cgram_base_addr:expr, ColorLayer::Bg1) => {
-        _bg_colors!(
-            $ppu,
-            $bus,
-            $col_depth,
-            $cgram_base_addr,
-            bg1,
-            ColorLayer::Bg1
-        )
-    };
-    ($ppu:ident, $bus:ident, $col_depth:expr, $cgram_base_addr:expr, ColorLayer::Bg2) => {
-        _bg_colors!(
-            $ppu,
-            $bus,
-            $col_depth,
-            $cgram_base_addr,
-            bg2,
-            ColorLayer::Bg2
-        )
-    };
-    ($ppu:ident, $bus:ident, $col_depth:expr, $cgram_base_addr:expr, ColorLayer::Bg3) => {
-        _bg_colors!(
-            $ppu,
-            $bus,
-            $col_depth,
-            $cgram_base_addr,
-            bg3,
-            ColorLayer::Bg3
-        )
-    };
-    ($ppu:ident, $bus:ident, $col_depth:expr, $cgram_base_addr:expr, ColorLayer::Bg4) => {
-        _bg_colors!(
-            $ppu,
-            $bus,
-            $col_depth,
-            $cgram_base_addr,
-            bg4,
-            ColorLayer::Bg4
-        )
-    };
-    ($ppu:ident, $bus:ident, ColorLayer::Obj) => {{
-        let (obj_win_main, obj_win_sub) = win_active_signals!($ppu, $bus, obj);
-
-        let mut obj_main_col = None;
-        let mut obj_sub_col = None;
-
-        if $bus.ppu_regs.obj_main_en && !obj_win_main {
-            obj_main_col = Some($ppu.sprite_col($bus));
-        }
-
-        if $bus.ppu_regs.obj_sub_en && !obj_win_sub {
-            obj_sub_col = Some(obj_main_col.unwrap_or($ppu.sprite_col($bus)));
-        }
-
-        let obj_main_col = obj_main_col.unwrap_or($ppu.transparent_color_data($bus));
-        let obj_sub_col = obj_sub_col.unwrap_or($ppu.transparent_color_data($bus));
-
-        (obj_main_col, obj_sub_col)
-    }};
-}
-
-/// Contains all the relavent information about a sprite to be rendered
-#[derive(Debug)]
-struct OAMSprite {
-    x: u16,
-    max_x: u16,
-    y: u8,
-    tile_idx: u8,
-    use_second_obj_table: bool,
-    palette: u8,
-    priority: u8,
-    flip_x: bool,
-    flip_y: bool,
-    width: usize,
-    height: usize,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum ColorLayer {
-    Bg1,
-    Bg2,
-    Bg3,
-    Bg4,
-    Obj,
-    Back,
-}
-
-#[derive(Clone, Copy, Debug)]
-struct ColorData {
-    color: Color,
-    priority: u8,
-    transparent: bool,
-}
-
-#[derive(Debug, Clone)]
-struct TileData {
-    tile_addr: u16,
-    tile_row: u8,
-    tile_col: u8,
-    tile_size: TileSize,
-}
-
-#[derive(Debug)]
-struct ChrData {
-    chr_idx: u16,
-    chr_row: u8,
-    chr_col: u8,
-    chr_pal: u8,
-    chr_priority: u8,
-}
-
-struct BgData {
-    scroll_x: u16,
-    scroll_y: u16,
-    tilemap_cnt_x: TilemapCount,
-    tilemap_cnt_y: TilemapCount,
-    tile_size: TileSize,
-    tilemap_base_addr: u16,
-    mosaic_en: bool,
-}
-
-struct DotColorData {
-    main_col: Color,
-    sub_col: Color,
-    cmath_en: bool,
-}
 
 pub struct Ppu5C7x {
     pub dot: usize,
@@ -508,11 +326,13 @@ impl Ppu5C7x {
 
                 let chr_idx = (tile_y << 4) + tile_x;
 
-                let obj_table_base_addr = if sprite.use_second_obj_table {
-                    regs.name_base_addr + regs.name_secondary_select
-                } else {
-                    regs.name_base_addr
-                };
+                let mut obj_table_base_addr = (regs.name_base_addr as u16) << 13;
+                
+                if sprite.use_second_obj_table {
+                    obj_table_base_addr += (regs.name_secondary_select as u16) << 12;
+                }
+                
+                let obj_table_base_addr = obj_table_base_addr; // No longer mutable
 
                 let spr_tile_base_addr =
                     (obj_table_base_addr as u16) + ((sprite.tile_idx as u16) << 4);

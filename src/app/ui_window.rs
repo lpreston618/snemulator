@@ -271,10 +271,6 @@ impl UiWindow {
         &self.gl
     }
     
-    pub fn gl_clone(&self) -> std::sync::Arc<glow::Context> {
-        self.gl.clone()
-    }
-    
     pub fn ui_scale(&self) -> f32 {
         self.ui_scale
     }
