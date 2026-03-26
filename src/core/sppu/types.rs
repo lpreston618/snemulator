@@ -30,7 +30,7 @@ pub enum TileSize {
     Size16x16,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum BgMode {
     #[default]
     Mode0,

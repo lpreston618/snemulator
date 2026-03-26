@@ -73,7 +73,7 @@ impl ChrViewer {
         let bg1_base_addr = (snem_core.ppu_regs.bg1_chr_base_addr as usize) << 12;
         let bg2_base_addr = (snem_core.ppu_regs.bg2_chr_base_addr as usize) << 12;
         let bg3_base_addr = (snem_core.ppu_regs.bg3_chr_base_addr as usize) << 12;
-        let bg4_base_addr = (snem_core.ppu_regs.bg4_chr_base_addr as usize) << 12;;
+        let bg4_base_addr = (snem_core.ppu_regs.bg4_chr_base_addr as usize) << 12;
         
         Self::update_atlas(&mut self.atlases[0], snem_core, bg1_base_addr, self.bpp_mode, self.bg_palette_index);
         Self::update_atlas(&mut self.atlases[1], snem_core, bg2_base_addr, self.bpp_mode, self.bg_palette_index);

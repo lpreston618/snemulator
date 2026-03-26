@@ -542,7 +542,7 @@ impl PpuRegs {
     }
     
     pub fn write_2107(&mut self, value: u8) {
-        self.bg1_vram_addr = (value >> 2) as u8;
+        self.bg1_vram_addr = value >> 2;
         self.bg1_tilemap_count_y = if get_bit_n!(value, 1) {
             TilemapCount::Two
         } else {

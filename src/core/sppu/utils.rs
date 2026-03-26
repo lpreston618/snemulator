@@ -24,7 +24,7 @@ macro_rules! win_active_signals {
 }
 
 macro_rules! _bg_colors {
-    ($ppu:ident, $bus:ident, $col_depth:expr, $cgram_base_addr:expr, $bg_name:ident, $bg_layer:expr) => {
+    ($ppu:ident, $bus:expr, $col_depth:expr, $cgram_base_addr:expr, $bg_name:ident, $bg_layer:expr) => {
         paste!( {
             let ([<$bg_name _win_main>], [<$bg_name _win_sub>]) = win_active_signals!($ppu, $bus, $bg_name);
 
@@ -33,7 +33,9 @@ macro_rules! _bg_colors {
 
             if $bus.ppu_regs.[<$bg_name _main_en>] && ![<$bg_name _win_main>] {
                 bg_main_col = Some($ppu.bg_col(
-                    $bus,
+                    $bus.ppu_regs,
+                    &$bus.vram[..],
+                    &$bus.cgram[..],
                     $bg_layer, $col_depth,
                     $cgram_base_addr
                 ));
@@ -41,7 +43,9 @@ macro_rules! _bg_colors {
 
             if $bus.ppu_regs.[<$bg_name _sub_en>] && ![<$bg_name _win_sub>] {
                 bg_sub_col = Some(bg_main_col.unwrap_or($ppu.bg_col(
-                    $bus,
+                    $bus.ppu_regs,
+                    &$bus.vram[..],
+                    &$bus.cgram[..],
                     $bg_layer, $col_depth,
                     $cgram_base_addr
                 )));

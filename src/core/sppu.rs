@@ -327,11 +327,11 @@ impl Ppu5C7x {
                 let chr_idx = (tile_y << 4) + tile_x;
 
                 let mut obj_table_base_addr = (regs.name_base_addr as u16) << 13;
-                
+
                 if sprite.use_second_obj_table {
                     obj_table_base_addr += (regs.name_secondary_select as u16) << 12;
                 }
-                
+
                 let obj_table_base_addr = obj_table_base_addr; // No longer mutable
 
                 let spr_tile_base_addr =
@@ -377,7 +377,7 @@ impl Ppu5C7x {
 
         // No sprites on this dot, return a transparent color
         ColorData {
-            color: self.transparent_color(bus),
+            color: bus.cgram[0],
             priority: 0,
             transparent: true,
         }
@@ -448,7 +448,7 @@ impl Ppu5C7x {
         } else if !bg4_main_col.transparent {
             (bg4_main_col.color, ColorLayer::Bg4)
         } else {
-            (self.transparent_color(bus), ColorLayer::Back)
+            (bus.cgram[0], ColorLayer::Back)
         };
 
         let sub_col = if obj_sub_col.priority == 3 && !obj_sub_col.transparent {
@@ -552,7 +552,7 @@ impl Ppu5C7x {
         } else if !bg3_main_col.transparent {
             (bg3_main_col.color, ColorLayer::Bg3)
         } else {
-            (self.transparent_color(bus), ColorLayer::Back)
+            (bus.cgram[0], ColorLayer::Back)
         };
 
         let sub_col = if bus.ppu_regs.sub_color_fixed {
@@ -641,7 +641,7 @@ impl Ppu5C7x {
         } else if !bg2_main_col.transparent {
             (bg2_main_col.color, ColorLayer::Bg2)
         } else {
-            (self.transparent_color(bus), ColorLayer::Back)
+            (bus.cgram[0], ColorLayer::Back)
         };
 
         let sub_col = if obj_sub_col.priority == 3 && !obj_sub_col.transparent {
@@ -661,7 +661,7 @@ impl Ppu5C7x {
         } else if !bg2_sub_col.transparent {
             bg2_sub_col.color
         } else {
-            self.transparent_color(bus)
+            bus.cgram[0]
         };
 
         let cmath_en = match main_layer {
@@ -718,7 +718,7 @@ impl Ppu5C7x {
         } else if !bg2_main_col.transparent {
             (bg2_main_col.color, ColorLayer::Bg2)
         } else {
-            (self.transparent_color(bus), ColorLayer::Back)
+            (bus.cgram[0], ColorLayer::Back)
         };
 
         let sub_col = if obj_sub_col.priority == 3 && !obj_sub_col.transparent {
@@ -738,7 +738,7 @@ impl Ppu5C7x {
         } else if !bg2_sub_col.transparent {
             bg2_sub_col.color
         } else {
-            self.transparent_color(bus)
+            bus.cgram[0]
         };
 
         let cmath_en = match main_layer {
@@ -795,7 +795,7 @@ impl Ppu5C7x {
         } else if !bg2_main_col.transparent {
             (bg2_main_col.color, ColorLayer::Bg2)
         } else {
-            (self.transparent_color(bus), ColorLayer::Back)
+            (bus.cgram[0], ColorLayer::Back)
         };
 
         let sub_col = if obj_sub_col.priority == 3 && !obj_sub_col.transparent {
@@ -815,7 +815,7 @@ impl Ppu5C7x {
         } else if !bg2_sub_col.transparent {
             bg2_sub_col.color
         } else {
-            self.transparent_color(bus)
+            bus.cgram[0]
         };
 
         let cmath_en = match main_layer {
@@ -833,82 +833,82 @@ impl Ppu5C7x {
         }
     }
 
-    fn bg_mode5_dot(&mut self, bus: &PpuBus) -> DotColorData {
-        const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG2_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
-        const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
+    // fn bg_mode5_dot(&mut self, bus: &PpuBus) -> DotColorData {
+    //     const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
+    //     const BG2_CGRAM_BASE_ADDR: u8 = 0x00;
+    //     const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
+    //     const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
 
-        let (obj_main_col, obj_sub_col) = layer_colors!(self, bus, ColorLayer::Obj);
-        let (bg1_main_col, bg1_sub_col) = layer_colors!(
-            self,
-            bus,
-            BG1_COL_DEPTH,
-            BG1_CGRAM_BASE_ADDR,
-            ColorLayer::Bg1
-        );
-        let (bg2_main_col, bg2_sub_col) = layer_colors!(
-            self,
-            bus,
-            BG2_COL_DEPTH,
-            BG2_CGRAM_BASE_ADDR,
-            ColorLayer::Bg2
-        );
+    //     let (obj_main_col, obj_sub_col) = layer_colors!(self, bus, ColorLayer::Obj);
+    //     let (bg1_main_col, bg1_sub_col) = layer_colors!(
+    //         self,
+    //         bus,
+    //         BG1_COL_DEPTH,
+    //         BG1_CGRAM_BASE_ADDR,
+    //         ColorLayer::Bg1
+    //     );
+    //     let (bg2_main_col, bg2_sub_col) = layer_colors!(
+    //         self,
+    //         bus,
+    //         BG2_COL_DEPTH,
+    //         BG2_CGRAM_BASE_ADDR,
+    //         ColorLayer::Bg2
+    //     );
 
-        let (main_col, main_layer) = if obj_main_col.priority == 3 && !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if bg1_main_col.priority != 0 && !bg1_main_col.transparent {
-            (bg1_main_col.color, ColorLayer::Bg1)
-        } else if obj_main_col.priority == 2 && !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if bg2_main_col.priority != 0 && !bg2_main_col.transparent {
-            (bg2_main_col.color, ColorLayer::Bg2)
-        } else if obj_main_col.priority == 1 && !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if !bg1_main_col.transparent {
-            (bg1_main_col.color, ColorLayer::Bg1)
-        } else if !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if !bg2_main_col.transparent {
-            (bg2_main_col.color, ColorLayer::Bg2)
-        } else {
-            (self.transparent_color(bus), ColorLayer::Back) // Main screen color is black if all layers are transparent
-        };
+    //     let (main_col, main_layer) = if obj_main_col.priority == 3 && !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if bg1_main_col.priority != 0 && !bg1_main_col.transparent {
+    //         (bg1_main_col.color, ColorLayer::Bg1)
+    //     } else if obj_main_col.priority == 2 && !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if bg2_main_col.priority != 0 && !bg2_main_col.transparent {
+    //         (bg2_main_col.color, ColorLayer::Bg2)
+    //     } else if obj_main_col.priority == 1 && !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if !bg1_main_col.transparent {
+    //         (bg1_main_col.color, ColorLayer::Bg1)
+    //     } else if !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if !bg2_main_col.transparent {
+    //         (bg2_main_col.color, ColorLayer::Bg2)
+    //     } else {
+    //         (bus.cgram[0], ColorLayer::Back) // Main screen color is black if all layers are transparent
+    //     };
 
-        let sub_col = if obj_sub_col.priority == 3 && !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if bg1_sub_col.priority != 0 && !bg1_sub_col.transparent {
-            bg1_sub_col.color
-        } else if obj_sub_col.priority == 2 && !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if bg2_sub_col.priority != 0 && !bg2_sub_col.transparent {
-            bg2_sub_col.color
-        } else if obj_sub_col.priority == 1 && !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if !bg1_sub_col.transparent {
-            bg1_sub_col.color
-        } else if !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if !bg2_sub_col.transparent {
-            bg2_sub_col.color
-        } else {
-            bus.ppu_regs.fixed_color // Sub screen color is fixed color if all layers are transparent
-        };
+    //     let sub_col = if obj_sub_col.priority == 3 && !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if bg1_sub_col.priority != 0 && !bg1_sub_col.transparent {
+    //         bg1_sub_col.color
+    //     } else if obj_sub_col.priority == 2 && !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if bg2_sub_col.priority != 0 && !bg2_sub_col.transparent {
+    //         bg2_sub_col.color
+    //     } else if obj_sub_col.priority == 1 && !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if !bg1_sub_col.transparent {
+    //         bg1_sub_col.color
+    //     } else if !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if !bg2_sub_col.transparent {
+    //         bg2_sub_col.color
+    //     } else {
+    //         bus.ppu_regs.fixed_color // Sub screen color is fixed color if all layers are transparent
+    //     };
 
-        let cmath_en = match main_layer {
-            ColorLayer::Bg1 => bus.ppu_regs.bg1_cmath_en,
-            ColorLayer::Bg2 => bus.ppu_regs.bg2_cmath_en,
-            ColorLayer::Obj => bus.ppu_regs.obj_cmath_en,
-            ColorLayer::Back => bus.ppu_regs.back_cmath_en,
-            _ => unreachable!(), // No other layers considered in Mode 5
-        };
+    //     let cmath_en = match main_layer {
+    //         ColorLayer::Bg1 => bus.ppu_regs.bg1_cmath_en,
+    //         ColorLayer::Bg2 => bus.ppu_regs.bg2_cmath_en,
+    //         ColorLayer::Obj => bus.ppu_regs.obj_cmath_en,
+    //         ColorLayer::Back => bus.ppu_regs.back_cmath_en,
+    //         _ => unreachable!(), // No other layers considered in Mode 5
+    //     };
 
-        DotColorData {
-            main_col,
-            sub_col,
-            cmath_en,
-        }
-    }
+    //     DotColorData {
+    //         main_col,
+    //         sub_col,
+    //         cmath_en,
+    //     }
+    // }
 
     // fn bg_mode6_dot(&mut self, self.x: usize, self.y: usize, spr_col: ColorData) -> (u16, u16, bool) {
 
@@ -920,100 +920,59 @@ impl Ppu5C7x {
 
     fn bg_col(
         &self,
-        bus: &PpuBus,
+        regs: &PpuRegs,
+        vram: &[u16],
+        cgram: &[Color],
         bg_layer: ColorLayer,
         color_depth: ColorDepth,
         bg_cgram_base_addr: u8,
     ) -> ColorData {
         let bg_chr_base_addr = match bg_layer {
-            ColorLayer::Bg1 => (bus.ppu_regs.bg1_chr_base_addr as u16) << 12,
-            ColorLayer::Bg2 => (bus.ppu_regs.bg2_chr_base_addr as u16) << 12,
-            ColorLayer::Bg3 => (bus.ppu_regs.bg3_chr_base_addr as u16) << 12,
-            ColorLayer::Bg4 => (bus.ppu_regs.bg4_chr_base_addr as u16) << 12,
+            ColorLayer::Bg1 => (regs.bg1_chr_base_addr as u16) << 12,
+            ColorLayer::Bg2 => (regs.bg2_chr_base_addr as u16) << 12,
+            ColorLayer::Bg3 => (regs.bg3_chr_base_addr as u16) << 12,
+            ColorLayer::Bg4 => (regs.bg4_chr_base_addr as u16) << 12,
 
-            _ => unreachable!("Should only be called for bg layers"),
+            _ => panic!("bg_col should only be called for bg layers"),
         };
 
-        let tile_data = match bus.ppu_regs.bg_mode {
+        let tile_data = match regs.bg_mode {
             BgMode::Mode0 | BgMode::Mode1 | BgMode::Mode2 | BgMode::Mode3 | BgMode::Mode4 => {
-                self.bg_tile_idx(bus, bg_layer)
+                self.bg_tile_idx(regs, bg_layer, self.x, self.y)
             }
 
-            BgMode::Mode5 | BgMode::Mode6 => self.hi_res_bg_tile_idx(bus, bg_layer),
+            BgMode::Mode5 | BgMode::Mode6 => todo!(),
+            // BgMode::Mode5 | BgMode::Mode6 => self.hi_res_bg_tile_idx(bus, bg_layer),
 
             BgMode::Mode7 => todo!(),
         };
 
         let col = match color_depth {
             ColorDepth::Bpp2 => {
-                self.bg_col_2bpp(bus, tile_data, bg_chr_base_addr, bg_cgram_base_addr)
+                self.bg_col_2bpp(regs, vram, cgram, tile_data, bg_chr_base_addr, bg_cgram_base_addr)
             }
             ColorDepth::Bpp4 => {
-                self.bg_col_4bpp(bus, tile_data, bg_chr_base_addr, bg_cgram_base_addr)
+                self.bg_col_4bpp(regs, vram, cgram, tile_data, bg_chr_base_addr, bg_cgram_base_addr)
             }
-            ColorDepth::Bpp8 => self.bg_col_8bpp(bus, tile_data, bg_chr_base_addr),
+            ColorDepth::Bpp8 => self.bg_col_8bpp(regs, vram, cgram, tile_data, bg_chr_base_addr),
         };
-
-        // let col = match bg_layer {
-        //     ColorLayer::Bg1 => {
-        //         let (x, col) = (self.x / 8, self.x % 8);
-        //         let (y, row) = (self.y / 8, self.y % 8);
-
-        //         let chr_data = ChrData {
-        //             chr_idx: (y*16 + x) as u16,
-        //             chr_col: col as u8,
-        //             chr_row: row as u8,
-        //             chr_pal: 0,
-        //             chr_priority: 0,
-        //         };
-
-        //         let base_chr_addr = (((self.frame / 15) * 0x100) & (VRAM_SIZE-1)) as u16;
-
-        //         let tile_chr_addr = base_chr_addr + (chr_data.chr_idx << 4) + chr_data.chr_row as u16;
-
-        //         let bp01 = bus.vram[(tile_chr_addr + 0) as usize];
-        //         let bp23 = bus.vram[(tile_chr_addr + 8) as usize];
-
-        //         let b0 = ((bp01 >> (7-chr_data.chr_col)) & 1) as u8;
-        //         let b1 = ((bp01 >> (15-chr_data.chr_col)) & 1) as u8;
-        //         let b2 = ((bp23 >> (7-chr_data.chr_col)) & 1) as u8;
-        //         let b3 = ((bp23 >> (15-chr_data.chr_col)) & 1) as u8;
-
-        //         let pal_idx = (b3 << 3) | (b2 << 2) | (b1 << 1) | b0;
-
-        //         let cgram_addr = bg_cgram_base_addr | (chr_data.chr_pal << 4) | pal_idx;
-
-        //         let raw_color = if pal_idx == 0 {
-        //             self.transparent_color(bus)
-        //         } else {
-        //             self.registers.cgram[cgram_addr as usize].get()
-        //         };
-
-        //         ColorData {
-        //             raw_color,
-        //             priority: chr_data.chr_priority,
-        //             transparent: pal_idx == 0,
-        //         }
-        //     }
-        //     _ => self.transparent_color_data(bus)
-        // };
 
         col
     }
 
     /// For modes 0-4
-    fn bg_tile_idx(&self, bus: &PpuBus, bg_layer: ColorLayer) -> TileData {
-        let bg_data = self.fetch_bg_data(bus.ppu_regs, bg_layer);
+    pub fn bg_tile_idx(&self, regs: &PpuRegs, bg_layer: ColorLayer, x: usize, y: usize) -> TileData {
+        let bg_data = self.fetch_bg_data(regs, bg_layer);
 
         let (mosaic_x, mosaic_y) = if bg_data.mosaic_en {
-            let mosaic_mod = (bus.ppu_regs.mosaic_size + 1) as usize;
+            let mosaic_mod = (regs.mosaic_size + 1) as usize;
 
             (
-                self.x - (self.x % mosaic_mod),
-                self.y - (self.y % mosaic_mod),
+                x - (x % mosaic_mod),
+                y - (y % mosaic_mod),
             )
         } else {
-            (self.x, self.y)
+            (x, y)
         };
 
         let scroll_range = match bg_data.tile_size {
@@ -1148,7 +1107,7 @@ impl Ppu5C7x {
         }
     }
 
-    fn fetch_bg_data(&self, regs: &PpuRegs, bg_layer: ColorLayer) -> BgData {
+    pub fn fetch_bg_data(&self, regs: &PpuRegs, bg_layer: ColorLayer) -> BgData {
         match bg_layer {
             ColorLayer::Bg1 => BgData {
                 scroll_x: regs.bg1_m7_x_offset,
@@ -1194,10 +1153,10 @@ impl Ppu5C7x {
         }
     }
 
-    fn fetch_chr_data(&self, bus: &PpuBus, tile_data: TileData) -> ChrData {
-        let tile_word = bus.vram[(tile_data.tile_addr) as usize];
+    fn fetch_chr_data(&self, regs: &PpuRegs, vram: &[u16], tile_data: TileData) -> ChrData {
+        let tile_word = vram[(tile_data.tile_addr) as usize];
 
-        let in_true_hi_res_mode = match bus.ppu_regs.bg_mode {
+        let in_true_hi_res_mode = match regs.bg_mode {
             BgMode::Mode5 | BgMode::Mode6 => true,
             _ => false,
         };
@@ -1245,18 +1204,20 @@ impl Ppu5C7x {
         }
     }
 
-    fn bg_col_2bpp(
+    pub fn bg_col_2bpp(
         &self,
-        bus: &PpuBus,
+        regs: &PpuRegs,
+        vram: &[u16],
+        cgram: &[Color],
         tile_data: TileData,
         bg_chr_base_addr: u16,
         bg_cgram_base_addr: u8,
     ) -> ColorData {
-        let chr_data = self.fetch_chr_data(bus, tile_data.clone());
+        let chr_data = self.fetch_chr_data(regs, vram, tile_data.clone());
 
         let tile_chr_addr = bg_chr_base_addr + (chr_data.chr_idx << 3) + chr_data.chr_row as u16;
 
-        let bp01 = bus.vram[(tile_chr_addr) as usize];
+        let bp01 = vram[(tile_chr_addr) as usize];
 
         let b0 = ((bp01 >> (7 - chr_data.chr_col)) & 1) as u8;
         let b1 = ((bp01 >> (15 - chr_data.chr_col)) & 1) as u8;
@@ -1266,9 +1227,9 @@ impl Ppu5C7x {
         let cgram_addr = bg_cgram_base_addr | (chr_data.chr_pal << 2) | pal_idx;
 
         let color = if pal_idx == 0 {
-            self.transparent_color(bus)
+            cgram[0]
         } else {
-            bus.cgram[cgram_addr as usize]
+            cgram[cgram_addr as usize]
         };
 
         ColorData {
@@ -1278,19 +1239,21 @@ impl Ppu5C7x {
         }
     }
 
-    fn bg_col_4bpp(
+    pub fn bg_col_4bpp(
         &self,
-        bus: &PpuBus,
+        regs: &PpuRegs,
+        vram: &[u16],
+        cgram: &[Color],
         tile_data: TileData,
         bg_chr_base_addr: u16,
         bg_cgram_base_addr: u8,
     ) -> ColorData {
-        let chr_data = self.fetch_chr_data(bus, tile_data);
+        let chr_data = self.fetch_chr_data(regs, vram, tile_data);
 
         let tile_chr_addr = bg_chr_base_addr + (chr_data.chr_idx << 4) + chr_data.chr_row as u16;
 
-        let bp01 = bus.vram[(tile_chr_addr + 0) as usize];
-        let bp23 = bus.vram[(tile_chr_addr + 8) as usize];
+        let bp01 = vram[(tile_chr_addr + 0) as usize];
+        let bp23 = vram[(tile_chr_addr + 8) as usize];
 
         let b0 = ((bp01 >> (7 - chr_data.chr_col)) & 1) as u8;
         let b1 = ((bp01 >> (15 - chr_data.chr_col)) & 1) as u8;
@@ -1302,9 +1265,9 @@ impl Ppu5C7x {
         let cgram_addr = bg_cgram_base_addr | (chr_data.chr_pal << 4) | pal_idx;
 
         let color = if pal_idx == 0 {
-            self.transparent_color(bus)
+            cgram[0]
         } else {
-            bus.cgram[cgram_addr as usize]
+            cgram[cgram_addr as usize]
         };
 
         ColorData {
@@ -1314,16 +1277,16 @@ impl Ppu5C7x {
         }
     }
 
-    fn bg_col_8bpp(&self, bus: &PpuBus, tile_data: TileData, bg_chr_base_addr: u16) -> ColorData {
-        let chr_data = self.fetch_chr_data(bus, tile_data);
+    pub fn bg_col_8bpp(&self, regs: &PpuRegs, vram: &[u16], cgram: &[Color], tile_data: TileData, bg_chr_base_addr: u16) -> ColorData {
+        let chr_data = self.fetch_chr_data(regs, vram, tile_data);
 
         let tile_chr_addr = bg_chr_base_addr + (chr_data.chr_idx << 5) + chr_data.chr_row as u16;
 
-        if !bus.ppu_regs.use_direct_col {
-            let bp01 = bus.vram[(tile_chr_addr + 0) as usize];
-            let bp23 = bus.vram[(tile_chr_addr + 8) as usize];
-            let bp45 = bus.vram[(tile_chr_addr + 16) as usize];
-            let bp67 = bus.vram[(tile_chr_addr + 24) as usize];
+        if !regs.use_direct_col {
+            let bp01 = vram[(tile_chr_addr + 0) as usize];
+            let bp23 = vram[(tile_chr_addr + 8) as usize];
+            let bp45 = vram[(tile_chr_addr + 16) as usize];
+            let bp67 = vram[(tile_chr_addr + 24) as usize];
 
             let b0 = ((bp01 >> (7 - chr_data.chr_col)) & 1) as u8;
             let b1 = ((bp01 >> (15 - chr_data.chr_col)) & 1) as u8;
@@ -1344,9 +1307,9 @@ impl Ppu5C7x {
                 | b0;
 
             let color = if cgram_addr == 0 {
-                self.transparent_color(bus)
+                cgram[0]
             } else {
-                bus.cgram[cgram_addr as usize]
+                cgram[cgram_addr as usize]
             };
 
             ColorData {
@@ -1359,7 +1322,7 @@ impl Ppu5C7x {
             let g_ext = (chr_data.chr_pal & 0x8) >> 2;
             let b_ext = (chr_data.chr_pal & 0x10) >> 2;
 
-            let rgb_data = bus.vram[(tile_chr_addr + chr_data.chr_col as u16) as usize] as u8;
+            let rgb_data = vram[(tile_chr_addr + chr_data.chr_col as u16) as usize] as u8;
 
             let r = ((rgb_data & 0x7) << 2) | r_ext;
             let g = ((rgb_data & 0x38) >> 1) | g_ext;
@@ -1402,17 +1365,17 @@ impl Ppu5C7x {
                 if col_win_en {
                     sub_col
                 } else {
-                    self.transparent_color(bus)
+                    bus.cgram[0]
                 }
             }
             WindowColorRegion::Inside => {
                 if col_win_en {
-                    self.transparent_color(bus)
+                    bus.cgram[0]
                 } else {
                     sub_col
                 }
             }
-            WindowColorRegion::Everywhere => self.transparent_color(bus),
+            WindowColorRegion::Everywhere => bus.cgram[0],
         };
 
         let sub_col = if bus.ppu_regs.sub_color_fixed {
@@ -1495,10 +1458,6 @@ impl Ppu5C7x {
         win_en
     }
 
-    fn transparent_color(&self, bus: &PpuBus) -> Color {
-        bus.cgram[0]
-    }
-
     fn transparent_color_data(&self, bus: &PpuBus) -> ColorData {
         ColorData {
             color: bus.cgram[0],
@@ -1567,28 +1526,22 @@ impl Ppu5C7x {
         ppu_regs.h_counter = self.dot as u16;
         ppu_regs.v_counter = self.scanline as u16;
 
-        match cpu_regs.hv_timer_irq_mode {
-            HVTimerIRQ::None => {}
+        let trigger_int = match cpu_regs.hv_timer_irq_mode {
+            HVTimerIRQ::None => false,
             HVTimerIRQ::HTimer => {
-                if ppu_regs.h_counter == cpu_regs.h_counter_target {
-                    cpu_regs.hv_timer_irq_flag = true;
-                    bus.trigger_interrupt(CpuInterrupt::IRQ);
-                }
+                ppu_regs.h_counter == cpu_regs.h_counter_target
             }
             HVTimerIRQ::VTimer => {
-                if ppu_regs.v_counter == cpu_regs.v_counter_target && ppu_regs.h_counter == 0 {
-                    cpu_regs.hv_timer_irq_flag = true;
-                    bus.trigger_interrupt(CpuInterrupt::IRQ);
-                }
+                ppu_regs.v_counter == cpu_regs.v_counter_target && ppu_regs.h_counter == 0
             }
             HVTimerIRQ::Both => {
-                if ppu_regs.v_counter == cpu_regs.v_counter_target
-                    && ppu_regs.h_counter == cpu_regs.h_counter_target
-                {
-                    cpu_regs.hv_timer_irq_flag = true;
-                    bus.trigger_interrupt(CpuInterrupt::IRQ);
-                }
+                ppu_regs.v_counter == cpu_regs.v_counter_target && ppu_regs.h_counter == cpu_regs.h_counter_target
             }
+        };
+        
+        if trigger_int {
+            cpu_regs.hv_timer_irq_flag = true;
+            bus.trigger_interrupt(CpuInterrupt::IRQ);
         }
     }
 
