@@ -32,6 +32,8 @@ impl<const BG_LAYER: usize> BgView<BG_LAYER> {
             // self.needs_updating = false;
         }
         
+        let color_depth = self.color_depth(snem_core);
+        
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 egui::ComboBox::from_id_salt("bg_mode_sel")
@@ -47,6 +49,12 @@ impl<const BG_LAYER: usize> BgView<BG_LAYER> {
                         ui.selectable_value(&mut self.bg_mode, Some(sppu::BgMode::Mode7), "Mode7");
                         ui.selectable_value(&mut self.bg_mode, None, "(Current in Program)");
                     });
+                
+                if let Some(col_depth) = color_depth {
+                    ui.label(format!("({:?})", col_depth));
+                } else {
+                    ui.label(format!("(BG{} not active in {:?})", BG_LAYER, self.bg_mode.unwrap_or(snem_core.ppu_regs.bg_mode)));
+                }
             });
             
             ui.separator();
@@ -72,13 +80,14 @@ impl<const BG_LAYER: usize> BgView<BG_LAYER> {
         let bg_chr_base_addr = self.chr_base_addr(snem_core);
         let bg_cgram_base_addr = self.cgram_base_addr(snem_core);
         
-        if bg_cgram_base_addr.is_none() {
+        if bg_cgram_base_addr.is_none() || color_depth.is_none() {
             self.bg_layer_active = false;
             return;
         }
         
         self.bg_layer_active = true;
         
+        let color_depth = color_depth.unwrap();
         let bg_cgram_base_addr = bg_cgram_base_addr.unwrap();
         let (width, height) = self.texture.size();
         let pixels = self.texture.pixels_mut();
@@ -125,39 +134,49 @@ impl<const BG_LAYER: usize> BgView<BG_LAYER> {
         }
     }
 
-    fn color_depth(&self, snem_core: &snemcore::Snemulator) -> sppu::ColorDepth {
+    fn color_depth(&self, snem_core: &snemcore::Snemulator) -> Option<sppu::ColorDepth> {
         let bg_mode = self.bg_mode.unwrap_or(snem_core.ppu_regs.bg_mode);
         
         match BG_LAYER {
             1 => match bg_mode {
-                sppu::BgMode::Mode0 => sppu::ColorDepth::Bpp2,
+                sppu::BgMode::Mode0 => Some(sppu::ColorDepth::Bpp2),
                 sppu::BgMode::Mode1
                 | sppu::BgMode::Mode2
                 | sppu::BgMode::Mode5
-                | sppu::BgMode::Mode6 => sppu::ColorDepth::Bpp4,
-                _ => sppu::ColorDepth::Bpp8,
+                | sppu::BgMode::Mode6 => Some(sppu::ColorDepth::Bpp4),
+                _ => Some(sppu::ColorDepth::Bpp8),
             },
             2 => match bg_mode {
                 sppu::BgMode::Mode0 | sppu::BgMode::Mode4 | sppu::BgMode::Mode5 => {
-                    sppu::ColorDepth::Bpp2
+                    Some(sppu::ColorDepth::Bpp2)
                 }
                 sppu::BgMode::Mode1 | sppu::BgMode::Mode2 | sppu::BgMode::Mode3 => {
-                    sppu::ColorDepth::Bpp4
+                    Some(sppu::ColorDepth::Bpp4)
                 }
-                _ => sppu::ColorDepth::Bpp2,
+                _ => None,
             },
-            3 => sppu::ColorDepth::Bpp2,
-            4 => sppu::ColorDepth::Bpp2,
+            3 =>  match bg_mode {
+                sppu::BgMode::Mode0 | sppu::BgMode::Mode1 => {
+                    Some(sppu::ColorDepth::Bpp2)
+                }
+                _ => None,
+            },
+            4 => match bg_mode {
+                sppu::BgMode::Mode0 => {
+                    Some(sppu::ColorDepth::Bpp2)
+                }
+                _ => None,
+            },
             _ => panic!("BgView must have BG_LAYER == 1,2,3, or 4"),
         }
     }
 
     fn chr_base_addr(&self, snem_core: &snemcore::Snemulator) -> u16 {
         match BG_LAYER {
-            1 => (snem_core.ppu_regs.bg1_chr_base_addr as u16) << 12,
-            2 => (snem_core.ppu_regs.bg2_chr_base_addr as u16) << 12,
-            3 => (snem_core.ppu_regs.bg3_chr_base_addr as u16) << 12,
-            4 => (snem_core.ppu_regs.bg4_chr_base_addr as u16) << 12,
+            1 => snem_core.ppu_regs.bg1_chr_base_addr,
+            2 => snem_core.ppu_regs.bg2_chr_base_addr,
+            3 => snem_core.ppu_regs.bg3_chr_base_addr,
+            4 => snem_core.ppu_regs.bg4_chr_base_addr,
             _ => panic!("BgView must have BG_LAYER == 1,2,3, or 4"),
         }
     }

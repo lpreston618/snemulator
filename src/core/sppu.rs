@@ -326,12 +326,12 @@ impl Ppu5C7x {
 
                 let chr_idx = (tile_y << 4) + tile_x;
 
-                let mut obj_table_base_addr = (regs.name_base_addr as u16) << 13;
-
-                if sprite.use_second_obj_table {
-                    obj_table_base_addr += (regs.name_secondary_select as u16) << 12;
-                }
-
+                let obj_table_base_addr = if sprite.use_second_obj_table {
+                    regs.name_secondary_base_addr
+                } else {
+                    regs.name_base_addr
+                };
+                
                 let obj_table_base_addr = obj_table_base_addr; // No longer mutable
 
                 let spr_tile_base_addr =
@@ -928,10 +928,10 @@ impl Ppu5C7x {
         bg_cgram_base_addr: u8,
     ) -> ColorData {
         let bg_chr_base_addr = match bg_layer {
-            ColorLayer::Bg1 => (regs.bg1_chr_base_addr as u16) << 12,
-            ColorLayer::Bg2 => (regs.bg2_chr_base_addr as u16) << 12,
-            ColorLayer::Bg3 => (regs.bg3_chr_base_addr as u16) << 12,
-            ColorLayer::Bg4 => (regs.bg4_chr_base_addr as u16) << 12,
+            ColorLayer::Bg1 => regs.bg1_chr_base_addr,
+            ColorLayer::Bg2 => regs.bg2_chr_base_addr,
+            ColorLayer::Bg3 => regs.bg3_chr_base_addr,
+            ColorLayer::Bg4 => regs.bg4_chr_base_addr,
 
             _ => panic!("bg_col should only be called for bg layers"),
         };
@@ -943,17 +943,26 @@ impl Ppu5C7x {
 
             BgMode::Mode5 | BgMode::Mode6 => todo!(),
             // BgMode::Mode5 | BgMode::Mode6 => self.hi_res_bg_tile_idx(bus, bg_layer),
-
             BgMode::Mode7 => todo!(),
         };
 
         let col = match color_depth {
-            ColorDepth::Bpp2 => {
-                self.bg_col_2bpp(regs, vram, cgram, tile_data, bg_chr_base_addr, bg_cgram_base_addr)
-            }
-            ColorDepth::Bpp4 => {
-                self.bg_col_4bpp(regs, vram, cgram, tile_data, bg_chr_base_addr, bg_cgram_base_addr)
-            }
+            ColorDepth::Bpp2 => self.bg_col_2bpp(
+                regs,
+                vram,
+                cgram,
+                tile_data,
+                bg_chr_base_addr,
+                bg_cgram_base_addr,
+            ),
+            ColorDepth::Bpp4 => self.bg_col_4bpp(
+                regs,
+                vram,
+                cgram,
+                tile_data,
+                bg_chr_base_addr,
+                bg_cgram_base_addr,
+            ),
             ColorDepth::Bpp8 => self.bg_col_8bpp(regs, vram, cgram, tile_data, bg_chr_base_addr),
         };
 
@@ -961,16 +970,19 @@ impl Ppu5C7x {
     }
 
     /// For modes 0-4
-    pub fn bg_tile_idx(&self, regs: &PpuRegs, bg_layer: ColorLayer, x: usize, y: usize) -> TileData {
+    pub fn bg_tile_idx(
+        &self,
+        regs: &PpuRegs,
+        bg_layer: ColorLayer,
+        x: usize,
+        y: usize,
+    ) -> TileData {
         let bg_data = self.fetch_bg_data(regs, bg_layer);
 
         let (mosaic_x, mosaic_y) = if bg_data.mosaic_en {
             let mosaic_mod = (regs.mosaic_size + 1) as usize;
 
-            (
-                x - (x % mosaic_mod),
-                y - (y % mosaic_mod),
-            )
+            (x - (x % mosaic_mod), y - (y % mosaic_mod))
         } else {
             (x, y)
         };
@@ -1115,7 +1127,7 @@ impl Ppu5C7x {
                 tilemap_cnt_x: regs.bg1_tilemap_count_x,
                 tilemap_cnt_y: regs.bg1_tilemap_count_y,
                 tile_size: regs.bg1_char_size,
-                tilemap_base_addr: (regs.bg1_vram_addr as u16) << 10,
+                tilemap_base_addr: regs.bg1_tilemap_base_addr,
                 mosaic_en: regs.bg1_mosaic_en,
             },
 
@@ -1125,7 +1137,7 @@ impl Ppu5C7x {
                 tilemap_cnt_x: regs.bg2_tilemap_count_x,
                 tilemap_cnt_y: regs.bg2_tilemap_count_y,
                 tile_size: regs.bg2_char_size,
-                tilemap_base_addr: (regs.bg2_vram_addr as u16) << 10,
+                tilemap_base_addr: regs.bg2_tilemap_base_addr,
                 mosaic_en: regs.bg2_mosaic_en,
             },
 
@@ -1135,7 +1147,7 @@ impl Ppu5C7x {
                 tilemap_cnt_x: regs.bg3_tilemap_count_x,
                 tilemap_cnt_y: regs.bg3_tilemap_count_y,
                 tile_size: regs.bg3_char_size,
-                tilemap_base_addr: (regs.bg3_vram_addr as u16) << 10,
+                tilemap_base_addr: regs.bg3_tilemap_base_addr,
                 mosaic_en: regs.bg3_mosaic_en,
             },
 
@@ -1145,7 +1157,7 @@ impl Ppu5C7x {
                 tilemap_cnt_x: regs.bg4_tilemap_count_x,
                 tilemap_cnt_y: regs.bg4_tilemap_count_y,
                 tile_size: regs.bg4_char_size,
-                tilemap_base_addr: (regs.bg4_vram_addr as u16) << 10,
+                tilemap_base_addr: regs.bg4_tilemap_base_addr,
                 mosaic_en: regs.bg4_mosaic_en,
             },
 
@@ -1194,6 +1206,10 @@ impl Ppu5C7x {
         } else {
             (tile_chr_idx, tile_col)
         };
+        
+        if self.x == 0 && self.y == 0 && tile_data.tile_addr == 0x4000 {
+            log::debug!("Chr idx: {}", tile_chr_idx)
+        }
 
         ChrData {
             chr_idx: tile_chr_idx,
@@ -1217,7 +1233,7 @@ impl Ppu5C7x {
 
         let tile_chr_addr = bg_chr_base_addr + (chr_data.chr_idx << 3) + chr_data.chr_row as u16;
 
-        let bp01 = vram[(tile_chr_addr) as usize];
+        let bp01 = vram[tile_chr_addr as usize];
 
         let b0 = ((bp01 >> (7 - chr_data.chr_col)) & 1) as u8;
         let b1 = ((bp01 >> (15 - chr_data.chr_col)) & 1) as u8;
@@ -1277,7 +1293,14 @@ impl Ppu5C7x {
         }
     }
 
-    pub fn bg_col_8bpp(&self, regs: &PpuRegs, vram: &[u16], cgram: &[Color], tile_data: TileData, bg_chr_base_addr: u16) -> ColorData {
+    pub fn bg_col_8bpp(
+        &self,
+        regs: &PpuRegs,
+        vram: &[u16],
+        cgram: &[Color],
+        tile_data: TileData,
+        bg_chr_base_addr: u16,
+    ) -> ColorData {
         let chr_data = self.fetch_chr_data(regs, vram, tile_data);
 
         let tile_chr_addr = bg_chr_base_addr + (chr_data.chr_idx << 5) + chr_data.chr_row as u16;
@@ -1528,17 +1551,16 @@ impl Ppu5C7x {
 
         let trigger_int = match cpu_regs.hv_timer_irq_mode {
             HVTimerIRQ::None => false,
-            HVTimerIRQ::HTimer => {
-                ppu_regs.h_counter == cpu_regs.h_counter_target
-            }
+            HVTimerIRQ::HTimer => ppu_regs.h_counter == cpu_regs.h_counter_target,
             HVTimerIRQ::VTimer => {
                 ppu_regs.v_counter == cpu_regs.v_counter_target && ppu_regs.h_counter == 0
             }
             HVTimerIRQ::Both => {
-                ppu_regs.v_counter == cpu_regs.v_counter_target && ppu_regs.h_counter == cpu_regs.h_counter_target
+                ppu_regs.v_counter == cpu_regs.v_counter_target
+                    && ppu_regs.h_counter == cpu_regs.h_counter_target
             }
         };
-        
+
         if trigger_int {
             cpu_regs.hv_timer_irq_flag = true;
             bus.trigger_interrupt(CpuInterrupt::IRQ);

@@ -1,6 +1,6 @@
-use crate::{get_bit_n, utils};
-use crate::core::sppu::types::*;
 use crate::core::sppu::color::Color;
+use crate::core::sppu::types::*;
+use crate::{get_bit_n, utils};
 
 /// Contains all of the shared data (registers, memory, etc.) between the S-CPU and S-PPU.
 #[derive(Default)]
@@ -19,8 +19,8 @@ pub struct PpuRegs {
     //       - Name secondary select (N)
     //       - Name base address (B)
     pub obj_sprite_size: ObjectSizeSelect,
-    pub name_secondary_select: u8,
-    pub name_base_addr: u8,
+    pub name_base_addr: u16,
+    pub name_secondary_base_addr: u16,
 
     // $2102    AAAA AAAA
     // $2103    P... ...B    Write x2 Only
@@ -60,7 +60,7 @@ pub struct PpuRegs {
     //       - BG1 Tilemap VRAM address (A)
     //       - BG1 Vertical tilemap count (Y)
     //       - BG1 Horizontal tilemap count (X)
-    pub bg1_vram_addr: u8,
+    pub bg1_tilemap_base_addr: u16,
     pub bg1_tilemap_count_y: TilemapCount,
     pub bg1_tilemap_count_x: TilemapCount,
 
@@ -68,7 +68,7 @@ pub struct PpuRegs {
     //       - BG2 Tilemap VRAM address (A)
     //       - BG2 Vertical tilemap count (Y)
     //       - BG2 Horizontal tilemap count (X)
-    pub bg2_vram_addr: u8,
+    pub bg2_tilemap_base_addr: u16,
     pub bg2_tilemap_count_y: TilemapCount,
     pub bg2_tilemap_count_x: TilemapCount,
 
@@ -76,7 +76,7 @@ pub struct PpuRegs {
     //       - BG3 Tilemap VRAM address (A)
     //       - BG3 Vertical tilemap count (Y)
     //       - BG3 Horizontal tilemap count (X)
-    pub bg3_vram_addr: u8,
+    pub bg3_tilemap_base_addr: u16,
     pub bg3_tilemap_count_y: TilemapCount,
     pub bg3_tilemap_count_x: TilemapCount,
 
@@ -84,21 +84,21 @@ pub struct PpuRegs {
     //       - BG4 Tilemap VRAM address (A)
     //       - BG4 Vertical tilemap count (Y)
     //       - BG4 Horizontal tilemap count (X)
-    pub bg4_vram_addr: u8,
+    pub bg4_tilemap_base_addr: u16,
     pub bg4_tilemap_count_y: TilemapCount,
     pub bg4_tilemap_count_x: TilemapCount,
 
     // $210B    BBBB AAAA    W8
     //       - BG2 CHR base address (B)
     //       - BG1 CHR base address (A)
-    pub bg2_chr_base_addr: u8,
-    pub bg1_chr_base_addr: u8,
+    pub bg2_chr_base_addr: u16,
+    pub bg1_chr_base_addr: u16,
 
     // $210C    DDDD CCCC    W8
     //       - BG4 CHR base address (D)
     //       - BG3 CHR base address (C)
-    pub bg4_chr_base_addr: u8,
-    pub bg3_chr_base_addr: u8,
+    pub bg4_chr_base_addr: u16,
+    pub bg3_chr_base_addr: u16,
 
     // Used for many registers affecting mode 7 behavior
     pub m7_latch: u8,
@@ -406,24 +406,38 @@ impl PpuRegs {
         self.write_210A(utils::rand_byte());
         self.write_210B(utils::rand_byte());
         self.write_210C(utils::rand_byte());
-        self.write_210D(utils::rand_byte()); self.write_210D(utils::rand_byte());
-        self.write_210E(utils::rand_byte()); self.write_210E(utils::rand_byte());
-        self.write_210F(utils::rand_byte()); self.write_210F(utils::rand_byte());
-        self.write_2110(utils::rand_byte()); self.write_2110(utils::rand_byte());
-        self.write_2111(utils::rand_byte()); self.write_2111(utils::rand_byte());
-        self.write_2112(utils::rand_byte()); self.write_2112(utils::rand_byte());
-        self.write_2113(utils::rand_byte()); self.write_2113(utils::rand_byte());
-        self.write_2114(utils::rand_byte()); self.write_2114(utils::rand_byte());
+        self.write_210D(utils::rand_byte());
+        self.write_210D(utils::rand_byte());
+        self.write_210E(utils::rand_byte());
+        self.write_210E(utils::rand_byte());
+        self.write_210F(utils::rand_byte());
+        self.write_210F(utils::rand_byte());
+        self.write_2110(utils::rand_byte());
+        self.write_2110(utils::rand_byte());
+        self.write_2111(utils::rand_byte());
+        self.write_2111(utils::rand_byte());
+        self.write_2112(utils::rand_byte());
+        self.write_2112(utils::rand_byte());
+        self.write_2113(utils::rand_byte());
+        self.write_2113(utils::rand_byte());
+        self.write_2114(utils::rand_byte());
+        self.write_2114(utils::rand_byte());
         self.write_2115(0x0F | utils::rand_byte());
         self.vram_addr = utils::rand_word();
         self.vram_latch = utils::rand_word();
         self.write_211A(utils::rand_byte());
-        self.write_211B(0xFF); self.write_211B(0xFF);
-        self.write_211C(0xFF); self.write_211C(0xFF);
-        self.write_211D(utils::rand_byte()); self.write_211D(utils::rand_byte());
-        self.write_211E(utils::rand_byte()); self.write_211E(utils::rand_byte());
-        self.write_211F(utils::rand_byte()); self.write_211F(utils::rand_byte());
-        self.write_2120(utils::rand_byte()); self.write_2120(utils::rand_byte());
+        self.write_211B(0xFF);
+        self.write_211B(0xFF);
+        self.write_211C(0xFF);
+        self.write_211C(0xFF);
+        self.write_211D(utils::rand_byte());
+        self.write_211D(utils::rand_byte());
+        self.write_211E(utils::rand_byte());
+        self.write_211E(utils::rand_byte());
+        self.write_211F(utils::rand_byte());
+        self.write_211F(utils::rand_byte());
+        self.write_2120(utils::rand_byte());
+        self.write_2120(utils::rand_byte());
         self.write_2121(utils::rand_byte());
         self.cgram_addr = utils::rand_byte();
         self.cgram_latch = utils::rand_byte();
@@ -445,24 +459,24 @@ impl PpuRegs {
         self.write_2131(utils::rand_byte());
         self.write_2132(utils::rand_byte());
         self.write_2133(0);
-        
+
         self.multiply_result = 0x000001;
         self.h_counter_latch = 0x01FF;
         self.v_counter_latch = 0x01FF;
     }
-    
+
     pub fn reset(&mut self) {
         let byte_2100 = self.screen_brightness;
-        
+
         self.write_2100(0x80 | byte_2100);
         self.write_2133(0);
     }
-    
+
     pub fn write_2100(&mut self, value: u8) {
         self.in_fblank = get_bit_n!(value, 7);
         self.screen_brightness = value & 0x0F;
     }
-    
+
     pub fn write_2101(&mut self, value: u8) {
         let new_obj_size = match value >> 5 {
             0 => ObjectSizeSelect::Size8x8_16x16,
@@ -477,20 +491,23 @@ impl PpuRegs {
         };
 
         self.obj_sprite_size = new_obj_size;
-        self.name_secondary_select = (value >> 3) & 0x03;
-        self.name_base_addr = value & 0x03;
+        self.name_base_addr = ((value as u16) & 3) << 13;
+        
+        let offset = ((((value as u16) >> 3) & 3) + 1) << 12;
+        
+        self.name_secondary_base_addr = self.name_base_addr + offset;
     }
-    
+
     pub fn write_2102(&mut self, value: u8) {
         self.priority_rotation_idx = value & 0xFE;
         self.internal_oam_addr = (value as u16) << 1;
     }
-    
+
     pub fn write_2103(&mut self, value: u8) {
         self.oam_write_high_table = get_bit_n!(value, 0);
         self.priority_rotation = get_bit_n!(value, 7);
     }
-    
+
     pub fn write_2105(&mut self, value: u8) {
         self.bg4_char_size = if get_bit_n!(value, 7) {
             TileSize::Size16x16
@@ -532,7 +549,7 @@ impl PpuRegs {
             _ => {}
         };
     }
-    
+
     pub fn write_2106(&mut self, value: u8) {
         self.mosaic_size = value >> 4;
         self.bg4_mosaic_en = get_bit_n!(value, 3);
@@ -540,9 +557,9 @@ impl PpuRegs {
         self.bg2_mosaic_en = get_bit_n!(value, 1);
         self.bg1_mosaic_en = get_bit_n!(value, 0);
     }
-    
+
     pub fn write_2107(&mut self, value: u8) {
-        self.bg1_vram_addr = value >> 2;
+        self.bg1_tilemap_base_addr = ((value as u16) & 0x7C) << 8;
         self.bg1_tilemap_count_y = if get_bit_n!(value, 1) {
             TilemapCount::Two
         } else {
@@ -554,9 +571,9 @@ impl PpuRegs {
             TilemapCount::One
         };
     }
-    
+
     pub fn write_2108(&mut self, value: u8) {
-        self.bg2_vram_addr = value >> 2;
+        self.bg2_tilemap_base_addr = ((value as u16) & 0x7C) << 8;
         self.bg2_tilemap_count_y = if get_bit_n!(value, 1) {
             TilemapCount::Two
         } else {
@@ -570,7 +587,7 @@ impl PpuRegs {
     }
 
     pub fn write_2109(&mut self, value: u8) {
-        self.bg3_vram_addr = value >> 2;
+        self.bg3_tilemap_base_addr = ((value as u16) & 0x7C) << 8;
         self.bg3_tilemap_count_y = if get_bit_n!(value, 1) {
             TilemapCount::Two
         } else {
@@ -585,7 +602,7 @@ impl PpuRegs {
 
     #[allow(non_snake_case)]
     pub fn write_210A(&mut self, value: u8) {
-        self.bg4_vram_addr = value >> 2;
+        self.bg4_tilemap_base_addr = ((value as u16) & 0x7C) << 8;
         self.bg4_tilemap_count_y = if get_bit_n!(value, 1) {
             TilemapCount::Two
         } else {
@@ -597,19 +614,19 @@ impl PpuRegs {
             TilemapCount::One
         };
     }
-    
+
     #[allow(non_snake_case)]
     pub fn write_210B(&mut self, value: u8) {
-        self.bg2_chr_base_addr = value >> 4;
-        self.bg1_chr_base_addr = value & 0x0F;
+        self.bg1_chr_base_addr = ((value as u16) & 0x07) << 12;
+        self.bg2_chr_base_addr = ((value as u16) & 0x70) << 8;
     }
-    
+
     #[allow(non_snake_case)]
     pub fn write_210C(&mut self, value: u8) {
-        self.bg3_chr_base_addr = value & 0x0F;
-        self.bg4_chr_base_addr = value >> 4;
+        self.bg3_chr_base_addr = ((value as u16) & 0x07) << 12;
+        self.bg4_chr_base_addr = ((value as u16) & 0x70) << 8;
     }
-    
+
     #[allow(non_snake_case)]
     pub fn write_210D(&mut self, value: u8) {
         let bgofs_latch = self.bg_offset_latch as u16;
@@ -617,9 +634,10 @@ impl PpuRegs {
         self.bg_offset_latch = value;
         self.bg_offset_x_latch = value;
 
-        self.bg1_m7_x_offset = (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
+        self.bg1_m7_x_offset =
+            (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
     }
-    
+
     #[allow(non_snake_case)]
     pub fn write_210E(&mut self, value: u8) {
         let bgofs_latch = self.bg_offset_latch as u16;
@@ -627,7 +645,7 @@ impl PpuRegs {
 
         self.bg1_m7_y_offset = (((value & 3) as u16) << 8) | bgofs_latch;
     }
-    
+
     #[allow(non_snake_case)]
     pub fn write_210F(&mut self, value: u8) {
         let bgofs_latch = self.bg_offset_latch as u16;
@@ -635,48 +653,51 @@ impl PpuRegs {
         self.bg_offset_latch = value;
         self.bg_offset_x_latch = value;
 
-        self.bg2_x_offset = (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
+        self.bg2_x_offset =
+            (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
     }
-    
+
     pub fn write_2110(&mut self, value: u8) {
         let bgofs_latch = self.bg_offset_latch as u16;
         self.bg_offset_latch = value;
 
         self.bg2_y_offset = (((value & 3) as u16) << 8) | bgofs_latch;
     }
-    
+
     pub fn write_2111(&mut self, value: u8) {
         let bgofs_latch = self.bg_offset_latch as u16;
         let bghofs_latch = self.bg_offset_x_latch as u16;
         self.bg_offset_latch = value;
         self.bg_offset_x_latch = value;
 
-        self.bg3_x_offset = (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
+        self.bg3_x_offset =
+            (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
     }
-    
+
     pub fn write_2112(&mut self, value: u8) {
         let bgofs_latch = self.bg_offset_latch as u16;
         self.bg_offset_latch = value;
 
         self.bg3_y_offset = (((value & 3) as u16) << 8) | bgofs_latch;
     }
-    
+
     pub fn write_2113(&mut self, value: u8) {
         let bgofs_latch = self.bg_offset_latch as u16;
         let bghofs_latch = self.bg_offset_x_latch as u16;
         self.bg_offset_latch = value;
         self.bg_offset_x_latch = value;
 
-        self.bg4_x_offset = (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
+        self.bg4_x_offset =
+            (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
     }
-    
+
     pub fn write_2114(&mut self, value: u8) {
         let bgofs_latch = self.bg_offset_latch as u16;
         self.bg_offset_latch = value;
 
         self.bg4_y_offset = (((value & 3) as u16) << 8) | bgofs_latch;
     }
-    
+
     pub fn write_2115(&mut self, value: u8) {
         self.vram_addr_inc_mode = if get_bit_n!(value, 7) {
             VramIncMode::HighByte
@@ -698,7 +719,7 @@ impl PpuRegs {
             _ => unreachable!(),
         };
     }
-    
+
     #[allow(non_snake_case)]
     pub fn write_211A(&mut self, value: u8) {
         self.m7_tilemap_repeat = get_bit_n!(value, 7);
@@ -768,7 +789,7 @@ impl PpuRegs {
         self.cgram_addr = value;
         self.cgram_toggle = false;
     }
-    
+
     pub fn write_2123(&mut self, value: u8) {
         self.bg2_w2_en = get_bit_n!(value, 7);
         self.bg2_w2_inv = get_bit_n!(value, 6);
@@ -805,15 +826,15 @@ impl PpuRegs {
     pub fn write_2126(&mut self, value: u8) {
         self.w1_left_pos = value;
     }
-    
+
     pub fn write_2127(&mut self, value: u8) {
         self.w1_right_pos = value;
     }
-    
+
     pub fn write_2128(&mut self, value: u8) {
         self.w2_left_pos = value;
     }
-    
+
     pub fn write_2129(&mut self, value: u8) {
         self.w2_right_pos = value;
     }
@@ -940,10 +961,16 @@ impl PpuRegs {
 
     pub fn write_2132(&mut self, value: u8) {
         let new_val = value & 0x1F;
-        
-        if get_bit_n!(value, 7) { self.fixed_color.b = new_val; }
-        if get_bit_n!(value, 6) { self.fixed_color.g = new_val; }
-        if get_bit_n!(value, 5) { self.fixed_color.r = new_val; }
+
+        if get_bit_n!(value, 7) {
+            self.fixed_color.b = new_val;
+        }
+        if get_bit_n!(value, 6) {
+            self.fixed_color.g = new_val;
+        }
+        if get_bit_n!(value, 5) {
+            self.fixed_color.r = new_val;
+        }
     }
 
     pub fn write_2133(&mut self, value: u8) {
@@ -954,7 +981,7 @@ impl PpuRegs {
         self.obj_interlace_en = get_bit_n!(value, 1);
         self.screen_interlace_en = get_bit_n!(value, 0);
     }
-    
+
     pub fn update_multiply_result(&mut self) {
         let lhs = self.mult_factor_16 as i16;
         let rhs = self.mult_factor_8 as i8;

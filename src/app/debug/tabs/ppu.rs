@@ -78,7 +78,7 @@ impl PpuTab {
                 PpuSubTab::Bg3 => self.bg3_viewer.render(ui, snem_core, painter),
                 PpuSubTab::Bg4 => self.bg4_viewer.render(ui, snem_core, painter),
                 _ => {}
-            } 
+            }
         });
     }
 }
