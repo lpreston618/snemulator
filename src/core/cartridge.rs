@@ -154,15 +154,19 @@ impl Cartridge {
     pub fn read(&mut self, addr: Address) -> u8 {
         let addr = addr.to_u32();
 
-        let mapped_addr = match self.mapping_mode {
-            MappingMode::LoROM => ((addr & 0x7F0000) >> 1) | (addr & 0x7FFF),
-            MappingMode::HiROM => addr & 0x3FFFFF,
-            MappingMode::ExHiROM => (((addr & 0x800000) ^ 0x800000) >> 1) | (addr & 0x3FFFFF),
-        };
+        let mapped_addr = Self::map_rom_address(addr, self.mapping_mode);
 
         let mapped_addr = (mapped_addr as usize) & (self.rom.len() - 1);
 
         self.rom[mapped_addr]
+    }
+    
+    pub fn map_rom_address(addr: u32, mapping_mode: MappingMode) -> u32 {        
+        match mapping_mode {
+            MappingMode::LoROM => ((addr & 0x7F0000) >> 1) | (addr & 0x7FFF),
+            MappingMode::HiROM => addr & 0x3FFFFF,
+            MappingMode::ExHiROM => (((addr & 0x800000) ^ 0x800000) >> 1) | (addr & 0x3FFFFF),
+        }
     }
 
     pub fn write(&mut self, addr: Address, value: u8) {}

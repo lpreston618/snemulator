@@ -1,4 +1,4 @@
-use crate::core::{cartridge::{self, MappingMode}, scpu::{Cpu65c816, Flag, bus::{Address, CpuBus}}, snemcore::Snemulator};
+use crate::core::cartridge;
 
 #[derive(Clone, Copy)]
 enum AddressingMode {
@@ -391,20 +391,6 @@ pub fn get_memory_region(addr: u32) -> MemoryRegion {
     }
 }
 
-fn map_rom_addr(addr: u32, mapping_mode: MappingMode) -> u32 {
-    match mapping_mode {
-        MappingMode::LoROM => {
-            ((addr & 0x7F0000) >> 1) | (addr & 0x7FFF)
-        }
-        MappingMode::HiROM => {
-            addr & 0x3FFFFF
-        }
-        MappingMode::ExHiROM => {
-            (((addr & 0x800000) ^ 0x800000) >> 1) | (addr & 0x3FFFFF)
-        }
-    }
-}
-
 /// Returns the hardware register name for a given SNES MMIO address, if known
 fn get_register_name(addr: u32) -> Option<&'static str> {
     // SNES MMIO is mirrored, so we only care about the lower 16 bits
@@ -649,8 +635,10 @@ fn format_rel16(pc: u16, offset_word: u16, options: &DisassemblyOptions) -> Stri
 
 fn _disassemble(mem: &MemBlock, state: ExecuteState, options: &DisassemblyOptions) -> (DisasmLine, ExecuteState) {
     let addr = ((mem.bank as u32) << 16) | state.pc as u32;
-    let addr = match state.memory_region {
-        MemoryRegion::Rom => map_rom_addr(addr, options.rom_mapping_mode),
+    let addr = match get_memory_region(addr) {
+        MemoryRegion::Rom => cartridge::Cartridge::map_rom_address(addr, options.rom_mapping_mode),
+        MemoryRegion::Ram => addr - 0x7E0000,
+        MemoryRegion::LowRamMirror => addr & 0x1FFF,
         _ => addr,
     };
     
@@ -804,19 +792,19 @@ fn _disassemble(mem: &MemBlock, state: ExecuteState, options: &DisassemblyOption
     (disasm_line, new_state)
 }
 
-pub fn disassemble(cpu: &Cpu65c816, mem: &MemBlock, options: &DisassemblyOptions) -> DisasmLine { 
-    _disassemble(
-        mem,
-        ExecuteState {
-            dp: cpu.dp,
-            pc: cpu.pc,
-            flag_m: cpu.is_flag_set(Flag::FlagM),
-            flag_x: cpu.is_flag_set(Flag::FlagX),
-            memory_region: MemoryRegion::Rom
-        },
-        options
-    ).0
-}
+// pub fn disassemble(cpu: &Cpu65c816, mem: &MemBlock, options: &DisassemblyOptions) -> DisasmLine { 
+//     _disassemble(
+//         mem,
+//         ExecuteState {
+//             dp: cpu.dp,
+//             pc: cpu.pc,
+//             flag_m: cpu.is_flag_set(Flag::FlagM),
+//             flag_x: cpu.is_flag_set(Flag::FlagX),
+//             memory_region: MemoryRegion::Rom
+//         },
+//         options
+//     ).0
+// }
 
 pub fn disassemble_block(mem: &MemBlock, options: &DisassemblyOptions, state: Option<ExecuteState>) -> Vec<DisasmLine> {    
     let mut disassembly = Vec::new();

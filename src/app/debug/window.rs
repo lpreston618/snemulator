@@ -163,7 +163,16 @@ impl DebugWindow {
                 
                 egui::CentralPanel::default().show(ctx, |ui| {
                     match self.selected_tab {
-                        tabs::DebugTab::Cpu => self.cpu_tab.render(ui, snem_core, &mut self.jump_to_bps_on_hit),
+                        tabs::DebugTab::Cpu => {
+                            let clicked_addr = self.cpu_tab.render(ui, snem_core, &mut self.jump_to_bps_on_hit);
+                        
+                            if let Some(clicked_addr) = clicked_addr {
+                                self.selected_tab = tabs::DebugTab::Memory;
+                                self.mem_tab.region = clicked_addr.region;
+                                self.mem_tab.forced_scroll = Some(clicked_addr.offset);
+                                self.mem_tab.highlight_addresses(clicked_addr.highlight_addrs);
+                            }
+                        },
                         tabs::DebugTab::Memory => self.mem_tab.render(ui, snem_core),
                         tabs::DebugTab::Ppu => self.ppu_tab.render(
                             ui,

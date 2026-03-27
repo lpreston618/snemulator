@@ -60,6 +60,10 @@ impl WatchpointsTab {
                 }
                 
                 ui.checkbox(&mut self.watchpoints_en, "Enable Watchpoints");
+               
+                if !self.watchpoints_en {
+                    self.compiled_wps = CompiledGraph::default();
+                };
                 
                 ui.add_space(5.0);
                 

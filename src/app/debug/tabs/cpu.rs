@@ -1,6 +1,7 @@
 use crate::app::debug::breakpoints::BreakpointInfo;
+use crate::app::debug::tabs;
 use crate::app::utils::monospace_text;
-use crate::core::{cartridge, scpu, snemcore};
+use crate::core::{cartridge, scpu, snemcore, sysinfo};
 
 const DISASM_BLOCK_SIZE: usize = 64;
 
@@ -92,6 +93,12 @@ impl DisassemblyView {
     }
 }
 
+pub struct ClickedAddress {
+    pub region: tabs::mem::MemViewRegion,
+    pub offset: f32,
+    pub highlight_addrs: Vec<u32>,
+}
+
 pub struct CpuTab {
     disasm: DisassemblyView,
     bp_input: String,
@@ -113,7 +120,9 @@ impl CpuTab {
         self.disasm.current_addr = addr;
     }
     
-    pub fn render(&mut self, ui: &mut egui::Ui, snem_core: &snemcore::Snemulator, jump_to_bps_on_hit: &mut bool) {
+    pub fn render(&mut self, ui: &mut egui::Ui, snem_core: &snemcore::Snemulator, jump_to_bps_on_hit: &mut bool) -> Option<ClickedAddress> {
+        let mut clicked_addr = None;
+        
         self.update_disasm(snem_core);
         
         let pc = (snem_core.cpu.pb as u32) << 16 | snem_core.cpu.pc as u32;
@@ -232,7 +241,65 @@ impl CpuTab {
                                 let addr_text = egui::RichText::new(format!("{:06X}", line.addr))
                                     .monospace()
                                     .color(addr_text_col);
-                                ui.label(addr_text);
+                                
+                                if ui.label(addr_text).double_clicked() {
+                                    let mem_region = scpu::disassembler::get_memory_region(line.addr);
+                                    let mut highlight_addrs: Vec<u32>;
+                                    let offset = match mem_region {
+                                        scpu::disassembler::MemoryRegion::Ram => {
+                                            let mem_size = sysinfo::WRAM_SIZE as f32;
+                                            let mapped_addr = line.addr & 0x1FFFF0;
+                                            let offset = (mapped_addr as f32) / mem_size;
+                                            
+                                            highlight_addrs = (0..line.bytes.len()).into_iter()
+                                                .map(|i| {
+                                                    (line.addr + i as u32) & 0x1FFFFF
+                                                }).collect();
+                                            
+                                            offset
+                                        },
+                                        scpu::disassembler::MemoryRegion::LowRamMirror => {
+                                            let mem_size = sysinfo::WRAM_SIZE as f32;
+                                            let mapped_addr = line.addr & 0x1FF0;
+                                            let offset = (mapped_addr as f32) / mem_size;
+                                            
+                                            highlight_addrs = (0..line.bytes.len()).into_iter()
+                                                .map(|i| {
+                                                    (line.addr + i as u32) & 0x1FFF
+                                                }).collect();
+                                            
+                                            offset
+                                        },
+                                        _ => {
+                                            let mem_size = snem_core.cart.as_ref().unwrap().rom_slice().len();
+                                            let mapped_addr = cartridge::Cartridge::map_rom_address(line.addr, snem_core.cart.as_ref().unwrap().mapping_mode());
+                                            let mapped_addr = mapped_addr & 0xFFFFF0;
+                                            let offset = (mapped_addr as f32) / (mem_size as f32);
+                                            
+                                            highlight_addrs = (0..line.bytes.len()).into_iter()
+                                                .map(|i| {
+                                                    cartridge::Cartridge::map_rom_address(
+                                                        line.addr + i as u32, 
+                                                        snem_core.cart.as_ref().unwrap().mapping_mode()
+                                                    ) & 0x1FFFFF
+                                                }).collect();
+                                            
+                                            offset
+                                        },
+                                    };
+                                    
+                                    let region = match mem_region {
+                                        scpu::disassembler::MemoryRegion::Ram |
+                                        scpu::disassembler::MemoryRegion::LowRamMirror => tabs::mem::MemViewRegion::Wram,
+                                        _ => tabs::mem::MemViewRegion::Rom,
+                                    };
+                                    
+                                    clicked_addr = Some(ClickedAddress {
+                                        region,
+                                        offset,
+                                        highlight_addrs,
+                                    });
+                                }
 
                                 let disasm_col = if has_bp && addr == self.disasm.current_addr {
                                     egui::Color32::RED
@@ -269,6 +336,8 @@ impl CpuTab {
                 self.breakpoints_section(ui, snem_core, jump_to_bps_on_hit);
             });
         });
+        
+        clicked_addr
     }
     
     fn cpu_state_section(&mut self, ui: &mut egui::Ui, snem_core: &snemcore::Snemulator) {
