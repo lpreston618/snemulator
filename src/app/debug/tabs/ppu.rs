@@ -29,23 +29,23 @@ impl PpuSubTab {
 }
 
 pub struct PpuTab {
-    chr_viewer: chr::ChrViewer,
+    // chr_viewer: chr::ChrViewer,
     layer_viewer: layers::LayerViewer,
-    bg1_viewer: bg::BgView<1>,
-    bg2_viewer: bg::BgView<2>,
-    bg3_viewer: bg::BgView<3>,
-    bg4_viewer: bg::BgView<4>,
+    // bg1_viewer: bg::BgView<1>,
+    // bg2_viewer: bg::BgView<2>,
+    // bg3_viewer: bg::BgView<3>,
+    // bg4_viewer: bg::BgView<4>,
     selected_tab: PpuSubTab,
 }
 
 impl PpuTab {
     pub fn new(painter: &mut egui_glow::Painter) -> Self {
         Self {
-            chr_viewer: chr::ChrViewer::new(painter),
-            bg1_viewer: bg::BgView::new(painter),
-            bg2_viewer: bg::BgView::new(painter),
-            bg3_viewer: bg::BgView::new(painter),
-            bg4_viewer: bg::BgView::new(painter),
+            // chr_viewer: chr::ChrViewer::new(painter),
+            // bg1_viewer: bg::BgView::new(painter),
+            // bg2_viewer: bg::BgView::new(painter),
+            // bg3_viewer: bg::BgView::new(painter),
+            // bg4_viewer: bg::BgView::new(painter),
             layer_viewer: layers::LayerViewer::new(painter),
             selected_tab: PpuSubTab::Chr,
         }
@@ -71,12 +71,12 @@ impl PpuTab {
             ui.separator();
             
             match self.selected_tab {
-                PpuSubTab::Chr => self.chr_viewer.render(ui, snem_core, painter),
+                // PpuSubTab::Chr => self.chr_viewer.render(ui, snem_core, painter),
                 PpuSubTab::Layers => self.layer_viewer.render(ui, snem_core, painter),
-                PpuSubTab::Bg1 => self.bg1_viewer.render(ui, snem_core, painter),
-                PpuSubTab::Bg2 => self.bg2_viewer.render(ui, snem_core, painter),
-                PpuSubTab::Bg3 => self.bg3_viewer.render(ui, snem_core, painter),
-                PpuSubTab::Bg4 => self.bg4_viewer.render(ui, snem_core, painter),
+                // PpuSubTab::Bg1 => self.bg1_viewer.render(ui, snem_core, painter),
+                // PpuSubTab::Bg2 => self.bg2_viewer.render(ui, snem_core, painter),
+                // PpuSubTab::Bg3 => self.bg3_viewer.render(ui, snem_core, painter),
+                // PpuSubTab::Bg4 => self.bg4_viewer.render(ui, snem_core, painter),
                 _ => {}
             }
         });

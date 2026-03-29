@@ -1,6 +1,10 @@
 use anyhow::Result;
 use log::info;
-use snemulator::app::SnemulatorApp;
+use crate::app::SnemulatorApp;
+
+mod app;
+mod core;
+mod utils;
 
 fn main() -> Result<()> {
     env_logger::init();

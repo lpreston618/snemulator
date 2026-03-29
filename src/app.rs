@@ -1,5 +1,4 @@
 use anyhow::{Result, anyhow};
-use log::{info, warn, error, trace};
 use rfd::FileDialog;
 use sdl3::event::Event;
 use sdl3::keyboard::{Keycode, Mod};
@@ -264,7 +263,7 @@ impl SnemulatorApp {
 
             match event {
                 Event::Quit { .. } => {
-                    info!("Quit event received, exiting.");
+                    log::info!("Quit event received, exiting.");
                     
                     app_action = AppAction::Exit;
                 }
@@ -345,7 +344,7 @@ impl SnemulatorApp {
             }
             Keycode::Q => {
                 if keymod.contains(Mod::LCTRLMOD) {
-                    info!("Ctrl+Q pressed, exiting");
+                    log::info!("Ctrl+Q pressed, exiting");
                     
                     app_action = AppAction::Exit;
                 }
@@ -407,7 +406,7 @@ impl SnemulatorApp {
     
     fn load_rom(&mut self) {
         if let Err(e) = self.try_load_rom() {
-            error!("Failed to load rom: {}", e);
+            log::error!("Failed to load rom: {}", e);
         }
     }
     
@@ -422,13 +421,13 @@ impl SnemulatorApp {
                 .ok_or_else(|| anyhow!("Invalid file name"))?
                 .to_string();
             
-            info!("Trying to load rom '{}'", file_name);
+            log::info!("Trying to load rom '{}'", file_name);
             
             let data = std::fs::read(&romfile)?;
             
             self.snem_core.load_rom(data)?;
             
-            info!("Loaded rom '{file_name}'");
+            log::info!("Loaded rom '{file_name}'");
             
             self.state.rom_loaded = true;
         }
@@ -440,9 +439,9 @@ impl SnemulatorApp {
         self.state.is_paused = !self.state.is_paused;
     
         if self.state.is_paused {
-            trace!("Paused emulation");
+            log::trace!("Paused emulation");
         } else {
-            trace!("Resumed emulation");
+            log::trace!("Resumed emulation");
         }
     }
     
@@ -459,11 +458,11 @@ impl SnemulatorApp {
     }
     
     fn save_state(&mut self) {
-        warn!("Save State called");
+        log::warn!("Save State called");
     }
     
     fn load_state(&mut self) {
-        warn!("Load State called");
+        log::warn!("Load State called");
     }
     
     fn toggle_fullscreen(&mut self) {
@@ -472,7 +471,7 @@ impl SnemulatorApp {
         if let Err(e) = self.main_window.set_fullscreen(self.state.is_fullscreen) {
             self.state.is_fullscreen = !self.state.is_fullscreen;
             
-            error!("Failed to toggle fullscreen: {}", e);
+            log::error!("Failed to toggle fullscreen: {}", e);
         }
     }
     
@@ -483,7 +482,7 @@ impl SnemulatorApp {
         
         match AboutWindow::new(&self.video_subsystem) {
             Ok(window) => self.about_window = Some(window),
-            Err(e) => error!("Failed to create about window: {}", e),
+            Err(e) => log::error!("Failed to create about window: {}", e),
         }
     }
     
@@ -494,7 +493,7 @@ impl SnemulatorApp {
         
         match SettingsWindow::new(&self.video_subsystem) {
             Ok(window) => self.settings_window = Some(window),
-            Err(e) => error!("Failed to create settings window: {}", e),
+            Err(e) => log::error!("Failed to create settings window: {}", e),
         }
     }
     
@@ -505,7 +504,7 @@ impl SnemulatorApp {
         
         if self.snem_core.cart.is_none() {
             if let Err(e) = self.try_load_rom() {
-                error!("Cannot debug without ROM loaded: {}", e);
+                log::error!("Cannot debug without ROM loaded: {}", e);
                 return;
             }
         }
@@ -519,7 +518,7 @@ impl SnemulatorApp {
         
         match DebugWindow::new(&self.video_subsystem, mapping_mode) {
             Ok(window) => self.debug_window = Some(window),
-            Err(e) => error!("Failed to create debug window: {}", e),
+            Err(e) => log::error!("Failed to create debug window: {}", e),
         }
         
         if self.debug_window.is_some() {

@@ -36,14 +36,18 @@ pub struct PpuRegs {
     //       - OAM data write byte (2x for word) (D), increments OAMADD byte
     pub oam_data_latch: u8,
 
+    pub bg_settings: [BgSettings; 4],
+    pub obj_settings: LayerSettings,
+    pub col_settings: LayerSettings,
+    
     // $2105    4321 PMMM    Write Only
     //       - Tilemap tile size (#)
     //       - BG3 priority (P)
     //       - BG mode (M)
-    pub bg4_char_size: TileSize,
-    pub bg3_char_size: TileSize,
-    pub bg2_char_size: TileSize,
-    pub bg1_char_size: TileSize,
+    // pub bg4_char_size: TileSize,
+    // pub bg3_char_size: TileSize,
+    // pub bg2_char_size: TileSize,
+    // pub bg1_char_size: TileSize,
     pub bg3_mode1_priority: bool,
     pub bg_mode: BgMode,
 
@@ -51,54 +55,54 @@ pub struct PpuRegs {
     //       - Mosaic size (S)
     //       - Mosaic BG enable (#)
     pub mosaic_size: u8,
-    pub bg4_mosaic_en: bool,
-    pub bg3_mosaic_en: bool,
-    pub bg2_mosaic_en: bool,
-    pub bg1_mosaic_en: bool,
+    // pub bg4_mosaic_en: bool,
+    // pub bg3_mosaic_en: bool,
+    // pub bg2_mosaic_en: bool,
+    // pub bg1_mosaic_en: bool,
 
     // $2107    AAAA AAYX    Write Only
     //       - BG1 Tilemap VRAM address (A)
     //       - BG1 Vertical tilemap count (Y)
     //       - BG1 Horizontal tilemap count (X)
-    pub bg1_tilemap_base_addr: u16,
-    pub bg1_tilemap_count_y: TilemapCount,
-    pub bg1_tilemap_count_x: TilemapCount,
+    // pub bg1_tilemap_base_addr: u16,
+    // pub bg1_tilemap_count_y: TilemapCount,
+    // pub bg1_tilemap_count_x: TilemapCount,
 
     // $2108    AAAA AAYX    Write Only
     //       - BG2 Tilemap VRAM address (A)
     //       - BG2 Vertical tilemap count (Y)
     //       - BG2 Horizontal tilemap count (X)
-    pub bg2_tilemap_base_addr: u16,
-    pub bg2_tilemap_count_y: TilemapCount,
-    pub bg2_tilemap_count_x: TilemapCount,
+    // pub bg2_tilemap_base_addr: u16,
+    // pub bg2_tilemap_count_y: TilemapCount,
+    // pub bg2_tilemap_count_x: TilemapCount,
 
     // $2109    AAAA AAYX    Write Only
     //       - BG3 Tilemap VRAM address (A)
     //       - BG3 Vertical tilemap count (Y)
     //       - BG3 Horizontal tilemap count (X)
-    pub bg3_tilemap_base_addr: u16,
-    pub bg3_tilemap_count_y: TilemapCount,
-    pub bg3_tilemap_count_x: TilemapCount,
+    // pub bg3_tilemap_base_addr: u16,
+    // pub bg3_tilemap_count_y: TilemapCount,
+    // pub bg3_tilemap_count_x: TilemapCount,
 
     // $210A    AAAA AAYX    Write Only
     //       - BG4 Tilemap VRAM address (A)
     //       - BG4 Vertical tilemap count (Y)
     //       - BG4 Horizontal tilemap count (X)
-    pub bg4_tilemap_base_addr: u16,
-    pub bg4_tilemap_count_y: TilemapCount,
-    pub bg4_tilemap_count_x: TilemapCount,
+    // pub bg4_tilemap_base_addr: u16,
+    // pub bg4_tilemap_count_y: TilemapCount,
+    // pub bg4_tilemap_count_x: TilemapCount,
 
     // $210B    BBBB AAAA    W8
     //       - BG2 CHR base address (B)
     //       - BG1 CHR base address (A)
-    pub bg2_chr_base_addr: u16,
-    pub bg1_chr_base_addr: u16,
+    // pub bg2_chr_base_addr: u16,
+    // pub bg1_chr_base_addr: u16,
 
     // $210C    DDDD CCCC    W8
     //       - BG4 CHR base address (D)
     //       - BG3 CHR base address (C)
-    pub bg4_chr_base_addr: u16,
-    pub bg3_chr_base_addr: u16,
+    // pub bg4_chr_base_addr: u16,
+    // pub bg3_chr_base_addr: u16,
 
     // Used for many registers affecting mode 7 behavior
     pub m7_latch: u8,
@@ -110,36 +114,36 @@ pub struct PpuRegs {
     // $210D    ...x xxXX LLLL LLLL    Write x2 Only
     //       - BG1 or Mode 7 horizontal scroll (X)
     //       - mode7_data_latch (L), writing sets new data latch to (...x xxXX)
-    pub bg1_m7_x_offset: u16,
+    // pub bg1_m7_x_offset: u16,
 
     // $210E    ...y yyYY LLLL LLLL    Write x2 Only
     //       - BG1 or Mode 7 vertical scroll (Y)
     //       - mode7_data_latch (L), writing sets new data latch to (.... ..YY)
-    pub bg1_m7_y_offset: u16,
+    // pub bg1_m7_y_offset: u16,
 
     // $210F    .... ..XX XXXX XXXX    Write x2 Only
     //       - BG2 horizontal scroll (X)
-    pub bg2_x_offset: u16,
+    // pub bg2_x_offset: u16,
 
     // $2110    .... ..YY YYYY YYYY    Write x2 Only
     //       - BG2 vertical scroll (Y)
-    pub bg2_y_offset: u16,
+    // pub bg2_y_offset: u16,
 
     // $2111    .... ..XX XXXX XXXX    Write x2 Only
     //       - BG3 horizontal scroll (X)
-    pub bg3_x_offset: u16,
+    // pub bg3_x_offset: u16,
 
     // $2112    .... ..YY YYYY YYYY    Write x2 Only
     //       - BG3 vertical scroll (Y)
-    pub bg3_y_offset: u16,
+    // pub bg3_y_offset: u16,
 
     // $2113    .... ..XX XXXX XXXX    Write x2 Only
     //       - BG4 horizontal scroll (X)
-    pub bg4_x_offset: u16,
+    // pub bg4_x_offset: u16,
 
     // $2114    .... ..YY YYYY YYYY    Write x2 Only
     //       - BG4 vertical scroll (Y)
-    pub bg4_y_offset: u16,
+    // pub bg4_y_offset: u16,
 
     // $2115    M... RRII    W8
     //       - VRAM address increment mode (M)
@@ -207,36 +211,30 @@ pub struct PpuRegs {
 
     // $2123    DdCc BbAa    Write Only
     //       - Enable (ABCD) and Invert (abcd) windows for BG1 (AB) and BG2 (CD)
-    pub bg2_w2_en: bool,
-    pub bg2_w2_inv: bool,
-    pub bg2_w1_en: bool,
-    pub bg2_w1_inv: bool,
-    pub bg1_w2_en: bool,
-    pub bg1_w2_inv: bool,
-    pub bg1_w1_en: bool,
-    pub bg1_w1_inv: bool,
+    // pub bg2_w2_en: bool,
+    // pub bg2_w2_inv: bool,
+    // pub bg2_w1_en: bool,
+    // pub bg2_w1_inv: bool,
+    // pub bg1_w2_en: bool,
+    // pub bg1_w2_inv: bool,
+    // pub bg1_w1_en: bool,
+    // pub bg1_w1_inv: bool,
 
     // $2124    DdCc BbAa    Write Only
     //       - Enable (EFGH) and Invert (efgh) windows for BG3 (EF) and BG2 (GH)
-    pub bg4_w2_en: bool,
-    pub bg4_w2_inv: bool,
-    pub bg4_w1_en: bool,
-    pub bg4_w1_inv: bool,
-    pub bg3_w2_en: bool,
-    pub bg3_w2_inv: bool,
-    pub bg3_w1_en: bool,
-    pub bg3_w1_inv: bool,
+    // pub bg4_w2_en: bool,
+    // pub bg4_w2_inv: bool,
+    // pub bg4_w1_en: bool,
+    // pub bg4_w1_inv: bool,
+    // pub bg3_w2_en: bool,
+    // pub bg3_w2_inv: bool,
+    // pub bg3_w1_en: bool,
+    // pub bg3_w1_inv: bool,
 
     // $2125    LlKk JjIi    Write Only
     //       - Enable (IJKL) and Invert (ijkl) windows for OBJ (IJ) and color (KL)
-    pub col_w2_en: bool,
-    pub col_w2_inv: bool,
-    pub col_w1_en: bool,
-    pub col_w1_inv: bool,
-    pub obj_w2_en: bool,
-    pub obj_w2_inv: bool,
-    pub obj_w1_en: bool,
-    pub obj_w1_inv: bool,
+    // pub col_win: WinSettings,
+    // pub obj_win: WinSettings,
 
     // $2126    LLLL LLLL    Write Only
     //       - Window 1 left position (L)
@@ -256,47 +254,47 @@ pub struct PpuRegs {
 
     // $212A    4433 2211    Write Only
     //       - Window mask logic for BG layers (00=OR, 01=AND, 10=XOR, 11=XNOR)
-    pub bg4_win_logic: WindowLogic,
-    pub bg3_win_logic: WindowLogic,
-    pub bg2_win_logic: WindowLogic,
-    pub bg1_win_logic: WindowLogic,
+    // pub bg4_win_logic: WindowLogic,
+    // pub bg3_win_logic: WindowLogic,
+    // pub bg2_win_logic: WindowLogic,
+    // pub bg1_win_logic: WindowLogic,
 
     // $212B    .... CCOO    Write Only
     //       - Window mask logic for OBJ (O) and color (C)
-    pub obj_win_logic: WindowLogic,
-    pub col_win_logic: WindowLogic,
+    // pub obj_win_logic: WindowLogic,
+    // pub col_win_logic: WindowLogic,
 
     // $212C    ...O 4321    Write Only
     //       - Main screen layer enable (#)
-    pub obj_main_en: bool,
-    pub bg4_main_en: bool,
-    pub bg3_main_en: bool,
-    pub bg2_main_en: bool,
-    pub bg1_main_en: bool,
+    // pub obj_main_en: bool,
+    // pub bg4_main_en: bool,
+    // pub bg3_main_en: bool,
+    // pub bg2_main_en: bool,
+    // pub bg1_main_en: bool,
 
     // $212D    ...O 4321    Write Only
     //       - Sub screen layer enable (#)
-    pub obj_sub_en: bool,
-    pub bg4_sub_en: bool,
-    pub bg3_sub_en: bool,
-    pub bg2_sub_en: bool,
-    pub bg1_sub_en: bool,
+    // pub obj_sub_en: bool,
+    // pub bg4_sub_en: bool,
+    // pub bg3_sub_en: bool,
+    // pub bg2_sub_en: bool,
+    // pub bg1_sub_en: bool,
 
     // $212E    ...O 4321    Write Only
     //       - Main screen layer window enable
-    pub obj_win_main_en: bool,
-    pub bg4_win_main_en: bool,
-    pub bg3_win_main_en: bool,
-    pub bg2_win_main_en: bool,
-    pub bg1_win_main_en: bool,
+    // pub obj_win_main_en: bool,
+    // pub bg4_win_main_en: bool,
+    // pub bg3_win_main_en: bool,
+    // pub bg2_win_main_en: bool,
+    // pub bg1_win_main_en: bool,
 
     // $212F    ...O 4321    Write Only
     //       - Sub screen layer window enable
-    pub obj_win_sub_en: bool,
-    pub bg4_win_sub_en: bool,
-    pub bg3_win_sub_en: bool,
-    pub bg2_win_sub_en: bool,
-    pub bg1_win_sub_en: bool,
+    // pub obj_win_sub_en: bool,
+    // pub bg4_win_sub_en: bool,
+    // pub bg3_win_sub_en: bool,
+    // pub bg2_win_sub_en: bool,
+    // pub bg1_win_sub_en: bool,
 
     // $2130    MMSS ..AD    Write Only
     //       - main/sub screen color window black/transparent regions (MS)
@@ -315,11 +313,11 @@ pub struct PpuRegs {
     pub cmath_operator: CMathOperator,
     pub cmath_half: bool,
     pub back_cmath_en: bool,
-    pub obj_cmath_en: bool,
-    pub bg4_cmath_en: bool,
-    pub bg3_cmath_en: bool,
-    pub bg2_cmath_en: bool,
-    pub bg1_cmath_en: bool,
+    // pub obj_cmath_en: bool,
+    // pub bg4_cmath_en: bool,
+    // pub bg3_cmath_en: bool,
+    // pub bg2_cmath_en: bool,
+    // pub bg1_cmath_en: bool,
 
     // $2132    BGRC CCCC    Write Only
     //       - Fixed color channel select (BGR) and value (C)
@@ -492,9 +490,9 @@ impl PpuRegs {
 
         self.obj_sprite_size = new_obj_size;
         self.name_base_addr = ((value as u16) & 3) << 13;
-        
+
         let offset = ((((value as u16) >> 3) & 3) + 1) << 12;
-        
+
         self.name_secondary_base_addr = self.name_base_addr + offset;
     }
 
@@ -509,22 +507,22 @@ impl PpuRegs {
     }
 
     pub fn write_2105(&mut self, value: u8) {
-        self.bg4_char_size = if get_bit_n!(value, 7) {
+        self.bg_settings[3].chr_size = if get_bit_n!(value, 7) {
             TileSize::Size16x16
         } else {
             TileSize::Size8x8
         };
-        self.bg3_char_size = if get_bit_n!(value, 6) {
+        self.bg_settings[2].chr_size = if get_bit_n!(value, 6) {
             TileSize::Size16x16
         } else {
             TileSize::Size8x8
         };
-        self.bg2_char_size = if get_bit_n!(value, 5) {
+        self.bg_settings[1].chr_size = if get_bit_n!(value, 5) {
             TileSize::Size16x16
         } else {
             TileSize::Size8x8
         };
-        self.bg1_char_size = if get_bit_n!(value, 4) {
+        self.bg_settings[0].chr_size = if get_bit_n!(value, 4) {
             TileSize::Size16x16
         } else {
             TileSize::Size8x8
@@ -552,20 +550,20 @@ impl PpuRegs {
 
     pub fn write_2106(&mut self, value: u8) {
         self.mosaic_size = value >> 4;
-        self.bg4_mosaic_en = get_bit_n!(value, 3);
-        self.bg3_mosaic_en = get_bit_n!(value, 2);
-        self.bg2_mosaic_en = get_bit_n!(value, 1);
-        self.bg1_mosaic_en = get_bit_n!(value, 0);
+        self.bg_settings[3].mosaic_en = get_bit_n!(value, 3);
+        self.bg_settings[2].mosaic_en = get_bit_n!(value, 2);
+        self.bg_settings[1].mosaic_en = get_bit_n!(value, 1);
+        self.bg_settings[0].mosaic_en = get_bit_n!(value, 0);
     }
 
     pub fn write_2107(&mut self, value: u8) {
-        self.bg1_tilemap_base_addr = ((value as u16) & 0x7C) << 8;
-        self.bg1_tilemap_count_y = if get_bit_n!(value, 1) {
+        self.bg_settings[0].tilemap_base_addr = ((value as u16) & 0x7C) << 8;
+        self.bg_settings[0].tilemap_cnt_y = if get_bit_n!(value, 1) {
             TilemapCount::Two
         } else {
             TilemapCount::One
         };
-        self.bg1_tilemap_count_x = if get_bit_n!(value, 0) {
+        self.bg_settings[0].tilemap_cnt_x = if get_bit_n!(value, 0) {
             TilemapCount::Two
         } else {
             TilemapCount::One
@@ -573,13 +571,13 @@ impl PpuRegs {
     }
 
     pub fn write_2108(&mut self, value: u8) {
-        self.bg2_tilemap_base_addr = ((value as u16) & 0x7C) << 8;
-        self.bg2_tilemap_count_y = if get_bit_n!(value, 1) {
+        self.bg_settings[1].tilemap_base_addr = ((value as u16) & 0x7C) << 8;
+        self.bg_settings[1].tilemap_cnt_y = if get_bit_n!(value, 1) {
             TilemapCount::Two
         } else {
             TilemapCount::One
         };
-        self.bg2_tilemap_count_x = if get_bit_n!(value, 0) {
+        self.bg_settings[1].tilemap_cnt_x = if get_bit_n!(value, 0) {
             TilemapCount::Two
         } else {
             TilemapCount::One
@@ -587,13 +585,13 @@ impl PpuRegs {
     }
 
     pub fn write_2109(&mut self, value: u8) {
-        self.bg3_tilemap_base_addr = ((value as u16) & 0x7C) << 8;
-        self.bg3_tilemap_count_y = if get_bit_n!(value, 1) {
+        self.bg_settings[2].tilemap_base_addr = ((value as u16) & 0x7C) << 8;
+        self.bg_settings[2].tilemap_cnt_y = if get_bit_n!(value, 1) {
             TilemapCount::Two
         } else {
             TilemapCount::One
         };
-        self.bg3_tilemap_count_x = if get_bit_n!(value, 0) {
+        self.bg_settings[2].tilemap_cnt_x = if get_bit_n!(value, 0) {
             TilemapCount::Two
         } else {
             TilemapCount::One
@@ -602,13 +600,13 @@ impl PpuRegs {
 
     #[allow(non_snake_case)]
     pub fn write_210A(&mut self, value: u8) {
-        self.bg4_tilemap_base_addr = ((value as u16) & 0x7C) << 8;
-        self.bg4_tilemap_count_y = if get_bit_n!(value, 1) {
+        self.bg_settings[3].tilemap_base_addr = ((value as u16) & 0x7C) << 8;
+        self.bg_settings[3].tilemap_cnt_y = if get_bit_n!(value, 1) {
             TilemapCount::Two
         } else {
             TilemapCount::One
         };
-        self.bg4_tilemap_count_x = if get_bit_n!(value, 0) {
+        self.bg_settings[3].tilemap_cnt_x = if get_bit_n!(value, 0) {
             TilemapCount::Two
         } else {
             TilemapCount::One
@@ -617,14 +615,14 @@ impl PpuRegs {
 
     #[allow(non_snake_case)]
     pub fn write_210B(&mut self, value: u8) {
-        self.bg1_chr_base_addr = ((value as u16) & 0x07) << 12;
-        self.bg2_chr_base_addr = ((value as u16) & 0x70) << 8;
+        self.bg_settings[0].chr_base_addr = ((value as u16) & 0x07) << 12;
+        self.bg_settings[1].chr_base_addr = ((value as u16) & 0x70) << 8;
     }
 
     #[allow(non_snake_case)]
     pub fn write_210C(&mut self, value: u8) {
-        self.bg3_chr_base_addr = ((value as u16) & 0x07) << 12;
-        self.bg4_chr_base_addr = ((value as u16) & 0x70) << 8;
+        self.bg_settings[2].chr_base_addr = ((value as u16) & 0x07) << 12;
+        self.bg_settings[3].chr_base_addr = ((value as u16) & 0x70) << 8;
     }
 
     #[allow(non_snake_case)]
@@ -634,7 +632,7 @@ impl PpuRegs {
         self.bg_offset_latch = value;
         self.bg_offset_x_latch = value;
 
-        self.bg1_m7_x_offset =
+        self.bg_settings[0].scroll_x =
             (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
     }
 
@@ -643,7 +641,7 @@ impl PpuRegs {
         let bgofs_latch = self.bg_offset_latch as u16;
         self.bg_offset_latch = value;
 
-        self.bg1_m7_y_offset = (((value & 3) as u16) << 8) | bgofs_latch;
+        self.bg_settings[0].scroll_y = (((value & 3) as u16) << 8) | bgofs_latch;
     }
 
     #[allow(non_snake_case)]
@@ -653,7 +651,7 @@ impl PpuRegs {
         self.bg_offset_latch = value;
         self.bg_offset_x_latch = value;
 
-        self.bg2_x_offset =
+        self.bg_settings[1].scroll_x =
             (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
     }
 
@@ -661,7 +659,7 @@ impl PpuRegs {
         let bgofs_latch = self.bg_offset_latch as u16;
         self.bg_offset_latch = value;
 
-        self.bg2_y_offset = (((value & 3) as u16) << 8) | bgofs_latch;
+        self.bg_settings[1].scroll_y = (((value & 3) as u16) << 8) | bgofs_latch;
     }
 
     pub fn write_2111(&mut self, value: u8) {
@@ -670,7 +668,7 @@ impl PpuRegs {
         self.bg_offset_latch = value;
         self.bg_offset_x_latch = value;
 
-        self.bg3_x_offset =
+        self.bg_settings[2].scroll_x =
             (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
     }
 
@@ -678,7 +676,7 @@ impl PpuRegs {
         let bgofs_latch = self.bg_offset_latch as u16;
         self.bg_offset_latch = value;
 
-        self.bg3_y_offset = (((value & 3) as u16) << 8) | bgofs_latch;
+        self.bg_settings[2].scroll_y = (((value & 3) as u16) << 8) | bgofs_latch;
     }
 
     pub fn write_2113(&mut self, value: u8) {
@@ -687,7 +685,7 @@ impl PpuRegs {
         self.bg_offset_latch = value;
         self.bg_offset_x_latch = value;
 
-        self.bg4_x_offset =
+        self.bg_settings[3].scroll_x =
             (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
     }
 
@@ -695,7 +693,7 @@ impl PpuRegs {
         let bgofs_latch = self.bg_offset_latch as u16;
         self.bg_offset_latch = value;
 
-        self.bg4_y_offset = (((value & 3) as u16) << 8) | bgofs_latch;
+        self.bg_settings[3].scroll_y = (((value & 3) as u16) << 8) | bgofs_latch;
     }
 
     pub fn write_2115(&mut self, value: u8) {
@@ -791,36 +789,36 @@ impl PpuRegs {
     }
 
     pub fn write_2123(&mut self, value: u8) {
-        self.bg2_w2_en = get_bit_n!(value, 7);
-        self.bg2_w2_inv = get_bit_n!(value, 6);
-        self.bg2_w1_en = get_bit_n!(value, 5);
-        self.bg2_w1_inv = get_bit_n!(value, 4);
-        self.bg1_w2_en = get_bit_n!(value, 3);
-        self.bg1_w2_inv = get_bit_n!(value, 2);
-        self.bg1_w1_en = get_bit_n!(value, 1);
-        self.bg1_w1_inv = get_bit_n!(value, 0);
+        self.bg_settings[1].window.w2_en = get_bit_n!(value, 7);
+        self.bg_settings[1].window.w2_inv = get_bit_n!(value, 6);
+        self.bg_settings[1].window.w1_en = get_bit_n!(value, 5);
+        self.bg_settings[1].window.w1_inv = get_bit_n!(value, 4);
+        self.bg_settings[0].window.w2_en = get_bit_n!(value, 3);
+        self.bg_settings[0].window.w2_inv = get_bit_n!(value, 2);
+        self.bg_settings[0].window.w1_en = get_bit_n!(value, 1);
+        self.bg_settings[0].window.w1_inv = get_bit_n!(value, 0);
     }
 
     pub fn write_2124(&mut self, value: u8) {
-        self.bg4_w2_en = get_bit_n!(value, 7);
-        self.bg4_w2_inv = get_bit_n!(value, 6);
-        self.bg4_w1_en = get_bit_n!(value, 5);
-        self.bg4_w1_inv = get_bit_n!(value, 4);
-        self.bg3_w2_en = get_bit_n!(value, 3);
-        self.bg3_w2_inv = get_bit_n!(value, 2);
-        self.bg3_w1_en = get_bit_n!(value, 1);
-        self.bg3_w1_inv = get_bit_n!(value, 0);
+        self.bg_settings[3].window.w2_en = get_bit_n!(value, 7);
+        self.bg_settings[3].window.w2_inv = get_bit_n!(value, 6);
+        self.bg_settings[3].window.w1_en = get_bit_n!(value, 5);
+        self.bg_settings[3].window.w1_inv = get_bit_n!(value, 4);
+        self.bg_settings[2].window.w2_en = get_bit_n!(value, 3);
+        self.bg_settings[2].window.w2_inv = get_bit_n!(value, 2);
+        self.bg_settings[2].window.w1_en = get_bit_n!(value, 1);
+        self.bg_settings[2].window.w1_inv = get_bit_n!(value, 0);
     }
 
     pub fn write_2125(&mut self, value: u8) {
-        self.col_w2_en = get_bit_n!(value, 7);
-        self.col_w2_inv = get_bit_n!(value, 6);
-        self.col_w1_en = get_bit_n!(value, 5);
-        self.col_w1_inv = get_bit_n!(value, 4);
-        self.obj_w2_en = get_bit_n!(value, 3);
-        self.obj_w2_inv = get_bit_n!(value, 2);
-        self.obj_w1_en = get_bit_n!(value, 1);
-        self.obj_w1_inv = get_bit_n!(value, 0);
+        self.col_settings.window.w2_en = get_bit_n!(value, 7);
+        self.col_settings.window.w2_inv = get_bit_n!(value, 6);
+        self.col_settings.window.w1_en = get_bit_n!(value, 5);
+        self.col_settings.window.w1_inv = get_bit_n!(value, 4);
+        self.obj_settings.window.w2_en = get_bit_n!(value, 3);
+        self.obj_settings.window.w2_inv = get_bit_n!(value, 2);
+        self.obj_settings.window.w1_en = get_bit_n!(value, 1);
+        self.obj_settings.window.w1_inv = get_bit_n!(value, 0);
     }
 
     pub fn write_2126(&mut self, value: u8) {
@@ -841,28 +839,28 @@ impl PpuRegs {
 
     #[allow(non_snake_case)]
     pub fn write_212A(&mut self, value: u8) {
-        self.bg4_win_logic = match value >> 6 {
+        self.bg_settings[3].window.logic = match value >> 6 {
             0 => WindowLogic::Or,
             1 => WindowLogic::And,
             2 => WindowLogic::Xor,
             3 => WindowLogic::Xnor,
             _ => unreachable!(),
         };
-        self.bg3_win_logic = match (value >> 4) & 3 {
+        self.bg_settings[2].window.logic = match (value >> 4) & 3 {
             0 => WindowLogic::Or,
             1 => WindowLogic::And,
             2 => WindowLogic::Xor,
             3 => WindowLogic::Xnor,
             _ => unreachable!(),
         };
-        self.bg2_win_logic = match (value >> 2) & 3 {
+        self.bg_settings[1].window.logic = match (value >> 2) & 3 {
             0 => WindowLogic::Or,
             1 => WindowLogic::And,
             2 => WindowLogic::Xor,
             3 => WindowLogic::Xnor,
             _ => unreachable!(),
         };
-        self.bg1_win_logic = match value & 3 {
+        self.bg_settings[0].window.logic = match value & 3 {
             0 => WindowLogic::Or,
             1 => WindowLogic::And,
             2 => WindowLogic::Xor,
@@ -873,14 +871,14 @@ impl PpuRegs {
 
     #[allow(non_snake_case)]
     pub fn write_212B(&mut self, value: u8) {
-        self.col_win_logic = match (value >> 2) & 3 {
+        self.col_settings.window.logic = match (value >> 2) & 3 {
             0 => WindowLogic::Or,
             1 => WindowLogic::And,
             2 => WindowLogic::Xor,
             3 => WindowLogic::Xnor,
             _ => unreachable!(),
         };
-        self.obj_win_logic = match value & 3 {
+        self.obj_settings.window.logic = match value & 3 {
             0 => WindowLogic::Or,
             1 => WindowLogic::And,
             2 => WindowLogic::Xor,
@@ -891,38 +889,38 @@ impl PpuRegs {
 
     #[allow(non_snake_case)]
     pub fn write_212C(&mut self, value: u8) {
-        self.obj_main_en = get_bit_n!(value, 4);
-        self.bg4_main_en = get_bit_n!(value, 3);
-        self.bg3_main_en = get_bit_n!(value, 2);
-        self.bg2_main_en = get_bit_n!(value, 1);
-        self.bg1_main_en = get_bit_n!(value, 0);
+        self.obj_settings.main_en = get_bit_n!(value, 4);
+        self.bg_settings[3].main_en = get_bit_n!(value, 3);
+        self.bg_settings[2].main_en = get_bit_n!(value, 2);
+        self.bg_settings[1].main_en = get_bit_n!(value, 1);
+        self.bg_settings[0].main_en = get_bit_n!(value, 0);
     }
 
     #[allow(non_snake_case)]
     pub fn write_212D(&mut self, value: u8) {
-        self.obj_sub_en = get_bit_n!(value, 4);
-        self.bg4_sub_en = get_bit_n!(value, 3);
-        self.bg3_sub_en = get_bit_n!(value, 2);
-        self.bg2_sub_en = get_bit_n!(value, 1);
-        self.bg1_sub_en = get_bit_n!(value, 0);
+        self.obj_settings.sub_en = get_bit_n!(value, 4);
+        self.bg_settings[3].sub_en = get_bit_n!(value, 3);
+        self.bg_settings[2].sub_en = get_bit_n!(value, 2);
+        self.bg_settings[1].sub_en = get_bit_n!(value, 1);
+        self.bg_settings[0].sub_en = get_bit_n!(value, 0);
     }
 
     #[allow(non_snake_case)]
     pub fn write_212E(&mut self, value: u8) {
-        self.obj_win_main_en = get_bit_n!(value, 4);
-        self.bg4_win_main_en = get_bit_n!(value, 3);
-        self.bg3_win_main_en = get_bit_n!(value, 2);
-        self.bg2_win_main_en = get_bit_n!(value, 1);
-        self.bg1_win_main_en = get_bit_n!(value, 0);
+        self.obj_settings.window.main_en = get_bit_n!(value, 4);
+        self.bg_settings[3].window.main_en = get_bit_n!(value, 3);
+        self.bg_settings[2].window.main_en = get_bit_n!(value, 2);
+        self.bg_settings[1].window.main_en = get_bit_n!(value, 1);
+        self.bg_settings[0].window.main_en = get_bit_n!(value, 0);
     }
 
     #[allow(non_snake_case)]
     pub fn write_212F(&mut self, value: u8) {
-        self.obj_win_sub_en = get_bit_n!(value, 4);
-        self.bg4_win_sub_en = get_bit_n!(value, 3);
-        self.bg3_win_sub_en = get_bit_n!(value, 2);
-        self.bg2_win_sub_en = get_bit_n!(value, 1);
-        self.bg1_win_sub_en = get_bit_n!(value, 0);
+        self.obj_settings.window.sub_en = get_bit_n!(value, 4);
+        self.bg_settings[3].window.sub_en = get_bit_n!(value, 3);
+        self.bg_settings[2].window.sub_en = get_bit_n!(value, 2);
+        self.bg_settings[1].window.sub_en = get_bit_n!(value, 1);
+        self.bg_settings[0].window.sub_en = get_bit_n!(value, 0);
     }
 
     pub fn write_2130(&mut self, value: u8) {
@@ -952,11 +950,11 @@ impl PpuRegs {
         };
         self.cmath_half = get_bit_n!(value, 6);
         self.back_cmath_en = get_bit_n!(value, 5);
-        self.obj_cmath_en = get_bit_n!(value, 4);
-        self.bg4_cmath_en = get_bit_n!(value, 3);
-        self.bg3_cmath_en = get_bit_n!(value, 2);
-        self.bg2_cmath_en = get_bit_n!(value, 1);
-        self.bg1_cmath_en = get_bit_n!(value, 0);
+        self.obj_settings.cmath_en = get_bit_n!(value, 4);
+        self.bg_settings[3].cmath_en = get_bit_n!(value, 3);
+        self.bg_settings[2].cmath_en = get_bit_n!(value, 2);
+        self.bg_settings[1].cmath_en = get_bit_n!(value, 1);
+        self.bg_settings[0].cmath_en = get_bit_n!(value, 0);
     }
 
     pub fn write_2132(&mut self, value: u8) {
