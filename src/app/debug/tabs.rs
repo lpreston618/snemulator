@@ -4,8 +4,9 @@ mod ppu;
 mod watchpoints;
 
 pub use cpu::CpuTab;
-pub use mem::MemoryTab;
 pub use ppu::PpuTab;
+pub use mem::MemoryTab;
+pub use ppu::LayerBuffers;
 pub use watchpoints::WatchpointsTab;
 
 #[derive(PartialEq, Clone, Copy)]

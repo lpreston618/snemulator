@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use crate::app::debug;
 use crate::app::debug::breakpoints::BreakpointInfo;
 use crate::app::debug::watchpoints::types::CompiledGraph;
 use crate::app::debug::window::DebugAction;
@@ -8,7 +9,6 @@ use crate::core::controller::{ControllerPlayer, JoypadButton, JoypadCmd, SnemCon
 use crate::core::scpu::bus::CpuBus;
 use crate::core::scpu::dma::{self, DmaRegs};
 use crate::core::scpu::ioregs::CpuIoRegs;
-use crate::core::scpu::mult::Mult5A22;
 use crate::core::scpu::{self, Cpu65c816, CpuInterrupt};
 use crate::core::sppu::bus::PpuBus;
 use crate::core::sppu::color::Color;
@@ -477,6 +477,7 @@ impl Snemulator {
         audio_buffer: &mut Vec<i16>,
         breakpoints: &HashSet<BreakpointInfo>,
         watchpoints: &CompiledGraph,
+        buffers: &mut debug::LayerBuffers
     ) -> DebugAction {
         let mut action = DebugAction::None;
             
@@ -484,7 +485,7 @@ impl Snemulator {
         self.ssmp.start_frame();
 
         'frame: while !self.frame_ready {
-            action = self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints);
+            action = self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints, buffers);
 
             match action {
                 DebugAction::BreakpointHit | DebugAction::WatchpointHit => {
@@ -507,7 +508,12 @@ impl Snemulator {
         audio_buffer: &mut Vec<i16>,
         breakpoints: &HashSet<BreakpointInfo>,
         watchpoints: &CompiledGraph,
+        buffers: &mut debug::LayerBuffers
     ) -> DebugAction {
+        if self.ppu.dot == 0 && self.ppu.scanline == 0 {
+            Self::clear_layer_buffers(buffers);
+        }
+        
         let clocks = self.cpu.clocks.min(self.ppu.clocks);
 
         self.cpu.clocks -= clocks;
@@ -519,7 +525,7 @@ impl Snemulator {
         }
 
         if self.ppu.clocks == 0 {
-            self.cycle_ppu(frame_buffer);
+            self.debug_cycle_ppu(frame_buffer, buffers);
         }
 
         self.ssmp.clock(clocks, audio_buffer, &mut self.apu_ports);
@@ -544,10 +550,11 @@ impl Snemulator {
         audio_buffer: &mut Vec<i16>,
         breakpoints: &HashSet<BreakpointInfo>,
         watchpoints: &CompiledGraph,
+        buffers: &mut debug::LayerBuffers
     ) -> DebugAction {
         // Cycle until the CPU is the next to cycle
         while self.cpu.clocks > self.ppu.clocks {
-            let action = self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints);
+            let action = self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints, buffers);
 
             match action {
                 DebugAction::BreakpointHit | DebugAction::WatchpointHit => {
@@ -557,7 +564,7 @@ impl Snemulator {
             }
         }
 
-        let action = self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints);
+        let action = self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints, buffers);
         
         if self.frame_ready {
             self.frame += 1;
@@ -565,5 +572,52 @@ impl Snemulator {
         }
         
         action
+    }
+    
+    fn debug_cycle_ppu(&mut self, frame_buffer: &mut [u8], buffers: &mut debug::LayerBuffers) {
+        self.cpu_interrupt = None;
+
+        let mut bus = ppu_bus!(self, frame_buffer);
+
+        self.ppu.debug_cycle(&mut bus, buffers);
+
+        match self.cpu_interrupt {
+            Some(CpuInterrupt::IRQ) => {
+                self.cpu.irq_pending = true;
+            }
+            Some(CpuInterrupt::NMI) => {
+                self.cpu.nmi_pending = true;
+            }
+            _ => {}
+        }
+
+        if self.hdma_pending
+            && self.ppu.scanline < sppu::VBLANK_START_SCANLINE
+            && self.ppu.dot == sppu::HBLANK_START_DOT
+        {
+            self.hdma_en = true;
+            self.dma_regs[self.hdma_active_ch].transfer_pattern_step = 0;
+        }
+    }
+    
+    fn clear_layer_buffers(layer_buffers: &mut debug::LayerBuffers) {
+        Self::clear_layer_buf(&mut layer_buffers.bg1);
+        Self::clear_layer_buf(&mut layer_buffers.bg2);
+        Self::clear_layer_buf(&mut layer_buffers.bg3);
+        Self::clear_layer_buf(&mut layer_buffers.bg4);
+        Self::clear_layer_buf(&mut layer_buffers.obj);
+    }
+    
+    fn clear_layer_buf(layer_buffer: &mut [u8]) {
+        layer_buffer.chunks_mut(4).enumerate().for_each(|(i, p)| {
+            let y = i / 256;
+            let x = i % 256;
+            
+            p.copy_from_slice(if (x / 2 + y / 2) % 2 == 0 {
+                &[0x50, 0x50, 0x50, 255]
+            } else {
+                &[0x30, 0x30, 0x30, 255]
+            });
+        });
     }
 }

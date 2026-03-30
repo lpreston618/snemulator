@@ -1,21 +1,40 @@
-use crate::core::snemcore;
+use crate::app::debug::tabs::ppu::texture::Texture;
+use crate::core::sysinfo;
 
-pub struct LayerViewer {
-    pub needs_updating: bool,
+pub struct LayerBuffers {
+    pub bg1: Vec<u8>,
+    pub bg2: Vec<u8>,
+    pub bg3: Vec<u8>,
+    pub bg4: Vec<u8>,
+    pub obj: Vec<u8>,
 }
 
-impl LayerViewer {
+pub struct LayerView {
+    pub texture: Texture,
+    // window: app::Texture,
+    // cmath_en: app::Texture,
+}
+
+impl LayerView {
     pub fn new(painter: &mut egui_glow::Painter) -> Self {
+        let width = (sysinfo::SCREEN_WIDTH / 2) as usize;
+        let height = (sysinfo::SCREEN_HEIGHT / 2) as usize;
+
         Self {
-            needs_updating: true,
+            texture: Texture::new(painter, width, height),
         }
     }
-    
-    pub fn render(&mut self, ui: &mut egui::Ui, snem_core: &snemcore::Snemulator, painter: &mut egui_glow::Painter) {
+
+    pub fn render(&mut self, ui: &mut egui::Ui) {
+        self.texture.update_texture();
         
-    }
-    
-    fn update_textures(&mut self) {
-        self.needs_updating = false;
+        ui.vertical(|ui| {            
+            let (width, height) = self.texture.size();
+            let scale = 2.0;
+            
+            let image_size = egui::Vec2::new(width as f32, height as f32) * scale;
+            
+            ui.image(egui::load::SizedTexture::new(self.texture.texture_id(), image_size));
+        });
     }
 }

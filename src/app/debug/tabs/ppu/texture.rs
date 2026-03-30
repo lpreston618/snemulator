@@ -4,14 +4,16 @@ use glow::HasContext;
 pub struct Texture {
     texture: glow::Texture,
     texture_id: egui::TextureId,
-    pixels: Vec<u8>,
+    gl: std::sync::Arc<glow::Context>,
+    pixels: Option<Vec<u8>>,
     width: usize,
     height: usize,
+    max_size: usize,
 }
 
 impl Texture {
     pub fn new(painter: &mut egui_glow::Painter, max_width: usize, max_height: usize) -> Self {
-        let gl = painter.gl().as_ref();
+        let gl = painter.gl().clone();
          
         let texture = unsafe {
             let tex = gl.create_texture().expect("Failed to create CHR texture");
@@ -26,9 +28,11 @@ impl Texture {
         Self {
             texture,
             texture_id,
-            pixels: vec![0u8; max_width * max_height * 4],
+            gl,
+            pixels: Some(vec![0u8; max_width * max_height * 4]),
             width: max_width,
             height: max_height,
+            max_size: max_width * max_height,
         }
     }
     
@@ -37,7 +41,7 @@ impl Texture {
     }
     
     pub fn resize(&mut self, width: usize, height: usize) -> Result<()> {
-        if width * height * 4 > self.pixels().len() {
+        if width * height * 4 > self.max_size {
             return Err(anyhow::anyhow!("Texture size must not exceed max_width * max_height"));
         }
         
@@ -47,19 +51,25 @@ impl Texture {
         Ok(())
     }
     
-    pub fn pixels(&self) -> &Vec<u8> {
-        &self.pixels
+    pub fn take_pixels(&mut self) -> Vec<u8> {
+        self.pixels.take().unwrap()
     }
     
-    pub fn pixels_mut(&mut self) -> &mut Vec<u8> {
-        &mut self.pixels
+    pub fn give_pixels(&mut self, pixels: Vec<u8>) {
+        self.pixels = Some(pixels);
+    }
+    
+    pub fn pixels_mut(&mut self) -> &mut [u8] {
+        self.pixels.as_mut().unwrap().as_mut_slice()
     }
     
     pub fn texture_id(&self) -> egui::TextureId {
         self.texture_id
     }
     
-    pub fn update_texture(&mut self, gl: &glow::Context) {
+    pub fn update_texture(&mut self) {
+        let gl = &self.gl;
+        
         unsafe {
             gl.bind_texture(glow::TEXTURE_2D, Some(self.texture));
             gl.tex_image_2d(
@@ -67,7 +77,7 @@ impl Texture {
                 glow::RGBA as i32,
                 self.width as i32, self.height as i32,
                 0, glow::RGBA, glow::UNSIGNED_BYTE,
-                glow::PixelUnpackData::Slice(Some(&self.pixels)),
+                glow::PixelUnpackData::Slice(self.pixels.as_ref().map(|v| &v[..])),
             );
         }
     }

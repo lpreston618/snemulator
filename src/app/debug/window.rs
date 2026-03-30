@@ -1,6 +1,7 @@
 use anyhow::Result;
 
 use crate::app;
+use crate::app::debug::LayerBuffers;
 use crate::core;
 use crate::app::debug::tabs;
 use crate::app::ui_window::UiWindow;
@@ -78,12 +79,15 @@ impl DebugWindow {
         let mut clear_watchpoints = false;
         let mut app_action = app::AppAction::Continue;
         
-        if !app_state.is_paused {
+        if !app_state.is_paused { 
+            let mut layer_buffers = self.ppu_tab.layer_buffers();
+            
             match snem_core.debug_run_frame(
                 frame_buffer, 
                 audio_buffer,
                 self.breakpoints(),
                 self.watchpoints(),
+                &mut layer_buffers,
             ) {
                 DebugAction::BreakpointHit => {
                     self.breakpoint_hit(&snem_core, app_state);
@@ -95,6 +99,8 @@ impl DebugWindow {
                 }
                 _ => {}
             }
+            
+            self.ppu_tab.restore_buffers(layer_buffers);
         }
         
         self.wp_tab.update_watchpoint_graph();
@@ -102,79 +108,71 @@ impl DebugWindow {
         let mut egui_window = self.egui_window.take().unwrap();
         let mut debug_action = DebugAction::None;
     
-        let mut full_output: Option<egui::FullOutput> = None;
+        let full_output = Some(egui_window.update_ui(|ctx| {
+            egui::TopBottomPanel::top("tabs").show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    for tab in [
+                        tabs::DebugTab::Cpu,
+                        tabs::DebugTab::Memory,
+                        tabs::DebugTab::Ppu,
+                        tabs::DebugTab::Watchpoints,
+                    ] {
+                        ui.selectable_value(&mut self.selected_tab, tab, tab.label());
+                    }
+                });
+            });
+            
+            egui::TopBottomPanel::top("commands").show(ctx, |ui| {
+                ui.add_space(5.0);
+                
+                ui.horizontal(|ui| {
+                    if ui.button("Step Instruction").clicked() {
+                        self.compile_watchpoints(&snem_core);
+                        debug_action = DebugAction::SingleStep;
+                    }
     
-        egui_window.with_painter(|egui_window, painter| {
-            full_output = Some(egui_window.update_ui(|ctx| {
-                egui::TopBottomPanel::top("tabs").show(ctx, |ui| {
-                    ui.horizontal(|ui| {
-                        for tab in [
-                            tabs::DebugTab::Cpu,
-                            tabs::DebugTab::Memory,
-                            tabs::DebugTab::Ppu,
-                            tabs::DebugTab::Watchpoints,
-                        ] {
-                            ui.selectable_value(&mut self.selected_tab, tab, tab.label());
-                        }
-                    });
+                    if ui.button("Step Frame").clicked() {
+                        self.compile_watchpoints(&snem_core);
+                        debug_action = DebugAction::StepFrame;
+                    }
+                    
+                    if ui.button("Reset").clicked() {
+                        clear_watchpoints = true;
+                        debug_action = DebugAction::Reset;
+                    }
+                    
+                    if ui.button("Hard Reset").clicked() {
+                        clear_watchpoints = true;
+                        debug_action = DebugAction::HardReset;
+                    }
+                    
+                    if app_state.is_paused && ui.button("Resume").clicked() {
+                        self.compile_watchpoints(&snem_core);
+                        debug_action = DebugAction::TogglePause;
+                    }
+                    
+                    if !app_state.is_paused && ui.button("Pause").clicked() {
+                        debug_action = DebugAction::TogglePause;
+                        clear_watchpoints = true;
+                    }
+                    
+                    ui.label(format!("Frame: {}", snem_core.frame));
+                    
+                    ui.label(format!("Cycles: {}", snem_core.total_cycles));
                 });
                 
-                egui::TopBottomPanel::top("commands").show(ctx, |ui| {
-                    ui.add_space(5.0);
-                    
-                    ui.horizontal(|ui| {
-                        if ui.button("Step Instruction").clicked() {
-                            self.compile_watchpoints(&snem_core);
-                            debug_action = DebugAction::SingleStep;
-                        }
-        
-                        if ui.button("Step Frame").clicked() {
-                            self.compile_watchpoints(&snem_core);
-                            debug_action = DebugAction::StepFrame;
-                        }
-                        
-                        if ui.button("Reset").clicked() {
-                            clear_watchpoints = true;
-                            debug_action = DebugAction::Reset;
-                        }
-                        
-                        if ui.button("Hard Reset").clicked() {
-                            clear_watchpoints = true;
-                            debug_action = DebugAction::HardReset;
-                        }
-                        
-                        if app_state.is_paused && ui.button("Resume").clicked() {
-                            self.compile_watchpoints(&snem_core);
-                            debug_action = DebugAction::TogglePause;
-                        }
-                        
-                        if !app_state.is_paused && ui.button("Pause").clicked() {
-                            debug_action = DebugAction::TogglePause;
-                            clear_watchpoints = true;
-                        }
-                        
-                        ui.label(format!("Frame: {}", snem_core.frame));
-                        
-                        ui.label(format!("Cycles: {}", snem_core.total_cycles));
-                    });
-                    
-                    ui.add_space(3.0);
-                });
-                
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    match self.selected_tab {
-                        tabs::DebugTab::Cpu => self.cpu_tab.render(ui, snem_core, &mut self.jump_to_bps_on_hit),
-                        tabs::DebugTab::Memory => self.mem_tab.render(ui, snem_core),
-                        tabs::DebugTab::Ppu => self.ppu_tab.render(
-                            ui,
-                            snem_core,
-                            painter,
-                        ),
-                        tabs::DebugTab::Watchpoints => self.wp_tab.render(ui, snem_core, app_state, &mut self.jump_to_wps_on_hit),
-                    };
-                });
-            }));
-        });
+                ui.add_space(3.0);
+            });
+            
+            egui::CentralPanel::default().show(ctx, |ui| {
+                match self.selected_tab {
+                    tabs::DebugTab::Cpu => self.cpu_tab.render(ui, snem_core, &mut self.jump_to_bps_on_hit),
+                    tabs::DebugTab::Memory => self.mem_tab.render(ui, snem_core),
+                    tabs::DebugTab::Ppu => self.ppu_tab.render(ui, snem_core),
+                    tabs::DebugTab::Watchpoints => self.wp_tab.render(ui, snem_core, app_state, &mut self.jump_to_wps_on_hit),
+                };
+            });
+        }));
 
         let full_output = full_output.unwrap();
         
@@ -185,11 +183,14 @@ impl DebugWindow {
         
         match debug_action {
             DebugAction::SingleStep if app_state.is_paused => {
+                let mut layer_buffers = self.ppu_tab.layer_buffers();
+                
                 match snem_core.debug_step_instruction(
                     frame_buffer, 
                     audio_buffer,
                     self.breakpoints(),
                     self.watchpoints(),
+                    &mut layer_buffers,
                 ) {
                     DebugAction::BreakpointHit => {
                         self.breakpoint_hit(&snem_core, app_state);
@@ -200,14 +201,18 @@ impl DebugWindow {
                     _ => {}
                 }
                 
+                self.ppu_tab.restore_buffers(layer_buffers);
                 clear_watchpoints = true;
             }
             DebugAction::StepFrame if app_state.is_paused => {
+                let mut layer_buffers = self.ppu_tab.layer_buffers();
+                
                 match snem_core.debug_run_frame(
                     frame_buffer, 
                     audio_buffer,
                     self.breakpoints(),
                     self.watchpoints(),
+                    &mut layer_buffers,
                 ) {
                     DebugAction::BreakpointHit => {
                         app_state.is_paused = true;
@@ -220,6 +225,7 @@ impl DebugWindow {
                     _ => {}
                 }
                 
+                self.ppu_tab.restore_buffers(layer_buffers);
                 clear_watchpoints = true;
             }
             DebugAction::TogglePause => {
