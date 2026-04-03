@@ -273,41 +273,41 @@ impl CpuTab {
     
     fn cpu_state_section(&mut self, ui: &mut egui::Ui, snem_core: &snemcore::Snemulator) {
         ui.heading("CPU State");
-
+        
         ui.separator();
-
+        
         ui.horizontal(|ui| {
             let pb_text = egui::RichText::new(format!("PB: {:02X}", snem_core.cpu.pb)).monospace();
             ui.label(pb_text);
-
+            
             let pc_text = egui::RichText::new(format!("PC: {:04X}", snem_core.cpu.pc)).monospace();
             ui.label(pc_text);
-
+            
             let sp_text = egui::RichText::new(format!("SP: {:04X}", snem_core.cpu.sp)).monospace();
             ui.label(sp_text);
-
+            
             let db_text = egui::RichText::new(format!("DB: {:02X}", snem_core.cpu.db)).monospace();
             ui.label(db_text);
-
+            
             let dp_text = egui::RichText::new(format!("DP: {:04X}", snem_core.cpu.dp)).monospace();
             ui.label(dp_text);
         });
-
+        
         ui.horizontal(|ui| {
             let a_text = egui::RichText::new(format!("A: {:04X}", snem_core.cpu.a)).monospace();
             ui.label(a_text);
-
+            
             let x_text = egui::RichText::new(format!("X: {:04X}", snem_core.cpu.x)).monospace();
             ui.label(x_text);
-
+            
             let y_text = egui::RichText::new(format!("Y: {:04X}", snem_core.cpu.y)).monospace();
             ui.label(y_text);
-
+            
             let style = egui::Style::default();
             let mut status_str = egui::text::LayoutJob::default();
-
+            
             let flag_col = |flag| if snem_core.cpu.is_flag_set(flag) { egui::Color32::GREEN } else { egui::Color32::RED };
-
+            
             let p_text = egui::RichText::new("P: ").color(ui.visuals().text_color()).monospace();
             let n_text = egui::RichText::new("N").color(flag_col(scpu::Flag::FlagN)).monospace();
             let v_text = egui::RichText::new("V").color(flag_col(scpu::Flag::FlagV)).monospace();
@@ -317,7 +317,7 @@ impl CpuTab {
             let i_text = egui::RichText::new("I").color(flag_col(scpu::Flag::FlagI)).monospace();
             let z_text = egui::RichText::new("Z").color(flag_col(scpu::Flag::FlagZ)).monospace();
             let c_text = egui::RichText::new("C").color(flag_col(scpu::Flag::FlagC)).monospace();
-
+            
             p_text.append_to(&mut status_str, &style, egui::FontSelection::Default, egui::Align::Center);
             n_text.append_to(&mut status_str, &style, egui::FontSelection::Default, egui::Align::Center);
             v_text.append_to(&mut status_str, &style, egui::FontSelection::Default, egui::Align::Center);
@@ -327,12 +327,12 @@ impl CpuTab {
             i_text.append_to(&mut status_str, &style, egui::FontSelection::Default, egui::Align::Center);
             z_text.append_to(&mut status_str, &style, egui::FontSelection::Default, egui::Align::Center);
             c_text.append_to(&mut status_str, &style, egui::FontSelection::Default, egui::Align::Center);
-
+            
             ui.label(status_str);
         });
-
+        
         ui.separator();
-
+        
         ui.horizontal(|ui| {
             let mut halted = snem_core.cpu.halted;
             let mut stopped = snem_core.cpu.stopped;
@@ -379,7 +379,7 @@ impl CpuTab {
             ui.label(monospace_text(format!("CPUIO3: {:02X}", snem_core.apu_ports.cpuio3)));
         });
     }
-
+    
     fn breakpoints_section(&mut self, ui: &mut egui::Ui, snem_core: &snemcore::Snemulator, jump_to_bps_on_hit: &mut bool) {
         ui.horizontal(|ui| {
             ui.heading("Breakpoints");

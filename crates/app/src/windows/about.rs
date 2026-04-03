@@ -1,7 +1,7 @@
 use anyhow::Result;
 use log::info;
 
-use crate::app::ui_window::UiWindow;
+use crate::windows::ui_window::UiWindow;
 
 const ABOUT_WINDOW_WIDTH: u32 = 400;
 const ABOUT_WINDOW_HEIGHT: u32 = 400;

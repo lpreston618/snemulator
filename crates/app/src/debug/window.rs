@@ -1,17 +1,20 @@
 use anyhow::Result;
+use snemcore::Snemulator;
+use snemcore::cartridge::MappingMode;
+use snemcore::probe::DebugProbe;
 
 use crate::app;
-use crate::core;
-use crate::app::debug::tabs;
-use crate::app::ui_window::UiWindow;
-use crate::core::debug::breakpoints::BreakpointInfo;
-use crate::core::debug::watchpoints::CompiledGraph;
-use crate::core::debug::DebugAction;
+// use crate::core;
+use crate::debug::tabs;
+use crate::windows::ui_window::UiWindow;
+// use crate::core::debug::breakpoints::BreakpointInfo;
+// use crate::core::debug::watchpoints::CompiledGraph;
+// use crate::core::debug::DebugAction;
 
 const DEBUG_WINDOW_WIDTH: u32 = 800;
 const DEBUG_WINDOW_HEIGHT: u32 = 600;
 
-pub struct DebugWindow {
+pub struct Debugger {
     egui_window: Option<Box<UiWindow>>,
     cpu_tab: Box<tabs::CpuTab>,
     mem_tab: Box<tabs::MemoryTab>,
@@ -20,10 +23,25 @@ pub struct DebugWindow {
     selected_tab: tabs::DebugTab,
     jump_to_bps_on_hit: bool,
     jump_to_wps_on_hit: bool,
+    paused: bool,
 }
 
-impl DebugWindow {
-    pub fn new(video_subsystem: &sdl3::VideoSubsystem, rom_mapping_mode: core::cartridge::MappingMode) -> Result<Self> {
+impl DebugProbe for Debugger {
+    fn on_instruction(&mut self, core: &Snemulator) {
+        let addr = (core.cpu.pb as u32) << 16 | core.cpu.pc as u32;
+        
+        if self.cpu_tab.breakpoints().contains(&addr) {
+            self.breakpoint_hit(core);
+        }
+    }
+    
+    fn should_stop(&mut self) -> bool {
+        self.paused
+    }
+}
+
+impl Debugger {
+    pub fn new(video_subsystem: &sdl3::VideoSubsystem, rom_mapping_mode: MappingMode) -> Result<Self> {
         let mut egui_window = Box::new(UiWindow::new(
             video_subsystem,
             "Debug",
@@ -50,6 +68,7 @@ impl DebugWindow {
             selected_tab: tabs::DebugTab::Cpu,
             jump_to_bps_on_hit: true,
             jump_to_wps_on_hit: true,
+            paused: true,
         };
         
         debug_window.egui_window = Some(egui_window);
@@ -59,7 +78,7 @@ impl DebugWindow {
 
     pub fn update_and_render(
         &mut self,
-        snem_core: &mut core::snemcore::Snemulator,
+        core: &mut Snemulator,
         app_state: &mut app::AppState,
         frame_buffer: &mut [u8],
         audio_buffer: &mut Vec<i16>,
@@ -245,9 +264,8 @@ impl DebugWindow {
         self.egui_window.as_mut().unwrap().handle_sdl_keyboard_event(event);
     }
     
-    pub fn breakpoint_hit(&mut self, snem_core: &core::snemcore::Snemulator, app_state: &mut app::AppState) {
-        app_state.is_paused = true;
-        self.cpu_tab.breakpoint_hit((snem_core.cpu.pb as u32) << 16 | snem_core.cpu.pc as u32);
+    pub fn breakpoint_hit(&mut self, core: &Snemulator) {
+        self.cpu_tab.breakpoint_hit((core.cpu.pb as u32) << 16 | core.cpu.pc as u32);
         
         if self.jump_to_bps_on_hit {
             self.selected_tab = tabs::DebugTab::Cpu;

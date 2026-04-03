@@ -1,5 +1,5 @@
-mod about;
-mod game;
-mod settings;
-mod ui_window;
-mod menu;
+pub mod about;
+pub mod game;
+pub mod settings;
+pub mod ui_window;
+pub mod menu;

@@ -3,10 +3,10 @@ use rfd::FileDialog;
 use sdl3::event::Event;
 use sdl3::keyboard::{Keycode, Mod};
 use std::time::{Duration, Instant};
-use crate::app::about_window::AboutWindow;
-use crate::debug::window::DebugWindow;
-use crate::app::main_window::MainWindow;
-use crate::app::settings::{Settings, SettingsWindow};
+use crate::windows::about::AboutWindow;
+use crate::debug::window::Debugger;
+use crate::windows::game::MainWindow;
+use crate::windows::settings::{Settings, SettingsWindow};
 use snemcore::sysinfo::{SCREEN_WIDTH, SCREEN_HEIGHT};
 use snemcore::Snemulator;
 use snemcore::controller::{ControllerPlayer, JoypadButton};
@@ -58,7 +58,7 @@ pub struct SnemulatorApp {
     main_window: MainWindow,
     about_window: Option<AboutWindow>,
     settings_window: Option<SettingsWindow>,
-    debug_window: Option<DebugWindow>,
+    debug_window: Option<Debugger>,
     state: AppState,
     settings: Settings,
     
@@ -504,7 +504,7 @@ impl SnemulatorApp {
         
         let mapping_mode = self.snem_core.cart.as_ref().unwrap().mapping_mode();
         
-        match DebugWindow::new(&self.video_subsystem, mapping_mode) {
+        match Debugger::new(&self.video_subsystem, mapping_mode) {
             Ok(window) => self.debug_window = Some(window),
             Err(e) => log::error!("Failed to create debug window: {}", e),
         }

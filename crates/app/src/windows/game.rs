@@ -3,13 +3,14 @@ use anyhow::Result;
 use sdl3::video::GLProfile;
 
 use crate::app;
-use crate::core::sysinfo;
-use crate::app::settings::Settings;
-use crate::app::ui_window::UiWindow;
+use snemcore::sysinfo;
+use crate::windows::menu::MainMenuBar;
+use crate::windows::settings::Settings;
+use crate::windows::ui_window::UiWindow;
 
 pub struct MainWindow {
     egui_window: UiWindow,
-    menu: app::menu::MainMenuBar,
+    menu: MainMenuBar,
     shader_program: glow::Program,
     vao: glow::VertexArray,
     vbo: glow::Buffer,
@@ -44,7 +45,7 @@ impl MainWindow {
             }
         )?;
         
-        let menu = app::menu::MainMenuBar::new();
+        let menu = MainMenuBar::new();
         
         // Create OpenGL texture for game screen
         let gl = egui_window.gl();

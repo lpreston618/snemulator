@@ -24,12 +24,12 @@ use crate::probe::{DebugProbe, NullProbe};
 
 pub mod debug;
 pub mod probe;
-mod cartridge;
-mod controller;
-mod scpu;
+pub mod sysinfo;
+pub mod controller;
+pub mod scpu;
+pub mod cartridge;
 mod sppu;
 mod ssmp;
-mod sysinfo;
 mod utils;
 
 macro_rules! cpu_bus {
@@ -111,7 +111,7 @@ pub struct Snemulator<P: DebugProbe = NullProbe> {
     joypad_cmd: Option<JoypadCmd>,
     cpu_interrupt: Option<CpuInterrupt>,
 
-    frame_ready: bool,
+    pub frame_ready: bool,
 
     pub cart: Option<Cartridge>,
     pub total_cycles: u64,
@@ -240,7 +240,7 @@ impl<P: DebugProbe> Snemulator<P> {
 
         self.ssmp.start_frame();
 
-        while !self.frame_ready {
+        while !self.frame_ready && !self.probe.should_stop() {
             self.cycle(frame_buffer, audio_buffer);
         }
         

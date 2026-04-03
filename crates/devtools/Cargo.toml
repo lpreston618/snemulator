@@ -5,8 +5,9 @@ edition = "2024"
 
 [[bin]]
 name = "speedtest"
-path = "devtools/speedtest/main.rs"
+path = "speedtest/main.rs"
 
 [dependencies]
 indicatif = "0.18.4"
 snemcore = { path = "../snemcore" }
+rfd = { workspace = true }

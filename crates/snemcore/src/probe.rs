@@ -7,6 +7,7 @@ pub trait DebugProbe {
     fn on_dot(&mut self, dot: u16) {}
     fn on_scanline(&mut self, line: u16) {}
     fn on_frame(&mut self) {}
+    fn should_stop(&mut self) -> bool { false }
 }
 
 pub struct NullProbe {}
