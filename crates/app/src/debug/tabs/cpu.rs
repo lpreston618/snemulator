@@ -1,6 +1,8 @@
-use crate::core::debug::breakpoints::BreakpointInfo;
-use crate::app::utils::monospace_text;
-use crate::core::{cartridge, scpu, snemcore};
+use std::collections::HashSet;
+
+use crate::debug::{breakpoints::BreakpointInfo, debugger::Debugger};
+use crate::utils::monospace_text;
+use snemcore::{Snemulator, cartridge, scpu};
 
 const DISASM_BLOCK_SIZE: usize = 64;
 
@@ -40,7 +42,7 @@ impl DisassemblyView {
         memory: &[u8],
         memory_region: scpu::disassembler::MemoryRegion,
         options: &scpu::disassembler::DisassemblyOptions,
-        snem_core: &snemcore::Snemulator,
+        core: &Snemulator<Debugger>,
     ) -> Vec<scpu::disassembler::DisasmLine> {
         let mem = scpu::disassembler::MemBlock {
             data: memory,
@@ -51,23 +53,23 @@ impl DisassemblyView {
         let flag_e = if options.forced_e.is_some() {
             options.forced_e.unwrap()
         } else {
-            snem_core.cpu.e
+            core.cpu.e
         };
 
         let flag_m = if options.forced_flag_m.is_some() {
             options.forced_flag_m.unwrap() | flag_e
         } else {
-            snem_core.cpu.is_flag_set(scpu::Flag::FlagM) | flag_e
+            core.cpu.is_flag_set(scpu::Flag::FlagM) | flag_e
         };
 
         let flag_x = if options.forced_flag_x.is_some() {
             options.forced_flag_x.unwrap() | flag_e
         } else {
-            snem_core.cpu.is_flag_set(scpu::Flag::FlagX) | flag_e
+            core.cpu.is_flag_set(scpu::Flag::FlagX) | flag_e
         };
 
         let state = scpu::disassembler::ExecuteState {
-            dp: snem_core.cpu.dp,
+            dp: core.cpu.dp,
             pc: start_addr as u16,
             flag_m,
             flag_x,
@@ -82,13 +84,13 @@ impl DisassemblyView {
         memory: &[u8],
         memory_region: scpu::disassembler::MemoryRegion,
         options: &scpu::disassembler::DisassemblyOptions,
-        snem_core: &snemcore::Snemulator
+        core: &Snemulator<Debugger>
     ) {
         if self.follow_pc {
             self.current_addr = pc;
         }
 
-        self.cached_lines = Some(Self::decode_forward(self.current_addr, memory, memory_region, options, snem_core));
+        self.cached_lines = Some(Self::decode_forward(self.current_addr, memory, memory_region, options, core));
     }
 }
 
@@ -105,7 +107,7 @@ impl CpuTab {
         }
     }
     
-    pub fn breakpoints(&self) -> &std::collections::HashSet<BreakpointInfo> {
+    pub fn breakpoints(&self) -> &HashSet<BreakpointInfo> {
         &self.disasm.breakpoints
     }
     
@@ -113,10 +115,10 @@ impl CpuTab {
         self.disasm.current_addr = addr;
     }
     
-    pub fn render(&mut self, ui: &mut egui::Ui, snem_core: &snemcore::Snemulator, jump_to_bps_on_hit: &mut bool) {
-        self.update_disasm(snem_core);
+    pub fn render(&mut self, ui: &mut egui::Ui, core: &Snemulator<Debugger>, jump_to_bps_on_hit: &mut bool) {
+        self.update_disasm(core);
         
-        let pc = (snem_core.cpu.pb as u32) << 16 | snem_core.cpu.pc as u32;
+        let pc = (core.cpu.pb as u32) << 16 | core.cpu.pc as u32;
 
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
@@ -143,7 +145,7 @@ impl CpuTab {
                         match self.disasm.options.forced_e {
                             Some(true) => "Emulation",
                             Some(false) => "Native",
-                            None => if snem_core.cpu.e { "Emulation" } else { "Native" },
+                            None => if core.cpu.e { "Emulation" } else { "Native" },
                         })
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut self.disasm.options.forced_e, Some(true), "Emulation");
@@ -157,7 +159,7 @@ impl CpuTab {
 
                         ("m8", "x8")
                     }
-                    None if snem_core.cpu.e => {
+                    None if core.cpu.e => {
                         ui.disable();
 
                         ("m8", "x8")
@@ -166,12 +168,12 @@ impl CpuTab {
                         let m_text = match self.disasm.options.forced_flag_m {
                             Some(true) => "m8",
                             Some(false) => "m16",
-                            None => if snem_core.cpu.is_flag_set(scpu::Flag::FlagM) { "m8" } else { "m16" },
+                            None => if core.cpu.is_flag_set(scpu::Flag::FlagM) { "m8" } else { "m16" },
                         };
                         let x_text = match self.disasm.options.forced_flag_x {
                             Some(true) => "x8",
                             Some(false) => "x16",
-                            None => if snem_core.cpu.is_flag_set(scpu::Flag::FlagX) { "x8" } else { "x16" },
+                            None => if core.cpu.is_flag_set(scpu::Flag::FlagX) { "x8" } else { "x16" },
                         };
                         (m_text, x_text)
                     }
@@ -216,7 +218,7 @@ impl CpuTab {
                                         self.disasm.breakpoints.remove(&BreakpointInfo::new(addr));
                                     }
                                     else {
-                                        self.add_breakpoint(addr, snem_core);
+                                        self.add_breakpoint(addr, core);
                                     }
                                 }
 
@@ -262,51 +264,51 @@ impl CpuTab {
             });
 
             ui.vertical(|ui| {
-                self.cpu_state_section(ui, snem_core);
+                self.cpu_state_section(ui, core);
                 
                 ui.add_space(10.0);
                 
-                self.breakpoints_section(ui, snem_core, jump_to_bps_on_hit);
+                self.breakpoints_section(ui, core, jump_to_bps_on_hit);
             });
         });
     }
     
-    fn cpu_state_section(&mut self, ui: &mut egui::Ui, snem_core: &snemcore::Snemulator) {
+    fn cpu_state_section(&mut self, ui: &mut egui::Ui, core: &Snemulator<Debugger>) {
         ui.heading("CPU State");
         
         ui.separator();
         
         ui.horizontal(|ui| {
-            let pb_text = egui::RichText::new(format!("PB: {:02X}", snem_core.cpu.pb)).monospace();
+            let pb_text = egui::RichText::new(format!("PB: {:02X}", core.cpu.pb)).monospace();
             ui.label(pb_text);
             
-            let pc_text = egui::RichText::new(format!("PC: {:04X}", snem_core.cpu.pc)).monospace();
+            let pc_text = egui::RichText::new(format!("PC: {:04X}", core.cpu.pc)).monospace();
             ui.label(pc_text);
             
-            let sp_text = egui::RichText::new(format!("SP: {:04X}", snem_core.cpu.sp)).monospace();
+            let sp_text = egui::RichText::new(format!("SP: {:04X}", core.cpu.sp)).monospace();
             ui.label(sp_text);
             
-            let db_text = egui::RichText::new(format!("DB: {:02X}", snem_core.cpu.db)).monospace();
+            let db_text = egui::RichText::new(format!("DB: {:02X}", core.cpu.db)).monospace();
             ui.label(db_text);
             
-            let dp_text = egui::RichText::new(format!("DP: {:04X}", snem_core.cpu.dp)).monospace();
+            let dp_text = egui::RichText::new(format!("DP: {:04X}", core.cpu.dp)).monospace();
             ui.label(dp_text);
         });
         
         ui.horizontal(|ui| {
-            let a_text = egui::RichText::new(format!("A: {:04X}", snem_core.cpu.a)).monospace();
+            let a_text = egui::RichText::new(format!("A: {:04X}", core.cpu.a)).monospace();
             ui.label(a_text);
             
-            let x_text = egui::RichText::new(format!("X: {:04X}", snem_core.cpu.x)).monospace();
+            let x_text = egui::RichText::new(format!("X: {:04X}", core.cpu.x)).monospace();
             ui.label(x_text);
             
-            let y_text = egui::RichText::new(format!("Y: {:04X}", snem_core.cpu.y)).monospace();
+            let y_text = egui::RichText::new(format!("Y: {:04X}", core.cpu.y)).monospace();
             ui.label(y_text);
             
             let style = egui::Style::default();
             let mut status_str = egui::text::LayoutJob::default();
             
-            let flag_col = |flag| if snem_core.cpu.is_flag_set(flag) { egui::Color32::GREEN } else { egui::Color32::RED };
+            let flag_col = |flag| if core.cpu.is_flag_set(flag) { egui::Color32::GREEN } else { egui::Color32::RED };
             
             let p_text = egui::RichText::new("P: ").color(ui.visuals().text_color()).monospace();
             let n_text = egui::RichText::new("N").color(flag_col(scpu::Flag::FlagN)).monospace();
@@ -334,9 +336,9 @@ impl CpuTab {
         ui.separator();
         
         ui.horizontal(|ui| {
-            let mut halted = snem_core.cpu.halted;
-            let mut stopped = snem_core.cpu.stopped;
-            let mut waiting_for_interrupt = snem_core.cpu.waiting_for_interrupt;
+            let mut halted = core.cpu.halted;
+            let mut stopped = core.cpu.stopped;
+            let mut waiting_for_interrupt = core.cpu.waiting_for_interrupt;
             
             ui.add_enabled(false,
                 egui::Checkbox::new(&mut halted, "Halted")
@@ -350,8 +352,8 @@ impl CpuTab {
         });
         
         ui.horizontal(|ui| {
-            let mut irq_pending = snem_core.cpu.irq_pending;
-            let mut nmi_pending = snem_core.cpu.nmi_pending;
+            let mut irq_pending = core.cpu.irq_pending;
+            let mut nmi_pending = core.cpu.nmi_pending;
             
             ui.add_enabled(false,
                 egui::Checkbox::new(&mut irq_pending, "IRQ Pending")
@@ -365,22 +367,22 @@ impl CpuTab {
         
         ui.horizontal(|ui| {
             ui.label(monospace_text("(APU→CPU)".to_string()));
-            ui.label(monospace_text(format!("APUIO0: {:02X}", snem_core.apu_ports.apuio0)));
-            ui.label(monospace_text(format!("APUIO1: {:02X}", snem_core.apu_ports.apuio1)));
-            ui.label(monospace_text(format!("APUIO2: {:02X}", snem_core.apu_ports.apuio2)));
-            ui.label(monospace_text(format!("APUIO3: {:02X}", snem_core.apu_ports.apuio3)));
+            ui.label(monospace_text(format!("APUIO0: {:02X}", core.apu_ports.apuio0)));
+            ui.label(monospace_text(format!("APUIO1: {:02X}", core.apu_ports.apuio1)));
+            ui.label(monospace_text(format!("APUIO2: {:02X}", core.apu_ports.apuio2)));
+            ui.label(monospace_text(format!("APUIO3: {:02X}", core.apu_ports.apuio3)));
         });
         
         ui.horizontal(|ui| {
             ui.label(monospace_text("(CPU→APU)".to_string()));
-            ui.label(monospace_text(format!("CPUIO0: {:02X}", snem_core.apu_ports.cpuio0)));
-            ui.label(monospace_text(format!("CPUIO1: {:02X}", snem_core.apu_ports.cpuio1)));
-            ui.label(monospace_text(format!("CPUIO2: {:02X}", snem_core.apu_ports.cpuio2)));
-            ui.label(monospace_text(format!("CPUIO3: {:02X}", snem_core.apu_ports.cpuio3)));
+            ui.label(monospace_text(format!("CPUIO0: {:02X}", core.apu_ports.cpuio0)));
+            ui.label(monospace_text(format!("CPUIO1: {:02X}", core.apu_ports.cpuio1)));
+            ui.label(monospace_text(format!("CPUIO2: {:02X}", core.apu_ports.cpuio2)));
+            ui.label(monospace_text(format!("CPUIO3: {:02X}", core.apu_ports.cpuio3)));
         });
     }
     
-    fn breakpoints_section(&mut self, ui: &mut egui::Ui, snem_core: &snemcore::Snemulator, jump_to_bps_on_hit: &mut bool) {
+    fn breakpoints_section(&mut self, ui: &mut egui::Ui, core: &Snemulator<Debugger>, jump_to_bps_on_hit: &mut bool) {
         ui.horizontal(|ui| {
             ui.heading("Breakpoints");
             
@@ -402,7 +404,7 @@ impl CpuTab {
             let submitted = response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
             if ui.button("Add").clicked() || submitted {
                 if let Ok(addr) = u32::from_str_radix(self.bp_input.trim(), 16) {
-                    self.add_breakpoint(addr, snem_core);
+                    self.add_breakpoint(addr, core);
                     self.bp_input.clear();
                 }
             }
@@ -428,7 +430,7 @@ impl CpuTab {
                             }
                             // Clicking the address jumps the disassembly view to it
                             if ui.button(egui::RichText::new(format!("{:06X}", breakpoint.addr)).monospace()).clicked() {
-                                let pc = ((snem_core.cpu.pb as u32) << 16) | snem_core.cpu.pc as u32;
+                                let pc = ((core.cpu.pb as u32) << 16) | core.cpu.pc as u32;
                                 self.disasm.follow_pc = breakpoint.addr == pc;
                                 self.disasm.current_addr = breakpoint.addr;
                                 self.disasm.options.forced_flag_m = Some(breakpoint.force_m);
@@ -447,38 +449,38 @@ impl CpuTab {
         }
     }
     
-    fn update_disasm(&mut self, snem_core: &snemcore::Snemulator) {
+    fn update_disasm(&mut self, core: &Snemulator<Debugger>) {
         let options = self.disasm.options.clone();
-        let pc = (snem_core.cpu.pb as u32) << 16 | snem_core.cpu.pc as u32;
+        let pc = (core.cpu.pb as u32) << 16 | core.cpu.pc as u32;
 
         let region = scpu::disassembler::get_memory_region(pc);
 
         let memory = match region {
-            scpu::disassembler::MemoryRegion::LowRamMirror => &snem_core.wram[..0x2000],
-            scpu::disassembler::MemoryRegion::Ram => &snem_core.wram[..],
-            scpu::disassembler::MemoryRegion::Rom => &snem_core.rom_slice(),
+            scpu::disassembler::MemoryRegion::LowRamMirror => &core.wram[..0x2000],
+            scpu::disassembler::MemoryRegion::Ram => &core.wram[..],
+            scpu::disassembler::MemoryRegion::Rom => &core.rom_slice(),
             _ => {
                 log::warn!("Tried to disassemble invalid memory region at: {:06X}", pc);
                 return;
             },
         };
 
-        self.disasm.update(pc, memory, region, &options, snem_core);
+        self.disasm.update(pc, memory, region, &options, core);
     }
 
-    fn add_breakpoint(&mut self, addr: u32, snem_core: &snemcore::Snemulator) {
+    fn add_breakpoint(&mut self, addr: u32, core: &Snemulator<Debugger>) {
         let mut breakpoint = BreakpointInfo::new(addr);
         breakpoint.force_x = match self.disasm.options.forced_flag_x {
             Some(v) => v,
-            None => snem_core.cpu.is_flag_set(scpu::Flag::FlagX)
+            None => core.cpu.is_flag_set(scpu::Flag::FlagX)
         };
         breakpoint.force_m = match self.disasm.options.forced_flag_m {
             Some(v) => v,
-            None => snem_core.cpu.is_flag_set(scpu::Flag::FlagM)
+            None => core.cpu.is_flag_set(scpu::Flag::FlagM)
         };
         breakpoint.force_e = match self.disasm.options.forced_e {
             Some(v) => v,
-            None => snem_core.cpu.e
+            None => core.cpu.e
         };
 
         self.disasm.breakpoints.insert(breakpoint);

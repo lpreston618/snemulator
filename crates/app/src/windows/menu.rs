@@ -18,7 +18,18 @@ impl MainMenuBar {
                 ui.menu_button("File", |ui| {
                     ui.set_width(100.0);
                     
-                    ui.add_enabled_ui(!app_state.debug_active, |ui| {
+                    let ui_en;
+                    
+                    #[cfg(feature = "debug")]
+                    {
+                        ui_en = !app_state.debug_active;
+                    }
+                    #[cfg(not(feature = "debug"))]
+                    {
+                        ui_en = true;
+                    }
+                    
+                    ui.add_enabled_ui(ui_en, |ui| {
                         if ui.button("Load Rom").clicked() {
                             app_action = AppAction::LoadRom;
                             ui.close();
@@ -49,7 +60,18 @@ impl MainMenuBar {
                 ui.menu_button("Emulation", |ui| {
                     ui.set_width(100.0);
                     
-                    ui.add_enabled_ui(!app_state.debug_active, |ui| {
+                    let ui_en;
+                    
+                    #[cfg(feature = "debug")]
+                    {
+                        ui_en = !app_state.debug_active;
+                    }
+                    #[cfg(not(feature = "debug"))]
+                    {
+                        ui_en = true;
+                    }
+                    
+                    ui.add_enabled_ui(ui_en, |ui| {
                         let pause_text = if app_state.is_paused { "Resume" } else { "Pause" };
                         if ui.button(pause_text).clicked() {
                             app_action = AppAction::TogglePause;
@@ -72,17 +94,20 @@ impl MainMenuBar {
                         }
                     });
                     
-                    ui.separator();
-                    
-                    if app_state.debug_active {
-                        if ui.button("Stop Debug").clicked() {
-                            app_action = AppAction::CloseDebug;
-                            ui.close();
-                        }
-                    } else {
-                        if ui.button("Debug").clicked() {
-                            app_action = AppAction::OpenDebug;
-                            ui.close();
+                    #[cfg(feature = "debug")]
+                    {
+                        ui.separator();
+                        
+                        if app_state.debug_active {
+                            if ui.button("Stop Debug").clicked() {
+                                app_action = AppAction::CloseDebug;
+                                ui.close();
+                            }
+                        } else {
+                            if ui.button("Debug").clicked() {
+                                app_action = AppAction::OpenDebug;
+                                ui.close();
+                            }
                         }
                     }
                 });

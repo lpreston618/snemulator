@@ -1,4 +1,5 @@
 pub mod window;
 pub mod watchpoints;
-mod debugger;
+pub mod debugger;
+mod breakpoints;
 mod tabs;

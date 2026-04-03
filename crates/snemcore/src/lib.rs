@@ -1,10 +1,9 @@
 use std::collections::HashSet;
 
-use debug::breakpoints::BreakpointInfo;
-use debug::watchpoints::CompiledGraph;
 use debug::ppulayers::LayerBuffers;
-use debug::DebugAction;
+use debug::watchpoints::CompiledGraph;
 
+use anyhow::{anyhow, Result};
 use cartridge::Cartridge;
 use controller::{ControllerPlayer, JoypadButton, JoypadCmd, SnemController};
 use scpu::bus::CpuBus;
@@ -18,18 +17,17 @@ use sppu::Ppu5C7x;
 use ssmp::ioports::ApuIoPorts;
 use ssmp::Ssmp;
 use sysinfo::{CGRAM_SIZE, OAM_SIZE, VRAM_SIZE, WRAM_SIZE};
-use anyhow::{anyhow, Result};
 
 use crate::probe::{DebugProbe, NullProbe};
 
+pub mod cartridge;
+pub mod controller;
 pub mod debug;
 pub mod probe;
-pub mod sysinfo;
-pub mod controller;
 pub mod scpu;
-pub mod cartridge;
 mod sppu;
 mod ssmp;
+pub mod sysinfo;
 mod utils;
 
 macro_rules! cpu_bus {
@@ -57,7 +55,7 @@ macro_rules! cpu_bus {
             joy2_data2_auto: $core.joy2_data2_auto,
             joypad_cmd: &mut $core.joypad_cmd,
             cart: $core.cart.as_mut().unwrap(),
-            
+
             probe: &mut $core.probe,
         }
     };
@@ -116,7 +114,7 @@ pub struct Snemulator<P: DebugProbe = NullProbe> {
     pub cart: Option<Cartridge>,
     pub total_cycles: u64,
     pub frame: u64,
-    
+
     probe: P,
 }
 
@@ -243,7 +241,7 @@ impl<P: DebugProbe> Snemulator<P> {
         while !self.frame_ready && !self.probe.should_stop() {
             self.cycle(frame_buffer, audio_buffer);
         }
-        
+
         self.probe.on_frame();
 
         self.frame += 1;
@@ -258,17 +256,19 @@ impl<P: DebugProbe> Snemulator<P> {
 
         if self.cpu.clocks == 0 {
             self.cycle_cpu();
+
+            let pc = (self.cpu.pb as u32) << 16 | self.cpu.pc as u32;
             
-            self.probe.on_instruction(&self.cpu);
+            self.probe.on_instruction(pc);
         }
 
         if self.ppu.clocks == 0 {
             let scanline = self.ppu.scanline;
-            
+
             self.cycle_ppu(frame_buffer);
-            
+
             self.probe.on_dot(self.ppu.dot as u16);
-            
+
             if self.ppu.scanline != scanline {
                 self.probe.on_scanline(self.ppu.scanline as u16);
             }
@@ -279,7 +279,7 @@ impl<P: DebugProbe> Snemulator<P> {
 
     fn cycle_cpu(&mut self) {
         self.cpu.stopped = false;
-        
+
         if self.hdma_en {
             self.cpu.stopped = true;
             self.do_hdma();
@@ -499,157 +499,176 @@ impl<P: DebugProbe> Snemulator<P> {
 }
 
 // Debug functionality
-impl Snemulator {
-    pub fn debug_run_frame(
-        &mut self,
-        frame_buffer: &mut [u8],
-        audio_buffer: &mut Vec<i16>,
-        breakpoints: &HashSet<BreakpointInfo>,
-        watchpoints: &CompiledGraph,
-        buffers: &mut LayerBuffers
-    ) -> DebugAction {
-        let mut action = DebugAction::None;
-            
-        self.frame_ready = false;
-        self.ssmp.start_frame();
+// impl Snemulator {
+//     pub fn debug_run_frame(
+//         &mut self,
+//         frame_buffer: &mut [u8],
+//         audio_buffer: &mut Vec<i16>,
+//         breakpoints: &HashSet<BreakpointInfo>,
+//         watchpoints: &CompiledGraph,
+//         buffers: &mut LayerBuffers,
+//     ) -> DebugAction {
+//         let mut action = DebugAction::None;
 
-        'frame: while !self.frame_ready {
-            action = self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints, buffers);
+//         self.frame_ready = false;
+//         self.ssmp.start_frame();
 
-            match action {
-                DebugAction::BreakpointHit | DebugAction::WatchpointHit => {
-                    break 'frame;
-                }
-                _ => {}
-            }
-        }
-        
-        if self.frame_ready {
-            self.frame += 1;
-        }
+//         'frame: while !self.frame_ready {
+//             action = self.debug_cycle(
+//                 frame_buffer,
+//                 audio_buffer,
+//                 breakpoints,
+//                 watchpoints,
+//                 buffers,
+//             );
 
-        action
-    }
+//             match action {
+//                 DebugAction::BreakpointHit | DebugAction::WatchpointHit => {
+//                     break 'frame;
+//                 }
+//                 _ => {}
+//             }
+//         }
 
-    fn debug_cycle(
-        &mut self,
-        frame_buffer: &mut [u8],
-        audio_buffer: &mut Vec<i16>,
-        breakpoints: &HashSet<BreakpointInfo>,
-        watchpoints: &CompiledGraph,
-        buffers: &mut LayerBuffers
-    ) -> DebugAction {
-        if self.ppu.dot == 0 && self.ppu.scanline == 0 {
-            Self::clear_layer_buffers(buffers);
-        }
-        
-        let clocks = self.cpu.clocks.min(self.ppu.clocks);
+//         if self.frame_ready {
+//             self.frame += 1;
+//         }
 
-        self.cpu.clocks -= clocks;
-        self.ppu.clocks -= clocks;
-        self.total_cycles += clocks as u64;
+//         action
+//     }
 
-        if self.cpu.clocks == 0 {
-            self.cycle_cpu();
-        }
+//     fn debug_cycle(
+//         &mut self,
+//         frame_buffer: &mut [u8],
+//         audio_buffer: &mut Vec<i16>,
+//         breakpoints: &HashSet<BreakpointInfo>,
+//         watchpoints: &CompiledGraph,
+//         buffers: &mut LayerBuffers,
+//     ) -> DebugAction {
+//         if self.ppu.dot == 0 && self.ppu.scanline == 0 {
+//             Self::clear_layer_buffers(buffers);
+//         }
 
-        if self.ppu.clocks == 0 {
-            self.debug_cycle_ppu(frame_buffer, buffers);
-        }
+//         let clocks = self.cpu.clocks.min(self.ppu.clocks);
 
-        self.ssmp.clock(clocks, audio_buffer, &mut self.apu_ports);
+//         self.cpu.clocks -= clocks;
+//         self.ppu.clocks -= clocks;
+//         self.total_cycles += clocks as u64;
 
-        let cpu_pc = scpu::Address {
-            bank: self.cpu.pb,
-            offset: self.cpu.pc,
-        }.to_u32();
+//         if self.cpu.clocks == 0 {
+//             self.cycle_cpu();
+//         }
 
-        if breakpoints.contains(&BreakpointInfo::new(cpu_pc)) {
-            DebugAction::BreakpointHit
-        } else if watchpoints.evaluate(self) {
-            DebugAction::WatchpointHit
-        } else {
-            DebugAction::None
-        }
-    }
+//         if self.ppu.clocks == 0 {
+//             self.debug_cycle_ppu(frame_buffer, buffers);
+//         }
 
-    pub fn debug_step_instruction(
-        &mut self,
-        frame_buffer: &mut [u8],
-        audio_buffer: &mut Vec<i16>,
-        breakpoints: &HashSet<BreakpointInfo>,
-        watchpoints: &CompiledGraph,
-        buffers: &mut LayerBuffers
-    ) -> DebugAction {
-        // Cycle until the CPU is the next to cycle
-        while self.cpu.clocks > self.ppu.clocks {
-            let action = self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints, buffers);
+//         self.ssmp.clock(clocks, audio_buffer, &mut self.apu_ports);
 
-            match action {
-                DebugAction::BreakpointHit | DebugAction::WatchpointHit => {
-                    return action;
-                }
-                _ => {}
-            }
-        }
+//         let cpu_pc = scpu::Address {
+//             bank: self.cpu.pb,
+//             offset: self.cpu.pc,
+//         }
+//         .to_u32();
 
-        let action = self.debug_cycle(frame_buffer, audio_buffer, breakpoints, watchpoints, buffers);
-        
-        if self.frame_ready {
-            self.frame += 1;
-            self.frame_ready = false;
-        }
-        
-        action
-    }
-    
-    fn debug_cycle_ppu(&mut self, frame_buffer: &mut [u8], buffers: &mut LayerBuffers) {
-        self.cpu_interrupt = None;
+//         if breakpoints.contains(&BreakpointInfo::new(cpu_pc)) {
+//             DebugAction::BreakpointHit
+//         } else if watchpoints.evaluate(self) {
+//             DebugAction::WatchpointHit
+//         } else {
+//             DebugAction::None
+//         }
+//     }
 
-        let mut bus = ppu_bus!(self, frame_buffer);
+//     pub fn debug_step_instruction(
+//         &mut self,
+//         frame_buffer: &mut [u8],
+//         audio_buffer: &mut Vec<i16>,
+//         breakpoints: &HashSet<BreakpointInfo>,
+//         watchpoints: &CompiledGraph,
+//         buffers: &mut LayerBuffers,
+//     ) -> DebugAction {
+//         // Cycle until the CPU is the next to cycle
+//         while self.cpu.clocks > self.ppu.clocks {
+//             let action = self.debug_cycle(
+//                 frame_buffer,
+//                 audio_buffer,
+//                 breakpoints,
+//                 watchpoints,
+//                 buffers,
+//             );
 
-        self.ppu.debug_cycle(&mut bus, buffers);
+//             match action {
+//                 DebugAction::BreakpointHit | DebugAction::WatchpointHit => {
+//                     return action;
+//                 }
+//                 _ => {}
+//             }
+//         }
 
-        match self.cpu_interrupt {
-            Some(CpuInterrupt::IRQ) => {
-                self.cpu.irq_pending = true;
-            }
-            Some(CpuInterrupt::NMI) => {
-                self.cpu.nmi_pending = true;
-            }
-            _ => {}
-        }
+//         let action = self.debug_cycle(
+//             frame_buffer,
+//             audio_buffer,
+//             breakpoints,
+//             watchpoints,
+//             buffers,
+//         );
 
-        if self.hdma_pending
-            && self.ppu.scanline < sppu::VBLANK_START_SCANLINE
-            && self.ppu.dot == sppu::HBLANK_START_DOT
-        {
-            self.hdma_en = true;
-            self.dma_regs[self.hdma_active_ch].transfer_pattern_step = 0;
-        }
-    }
-    
-    fn clear_layer_buffers(layer_buffers: &mut LayerBuffers) {
-        Self::clear_layer_buf(&mut layer_buffers.bg1);
-        Self::clear_layer_buf(&mut layer_buffers.bg2);
-        Self::clear_layer_buf(&mut layer_buffers.bg3);
-        Self::clear_layer_buf(&mut layer_buffers.bg4);
-        Self::clear_layer_buf(&mut layer_buffers.obj);
-    }
-    
-    fn clear_layer_buf(layer_buffer: &mut [u8]) {
-        layer_buffer.chunks_mut(4).enumerate().for_each(|(i, p)| {
-            let y = i / 256;
-            let x = i % 256;
-            
-            p.copy_from_slice(if (x / 2 + y / 2) % 2 == 0 {
-                &[0x50, 0x50, 0x50, 255]
-            } else {
-                &[0x30, 0x30, 0x30, 255]
-            });
-        });
-    }
-}
+//         if self.frame_ready {
+//             self.frame += 1;
+//             self.frame_ready = false;
+//         }
+
+//         action
+//     }
+
+//     fn debug_cycle_ppu(&mut self, frame_buffer: &mut [u8], buffers: &mut LayerBuffers) {
+//         self.cpu_interrupt = None;
+
+//         let mut bus = ppu_bus!(self, frame_buffer);
+
+//         self.ppu.debug_cycle(&mut bus, buffers);
+
+//         match self.cpu_interrupt {
+//             Some(CpuInterrupt::IRQ) => {
+//                 self.cpu.irq_pending = true;
+//             }
+//             Some(CpuInterrupt::NMI) => {
+//                 self.cpu.nmi_pending = true;
+//             }
+//             _ => {}
+//         }
+
+//         if self.hdma_pending
+//             && self.ppu.scanline < sppu::VBLANK_START_SCANLINE
+//             && self.ppu.dot == sppu::HBLANK_START_DOT
+//         {
+//             self.hdma_en = true;
+//             self.dma_regs[self.hdma_active_ch].transfer_pattern_step = 0;
+//         }
+//     }
+
+//     fn clear_layer_buffers(layer_buffers: &mut LayerBuffers) {
+//         Self::clear_layer_buf(&mut layer_buffers.bg1);
+//         Self::clear_layer_buf(&mut layer_buffers.bg2);
+//         Self::clear_layer_buf(&mut layer_buffers.bg3);
+//         Self::clear_layer_buf(&mut layer_buffers.bg4);
+//         Self::clear_layer_buf(&mut layer_buffers.obj);
+//     }
+
+//     fn clear_layer_buf(layer_buffer: &mut [u8]) {
+//         layer_buffer.chunks_mut(4).enumerate().for_each(|(i, p)| {
+//             let y = i / 256;
+//             let x = i % 256;
+
+//             p.copy_from_slice(if (x / 2 + y / 2) % 2 == 0 {
+//                 &[0x50, 0x50, 0x50, 255]
+//             } else {
+//                 &[0x30, 0x30, 0x30, 255]
+//             });
+//         });
+//     }
+// }
 
 impl Snemulator<NullProbe> {
     pub fn new() -> Self {

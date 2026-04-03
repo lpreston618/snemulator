@@ -4,8 +4,10 @@ use crate::app::SnemulatorApp;
 
 mod app;
 mod utils;
-mod debug;
 mod windows;
+
+#[cfg(feature = "debug")]
+mod debug;
 
 fn main() -> Result<()> {
     env_logger::init();
