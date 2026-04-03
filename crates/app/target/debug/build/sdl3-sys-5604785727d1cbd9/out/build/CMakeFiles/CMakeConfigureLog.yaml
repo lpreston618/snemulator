@@ -1,0 +1,2591 @@
+
+---
+events:
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineSystem.cmake:212 (message)"
+      - "CMakeLists.txt:8 (project)"
+    message: |
+      The system is: Windows - 10.0.26200 - AMD64
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:462 (find_file)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:500 (CMAKE_DETERMINE_COMPILER_ID_WRITE)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "file"
+    variable: "src_in"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "CMakeCCompilerId.c.in"
+    candidate_directories:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/"
+    found: "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeCCompilerId.c.in"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64"
+        - "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\deps"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\WINDOWS\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\LLVM\\bin"
+        - "C:\\Users\\lance\\.cargo\\bin"
+        - "C:\\Users\\lance\\.local\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Zed\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin"
+      CMAKE_INSTALL_PREFIX: "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out"
+      ENV{INCLUDE}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\include"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\cppwinrt"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\winrt"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:8 (project)"
+    message: |
+      Compiling the C compiler identification source file "CMakeCCompilerId.c" succeeded.
+      Compiler:  
+      Build flags: -nologo;-MD;-Brepro;-W0
+      Id flags:  
+      
+      The output was:
+      0
+      MSBuild version 18.0.5+e22287bf1 for .NET Framework
+      Build started 4/2/2026 6:42:59 PM.
+      
+      Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\4.2.1\\CompilerIdC\\CompilerIdC.vcxproj" on node 1 (default targets).
+      PrepareForBuild:
+        Creating directory "Debug\\".
+        Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+        Creating directory "Debug\\CompilerIdC.tlog\\".
+      InitializeBuildStatus:
+        Creating "Debug\\CompilerIdC.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+        Touching "Debug\\CompilerIdC.tlog\\unsuccessfulbuild".
+      ClCompile:
+        C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /nologo /W0 /WX- /diagnostics:column /Od /D _MBCS /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"Debug\\\\" /Fd"Debug\\vc145.pdb" /external:W0 /Gd /TC /FC /errorReport:queue CMakeCCompilerId.c
+        CMakeCCompilerId.c
+      Link:
+        C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:".\\CompilerIdC.exe" /INCREMENTAL:NO /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /PDB:".\\CompilerIdC.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:".\\CompilerIdC.lib" /MACHINE:X64 Debug\\CMakeCCompilerId.obj
+        CompilerIdC.vcxproj -> C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\4.2.1\\CompilerIdC\\CompilerIdC.exe
+      PostBuildEvent:
+        for %%i in (cl.exe) do @echo CMAKE_C_COMPILER=%%~$PATH:i
+        :VCEnd
+        CMAKE_C_COMPILER=C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\Hostx64\\x64\\cl.exe
+      FinalizeBuildStatus:
+        Deleting file "Debug\\CompilerIdC.tlog\\unsuccessfulbuild".
+        Touching "Debug\\CompilerIdC.tlog\\CompilerIdC.lastbuildstate".
+      Done Building Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\4.2.1\\CompilerIdC\\CompilerIdC.vcxproj" (default targets).
+      
+      Build succeeded.
+          0 Warning(s)
+          0 Error(s)
+      
+      Time Elapsed 00:00:00.50
+      
+      
+      Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CompilerIdC.exe"
+      
+      Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CompilerIdC.vcxproj"
+      
+      The C compiler identification is MSVC, found in:
+        C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/4.2.1/CompilerIdC/CompilerIdC.exe
+      
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:37 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:65 (__resolve_tool_path)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:103 (__resolve_linker_path)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "_CMAKE_TOOL_WITH_PATH"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "link"
+    candidate_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/LLVM/bin/"
+      - "C:/Users/lance/.cargo/bin/"
+      - "C:/Users/lance/.local/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/"
+    searched_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/link.com"
+    found: "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/link.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64"
+        - "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\deps"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\WINDOWS\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\LLVM\\bin"
+        - "C:\\Users\\lance\\.cargo\\bin"
+        - "C:\\Users\\lance\\.local\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Zed\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin"
+      CMAKE_INSTALL_PREFIX: "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:37 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:65 (__resolve_tool_path)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:104 (__resolve_linker_path)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "_CMAKE_TOOL_WITH_PATH"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "lld-link"
+    candidate_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/LLVM/bin/"
+      - "C:/Users/lance/.cargo/bin/"
+      - "C:/Users/lance/.local/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/"
+    searched_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/lld-link.com"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/lld-link.exe"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/lld-link"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/lld-link.com"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/lld-link.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/lld-link"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/lld-link.com"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/lld-link.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/lld-link"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/lld-link.com"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/lld-link.exe"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/lld-link"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/lld-link.com"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/lld-link.exe"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/lld-link"
+      - "C:/Windows/System32/lld-link.com"
+      - "C:/Windows/System32/lld-link.exe"
+      - "C:/Windows/System32/lld-link"
+      - "C:/Windows/lld-link.com"
+      - "C:/Windows/lld-link.exe"
+      - "C:/Windows/lld-link"
+      - "C:/Windows/System32/wbem/lld-link.com"
+      - "C:/Windows/System32/wbem/lld-link.exe"
+      - "C:/Windows/System32/wbem/lld-link"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/lld-link.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/lld-link.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/lld-link"
+      - "C:/Windows/System32/OpenSSH/lld-link.com"
+      - "C:/Windows/System32/OpenSSH/lld-link.exe"
+      - "C:/Windows/System32/OpenSSH/lld-link"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/lld-link.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/lld-link.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/lld-link"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/lld-link.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/lld-link.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/lld-link"
+      - "C:/Program Files/CMake/bin/lld-link.com"
+      - "C:/Program Files/CMake/bin/lld-link.exe"
+      - "C:/Program Files/CMake/bin/lld-link"
+      - "C:/Program Files/Git/cmd/lld-link.com"
+      - "C:/Program Files/Git/cmd/lld-link.exe"
+      - "C:/Program Files/Git/cmd/lld-link"
+      - "C:/Program Files/LLVM/bin/lld-link.com"
+    found: "C:/Program Files/LLVM/bin/lld-link.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64"
+        - "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\deps"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\WINDOWS\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\LLVM\\bin"
+        - "C:\\Users\\lance\\.cargo\\bin"
+        - "C:\\Users\\lance\\.local\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Zed\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin"
+      CMAKE_INSTALL_PREFIX: "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_LINKER"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "link"
+    candidate_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/LLVM/bin/"
+      - "C:/Users/lance/.cargo/bin/"
+      - "C:/Users/lance/.local/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/"
+    searched_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/link.com"
+    found: "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/link.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64"
+        - "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\deps"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\WINDOWS\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\LLVM\\bin"
+        - "C:\\Users\\lance\\.cargo\\bin"
+        - "C:\\Users\\lance\\.local\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Zed\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin"
+      CMAKE_INSTALL_PREFIX: "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_MT"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "mt"
+    candidate_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/LLVM/bin/"
+      - "C:/Users/lance/.cargo/bin/"
+      - "C:/Users/lance/.local/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/"
+    searched_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/mt.com"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/mt.exe"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/mt"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/mt.com"
+    found: "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/mt.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64"
+        - "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\deps"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\WINDOWS\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\LLVM\\bin"
+        - "C:\\Users\\lance\\.cargo\\bin"
+        - "C:\\Users\\lance\\.local\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Zed\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin"
+      CMAKE_INSTALL_PREFIX: "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_AR"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "lib"
+    candidate_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/LLVM/bin/"
+      - "C:/Users/lance/.cargo/bin/"
+      - "C:/Users/lance/.local/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/"
+    searched_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/lib.com"
+    found: "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/lib.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64"
+        - "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\deps"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\WINDOWS\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\LLVM\\bin"
+        - "C:\\Users\\lance\\.cargo\\bin"
+        - "C:\\Users\\lance\\.local\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Zed\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin"
+      CMAKE_INSTALL_PREFIX: "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineRCCompiler.cmake:40 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Platform/Windows-MSVC.cmake:580 (enable_language)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Platform/Windows-MSVC.cmake:553 (__windows_compiler_msvc_enable_rc)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Platform/Windows-MSVC-C.cmake:5 (__windows_compiler_msvc)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeCInformation.cmake:48 (include)"
+      - "CMakeLists.txt:8 (project)"
+    mode: "program"
+    variable: "CMAKE_RC_COMPILER"
+    description: "RC compiler"
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "rc"
+    candidate_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/LLVM/bin/"
+      - "C:/Users/lance/.cargo/bin/"
+      - "C:/Users/lance/.local/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/"
+      - "C:/Program Files/bin/"
+      - "C:/Program Files/sbin/"
+      - "C:/Program Files/"
+      - "C:/Program Files (x86)/bin/"
+      - "C:/Program Files (x86)/sbin/"
+      - "C:/Program Files (x86)/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files/CMake/sbin/"
+      - "C:/Program Files/CMake/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/bin/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/sbin/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/"
+    searched_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/rc.com"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/rc.exe"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/rc"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/rc.com"
+    found: "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/rc.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64"
+        - "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\deps"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\WINDOWS\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\LLVM\\bin"
+        - "C:\\Users\\lance\\.cargo\\bin"
+        - "C:\\Users\\lance\\.local\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Zed\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin"
+      CMAKE_INSTALL_PREFIX: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "C:/Program Files"
+        - "C:/Program Files (x86)"
+        - "C:/Program Files/CMake"
+        - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out"
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerABI.cmake:83 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:8 (project)"
+    checks:
+      - "Detecting C compiler ABI info"
+    directories:
+      source: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-65puu3"
+      binary: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-65puu3"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+    buildResult:
+      variable: "CMAKE_C_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-65puu3'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_849c1.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        MSBuild version 18.0.5+e22287bf1 for .NET Framework
+        Build started 4/2/2026 6:43:00 PM.
+        
+        Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-65puu3\\cmTC_849c1.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+          Creating directory "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-65puu3\\Debug\\".
+          Creating directory "cmTC_849c1.dir\\Debug\\cmTC_849c1.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_849c1.dir\\Debug\\cmTC_849c1.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_849c1.dir\\Debug\\cmTC_849c1.tlog\\unsuccessfulbuild".
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_849c1.dir\\Debug\\\\" /Fd"cmTC_849c1.dir\\Debug\\vc145.pdb" /external:W0 /TC /errorReport:queue  -Brepro "C:\\Program Files\\CMake\\share\\cmake-4.2\\Modules\\CMakeCCompilerABI.c"
+          CMakeCCompilerABI.c
+        Link:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-65puu3\\Debug\\cmTC_849c1.exe" /INCREMENTAL /ILK:"cmTC_849c1.dir\\Debug\\cmTC_849c1.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-65puu3/Debug/cmTC_849c1.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-65puu3/Debug/cmTC_849c1.lib" /MACHINE:X64  /machine:x64 cmTC_849c1.dir\\Debug\\CMakeCCompilerABI.obj
+          cmTC_849c1.vcxproj -> C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-65puu3\\Debug\\cmTC_849c1.exe
+        FinalizeBuildStatus:
+          Deleting file "cmTC_849c1.dir\\Debug\\cmTC_849c1.tlog\\unsuccessfulbuild".
+          Touching "cmTC_849c1.dir\\Debug\\cmTC_849c1.tlog\\cmTC_849c1.lastbuildstate".
+        Done Building Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-65puu3\\cmTC_849c1.vcxproj" (default targets).
+        
+        Build succeeded.
+            0 Warning(s)
+            0 Error(s)
+        
+        Time Elapsed 00:00:00.34
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerABI.cmake:253 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:8 (project)"
+    message: |
+      Parsed C implicit link information:
+        link line regex: [^( *|.*[/\\])(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        linker tool regex: [^[ 	]*(->|"|[0-9]+>[ 	-]*Build:[ 	0-9]+ ms[ 	]*)?[ 	]*(([^"]*[/\\])?(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?))("|,| |$)]
+        linker tool for 'C': C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/HostX64/x64/link.exe
+        implicit libs: []
+        implicit objs: []
+        implicit dirs: []
+        implicit fwks: []
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Internal/CMakeDetermineLinkerId.cmake:38 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerABI.cmake:299 (cmake_determine_linker_id)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:8 (project)"
+    message: |
+      Running the C compiler's linker: "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/HostX64/x64/link.exe" "-v"
+      Microsoft (R) Incremental Linker Version 14.50.35720.0
+      Copyright (C) Microsoft Corporation.  All rights reserved.
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/FindPkgConfig.cmake:517 (find_program)"
+      - "CMakeLists.txt:66 (find_package)"
+    mode: "program"
+    variable: "PKG_CONFIG_EXECUTABLE"
+    description: "pkg-config executable"
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "pkg-config.bat"
+      - "pkg-config"
+      - "pkgconf"
+    candidate_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/LLVM/bin/"
+      - "C:/Users/lance/.cargo/bin/"
+      - "C:/Users/lance/.local/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/"
+      - "C:/Program Files/bin/"
+      - "C:/Program Files/sbin/"
+      - "C:/Program Files/"
+      - "C:/Program Files (x86)/bin/"
+      - "C:/Program Files (x86)/sbin/"
+      - "C:/Program Files (x86)/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files/CMake/sbin/"
+      - "C:/Program Files/CMake/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/bin/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/sbin/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/"
+    searched_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/pkg-config.bat.com"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/pkg-config.bat.exe"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/pkg-config.bat"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/pkg-config.com"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/pkg-config.exe"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/pkg-config"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/pkgconf.com"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/pkgconf.exe"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/pkgconf"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/pkg-config.bat.com"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/pkg-config.bat.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/pkg-config.bat"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/pkg-config.com"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/pkg-config.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/pkg-config"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/pkgconf.com"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/pkgconf.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/pkgconf"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/pkg-config.bat.com"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/pkg-config.bat.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/pkg-config.bat"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/pkg-config.com"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/pkg-config.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/pkg-config"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/pkgconf.com"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/pkgconf.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/pkgconf"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/pkg-config.bat.com"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/pkg-config.bat.exe"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/pkg-config.bat"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/pkg-config.com"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/pkg-config.exe"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/pkg-config"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/pkgconf.com"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/pkgconf.exe"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/pkgconf"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/pkg-config.bat.com"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/pkg-config.bat.exe"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/pkg-config.bat"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/pkg-config.com"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/pkg-config.exe"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/pkg-config"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/pkgconf.com"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/pkgconf.exe"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/pkgconf"
+      - "C:/Windows/System32/pkg-config.bat.com"
+      - "C:/Windows/System32/pkg-config.bat.exe"
+      - "C:/Windows/System32/pkg-config.bat"
+      - "C:/Windows/System32/pkg-config.com"
+      - "C:/Windows/System32/pkg-config.exe"
+      - "C:/Windows/System32/pkg-config"
+      - "C:/Windows/System32/pkgconf.com"
+      - "C:/Windows/System32/pkgconf.exe"
+      - "C:/Windows/System32/pkgconf"
+      - "C:/Windows/pkg-config.bat.com"
+      - "C:/Windows/pkg-config.bat.exe"
+      - "C:/Windows/pkg-config.bat"
+      - "C:/Windows/pkg-config.com"
+      - "C:/Windows/pkg-config.exe"
+      - "C:/Windows/pkg-config"
+      - "C:/Windows/pkgconf.com"
+      - "C:/Windows/pkgconf.exe"
+      - "C:/Windows/pkgconf"
+      - "C:/Windows/System32/wbem/pkg-config.bat.com"
+      - "C:/Windows/System32/wbem/pkg-config.bat.exe"
+      - "C:/Windows/System32/wbem/pkg-config.bat"
+      - "C:/Windows/System32/wbem/pkg-config.com"
+      - "C:/Windows/System32/wbem/pkg-config.exe"
+      - "C:/Windows/System32/wbem/pkg-config"
+      - "C:/Windows/System32/wbem/pkgconf.com"
+      - "C:/Windows/System32/wbem/pkgconf.exe"
+      - "C:/Windows/System32/wbem/pkgconf"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/pkg-config.bat.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/pkg-config.bat.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/pkg-config.bat"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/pkg-config.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/pkg-config.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/pkg-config"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/pkgconf.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/pkgconf.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/pkgconf"
+      - "C:/Windows/System32/OpenSSH/pkg-config.bat.com"
+      - "C:/Windows/System32/OpenSSH/pkg-config.bat.exe"
+      - "C:/Windows/System32/OpenSSH/pkg-config.bat"
+      - "C:/Windows/System32/OpenSSH/pkg-config.com"
+      - "C:/Windows/System32/OpenSSH/pkg-config.exe"
+      - "C:/Windows/System32/OpenSSH/pkg-config"
+      - "C:/Windows/System32/OpenSSH/pkgconf.com"
+      - "C:/Windows/System32/OpenSSH/pkgconf.exe"
+      - "C:/Windows/System32/OpenSSH/pkgconf"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/pkg-config.bat.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/pkg-config.bat.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/pkg-config.bat"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/pkg-config.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/pkg-config.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/pkg-config"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/pkgconf.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/pkgconf.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/pkgconf"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/pkg-config.bat.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/pkg-config.bat.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/pkg-config.bat"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/pkg-config.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/pkg-config.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/pkg-config"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/pkgconf.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/pkgconf.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/pkgconf"
+      - "C:/Program Files/CMake/bin/pkg-config.bat.com"
+      - "C:/Program Files/CMake/bin/pkg-config.bat.exe"
+      - "C:/Program Files/CMake/bin/pkg-config.bat"
+      - "C:/Program Files/CMake/bin/pkg-config.com"
+      - "C:/Program Files/CMake/bin/pkg-config.exe"
+      - "C:/Program Files/CMake/bin/pkg-config"
+      - "C:/Program Files/CMake/bin/pkgconf.com"
+      - "C:/Program Files/CMake/bin/pkgconf.exe"
+      - "C:/Program Files/CMake/bin/pkgconf"
+      - "C:/Program Files/Git/cmd/pkg-config.bat.com"
+      - "C:/Program Files/Git/cmd/pkg-config.bat.exe"
+      - "C:/Program Files/Git/cmd/pkg-config.bat"
+      - "C:/Program Files/Git/cmd/pkg-config.com"
+      - "C:/Program Files/Git/cmd/pkg-config.exe"
+      - "C:/Program Files/Git/cmd/pkg-config"
+      - "C:/Program Files/Git/cmd/pkgconf.com"
+      - "C:/Program Files/Git/cmd/pkgconf.exe"
+      - "C:/Program Files/Git/cmd/pkgconf"
+      - "C:/Program Files/LLVM/bin/pkg-config.bat.com"
+      - "C:/Program Files/LLVM/bin/pkg-config.bat.exe"
+      - "C:/Program Files/LLVM/bin/pkg-config.bat"
+      - "C:/Program Files/LLVM/bin/pkg-config.com"
+      - "C:/Program Files/LLVM/bin/pkg-config.exe"
+      - "C:/Program Files/LLVM/bin/pkg-config"
+      - "C:/Program Files/LLVM/bin/pkgconf.com"
+      - "C:/Program Files/LLVM/bin/pkgconf.exe"
+      - "C:/Program Files/LLVM/bin/pkgconf"
+      - "C:/Users/lance/.cargo/bin/pkg-config.bat.com"
+      - "C:/Users/lance/.cargo/bin/pkg-config.bat.exe"
+      - "C:/Users/lance/.cargo/bin/pkg-config.bat"
+      - "C:/Users/lance/.cargo/bin/pkg-config.com"
+      - "C:/Users/lance/.cargo/bin/pkg-config.exe"
+      - "C:/Users/lance/.cargo/bin/pkg-config"
+      - "C:/Users/lance/.cargo/bin/pkgconf.com"
+      - "C:/Users/lance/.cargo/bin/pkgconf.exe"
+      - "C:/Users/lance/.cargo/bin/pkgconf"
+      - "C:/Users/lance/.local/bin/pkg-config.bat.com"
+      - "C:/Users/lance/.local/bin/pkg-config.bat.exe"
+      - "C:/Users/lance/.local/bin/pkg-config.bat"
+      - "C:/Users/lance/.local/bin/pkg-config.com"
+      - "C:/Users/lance/.local/bin/pkg-config.exe"
+      - "C:/Users/lance/.local/bin/pkg-config"
+      - "C:/Users/lance/.local/bin/pkgconf.com"
+      - "C:/Users/lance/.local/bin/pkgconf.exe"
+      - "C:/Users/lance/.local/bin/pkgconf"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/pkg-config.bat.com"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/pkg-config.bat.exe"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/pkg-config.bat"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/pkg-config.com"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/pkg-config.exe"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/pkg-config"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/pkgconf.com"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/pkgconf.exe"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/pkgconf"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/pkg-config.bat.com"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/pkg-config.bat.exe"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/pkg-config.bat"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/pkg-config.com"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/pkg-config.exe"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/pkg-config"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/pkgconf.com"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/pkgconf.exe"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/pkgconf"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/pkg-config.bat.com"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/pkg-config.bat.exe"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/pkg-config.bat"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/pkg-config.com"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/pkg-config.exe"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/pkg-config"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/pkgconf.com"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/pkgconf.exe"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/pkgconf"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/pkg-config.bat.com"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/pkg-config.bat.exe"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/pkg-config.bat"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/pkg-config.com"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/pkg-config.exe"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/pkg-config"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/pkgconf.com"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/pkgconf.exe"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/pkgconf"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/pkg-config.bat.com"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/pkg-config.bat.exe"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/pkg-config.bat"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/pkg-config.com"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/pkg-config.exe"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/pkg-config"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/pkgconf.com"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/pkgconf.exe"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/pkgconf"
+      - "C:/Program Files/bin/pkg-config.bat.com"
+      - "C:/Program Files/bin/pkg-config.bat.exe"
+      - "C:/Program Files/bin/pkg-config.bat"
+      - "C:/Program Files/bin/pkg-config.com"
+      - "C:/Program Files/bin/pkg-config.exe"
+      - "C:/Program Files/bin/pkg-config"
+      - "C:/Program Files/bin/pkgconf.com"
+      - "C:/Program Files/bin/pkgconf.exe"
+      - "C:/Program Files/bin/pkgconf"
+      - "C:/Program Files/sbin/pkg-config.bat.com"
+      - "C:/Program Files/sbin/pkg-config.bat.exe"
+      - "C:/Program Files/sbin/pkg-config.bat"
+      - "C:/Program Files/sbin/pkg-config.com"
+      - "C:/Program Files/sbin/pkg-config.exe"
+      - "C:/Program Files/sbin/pkg-config"
+      - "C:/Program Files/sbin/pkgconf.com"
+      - "C:/Program Files/sbin/pkgconf.exe"
+      - "C:/Program Files/sbin/pkgconf"
+      - "C:/Program Files/pkg-config.bat.com"
+      - "C:/Program Files/pkg-config.bat.exe"
+      - "C:/Program Files/pkg-config.bat"
+      - "C:/Program Files/pkg-config.com"
+      - "C:/Program Files/pkg-config.exe"
+      - "C:/Program Files/pkg-config"
+      - "C:/Program Files/pkgconf.com"
+      - "C:/Program Files/pkgconf.exe"
+      - "C:/Program Files/pkgconf"
+      - "C:/Program Files (x86)/bin/pkg-config.bat.com"
+      - "C:/Program Files (x86)/bin/pkg-config.bat.exe"
+      - "C:/Program Files (x86)/bin/pkg-config.bat"
+      - "C:/Program Files (x86)/bin/pkg-config.com"
+      - "C:/Program Files (x86)/bin/pkg-config.exe"
+      - "C:/Program Files (x86)/bin/pkg-config"
+      - "C:/Program Files (x86)/bin/pkgconf.com"
+      - "C:/Program Files (x86)/bin/pkgconf.exe"
+      - "C:/Program Files (x86)/bin/pkgconf"
+      - "C:/Program Files (x86)/sbin/pkg-config.bat.com"
+      - "C:/Program Files (x86)/sbin/pkg-config.bat.exe"
+      - "C:/Program Files (x86)/sbin/pkg-config.bat"
+      - "C:/Program Files (x86)/sbin/pkg-config.com"
+      - "C:/Program Files (x86)/sbin/pkg-config.exe"
+      - "C:/Program Files (x86)/sbin/pkg-config"
+      - "C:/Program Files (x86)/sbin/pkgconf.com"
+      - "C:/Program Files (x86)/sbin/pkgconf.exe"
+      - "C:/Program Files (x86)/sbin/pkgconf"
+      - "C:/Program Files (x86)/pkg-config.bat.com"
+      - "C:/Program Files (x86)/pkg-config.bat.exe"
+      - "C:/Program Files (x86)/pkg-config.bat"
+      - "C:/Program Files (x86)/pkg-config.com"
+      - "C:/Program Files (x86)/pkg-config.exe"
+      - "C:/Program Files (x86)/pkg-config"
+      - "C:/Program Files (x86)/pkgconf.com"
+      - "C:/Program Files (x86)/pkgconf.exe"
+      - "C:/Program Files (x86)/pkgconf"
+      - "C:/Program Files/CMake/bin/pkg-config.bat.com"
+      - "C:/Program Files/CMake/bin/pkg-config.bat.exe"
+      - "C:/Program Files/CMake/bin/pkg-config.bat"
+      - "C:/Program Files/CMake/bin/pkg-config.com"
+      - "C:/Program Files/CMake/bin/pkg-config.exe"
+      - "C:/Program Files/CMake/bin/pkg-config"
+      - "C:/Program Files/CMake/bin/pkgconf.com"
+      - "C:/Program Files/CMake/bin/pkgconf.exe"
+      - "C:/Program Files/CMake/bin/pkgconf"
+      - "C:/Program Files/CMake/sbin/pkg-config.bat.com"
+      - "C:/Program Files/CMake/sbin/pkg-config.bat.exe"
+      - "C:/Program Files/CMake/sbin/pkg-config.bat"
+      - "C:/Program Files/CMake/sbin/pkg-config.com"
+      - "C:/Program Files/CMake/sbin/pkg-config.exe"
+      - "C:/Program Files/CMake/sbin/pkg-config"
+      - "C:/Program Files/CMake/sbin/pkgconf.com"
+      - "C:/Program Files/CMake/sbin/pkgconf.exe"
+      - "C:/Program Files/CMake/sbin/pkgconf"
+      - "C:/Program Files/CMake/pkg-config.bat.com"
+      - "C:/Program Files/CMake/pkg-config.bat.exe"
+      - "C:/Program Files/CMake/pkg-config.bat"
+      - "C:/Program Files/CMake/pkg-config.com"
+      - "C:/Program Files/CMake/pkg-config.exe"
+      - "C:/Program Files/CMake/pkg-config"
+      - "C:/Program Files/CMake/pkgconf.com"
+      - "C:/Program Files/CMake/pkgconf.exe"
+      - "C:/Program Files/CMake/pkgconf"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/bin/pkg-config.bat.com"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/bin/pkg-config.bat.exe"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/bin/pkg-config.bat"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/bin/pkg-config.com"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/bin/pkg-config.exe"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/bin/pkg-config"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/bin/pkgconf.com"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/bin/pkgconf.exe"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/bin/pkgconf"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/sbin/pkg-config.bat.com"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/sbin/pkg-config.bat.exe"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/sbin/pkg-config.bat"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/sbin/pkg-config.com"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/sbin/pkg-config.exe"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/sbin/pkg-config"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/sbin/pkgconf.com"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/sbin/pkgconf.exe"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/sbin/pkgconf"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/pkg-config.bat.com"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/pkg-config.bat.exe"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/pkg-config.bat"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/pkg-config.com"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/pkg-config.exe"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/pkg-config"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/pkgconf.com"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/pkgconf.exe"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/pkgconf"
+    found: false
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64"
+        - "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\deps"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\WINDOWS\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\LLVM\\bin"
+        - "C:\\Users\\lance\\.cargo\\bin"
+        - "C:\\Users\\lance\\.local\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Zed\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin"
+      CMAKE_INSTALL_PREFIX: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "C:/Program Files"
+        - "C:/Program Files (x86)"
+        - "C:/Program Files/CMake"
+        - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out"
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "cmake/sdlcpu.cmake:95 (try_compile)"
+      - "CMakeLists.txt:83 (SDL_DetectTargetCPUArchitectures)"
+    directories:
+      source: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeTmp/SDL_detect_arch/CMakeFiles/CMakeTmp"
+      binary: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeTmp/SDL_detect_arch/CMakeFiles/CMakeTmp"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/lance/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sdl3-src-3.4.2/SDL/cmake"
+    buildResult:
+      variable: "SDL_CPU_CHECK_ALL"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeTmp/SDL_detect_arch/CMakeFiles/CMakeTmp'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_4e6af.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        MSBuild version 18.0.5+e22287bf1 for .NET Framework
+        Build started 4/2/2026 6:43:01 PM.
+        
+        Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeTmp\\SDL_detect_arch\\CMakeFiles\\CMakeTmp\\cmTC_4e6af.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+          Creating directory "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeTmp\\SDL_detect_arch\\CMakeFiles\\CMakeTmp\\Debug\\".
+          Creating directory "cmTC_4e6af.dir\\Debug\\cmTC_4e6af.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_4e6af.dir\\Debug\\cmTC_4e6af.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_4e6af.dir\\Debug\\cmTC_4e6af.tlog\\unsuccessfulbuild".
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_4e6af.dir\\Debug\\\\" /Fd"C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeTmp\\SDL_detect_arch\\CMakeFiles\\CMakeTmp\\Debug\\cmTC_4e6af.pdb" /external:W0 /TC /errorReport:queue  -Brepro "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeTmp\\SDL_detect_arch.c"
+          SDL_detect_arch.c
+        Lib:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\Lib.exe /OUT:"C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeTmp\\SDL_detect_arch\\CMakeFiles\\CMakeTmp\\Debug\\cmTC_4e6af.lib" /NOLOGO /MACHINE:X64  /machine:x64 cmTC_4e6af.dir\\Debug\\SDL_detect_arch.obj
+          cmTC_4e6af.vcxproj -> C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeTmp\\SDL_detect_arch\\CMakeFiles\\CMakeTmp\\Debug\\cmTC_4e6af.lib
+        FinalizeBuildStatus:
+          Deleting file "cmTC_4e6af.dir\\Debug\\cmTC_4e6af.tlog\\unsuccessfulbuild".
+          Touching "cmTC_4e6af.dir\\Debug\\cmTC_4e6af.tlog\\cmTC_4e6af.lastbuildstate".
+        Done Building Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeTmp\\SDL_detect_arch\\CMakeFiles\\CMakeTmp\\cmTC_4e6af.vcxproj" (default targets).
+        
+        Build succeeded.
+            0 Warning(s)
+            0 Error(s)
+        
+        Time Elapsed 00:00:00.27
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CheckCSourceCompiles.cmake:103 (cmake_check_source_compiles)"
+      - "cmake/PreseedMSVCCache.cmake:3 (check_c_source_compiles)"
+      - "CMakeLists.txt:434 (SDL_Preseed_CMakeCache)"
+    checks:
+      - "Performing Test CAN_PRESEED"
+    directories:
+      source: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-3918ju"
+      binary: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-3918ju"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/lance/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sdl3-src-3.4.2/SDL/cmake"
+    buildResult:
+      variable: "CAN_PRESEED"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-3918ju'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_d1f86.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        MSBuild version 18.0.5+e22287bf1 for .NET Framework
+        Build started 4/2/2026 6:43:01 PM.
+        
+        Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-3918ju\\cmTC_d1f86.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+          Creating directory "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-3918ju\\Debug\\".
+          Creating directory "cmTC_d1f86.dir\\Debug\\cmTC_d1f86.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_d1f86.dir\\Debug\\cmTC_d1f86.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_d1f86.dir\\Debug\\cmTC_d1f86.tlog\\unsuccessfulbuild".
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D _GNU_SOURCE=1 /D CAN_PRESEED /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_d1f86.dir\\Debug\\\\" /Fd"cmTC_d1f86.dir\\Debug\\vc145.pdb" /external:W0 /TC /errorReport:queue  -Brepro "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-3918ju\\src.c"
+          src.c
+        Link:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-3918ju\\Debug\\cmTC_d1f86.exe" /INCREMENTAL /ILK:"cmTC_d1f86.dir\\Debug\\cmTC_d1f86.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-3918ju/Debug/cmTC_d1f86.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-3918ju/Debug/cmTC_d1f86.lib" /MACHINE:X64  /machine:x64 cmTC_d1f86.dir\\Debug\\src.obj
+          cmTC_d1f86.vcxproj -> C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-3918ju\\Debug\\cmTC_d1f86.exe
+        FinalizeBuildStatus:
+          Deleting file "cmTC_d1f86.dir\\Debug\\cmTC_d1f86.tlog\\unsuccessfulbuild".
+          Touching "cmTC_d1f86.dir\\Debug\\cmTC_d1f86.tlog\\cmTC_d1f86.lastbuildstate".
+        Done Building Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-3918ju\\cmTC_d1f86.vcxproj" (default targets).
+        
+        Build succeeded.
+            0 Warning(s)
+            0 Error(s)
+        
+        Time Elapsed 00:00:00.33
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CheckCSourceCompiles.cmake:103 (cmake_check_source_compiles)"
+      - "cmake/sdlcompilers.cmake:180 (check_c_source_compiles)"
+      - "CMakeLists.txt:706 (check_x86_source_compiles)"
+    checks:
+      - "Performing Test COMPILER_SUPPORTS_MMX"
+    directories:
+      source: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-1mn5e9"
+      binary: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-1mn5e9"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/lance/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sdl3-src-3.4.2/SDL/cmake"
+    buildResult:
+      variable: "COMPILER_SUPPORTS_MMX"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-1mn5e9'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_4ab0d.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        MSBuild version 18.0.5+e22287bf1 for .NET Framework
+        Build started 4/2/2026 6:43:02 PM.
+        
+        Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-1mn5e9\\cmTC_4ab0d.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+          Creating directory "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-1mn5e9\\Debug\\".
+          Creating directory "cmTC_4ab0d.dir\\Debug\\cmTC_4ab0d.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_4ab0d.dir\\Debug\\cmTC_4ab0d.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_4ab0d.dir\\Debug\\cmTC_4ab0d.tlog\\unsuccessfulbuild".
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D _GNU_SOURCE=1 /D COMPILER_SUPPORTS_MMX /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_4ab0d.dir\\Debug\\\\" /Fd"cmTC_4ab0d.dir\\Debug\\vc145.pdb" /external:W0 /TC /errorReport:queue  -Brepro "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-1mn5e9\\src.c"
+          src.c
+        C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-1mn5e9\\src.c(15,25): error C2440: '=': cannot convert from 'int' to '__m64' [C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-1mn5e9\\cmTC_4ab0d.vcxproj]
+        Done Building Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-1mn5e9\\cmTC_4ab0d.vcxproj" (default targets) -- FAILED.
+        
+        Build FAILED.
+        
+        "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-1mn5e9\\cmTC_4ab0d.vcxproj" (default target) (1) ->
+        (ClCompile target) -> 
+          C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-1mn5e9\\src.c(15,25): error C2440: '=': cannot convert from 'int' to '__m64' [C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-1mn5e9\\cmTC_4ab0d.vcxproj]
+        
+            0 Warning(s)
+            1 Error(s)
+        
+        Time Elapsed 00:00:00.25
+        
+      exitCode: 1
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CheckCSourceCompiles.cmake:103 (cmake_check_source_compiles)"
+      - "cmake/sdlcompilers.cmake:180 (check_c_source_compiles)"
+      - "CMakeLists.txt:727 (check_x86_source_compiles)"
+    checks:
+      - "Performing Test COMPILER_SUPPORTS_SSE"
+    directories:
+      source: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-nuy4qn"
+      binary: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-nuy4qn"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/lance/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sdl3-src-3.4.2/SDL/cmake"
+    buildResult:
+      variable: "COMPILER_SUPPORTS_SSE"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-nuy4qn'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_93ed6.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        MSBuild version 18.0.5+e22287bf1 for .NET Framework
+        Build started 4/2/2026 6:43:02 PM.
+        
+        Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-nuy4qn\\cmTC_93ed6.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+          Creating directory "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-nuy4qn\\Debug\\".
+          Creating directory "cmTC_93ed6.dir\\Debug\\cmTC_93ed6.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_93ed6.dir\\Debug\\cmTC_93ed6.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_93ed6.dir\\Debug\\cmTC_93ed6.tlog\\unsuccessfulbuild".
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D _GNU_SOURCE=1 /D COMPILER_SUPPORTS_SSE /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_93ed6.dir\\Debug\\\\" /Fd"cmTC_93ed6.dir\\Debug\\vc145.pdb" /external:W0 /TC /errorReport:queue  -Brepro "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-nuy4qn\\src.c"
+          src.c
+        Link:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-nuy4qn\\Debug\\cmTC_93ed6.exe" /INCREMENTAL /ILK:"cmTC_93ed6.dir\\Debug\\cmTC_93ed6.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-nuy4qn/Debug/cmTC_93ed6.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-nuy4qn/Debug/cmTC_93ed6.lib" /MACHINE:X64  /machine:x64 cmTC_93ed6.dir\\Debug\\src.obj
+          cmTC_93ed6.vcxproj -> C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-nuy4qn\\Debug\\cmTC_93ed6.exe
+        FinalizeBuildStatus:
+          Deleting file "cmTC_93ed6.dir\\Debug\\cmTC_93ed6.tlog\\unsuccessfulbuild".
+          Touching "cmTC_93ed6.dir\\Debug\\cmTC_93ed6.tlog\\cmTC_93ed6.lastbuildstate".
+        Done Building Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-nuy4qn\\cmTC_93ed6.vcxproj" (default targets).
+        
+        Build succeeded.
+            0 Warning(s)
+            0 Error(s)
+        
+        Time Elapsed 00:00:00.34
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CheckCSourceCompiles.cmake:103 (cmake_check_source_compiles)"
+      - "cmake/sdlcompilers.cmake:180 (check_c_source_compiles)"
+      - "CMakeLists.txt:748 (check_x86_source_compiles)"
+    checks:
+      - "Performing Test COMPILER_SUPPORTS_SSE2"
+    directories:
+      source: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-v1g190"
+      binary: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-v1g190"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/lance/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sdl3-src-3.4.2/SDL/cmake"
+    buildResult:
+      variable: "COMPILER_SUPPORTS_SSE2"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-v1g190'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_55506.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        MSBuild version 18.0.5+e22287bf1 for .NET Framework
+        Build started 4/2/2026 6:43:03 PM.
+        
+        Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-v1g190\\cmTC_55506.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+          Creating directory "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-v1g190\\Debug\\".
+          Creating directory "cmTC_55506.dir\\Debug\\cmTC_55506.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_55506.dir\\Debug\\cmTC_55506.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_55506.dir\\Debug\\cmTC_55506.tlog\\unsuccessfulbuild".
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D _GNU_SOURCE=1 /D COMPILER_SUPPORTS_SSE2 /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_55506.dir\\Debug\\\\" /Fd"cmTC_55506.dir\\Debug\\vc145.pdb" /external:W0 /TC /errorReport:queue  -Brepro "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-v1g190\\src.c"
+          src.c
+        Link:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-v1g190\\Debug\\cmTC_55506.exe" /INCREMENTAL /ILK:"cmTC_55506.dir\\Debug\\cmTC_55506.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-v1g190/Debug/cmTC_55506.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-v1g190/Debug/cmTC_55506.lib" /MACHINE:X64  /machine:x64 cmTC_55506.dir\\Debug\\src.obj
+          cmTC_55506.vcxproj -> C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-v1g190\\Debug\\cmTC_55506.exe
+        FinalizeBuildStatus:
+          Deleting file "cmTC_55506.dir\\Debug\\cmTC_55506.tlog\\unsuccessfulbuild".
+          Touching "cmTC_55506.dir\\Debug\\cmTC_55506.tlog\\cmTC_55506.lastbuildstate".
+        Done Building Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-v1g190\\cmTC_55506.vcxproj" (default targets).
+        
+        Build succeeded.
+            0 Warning(s)
+            0 Error(s)
+        
+        Time Elapsed 00:00:00.33
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CheckCSourceCompiles.cmake:103 (cmake_check_source_compiles)"
+      - "cmake/sdlcompilers.cmake:180 (check_c_source_compiles)"
+      - "CMakeLists.txt:769 (check_x86_source_compiles)"
+    checks:
+      - "Performing Test COMPILER_SUPPORTS_SSE3"
+    directories:
+      source: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-hod55t"
+      binary: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-hod55t"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/lance/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sdl3-src-3.4.2/SDL/cmake"
+    buildResult:
+      variable: "COMPILER_SUPPORTS_SSE3"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-hod55t'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_cd085.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        MSBuild version 18.0.5+e22287bf1 for .NET Framework
+        Build started 4/2/2026 6:43:03 PM.
+        
+        Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-hod55t\\cmTC_cd085.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+          Creating directory "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-hod55t\\Debug\\".
+          Creating directory "cmTC_cd085.dir\\Debug\\cmTC_cd085.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_cd085.dir\\Debug\\cmTC_cd085.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_cd085.dir\\Debug\\cmTC_cd085.tlog\\unsuccessfulbuild".
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D _GNU_SOURCE=1 /D COMPILER_SUPPORTS_SSE3 /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_cd085.dir\\Debug\\\\" /Fd"cmTC_cd085.dir\\Debug\\vc145.pdb" /external:W0 /TC /errorReport:queue  -Brepro "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-hod55t\\src.c"
+          src.c
+        Link:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-hod55t\\Debug\\cmTC_cd085.exe" /INCREMENTAL /ILK:"cmTC_cd085.dir\\Debug\\cmTC_cd085.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-hod55t/Debug/cmTC_cd085.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-hod55t/Debug/cmTC_cd085.lib" /MACHINE:X64  /machine:x64 cmTC_cd085.dir\\Debug\\src.obj
+          cmTC_cd085.vcxproj -> C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-hod55t\\Debug\\cmTC_cd085.exe
+        FinalizeBuildStatus:
+          Deleting file "cmTC_cd085.dir\\Debug\\cmTC_cd085.tlog\\unsuccessfulbuild".
+          Touching "cmTC_cd085.dir\\Debug\\cmTC_cd085.tlog\\cmTC_cd085.lastbuildstate".
+        Done Building Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-hod55t\\cmTC_cd085.vcxproj" (default targets).
+        
+        Build succeeded.
+            0 Warning(s)
+            0 Error(s)
+        
+        Time Elapsed 00:00:00.33
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CheckCSourceCompiles.cmake:103 (cmake_check_source_compiles)"
+      - "cmake/sdlcompilers.cmake:180 (check_c_source_compiles)"
+      - "CMakeLists.txt:790 (check_x86_source_compiles)"
+    checks:
+      - "Performing Test COMPILER_SUPPORTS_SSE4_1"
+    directories:
+      source: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-jqqh99"
+      binary: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-jqqh99"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/lance/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sdl3-src-3.4.2/SDL/cmake"
+    buildResult:
+      variable: "COMPILER_SUPPORTS_SSE4_1"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-jqqh99'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_44277.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        MSBuild version 18.0.5+e22287bf1 for .NET Framework
+        Build started 4/2/2026 6:43:04 PM.
+        
+        Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-jqqh99\\cmTC_44277.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+          Creating directory "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-jqqh99\\Debug\\".
+          Creating directory "cmTC_44277.dir\\Debug\\cmTC_44277.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_44277.dir\\Debug\\cmTC_44277.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_44277.dir\\Debug\\cmTC_44277.tlog\\unsuccessfulbuild".
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D _GNU_SOURCE=1 /D COMPILER_SUPPORTS_SSE4_1 /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_44277.dir\\Debug\\\\" /Fd"cmTC_44277.dir\\Debug\\vc145.pdb" /external:W0 /TC /errorReport:queue  -Brepro "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-jqqh99\\src.c"
+          src.c
+        Link:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-jqqh99\\Debug\\cmTC_44277.exe" /INCREMENTAL /ILK:"cmTC_44277.dir\\Debug\\cmTC_44277.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-jqqh99/Debug/cmTC_44277.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-jqqh99/Debug/cmTC_44277.lib" /MACHINE:X64  /machine:x64 cmTC_44277.dir\\Debug\\src.obj
+          cmTC_44277.vcxproj -> C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-jqqh99\\Debug\\cmTC_44277.exe
+        FinalizeBuildStatus:
+          Deleting file "cmTC_44277.dir\\Debug\\cmTC_44277.tlog\\unsuccessfulbuild".
+          Touching "cmTC_44277.dir\\Debug\\cmTC_44277.tlog\\cmTC_44277.lastbuildstate".
+        Done Building Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-jqqh99\\cmTC_44277.vcxproj" (default targets).
+        
+        Build succeeded.
+            0 Warning(s)
+            0 Error(s)
+        
+        Time Elapsed 00:00:00.33
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CheckCSourceCompiles.cmake:103 (cmake_check_source_compiles)"
+      - "cmake/sdlcompilers.cmake:180 (check_c_source_compiles)"
+      - "CMakeLists.txt:811 (check_x86_source_compiles)"
+    checks:
+      - "Performing Test COMPILER_SUPPORTS_SSE4_2"
+    directories:
+      source: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-b0qkfi"
+      binary: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-b0qkfi"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/lance/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sdl3-src-3.4.2/SDL/cmake"
+    buildResult:
+      variable: "COMPILER_SUPPORTS_SSE4_2"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-b0qkfi'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_c1a71.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        MSBuild version 18.0.5+e22287bf1 for .NET Framework
+        Build started 4/2/2026 6:43:04 PM.
+        
+        Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-b0qkfi\\cmTC_c1a71.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+          Creating directory "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-b0qkfi\\Debug\\".
+          Creating directory "cmTC_c1a71.dir\\Debug\\cmTC_c1a71.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_c1a71.dir\\Debug\\cmTC_c1a71.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_c1a71.dir\\Debug\\cmTC_c1a71.tlog\\unsuccessfulbuild".
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D _GNU_SOURCE=1 /D COMPILER_SUPPORTS_SSE4_2 /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_c1a71.dir\\Debug\\\\" /Fd"cmTC_c1a71.dir\\Debug\\vc145.pdb" /external:W0 /TC /errorReport:queue  -Brepro "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-b0qkfi\\src.c"
+          src.c
+        Link:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-b0qkfi\\Debug\\cmTC_c1a71.exe" /INCREMENTAL /ILK:"cmTC_c1a71.dir\\Debug\\cmTC_c1a71.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-b0qkfi/Debug/cmTC_c1a71.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-b0qkfi/Debug/cmTC_c1a71.lib" /MACHINE:X64  /machine:x64 cmTC_c1a71.dir\\Debug\\src.obj
+          cmTC_c1a71.vcxproj -> C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-b0qkfi\\Debug\\cmTC_c1a71.exe
+        FinalizeBuildStatus:
+          Deleting file "cmTC_c1a71.dir\\Debug\\cmTC_c1a71.tlog\\unsuccessfulbuild".
+          Touching "cmTC_c1a71.dir\\Debug\\cmTC_c1a71.tlog\\cmTC_c1a71.lastbuildstate".
+        Done Building Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-b0qkfi\\cmTC_c1a71.vcxproj" (default targets).
+        
+        Build succeeded.
+            0 Warning(s)
+            0 Error(s)
+        
+        Time Elapsed 00:00:00.33
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CheckCSourceCompiles.cmake:103 (cmake_check_source_compiles)"
+      - "cmake/sdlcompilers.cmake:180 (check_c_source_compiles)"
+      - "CMakeLists.txt:829 (check_x86_source_compiles)"
+    checks:
+      - "Performing Test COMPILER_SUPPORTS_AVX"
+    directories:
+      source: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-mg72ag"
+      binary: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-mg72ag"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/lance/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sdl3-src-3.4.2/SDL/cmake"
+    buildResult:
+      variable: "COMPILER_SUPPORTS_AVX"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-mg72ag'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_1e90f.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        MSBuild version 18.0.5+e22287bf1 for .NET Framework
+        Build started 4/2/2026 6:43:05 PM.
+        
+        Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-mg72ag\\cmTC_1e90f.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+          Creating directory "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-mg72ag\\Debug\\".
+          Creating directory "cmTC_1e90f.dir\\Debug\\cmTC_1e90f.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_1e90f.dir\\Debug\\cmTC_1e90f.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_1e90f.dir\\Debug\\cmTC_1e90f.tlog\\unsuccessfulbuild".
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D _GNU_SOURCE=1 /D COMPILER_SUPPORTS_AVX /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_1e90f.dir\\Debug\\\\" /Fd"cmTC_1e90f.dir\\Debug\\vc145.pdb" /external:W0 /TC /errorReport:queue  -Brepro "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-mg72ag\\src.c"
+          src.c
+        Link:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-mg72ag\\Debug\\cmTC_1e90f.exe" /INCREMENTAL /ILK:"cmTC_1e90f.dir\\Debug\\cmTC_1e90f.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-mg72ag/Debug/cmTC_1e90f.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-mg72ag/Debug/cmTC_1e90f.lib" /MACHINE:X64  /machine:x64 cmTC_1e90f.dir\\Debug\\src.obj
+          cmTC_1e90f.vcxproj -> C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-mg72ag\\Debug\\cmTC_1e90f.exe
+        FinalizeBuildStatus:
+          Deleting file "cmTC_1e90f.dir\\Debug\\cmTC_1e90f.tlog\\unsuccessfulbuild".
+          Touching "cmTC_1e90f.dir\\Debug\\cmTC_1e90f.tlog\\cmTC_1e90f.lastbuildstate".
+        Done Building Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-mg72ag\\cmTC_1e90f.vcxproj" (default targets).
+        
+        Build succeeded.
+            0 Warning(s)
+            0 Error(s)
+        
+        Time Elapsed 00:00:00.35
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CheckCSourceCompiles.cmake:103 (cmake_check_source_compiles)"
+      - "cmake/sdlcompilers.cmake:180 (check_c_source_compiles)"
+      - "CMakeLists.txt:850 (check_x86_source_compiles)"
+    checks:
+      - "Performing Test COMPILER_SUPPORTS_AVX2"
+    directories:
+      source: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-2yr8ph"
+      binary: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-2yr8ph"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/lance/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sdl3-src-3.4.2/SDL/cmake"
+    buildResult:
+      variable: "COMPILER_SUPPORTS_AVX2"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-2yr8ph'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_10132.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        MSBuild version 18.0.5+e22287bf1 for .NET Framework
+        Build started 4/2/2026 6:43:06 PM.
+        
+        Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-2yr8ph\\cmTC_10132.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+          Creating directory "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-2yr8ph\\Debug\\".
+          Creating directory "cmTC_10132.dir\\Debug\\cmTC_10132.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_10132.dir\\Debug\\cmTC_10132.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_10132.dir\\Debug\\cmTC_10132.tlog\\unsuccessfulbuild".
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D _GNU_SOURCE=1 /D COMPILER_SUPPORTS_AVX2 /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_10132.dir\\Debug\\\\" /Fd"cmTC_10132.dir\\Debug\\vc145.pdb" /external:W0 /TC /errorReport:queue  -Brepro "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-2yr8ph\\src.c"
+          src.c
+        C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-2yr8ph\\src.c(1,1): error C1090: PDB API call failed, error code '3': C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-2yr8ph\\cmTC_10132.dir\\Debug\\vc145.pdb [C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-2yr8ph\\cmTC_10132.vcxproj]
+        Done Building Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-2yr8ph\\cmTC_10132.vcxproj" (default targets) -- FAILED.
+        
+        Build FAILED.
+        
+        "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-2yr8ph\\cmTC_10132.vcxproj" (default target) (1) ->
+        (ClCompile target) -> 
+          C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-2yr8ph\\src.c(1,1): error C1090: PDB API call failed, error code '3': C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-2yr8ph\\cmTC_10132.dir\\Debug\\vc145.pdb [C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-2yr8ph\\cmTC_10132.vcxproj]
+        
+            0 Warning(s)
+            1 Error(s)
+        
+        Time Elapsed 00:00:00.22
+        
+      exitCode: 1
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CheckCSourceCompiles.cmake:103 (cmake_check_source_compiles)"
+      - "cmake/sdlcompilers.cmake:180 (check_c_source_compiles)"
+      - "CMakeLists.txt:871 (check_x86_source_compiles)"
+    checks:
+      - "Performing Test COMPILER_SUPPORTS_AVX512F"
+    directories:
+      source: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-2kmyt5"
+      binary: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-2kmyt5"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/lance/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sdl3-src-3.4.2/SDL/cmake"
+    buildResult:
+      variable: "COMPILER_SUPPORTS_AVX512F"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-2kmyt5'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_1df1e.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        MSBuild version 18.0.5+e22287bf1 for .NET Framework
+        Build started 4/2/2026 6:43:06 PM.
+        
+        Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-2kmyt5\\cmTC_1df1e.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+          Creating directory "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-2kmyt5\\Debug\\".
+          Creating directory "cmTC_1df1e.dir\\Debug\\cmTC_1df1e.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_1df1e.dir\\Debug\\cmTC_1df1e.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_1df1e.dir\\Debug\\cmTC_1df1e.tlog\\unsuccessfulbuild".
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D _GNU_SOURCE=1 /D COMPILER_SUPPORTS_AVX512F /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_1df1e.dir\\Debug\\\\" /Fd"cmTC_1df1e.dir\\Debug\\vc145.pdb" /external:W0 /TC /errorReport:queue  -Brepro "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-2kmyt5\\src.c"
+          src.c
+        Link:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-2kmyt5\\Debug\\cmTC_1df1e.exe" /INCREMENTAL /ILK:"cmTC_1df1e.dir\\Debug\\cmTC_1df1e.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-2kmyt5/Debug/cmTC_1df1e.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-2kmyt5/Debug/cmTC_1df1e.lib" /MACHINE:X64  /machine:x64 cmTC_1df1e.dir\\Debug\\src.obj
+          cmTC_1df1e.vcxproj -> C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-2kmyt5\\Debug\\cmTC_1df1e.exe
+        FinalizeBuildStatus:
+          Deleting file "cmTC_1df1e.dir\\Debug\\cmTC_1df1e.tlog\\unsuccessfulbuild".
+          Touching "cmTC_1df1e.dir\\Debug\\cmTC_1df1e.tlog\\cmTC_1df1e.lastbuildstate".
+        Done Building Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-2kmyt5\\cmTC_1df1e.vcxproj" (default targets).
+        
+        Build succeeded.
+            0 Warning(s)
+            0 Error(s)
+        
+        Time Elapsed 00:00:00.33
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CheckSymbolExists.cmake:193 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CheckSymbolExists.cmake:98 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "CMakeLists.txt:1112 (check_symbol_exists)"
+    checks:
+      - "Looking for _copysign"
+    directories:
+      source: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-75g62y"
+      binary: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-75g62y"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/lance/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sdl3-src-3.4.2/SDL/cmake"
+    buildResult:
+      variable: "LIBC_HAS__COPYSIGN"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-75g62y'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_02a04.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        MSBuild version 18.0.5+e22287bf1 for .NET Framework
+        Build started 4/2/2026 6:43:07 PM.
+        
+        Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-75g62y\\cmTC_02a04.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+          Creating directory "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-75g62y\\Debug\\".
+          Creating directory "cmTC_02a04.dir\\Debug\\cmTC_02a04.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_02a04.dir\\Debug\\cmTC_02a04.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_02a04.dir\\Debug\\cmTC_02a04.tlog\\unsuccessfulbuild".
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D _GNU_SOURCE=1 /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_02a04.dir\\Debug\\\\" /Fd"cmTC_02a04.dir\\Debug\\vc145.pdb" /external:W0 /TC /errorReport:queue  -Brepro "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-75g62y\\CheckSymbolExists.c"
+          CheckSymbolExists.c
+        Link:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-75g62y\\Debug\\cmTC_02a04.exe" /INCREMENTAL /ILK:"cmTC_02a04.dir\\Debug\\cmTC_02a04.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-75g62y/Debug/cmTC_02a04.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-75g62y/Debug/cmTC_02a04.lib" /MACHINE:X64  /machine:x64 cmTC_02a04.dir\\Debug\\CheckSymbolExists.obj
+          cmTC_02a04.vcxproj -> C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-75g62y\\Debug\\cmTC_02a04.exe
+        FinalizeBuildStatus:
+          Deleting file "cmTC_02a04.dir\\Debug\\cmTC_02a04.tlog\\unsuccessfulbuild".
+          Touching "cmTC_02a04.dir\\Debug\\cmTC_02a04.tlog\\cmTC_02a04.lastbuildstate".
+        Done Building Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-75g62y\\cmTC_02a04.vcxproj" (default targets).
+        
+        Build succeeded.
+            0 Warning(s)
+            0 Error(s)
+        
+        Time Elapsed 00:00:00.35
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CheckSymbolExists.cmake:193 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CheckSymbolExists.cmake:98 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "CMakeLists.txt:1112 (check_symbol_exists)"
+    checks:
+      - "Looking for _fseeki64"
+    directories:
+      source: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-3l8b3s"
+      binary: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-3l8b3s"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/lance/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sdl3-src-3.4.2/SDL/cmake"
+    buildResult:
+      variable: "LIBC_HAS__FSEEKI64"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-3l8b3s'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_22de7.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        MSBuild version 18.0.5+e22287bf1 for .NET Framework
+        Build started 4/2/2026 6:43:07 PM.
+        
+        Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-3l8b3s\\cmTC_22de7.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+          Creating directory "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-3l8b3s\\Debug\\".
+          Creating directory "cmTC_22de7.dir\\Debug\\cmTC_22de7.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_22de7.dir\\Debug\\cmTC_22de7.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_22de7.dir\\Debug\\cmTC_22de7.tlog\\unsuccessfulbuild".
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D _GNU_SOURCE=1 /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_22de7.dir\\Debug\\\\" /Fd"cmTC_22de7.dir\\Debug\\vc145.pdb" /external:W0 /TC /errorReport:queue  -Brepro "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-3l8b3s\\CheckSymbolExists.c"
+          CheckSymbolExists.c
+        Link:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-3l8b3s\\Debug\\cmTC_22de7.exe" /INCREMENTAL /ILK:"cmTC_22de7.dir\\Debug\\cmTC_22de7.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-3l8b3s/Debug/cmTC_22de7.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-3l8b3s/Debug/cmTC_22de7.lib" /MACHINE:X64  /machine:x64 cmTC_22de7.dir\\Debug\\CheckSymbolExists.obj
+          cmTC_22de7.vcxproj -> C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-3l8b3s\\Debug\\cmTC_22de7.exe
+        FinalizeBuildStatus:
+          Deleting file "cmTC_22de7.dir\\Debug\\cmTC_22de7.tlog\\unsuccessfulbuild".
+          Touching "cmTC_22de7.dir\\Debug\\cmTC_22de7.tlog\\cmTC_22de7.lastbuildstate".
+        Done Building Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-3l8b3s\\cmTC_22de7.vcxproj" (default targets).
+        
+        Build succeeded.
+            0 Warning(s)
+            0 Error(s)
+        
+        Time Elapsed 00:00:00.35
+        
+      exitCode: 0
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:462 (find_file)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:500 (CMAKE_DETERMINE_COMPILER_ID_WRITE)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCXXCompiler.cmake:125 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2158 (enable_language)"
+    mode: "file"
+    variable: "src_in"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "CMakeCXXCompilerId.cpp.in"
+    candidate_directories:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/"
+      - "C:/Users/lance/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sdl3-src-3.4.2/SDL/cmake/"
+    found: "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeCXXCompilerId.cpp.in"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64"
+        - "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\deps"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\WINDOWS\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\LLVM\\bin"
+        - "C:\\Users\\lance\\.cargo\\bin"
+        - "C:\\Users\\lance\\.local\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Zed\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin"
+      CMAKE_INSTALL_PREFIX: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "C:/Program Files"
+        - "C:/Program Files (x86)"
+        - "C:/Program Files/CMake"
+        - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out"
+      ENV{INCLUDE}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\include"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\cppwinrt"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\winrt"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCXXCompiler.cmake:125 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2158 (enable_language)"
+    message: |
+      Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" succeeded.
+      Compiler:  
+      Build flags: -nologo;-MD;-Brepro;-W0
+      Id flags:  
+      
+      The output was:
+      0
+      MSBuild version 18.0.5+e22287bf1 for .NET Framework
+      Build started 4/2/2026 6:43:08 PM.
+      
+      Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\4.2.1\\CompilerIdCXX\\CompilerIdCXX.vcxproj" on node 1 (default targets).
+      PrepareForBuild:
+        Creating directory "Debug\\".
+        Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+        Creating directory "Debug\\CompilerIdCXX.tlog\\".
+      InitializeBuildStatus:
+        Creating "Debug\\CompilerIdCXX.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+        Touching "Debug\\CompilerIdCXX.tlog\\unsuccessfulbuild".
+      ClCompile:
+        C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /nologo /W0 /WX- /diagnostics:column /Od /D _MBCS /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"Debug\\\\" /Fd"Debug\\vc145.pdb" /external:W0 /Gd /TP /FC /errorReport:queue CMakeCXXCompilerId.cpp
+        CMakeCXXCompilerId.cpp
+      Link:
+        C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:".\\CompilerIdCXX.exe" /INCREMENTAL:NO /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /PDB:".\\CompilerIdCXX.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:".\\CompilerIdCXX.lib" /MACHINE:X64 Debug\\CMakeCXXCompilerId.obj
+        CompilerIdCXX.vcxproj -> C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\4.2.1\\CompilerIdCXX\\CompilerIdCXX.exe
+      PostBuildEvent:
+        for %%i in (cl.exe) do @echo CMAKE_CXX_COMPILER=%%~$PATH:i
+        :VCEnd
+        CMAKE_CXX_COMPILER=C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\Hostx64\\x64\\cl.exe
+      FinalizeBuildStatus:
+        Deleting file "Debug\\CompilerIdCXX.tlog\\unsuccessfulbuild".
+        Touching "Debug\\CompilerIdCXX.tlog\\CompilerIdCXX.lastbuildstate".
+      Done Building Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\4.2.1\\CompilerIdCXX\\CompilerIdCXX.vcxproj" (default targets).
+      
+      Build succeeded.
+          0 Warning(s)
+          0 Error(s)
+      
+      Time Elapsed 00:00:00.38
+      
+      
+      Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "CompilerIdCXX.exe"
+      
+      Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "CompilerIdCXX.vcxproj"
+      
+      The CXX compiler identification is MSVC, found in:
+        C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/4.2.1/CompilerIdCXX/CompilerIdCXX.exe
+      
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerABI.cmake:83 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:2158 (enable_language)"
+    checks:
+      - "Detecting CXX compiler ABI info"
+    directories:
+      source: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-c05aue"
+      binary: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-c05aue"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_CXX_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_CXX_SCAN_FOR_MODULES: "OFF"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/lance/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sdl3-src-3.4.2/SDL/cmake"
+    buildResult:
+      variable: "CMAKE_CXX_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-c05aue'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_ad29c.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        MSBuild version 18.0.5+e22287bf1 for .NET Framework
+        Build started 4/2/2026 6:43:08 PM.
+        
+        Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-c05aue\\cmTC_ad29c.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+          Creating directory "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-c05aue\\Debug\\".
+          Creating directory "cmTC_ad29c.dir\\Debug\\cmTC_ad29c.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_ad29c.dir\\Debug\\cmTC_ad29c.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_ad29c.dir\\Debug\\cmTC_ad29c.tlog\\unsuccessfulbuild".
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_ad29c.dir\\Debug\\\\" /Fd"cmTC_ad29c.dir\\Debug\\vc145.pdb" /external:W0 /TP /errorReport:queue  -Brepro "C:\\Program Files\\CMake\\share\\cmake-4.2\\Modules\\CMakeCXXCompilerABI.cpp"
+          CMakeCXXCompilerABI.cpp
+        Link:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-c05aue\\Debug\\cmTC_ad29c.exe" /INCREMENTAL /ILK:"cmTC_ad29c.dir\\Debug\\cmTC_ad29c.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-c05aue/Debug/cmTC_ad29c.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-c05aue/Debug/cmTC_ad29c.lib" /MACHINE:X64  /machine:x64 cmTC_ad29c.dir\\Debug\\CMakeCXXCompilerABI.obj
+          cmTC_ad29c.vcxproj -> C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-c05aue\\Debug\\cmTC_ad29c.exe
+        FinalizeBuildStatus:
+          Deleting file "cmTC_ad29c.dir\\Debug\\cmTC_ad29c.tlog\\unsuccessfulbuild".
+          Touching "cmTC_ad29c.dir\\Debug\\cmTC_ad29c.tlog\\cmTC_ad29c.lastbuildstate".
+        Done Building Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-c05aue\\cmTC_ad29c.vcxproj" (default targets).
+        
+        Build succeeded.
+            0 Warning(s)
+            0 Error(s)
+        
+        Time Elapsed 00:00:00.33
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerABI.cmake:253 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:2158 (enable_language)"
+    message: |
+      Parsed CXX implicit link information:
+        link line regex: [^( *|.*[/\\])(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        linker tool regex: [^[ 	]*(->|"|[0-9]+>[ 	-]*Build:[ 	0-9]+ ms[ 	]*)?[ 	]*(([^"]*[/\\])?(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?))("|,| |$)]
+        linker tool for 'CXX': C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/HostX64/x64/link.exe
+        implicit libs: []
+        implicit objs: []
+        implicit dirs: []
+        implicit fwks: []
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Internal/CMakeDetermineLinkerId.cmake:38 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerABI.cmake:299 (cmake_determine_linker_id)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:2158 (enable_language)"
+    message: |
+      Running the CXX compiler's linker: "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/HostX64/x64/link.exe" "-v"
+      Microsoft (R) Incremental Linker Version 14.50.35720.0
+      Copyright (C) Microsoft Corporation.  All rights reserved.
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CheckCSourceCompiles.cmake:103 (cmake_check_source_compiles)"
+      - "CMakeLists.txt:2238 (check_c_source_compiles)"
+    checks:
+      - "Performing Test HAVE_GAMEINPUT_H"
+    directories:
+      source: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-l546e7"
+      binary: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-l546e7"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/lance/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sdl3-src-3.4.2/SDL/cmake"
+    buildResult:
+      variable: "HAVE_GAMEINPUT_H"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-l546e7'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_def78.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        MSBuild version 18.0.5+e22287bf1 for .NET Framework
+        Build started 4/2/2026 6:43:09 PM.
+        
+        Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-l546e7\\cmTC_def78.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+          Creating directory "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-l546e7\\Debug\\".
+          Creating directory "cmTC_def78.dir\\Debug\\cmTC_def78.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_def78.dir\\Debug\\cmTC_def78.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_def78.dir\\Debug\\cmTC_def78.tlog\\unsuccessfulbuild".
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D _GNU_SOURCE=1 /D HAVE_GAMEINPUT_H /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_def78.dir\\Debug\\\\" /Fd"cmTC_def78.dir\\Debug\\vc145.pdb" /external:W0 /TC /errorReport:queue  -Brepro "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-l546e7\\src.c"
+          src.c
+        Link:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-l546e7\\Debug\\cmTC_def78.exe" /INCREMENTAL /ILK:"cmTC_def78.dir\\Debug\\cmTC_def78.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-l546e7/Debug/cmTC_def78.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-l546e7/Debug/cmTC_def78.lib" /MACHINE:X64  /machine:x64 cmTC_def78.dir\\Debug\\src.obj
+          cmTC_def78.vcxproj -> C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-l546e7\\Debug\\cmTC_def78.exe
+        FinalizeBuildStatus:
+          Deleting file "cmTC_def78.dir\\Debug\\cmTC_def78.tlog\\unsuccessfulbuild".
+          Touching "cmTC_def78.dir\\Debug\\cmTC_def78.tlog\\cmTC_def78.lastbuildstate".
+        Done Building Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-l546e7\\cmTC_def78.vcxproj" (default targets).
+        
+        Build succeeded.
+            0 Warning(s)
+            0 Error(s)
+        
+        Time Elapsed 00:00:00.51
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CheckIncludeFile.cmake:174 (try_compile)"
+      - "CMakeLists.txt:2244 (check_include_file)"
+    checks:
+      - "Looking for dxgi1_5.h"
+    directories:
+      source: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-zf10is"
+      binary: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-zf10is"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/lance/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sdl3-src-3.4.2/SDL/cmake"
+    buildResult:
+      variable: "HAVE_DXGI1_5_H"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-zf10is'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_4df84.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        MSBuild version 18.0.5+e22287bf1 for .NET Framework
+        Build started 4/2/2026 6:43:10 PM.
+        
+        Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-zf10is\\cmTC_4df84.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+          Creating directory "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-zf10is\\Debug\\".
+          Creating directory "cmTC_4df84.dir\\Debug\\cmTC_4df84.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_4df84.dir\\Debug\\cmTC_4df84.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_4df84.dir\\Debug\\cmTC_4df84.tlog\\unsuccessfulbuild".
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D _GNU_SOURCE=1 /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_4df84.dir\\Debug\\\\" /Fd"cmTC_4df84.dir\\Debug\\vc145.pdb" /external:W0 /TC /errorReport:queue  -Brepro "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-zf10is\\CheckIncludeFile.c"
+          CheckIncludeFile.c
+        Link:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-zf10is\\Debug\\cmTC_4df84.exe" /INCREMENTAL /ILK:"cmTC_4df84.dir\\Debug\\cmTC_4df84.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-zf10is/Debug/cmTC_4df84.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-zf10is/Debug/cmTC_4df84.lib" /MACHINE:X64  /machine:x64 cmTC_4df84.dir\\Debug\\CheckIncludeFile.obj
+          cmTC_4df84.vcxproj -> C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-zf10is\\Debug\\cmTC_4df84.exe
+        FinalizeBuildStatus:
+          Deleting file "cmTC_4df84.dir\\Debug\\cmTC_4df84.tlog\\unsuccessfulbuild".
+          Touching "cmTC_4df84.dir\\Debug\\cmTC_4df84.tlog\\cmTC_4df84.lastbuildstate".
+        Done Building Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-zf10is\\cmTC_4df84.vcxproj" (default targets).
+        
+        Build succeeded.
+            0 Warning(s)
+            0 Error(s)
+        
+        Time Elapsed 00:00:00.48
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CheckIncludeFile.cmake:174 (try_compile)"
+      - "CMakeLists.txt:2245 (check_include_file)"
+    checks:
+      - "Looking for dxgi1_6.h"
+    directories:
+      source: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-tbjnb9"
+      binary: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-tbjnb9"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/lance/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sdl3-src-3.4.2/SDL/cmake"
+    buildResult:
+      variable: "HAVE_DXGI1_6_H"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-tbjnb9'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_075b4.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        MSBuild version 18.0.5+e22287bf1 for .NET Framework
+        Build started 4/2/2026 6:43:10 PM.
+        
+        Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-tbjnb9\\cmTC_075b4.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+          Creating directory "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-tbjnb9\\Debug\\".
+          Creating directory "cmTC_075b4.dir\\Debug\\cmTC_075b4.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_075b4.dir\\Debug\\cmTC_075b4.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_075b4.dir\\Debug\\cmTC_075b4.tlog\\unsuccessfulbuild".
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D _GNU_SOURCE=1 /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_075b4.dir\\Debug\\\\" /Fd"cmTC_075b4.dir\\Debug\\vc145.pdb" /external:W0 /TC /errorReport:queue  -Brepro "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-tbjnb9\\CheckIncludeFile.c"
+          CheckIncludeFile.c
+        Link:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-tbjnb9\\Debug\\cmTC_075b4.exe" /INCREMENTAL /ILK:"cmTC_075b4.dir\\Debug\\cmTC_075b4.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-tbjnb9/Debug/cmTC_075b4.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-tbjnb9/Debug/cmTC_075b4.lib" /MACHINE:X64  /machine:x64 cmTC_075b4.dir\\Debug\\CheckIncludeFile.obj
+          cmTC_075b4.vcxproj -> C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-tbjnb9\\Debug\\cmTC_075b4.exe
+        FinalizeBuildStatus:
+          Deleting file "cmTC_075b4.dir\\Debug\\cmTC_075b4.tlog\\unsuccessfulbuild".
+          Touching "cmTC_075b4.dir\\Debug\\cmTC_075b4.tlog\\cmTC_075b4.lastbuildstate".
+        Done Building Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-tbjnb9\\cmTC_075b4.vcxproj" (default targets).
+        
+        Build succeeded.
+            0 Warning(s)
+            0 Error(s)
+        
+        Time Elapsed 00:00:00.49
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CheckCSourceCompiles.cmake:103 (cmake_check_source_compiles)"
+      - "CMakeLists.txt:2252 (check_c_source_compiles)"
+    checks:
+      - "Performing Test HAVE_MFAPI_H"
+    directories:
+      source: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-p8tmle"
+      binary: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-p8tmle"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -nologo -MD -Brepro -W0"
+      CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+      CMAKE_MODULE_PATH: "C:/Users/lance/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sdl3-src-3.4.2/SDL/cmake"
+    buildResult:
+      variable: "HAVE_MFAPI_H"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-p8tmle'
+        
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_966ec.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        MSBuild version 18.0.5+e22287bf1 for .NET Framework
+        Build started 4/2/2026 6:43:11 PM.
+        
+        Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-p8tmle\\cmTC_966ec.vcxproj" on node 1 (default targets).
+        PrepareForBuild:
+          Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+          Creating directory "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-p8tmle\\Debug\\".
+          Creating directory "cmTC_966ec.dir\\Debug\\cmTC_966ec.tlog\\".
+        InitializeBuildStatus:
+          Creating "cmTC_966ec.dir\\Debug\\cmTC_966ec.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_966ec.dir\\Debug\\cmTC_966ec.tlog\\unsuccessfulbuild".
+        ClCompile:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /nologo /W0 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D _GNU_SOURCE=1 /D HAVE_MFAPI_H /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_966ec.dir\\Debug\\\\" /Fd"cmTC_966ec.dir\\Debug\\vc145.pdb" /external:W0 /TC /errorReport:queue  -Brepro "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-p8tmle\\src.c"
+          src.c
+        Link:
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-p8tmle\\Debug\\cmTC_966ec.exe" /INCREMENTAL /ILK:"cmTC_966ec.dir\\Debug\\cmTC_966ec.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-p8tmle/Debug/cmTC_966ec.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/build/CMakeFiles/CMakeScratch/TryCompile-p8tmle/Debug/cmTC_966ec.lib" /MACHINE:X64  /machine:x64 cmTC_966ec.dir\\Debug\\src.obj
+          cmTC_966ec.vcxproj -> C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-p8tmle\\Debug\\cmTC_966ec.exe
+        FinalizeBuildStatus:
+          Deleting file "cmTC_966ec.dir\\Debug\\cmTC_966ec.tlog\\unsuccessfulbuild".
+          Touching "cmTC_966ec.dir\\Debug\\cmTC_966ec.tlog\\cmTC_966ec.lastbuildstate".
+        Done Building Project "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\build\\sdl3-sys-5604785727d1cbd9\\out\\build\\CMakeFiles\\CMakeScratch\\TryCompile-p8tmle\\cmTC_966ec.vcxproj" (default targets).
+        
+        Build succeeded.
+            0 Warning(s)
+            0 Error(s)
+        
+        Time Elapsed 00:00:00.50
+        
+      exitCode: 0
+  -
+    kind: "find-v1"
+    backtrace:
+      - "cmake/FindLibUSB.cmake:12 (find_library)"
+      - "cmake/sdlchecks.cmake:1259 (find_package)"
+      - "CMakeLists.txt:2411 (CheckHIDAPI)"
+    mode: "library"
+    variable: "LibUSB_LIBRARY"
+    description: "Path to a library."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "usb-1.0"
+      - "libusb-1.0"
+      - "usb"
+    candidate_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/lib/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.26100.0/ucrt/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.26100.0/um/x64/"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/LLVM/bin/"
+      - "C:/Users/lance/.cargo/bin/"
+      - "C:/Users/lance/.local/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/"
+      - "C:/Program Files/lib/"
+      - "C:/Program Files/"
+      - "C:/Program Files (x86)/lib/"
+      - "C:/Program Files (x86)/"
+      - "C:/Program Files/CMake/lib/"
+      - "C:/Program Files/CMake/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/lib/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/bin/"
+      - "/bin/"
+    searched_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/lib/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.26100.0/ucrt/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.26100.0/um/x64/"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/LLVM/bin/"
+      - "C:/Users/lance/.cargo/bin/"
+      - "C:/Users/lance/.local/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/"
+      - "C:/Program Files/lib/"
+      - "C:/Program Files/"
+      - "C:/Program Files (x86)/lib/"
+      - "C:/Program Files (x86)/"
+      - "C:/Program Files/CMake/lib/"
+      - "C:/Program Files/CMake/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/lib/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/bin/"
+      - "/bin/"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/lib/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.26100.0/ucrt/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.26100.0/um/x64/"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/LLVM/bin/"
+      - "C:/Users/lance/.cargo/bin/"
+      - "C:/Users/lance/.local/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/"
+      - "C:/Program Files/lib/"
+      - "C:/Program Files/"
+      - "C:/Program Files (x86)/lib/"
+      - "C:/Program Files (x86)/"
+      - "C:/Program Files/CMake/lib/"
+      - "C:/Program Files/CMake/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/lib/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/bin/"
+      - "/bin/"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/lib/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.26100.0/ucrt/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/Lib/10.0.26100.0/um/x64/"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/LLVM/bin/"
+      - "C:/Users/lance/.cargo/bin/"
+      - "C:/Users/lance/.local/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/"
+      - "C:/Program Files/lib/"
+      - "C:/Program Files/"
+      - "C:/Program Files (x86)/lib/"
+      - "C:/Program Files (x86)/"
+      - "C:/Program Files/CMake/lib/"
+      - "C:/Program Files/CMake/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/lib/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/bin/"
+      - "/bin/"
+    found: false
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64"
+        - "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\deps"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\WINDOWS\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\LLVM\\bin"
+        - "C:\\Users\\lance\\.cargo\\bin"
+        - "C:\\Users\\lance\\.local\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Zed\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin"
+      CMAKE_INSTALL_PREFIX: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "C:/Program Files"
+        - "C:/Program Files (x86)"
+        - "C:/Program Files/CMake"
+        - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out"
+      CMAKE_SYSTEM_LIBRARY_PATH:
+        - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/bin"
+        - "C:/Program Files/CMake/bin"
+        - "/bin"
+      ENV{LIB}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\lib\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\lib\\10.0.26100.0\\ucrt\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\lib\\10.0.26100.0\\um\\x64"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "cmake/FindLibUSB.cmake:17 (find_path)"
+      - "cmake/sdlchecks.cmake:1259 (find_package)"
+      - "CMakeLists.txt:2411 (CheckHIDAPI)"
+    mode: "path"
+    variable: "LibUSB_INCLUDE_PATH"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "libusb.h"
+    candidate_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/include/libusb-1.0/"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/include/"
+      - "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/ucrt/libusb-1.0/"
+      - "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/ucrt/"
+      - "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/um/libusb-1.0/"
+      - "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/um/"
+      - "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/cppwinrt/libusb-1.0/"
+      - "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/cppwinrt/"
+      - "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/winrt/libusb-1.0/"
+      - "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/winrt/"
+      - "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/shared/libusb-1.0/"
+      - "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/shared/"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/libusb-1.0/"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/libusb-1.0/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/libusb-1.0/"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/libusb-1.0/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/libusb-1.0/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/"
+      - "C:/Windows/System32/libusb-1.0/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/libusb-1.0/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/libusb-1.0/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/libusb-1.0/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/libusb-1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/libusb-1.0/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/libusb-1.0/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/libusb-1.0/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files/Git/cmd/libusb-1.0/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/LLVM/bin/libusb-1.0/"
+      - "C:/Program Files/LLVM/bin/"
+      - "C:/Users/lance/.cargo/bin/libusb-1.0/"
+      - "C:/Users/lance/.cargo/bin/"
+      - "C:/Users/lance/.local/bin/libusb-1.0/"
+      - "C:/Users/lance/.local/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/libusb-1.0/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/libusb-1.0/"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/libusb-1.0/"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/libusb-1.0/"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/libusb-1.0/"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/"
+      - "C:/Program Files/include/libusb-1.0/"
+      - "C:/Program Files/include/"
+      - "C:/Program Files/libusb-1.0/"
+      - "C:/Program Files/"
+      - "C:/Program Files (x86)/include/libusb-1.0/"
+      - "C:/Program Files (x86)/include/"
+      - "C:/Program Files (x86)/libusb-1.0/"
+      - "C:/Program Files (x86)/"
+      - "C:/Program Files/CMake/include/libusb-1.0/"
+      - "C:/Program Files/CMake/include/"
+      - "C:/Program Files/CMake/libusb-1.0/"
+      - "C:/Program Files/CMake/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/include/libusb-1.0/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/include/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/libusb-1.0/"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/"
+    searched_directories:
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/include/libusb-1.0/libusb.h"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/include/libusb.h"
+      - "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/ucrt/libusb-1.0/libusb.h"
+      - "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/ucrt/libusb.h"
+      - "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/um/libusb-1.0/libusb.h"
+      - "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/um/libusb.h"
+      - "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/cppwinrt/libusb-1.0/libusb.h"
+      - "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/cppwinrt/libusb.h"
+      - "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/winrt/libusb-1.0/libusb.h"
+      - "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/winrt/libusb.h"
+      - "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/shared/libusb-1.0/libusb.h"
+      - "C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/shared/libusb.h"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/libusb-1.0/libusb.h"
+      - "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/libusb.h"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/libusb-1.0/libusb.h"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/libusb.h"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/libusb-1.0/libusb.h"
+      - "C:/Program Files (x86)/Windows Kits/10/bin/x64/libusb.h"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/libusb-1.0/libusb.h"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/deps/libusb.h"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/libusb-1.0/libusb.h"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/lib/rustlib/x86_64-pc-windows-msvc/lib/libusb.h"
+      - "C:/Windows/System32/libusb-1.0/libusb.h"
+      - "C:/Windows/System32/libusb.h"
+      - "C:/Windows/libusb-1.0/libusb.h"
+      - "C:/Windows/libusb.h"
+      - "C:/Windows/System32/wbem/libusb-1.0/libusb.h"
+      - "C:/Windows/System32/wbem/libusb.h"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/libusb-1.0/libusb.h"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/libusb.h"
+      - "C:/Windows/System32/OpenSSH/libusb-1.0/libusb.h"
+      - "C:/Windows/System32/OpenSSH/libusb.h"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/libusb-1.0/libusb.h"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/libusb.h"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/libusb-1.0/libusb.h"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/libusb.h"
+      - "C:/Program Files/CMake/bin/libusb-1.0/libusb.h"
+      - "C:/Program Files/CMake/bin/libusb.h"
+      - "C:/Program Files/Git/cmd/libusb-1.0/libusb.h"
+      - "C:/Program Files/Git/cmd/libusb.h"
+      - "C:/Program Files/LLVM/bin/libusb-1.0/libusb.h"
+      - "C:/Program Files/LLVM/bin/libusb.h"
+      - "C:/Users/lance/.cargo/bin/libusb-1.0/libusb.h"
+      - "C:/Users/lance/.cargo/bin/libusb.h"
+      - "C:/Users/lance/.local/bin/libusb-1.0/libusb.h"
+      - "C:/Users/lance/.local/bin/libusb.h"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/libusb-1.0/libusb.h"
+      - "C:/Users/lance/AppData/Local/Microsoft/WindowsApps/libusb.h"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/libusb-1.0/libusb.h"
+      - "C:/Users/lance/AppData/Local/Programs/Microsoft VS Code/bin/libusb.h"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/libusb-1.0/libusb.h"
+      - "C:/Users/lance/AppData/Local/Programs/Zed/bin/libusb.h"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/libusb-1.0/libusb.h"
+      - "C:/Users/lance/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/libusb.h"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/libusb-1.0/libusb.h"
+      - "C:/Users/lance/.rustup/toolchains/stable-x86_64-pc-windows-msvc/bin/libusb.h"
+      - "C:/Program Files/include/libusb-1.0/libusb.h"
+      - "C:/Program Files/include/libusb.h"
+      - "C:/Program Files/libusb-1.0/libusb.h"
+      - "C:/Program Files/libusb.h"
+      - "C:/Program Files (x86)/include/libusb-1.0/libusb.h"
+      - "C:/Program Files (x86)/include/libusb.h"
+      - "C:/Program Files (x86)/libusb-1.0/libusb.h"
+      - "C:/Program Files (x86)/libusb.h"
+      - "C:/Program Files/CMake/include/libusb-1.0/libusb.h"
+      - "C:/Program Files/CMake/include/libusb.h"
+      - "C:/Program Files/CMake/libusb-1.0/libusb.h"
+      - "C:/Program Files/CMake/libusb.h"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/include/libusb-1.0/libusb.h"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/include/libusb.h"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/libusb-1.0/libusb.h"
+      - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out/libusb.h"
+    found: false
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64"
+        - "C:\\Users\\lance\\source\\snemulator\\crates\\app\\target\\debug\\deps"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\WINDOWS\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\LLVM\\bin"
+        - "C:\\Users\\lance\\.cargo\\bin"
+        - "C:\\Users\\lance\\.local\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Programs\\Zed\\bin"
+        - "C:\\Users\\lance\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe"
+        - "C:\\Users\\lance\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\bin"
+      CMAKE_INSTALL_PREFIX: "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "C:/Program Files"
+        - "C:/Program Files (x86)"
+        - "C:/Program Files/CMake"
+        - "C:/Users/lance/source/snemulator/crates/app/target/debug/build/sdl3-sys-5604785727d1cbd9/out"
+      ENV{INCLUDE}:
+        - "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.50.35717\\include"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\ucrt"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\um"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\cppwinrt"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\winrt"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\include\\10.0.26100.0\\shared"
+...

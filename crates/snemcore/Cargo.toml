@@ -1,0 +1,22 @@
+[package]
+name    = "snemcore"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rand    = "0.10.0"
+paste   = "1.0.15"
+slotmap = "1.0"
+anyhow = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
+
+[profile.dev]
+overflow-checks = false
+opt-level = 2
+debug = 2
+
+[profile.release]
+overflow-checks = false
+opt-level = 3
+lto = true

@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\lance\source\snemulator\crates\app\target\debug\build\sdl3-sys-5604785727d1cbd9\out\build\CMakeFiles\6a11868f19c37c9eb4589957bc64da5b\uninstall.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\lance\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\sdl3-src-3.4.2\SDL\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="C:\Users\lance\source\snemulator\crates\app\target\debug\build\sdl3-sys-5604785727d1cbd9\out\build\CMakeFiles\uninstall" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{CF1A492B-1E78-36CC-80D7-9E3566FCDA8A}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

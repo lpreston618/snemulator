@@ -1,0 +1,60 @@
+   0.088621900s  INFO prepare_target{force=false package_id=snemulator v0.1.1 (C:\Users\lance\source\snemulator\crates\app) target="snemulator"}: cargo::core::compiler::fingerprint: fingerprint error for snemulator v0.1.1 (C:\Users\lance\source\snemulator\crates\app)/Check { test: false }/TargetInner { name: "snemulator", doc: true, ..: with_path("C:\\Users\\lance\\source\\snemulator\\crates\\app\\src\\main.rs", Edition2021) }
+   0.088658000s  INFO prepare_target{force=false package_id=snemulator v0.1.1 (C:\Users\lance\source\snemulator\crates\app) target="snemulator"}: cargo::core::compiler::fingerprint:     err: failed to read `C:\Users\lance\source\snemulator\crates\app\target\debug\.fingerprint\snemulator-10e8e28e6c4398bf\bin-snemulator`
+
+Caused by:
+    The system cannot find the file specified. (os error 2)
+
+Stack backtrace:
+   0: git_midx_writer_dump
+   1: git_midx_writer_dump
+   2: git_midx_writer_dump
+   3: git_midx_writer_dump
+   4: git_filter_source_repo
+   5: git_filter_source_repo
+   6: git_filter_source_repo
+   7: git_filter_source_repo
+   8: git_filter_source_repo
+   9: git_filter_source_repo
+  10: git_filter_source_repo
+  11: git_libgit2_prerelease
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: git_midx_writer_dump
+  17: git_filter_source_repo
+  18: git_midx_writer_dump
+  19: BaseThreadInitThunk
+  20: RtlUserThreadStart
+   0.113277200s  INFO prepare_target{force=false package_id=snemulator v0.1.1 (C:\Users\lance\source\snemulator\crates\app) target="snemulator"}: cargo::core::compiler::fingerprint: fingerprint error for snemulator v0.1.1 (C:\Users\lance\source\snemulator\crates\app)/Check { test: true }/TargetInner { name: "snemulator", doc: true, ..: with_path("C:\\Users\\lance\\source\\snemulator\\crates\\app\\src\\main.rs", Edition2021) }
+   0.113296200s  INFO prepare_target{force=false package_id=snemulator v0.1.1 (C:\Users\lance\source\snemulator\crates\app) target="snemulator"}: cargo::core::compiler::fingerprint:     err: failed to read `C:\Users\lance\source\snemulator\crates\app\target\debug\.fingerprint\snemulator-23a16a65a584019d\test-bin-snemulator`
+
+Caused by:
+    The system cannot find the file specified. (os error 2)
+
+Stack backtrace:
+   0: git_midx_writer_dump
+   1: git_midx_writer_dump
+   2: git_midx_writer_dump
+   3: git_midx_writer_dump
+   4: git_filter_source_repo
+   5: git_filter_source_repo
+   6: git_filter_source_repo
+   7: git_filter_source_repo
+   8: git_filter_source_repo
+   9: git_filter_source_repo
+  10: git_filter_source_repo
+  11: git_libgit2_prerelease
+  12: <unknown>
+  13: <unknown>
+  14: <unknown>
+  15: <unknown>
+  16: git_midx_writer_dump
+  17: git_filter_source_repo
+  18: git_midx_writer_dump
+  19: BaseThreadInitThunk
+  20: RtlUserThreadStart
+    Checking snemulator v0.1.1 (C:\Users\lance\source\snemulator\crates\app)
+error: could not compile `snemulator` (bin "snemulator") due to 16 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `snemulator` (bin "snemulator" test) due to 16 previous errors

@@ -1,0 +1,28 @@
+[package]
+name = "snemulator"
+version = "0.1.1"
+edition = "2021"
+
+[dependencies]
+snemcore = { path = "../snemcore" }
+egui       = "0.33.3"
+egui_glow  = "0.33.3"
+glow       = "0.16.0"
+paste      = "1.0.15"
+rfd        = "0.17.2"
+slotmap = "1.0"
+sdl3 = {version = "0.17.3", features = ["build-from-source"]}
+egui_autocomplete = "12.0.0"
+anyhow = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
+
+[profile.dev]
+overflow-checks = false
+opt-level = 2
+debug = 2
+
+[profile.release]
+overflow-checks = false
+opt-level = 3
+lto = true
