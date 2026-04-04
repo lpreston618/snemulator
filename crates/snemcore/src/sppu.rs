@@ -1,4 +1,3 @@
-use crate::debug::ppulayers::LayerBuffers;
 use crate::scpu::ioregs::HVTimerIRQ;
 use crate::scpu::CpuInterrupt;
 use crate::sppu::bus::PpuBus;
@@ -101,6 +100,17 @@ impl Ppu5C7x {
             self.draw_dot(bus);
         }
 
+        self.update_dot_and_scanline(bus);
+        self.update_hv_timers(bus);
+
+        self.clocks += 4;
+
+        if self.dot >= SCANLINE_END_DOT - 4 {
+            self.clocks += 1;
+        }
+    }
+    
+    pub fn cycle_no_output(&mut self, bus: &mut PpuBus) {
         self.update_dot_and_scanline(bus);
         self.update_hv_timers(bus);
 
@@ -1439,26 +1449,16 @@ impl Ppu5C7x {
     }
 }
 
-
-impl Ppu5C7x {
-    pub fn debug_cycle(&mut self, bus: &mut PpuBus, buffers: &mut LayerBuffers) {
-        if self.x < 256 && self.y < 224 {
-            self.draw_debug_layers(bus, buffers);
-            
-            self.draw_dot(bus);
-        }
-
-        self.update_dot_and_scanline(bus);
-        self.update_hv_timers(bus);
-
-        self.clocks += 4;
-
-        if self.dot >= SCANLINE_END_DOT - 4 {
-            self.clocks += 1;
-        }
-    }
-    
-    pub fn draw_debug_layers(&mut self, bus: &mut PpuBus, buffers: &mut LayerBuffers) {
+impl Ppu5C7x {    
+    pub fn draw_debug_layers(
+        &mut self, 
+        bus: &mut PpuBus, 
+        bg1_buffer: &mut [u8],
+        bg2_buffer: &mut [u8],
+        bg3_buffer: &mut [u8],
+        bg4_buffer: &mut [u8],
+        obj_buffer: &mut [u8],
+    ) {
         let (bg1_col_depth, bg2_col_depth, bg3_col_depth, bg4_col_depth) =
             match bus.ppu_regs.bg_mode {
                 BgMode::Mode0 => (Some(ColorDepth::Bpp2), Some(ColorDepth::Bpp2), Some(ColorDepth::Bpp2), Some(ColorDepth::Bpp2)),
@@ -1534,10 +1534,10 @@ impl Ppu5C7x {
         
         let pixel_idx = (self.y * 256 + self.x) * 4;
         
-        buffers.bg1[pixel_idx..pixel_idx+4].copy_from_slice(&bg1_col);
-        buffers.bg2[pixel_idx..pixel_idx+4].copy_from_slice(&bg2_col);
-        buffers.bg3[pixel_idx..pixel_idx+4].copy_from_slice(&bg3_col);
-        buffers.bg4[pixel_idx..pixel_idx+4].copy_from_slice(&bg4_col);
-        buffers.obj[pixel_idx..pixel_idx+4].copy_from_slice(&obj_col);
+        bg1_buffer[pixel_idx..pixel_idx+4].copy_from_slice(&bg1_col);
+        bg2_buffer[pixel_idx..pixel_idx+4].copy_from_slice(&bg2_col);
+        bg3_buffer[pixel_idx..pixel_idx+4].copy_from_slice(&bg3_col);
+        bg4_buffer[pixel_idx..pixel_idx+4].copy_from_slice(&bg4_col);
+        obj_buffer[pixel_idx..pixel_idx+4].copy_from_slice(&obj_col);
     }
 }

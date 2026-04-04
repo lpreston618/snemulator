@@ -8,6 +8,8 @@ use crate::windows::game::MainWindow;
 use crate::windows::settings::{Settings, SettingsWindow};
 use anyhow::{anyhow, Result};
 use rfd::FileDialog;
+use ringbuf::HeapRb;
+use ringbuf::traits::{Consumer, Observer, RingBuffer};
 use sdl3::event::Event;
 use sdl3::keyboard::{Keycode, Mod};
 use snemcore::controller::{ControllerPlayer, JoypadButton};
@@ -21,6 +23,7 @@ pub const WINDOW_WIDTH: u32 = 640;
 pub const WINDOW_HEIGHT: u32 = 480;
 
 const TARGET_FPS: u32 = 60;
+const PREV_FPS_BUFFER_LEN: usize = TARGET_FPS as usize * 1;
 const SECS_BEFORE_HIDE_MENU: f32 = 3.0;
 const SECS_BEFORE_HIDE_MOUSE: f32 = 3.0;
 const FRAMES_BEFORE_HIDE_MENU: u64 = (SECS_BEFORE_HIDE_MENU * TARGET_FPS as f32) as u64;
@@ -54,6 +57,7 @@ pub struct AppState {
     pub is_fullscreen: bool,
     pub is_minimized: bool,
     pub rom_loaded: bool,
+    pub fps: f32,
     
     #[cfg(feature = "debug")]
     pub debug_active: bool,
@@ -69,6 +73,9 @@ pub struct SnemulatorApp {
     settings_window: Option<SettingsWindow>,
     state: AppState,
     settings: Settings,
+    prev_frame_micros: HeapRb<usize>,
+    total_frame_micros: usize,
+    last_frame: Instant,
 
     #[cfg(feature = "debug")]
     snem_core: Snemulator<Debugger>,
@@ -92,6 +99,7 @@ impl SnemulatorApp {
             is_fullscreen: false,
             is_minimized: false,
             rom_loaded: false,
+            fps: 0.0,
             
             #[cfg(feature = "debug")]
             debug_active: false,
@@ -122,6 +130,9 @@ impl SnemulatorApp {
             settings_window: None,
             state,
             settings,
+            prev_frame_micros: HeapRb::new(PREV_FPS_BUFFER_LEN),
+            total_frame_micros: 0,
+            last_frame: Instant::now(),
             
             snem_core,
             frame_buffer,
@@ -139,8 +150,6 @@ impl SnemulatorApp {
         const FRAME_DURATION: Duration = Duration::from_micros(1_000_000 / TARGET_FPS as u64);
 
         'running: loop {
-            let frame_start = Instant::now();
-
             #[cfg(feature = "debug")]
             {
                 self.state.debug_active = self.debug_window.is_some();
@@ -201,7 +210,12 @@ impl SnemulatorApp {
 
             // Frame timing
             self.state.frame_count += 1;
-            let elapsed = frame_start.elapsed();
+            let last_frame = self.last_frame;
+            self.last_frame = Instant::now();
+            
+            let elapsed = self.last_frame - last_frame;
+            
+            self.update_fps(elapsed);
 
             // info!("Frame time: {} us, Time left: {} us", elapsed.as_micros(), FRAME_DURATION.as_micros() - elapsed.as_micros());
 
@@ -211,6 +225,25 @@ impl SnemulatorApp {
         }
 
         Ok(())
+    }
+    
+    fn update_fps(&mut self, elapsed: Duration) {
+        let prev = self.prev_frame_micros.push_overwrite(elapsed.as_micros() as usize);
+        
+        if let Some(prev_micros) = prev {
+            self.total_frame_micros -= prev_micros;
+        }
+        
+        self.total_frame_micros += elapsed.as_micros() as usize;
+        
+        if self.prev_frame_micros.occupied_len() > 0 {
+            let avg_micros = self.total_frame_micros / self.prev_frame_micros.occupied_len() as usize;
+            let avg_secs = avg_micros as f32 / 1000000.0;
+            let avg_fps = 1.0 / avg_secs;
+            self.state.fps = avg_fps;
+        } else {
+            self.state.fps = 0.0;
+        }
     }
     
     #[cfg(feature = "debug")]

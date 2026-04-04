@@ -1,6 +1,6 @@
 use crate::cartridge::Cartridge;
 use crate::controller::JoypadCmd;
-use crate::probe::{DebugProbe, NullProbe};
+use crate::probe::DebugProbe;
 use crate::scpu::dma::{AddressIncMode, Direction, DmaRegs, TransferPattern};
 use crate::scpu::ioregs::CpuIoRegs;
 use crate::sppu::color::Color;

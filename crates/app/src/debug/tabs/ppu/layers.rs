@@ -1,5 +1,5 @@
-use crate::app::debug::tabs::ppu::texture::Texture;
-use crate::core::sysinfo;
+use crate::debug::tabs::ppu::texture::Texture;
+use snemcore::sysinfo;
 
 pub struct LayerView {
     pub texture: Texture,
@@ -17,8 +17,8 @@ impl LayerView {
         }
     }
 
-    pub fn render(&mut self, ui: &mut egui::Ui) {
-        self.texture.update_texture();
+    pub fn render(&mut self, ui: &mut egui::Ui, layer_pixels: &[u8]) {
+        self.texture.update_texture(layer_pixels);
         
         ui.vertical(|ui| {            
             let (width, height) = self.texture.size();

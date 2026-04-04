@@ -1,7 +1,6 @@
 use crate::{app, debug::watchpoints::types::*};
 use crate::debug::watchpoints::notes;
 // use crate::app::debug::watchpoints::types::HWVAL_NAMES;
-use snemcore::debug::watchpoints::*;
 use crate::utils::monospace_text;
 use snemcore;
 use egui::{Color32, Pos2, Rect, Stroke, Vec2};

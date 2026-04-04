@@ -1,5 +1,3 @@
-
-
 use crate::{
     ssmp::{
         ioports::ApuIoPorts,
@@ -8,9 +6,8 @@ use crate::{
         timers::Timer,
     },
     sysinfo::{
-        ARAM_SIZE, FAST_TIMER_CLOCK_PERIOD,
-        MASTER_CLOCK_HZ, SLOW_TIMER_CLOCK_PERIOD,
-        SPC_CLOCK_HZ, AUDIO_SAMPLE_HZ,
+        ARAM_SIZE, AUDIO_SAMPLE_HZ, FAST_TIMER_CLOCK_PERIOD, MASTER_CLOCK_HZ,
+        SLOW_TIMER_CLOCK_PERIOD, SPC_CLOCK_HZ,
     },
 };
 
@@ -70,7 +67,7 @@ impl Ssmp {
 
     pub fn reset(&mut self) {
         log::warn!("SMP Reset not implemented!");
-        
+
         self.spc.reset();
         self.spc_regs.reset();
     }
@@ -83,7 +80,7 @@ impl Ssmp {
 
     /// Clocks the sound processor, checking if it is time to generate a new
     /// sample and/or clock the S-DSP and SPC700 processors.
-    pub fn clock(&mut self, clocks: usize, audio_buffer: &mut Vec<i16>, apu_regs: &mut ApuIoPorts) {
+    pub fn cycle(&mut self, clocks: usize, audio_buffer: &mut Vec<i16>, apu_regs: &mut ApuIoPorts) {
         self.frame_time += MASTER_CLOCK_PERIOD * clocks as f32;
 
         if self.frame_time >= self.next_sample {
@@ -91,6 +88,37 @@ impl Ssmp {
 
             self.sdsp.clock_envelopes();
             self.sdsp.generate_sample();
+        }
+
+        if self.frame_time >= self.next_spc_clock {
+            self.next_spc_clock += SPC_CLOCK_PERIOD;
+
+            let mut bus = SpcBus {
+                aram: &mut self.aram,
+                spc_regs: &mut self.spc_regs,
+                sdsp_regs: &mut self.sdsp_regs,
+                timer0: &mut self.timer0,
+                timer1: &mut self.timer1,
+                timer2: &mut self.timer2,
+                voice_regs: &mut self.voice_regs,
+                apuio_regs: apu_regs,
+            };
+
+            self.spc.clock(&mut bus);
+
+            self.timer0.clock();
+            self.timer1.clock();
+            self.timer2.clock();
+        }
+    }
+
+    pub fn cycle_no_output(&mut self, clocks: usize, apu_regs: &mut ApuIoPorts) {
+        self.frame_time += MASTER_CLOCK_PERIOD * clocks as f32;
+
+        if self.frame_time >= self.next_sample {
+            self.next_sample += AUDIO_SAMPLE_PERIOD;
+
+            self.sdsp.clock_envelopes();
         }
 
         if self.frame_time >= self.next_spc_clock {

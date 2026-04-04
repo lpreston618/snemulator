@@ -25,12 +25,13 @@ pub enum DebugAction {
 pub struct DebugWindow {
     egui_window: Option<Box<UiWindow>>,
     cpu_tab: Box<tabs::CpuTab>,
-    // mem_tab: Box<tabs::MemoryTab>,
-    // ppu_tab: Box<tabs::PpuTab>,
+    mem_tab: Box<tabs::MemoryTab>,
+    ppu_tab: Box<tabs::PpuTab>,
     // wp_tab: Box<tabs::WatchpointsTab>,
     selected_tab: tabs::DebugTab,
     jump_to_bps_on_hit: bool,
     jump_to_wps_on_hit: bool,
+    hyperspeed_en: bool,
 }
 
 impl DebugWindow {
@@ -47,23 +48,24 @@ impl DebugWindow {
 
         log::debug!("Debugging started");
 
-        // let mut ppu_tab = None;
+        let mut ppu_tab = None;
 
-        // egui_window.with_painter(|_, painter| {
-        //     ppu_tab = Some(tabs::PpuTab::new(painter));
-        // });
+        egui_window.with_painter(|_, painter| {
+            ppu_tab = Some(tabs::PpuTab::new(painter));
+        });
 
-        // let ppu_tab = Box::new(ppu_tab.unwrap());
+        let ppu_tab = Box::new(ppu_tab.unwrap());
 
         let mut debug_window = Self {
             egui_window: None,
             cpu_tab: Box::new(tabs::CpuTab::new(rom_mapping_mode)),
-            // mem_tab: Box::new(tabs::MemoryTab::new()),
-            // ppu_tab,
+            mem_tab: Box::new(tabs::MemoryTab::new()),
+            ppu_tab,
             // wp_tab: Box::new(tabs::WatchpointsTab::new()),
             selected_tab: tabs::DebugTab::Cpu,
             jump_to_bps_on_hit: true,
             jump_to_wps_on_hit: true,
+            hyperspeed_en: false,
         };
 
         debug_window.egui_window = Some(egui_window);
@@ -83,8 +85,22 @@ impl DebugWindow {
 
         if !app_state.is_paused {
             // let mut layer_buffers = self.ppu_tab.layer_buffers();
-
-            core.run_frame(frame_buffer, audio_buffer)
+ 
+            if self.hyperspeed_en {       
+                core.probe.as_mut().unwrap().update_textures = false;
+                
+                for _ in 0..9 {
+                    core.run_frame_no_output();
+                }
+                
+                core.probe.as_mut().unwrap().update_textures = true;
+                
+                let mut fake_audio_buffer = Vec::new();
+                core.run_frame(frame_buffer, &mut fake_audio_buffer);
+            } else {
+                core.probe.as_mut().unwrap().update_textures = true;
+                core.run_frame(frame_buffer, audio_buffer);
+            }            
             
             // match  {
             //     DebugAction::BreakpointHit => {
@@ -143,6 +159,10 @@ impl DebugWindow {
                         // clear_watchpoints = true;
                         debug_action = Some(DebugAction::HardReset);
                     }
+                    
+                    let hyperspeed_text = if self.hyperspeed_en { "Disable Hyperspeed" } else { "Enable Hyperspeed" };
+                    ui.toggle_value(&mut self.hyperspeed_en, hyperspeed_text)
+                        .on_hover_text("If enabled, emulator will run at 10x speed, but with no audio and reduced video output");
 
                     if app_state.is_paused && ui.button("Resume").clicked() {
                         // self.compile_watchpoints(&snem_core);
@@ -157,6 +177,8 @@ impl DebugWindow {
                     ui.label(format!("Frame: {}", core.frame));
 
                     ui.label(format!("Cycles: {}", core.total_cycles));
+                    
+                    ui.label(format!("FPS: {:.0}", app_state.fps));
                 });
 
                 ui.add_space(3.0);
@@ -167,11 +189,11 @@ impl DebugWindow {
                     tabs::DebugTab::Cpu => {
                         self.cpu_tab.render(ui, core, &mut self.jump_to_bps_on_hit)
                     }
-                    // tabs::DebugTab::Memory => self.mem_tab.render(ui, snem_core),
-                    // tabs::DebugTab::Ppu => self.ppu_tab.render(ui, snem_core),
+                    tabs::DebugTab::Memory => self.mem_tab.render(ui, core),
+                    tabs::DebugTab::Ppu => self.ppu_tab.render(ui, core),
                     // tabs::DebugTab::Watchpoints => {
                     //     self.wp_tab
-                    //         .render(ui, snem_core, app_state, &mut self.jump_to_wps_on_hit)
+                    //         .render(ui, core, app_state, &mut self.jump_to_wps_on_hit)
                     // }
                     _ => {}
                 };

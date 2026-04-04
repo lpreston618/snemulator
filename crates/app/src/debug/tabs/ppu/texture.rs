@@ -5,7 +5,6 @@ pub struct Texture {
     texture: glow::Texture,
     texture_id: egui::TextureId,
     gl: std::sync::Arc<glow::Context>,
-    pixels: Option<Vec<u8>>,
     width: usize,
     height: usize,
     max_size: usize,
@@ -29,7 +28,6 @@ impl Texture {
             texture,
             texture_id,
             gl,
-            pixels: Some(vec![0u8; max_width * max_height * 4]),
             width: max_width,
             height: max_height,
             max_size: max_width * max_height,
@@ -51,23 +49,11 @@ impl Texture {
         Ok(())
     }
     
-    pub fn take_pixels(&mut self) -> Vec<u8> {
-        self.pixels.take().unwrap()
-    }
-    
-    pub fn give_pixels(&mut self, pixels: Vec<u8>) {
-        self.pixels = Some(pixels);
-    }
-    
-    pub fn pixels_mut(&mut self) -> &mut [u8] {
-        self.pixels.as_mut().unwrap().as_mut_slice()
-    }
-    
     pub fn texture_id(&self) -> egui::TextureId {
         self.texture_id
     }
     
-    pub fn update_texture(&mut self) {
+    pub fn update_texture(&mut self, pixels: &[u8]) {
         let gl = &self.gl;
         
         unsafe {
@@ -77,7 +63,7 @@ impl Texture {
                 glow::RGBA as i32,
                 self.width as i32, self.height as i32,
                 0, glow::RGBA, glow::UNSIGNED_BYTE,
-                glow::PixelUnpackData::Slice(self.pixels.as_ref().map(|v| &v[..])),
+                glow::PixelUnpackData::Slice(Some(pixels)),
             );
         }
     }

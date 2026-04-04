@@ -1,7 +1,10 @@
-use crate::app::debug::tabs::ppu::texture::Texture;
-use crate::app::utils::monospace_text;
-use crate::core::snemcore;
-use crate::core::sppu::ColorDepth;
+use snemcore::Snemulator;
+
+use crate::debug::tabs::ppu::texture::Texture;
+use crate::utils::monospace_text;
+use crate::debug::debugger::Debugger;
+
+use snemcore::sppu::ColorDepth;
 
 // Tiles per row in the texture atlas
 const ATLAS_TILES_WIDE: usize = 16;
@@ -14,6 +17,7 @@ const ATLAS_PIXELS_TALL: usize = ATLAS_TILES_TALL * TILE_PX;
 
 pub struct ChrViewer {
     atlases: [Texture; 6],
+    atlas_pixels: [Vec<u8>; 6],
     bpp_mode: ColorDepth,
     bg_palette_index: usize,
     obj_palette_index: usize,
@@ -30,6 +34,14 @@ impl ChrViewer {
                 Texture::new(painter, ATLAS_PIXELS_WIDE, ATLAS_PIXELS_TALL),
                 Texture::new(painter, ATLAS_PIXELS_WIDE, ATLAS_PIXELS_TALL),
             ],
+            atlas_pixels: [
+                vec![0u8; ATLAS_PIXELS_WIDE * ATLAS_PIXELS_TALL * 4],
+                vec![0u8; ATLAS_PIXELS_WIDE * ATLAS_PIXELS_TALL * 4],
+                vec![0u8; ATLAS_PIXELS_WIDE * ATLAS_PIXELS_TALL * 4],
+                vec![0u8; ATLAS_PIXELS_WIDE * ATLAS_PIXELS_TALL * 4],
+                vec![0u8; ATLAS_PIXELS_WIDE * ATLAS_PIXELS_TALL * 4],
+                vec![0u8; ATLAS_PIXELS_WIDE * ATLAS_PIXELS_TALL * 4],
+            ],
             bpp_mode: ColorDepth::Bpp4,
             bg_palette_index: 0,
             obj_palette_index: 0,
@@ -39,7 +51,7 @@ impl ChrViewer {
     pub fn render(
         &mut self,
         ui: &mut egui::Ui,
-        snem_core: &snemcore::Snemulator,
+        core: &Snemulator<Debugger>,
     ) {
         // Controls
         ui.horizontal(|ui| {
@@ -72,60 +84,60 @@ impl ChrViewer {
         let atlas_w = ATLAS_TILES_WIDE * TILE_PX;
         let atlas_h = ATLAS_TILES_TALL * TILE_PX;
 
-        let bg1_base_addr = snem_core.ppu_regs.bg_settings[0].chr_base_addr as usize;
-        let bg2_base_addr = snem_core.ppu_regs.bg_settings[1].chr_base_addr as usize;
-        let bg3_base_addr = snem_core.ppu_regs.bg_settings[2].chr_base_addr as usize;
-        let bg4_base_addr = snem_core.ppu_regs.bg_settings[3].chr_base_addr as usize;
+        let bg1_base_addr = core.ppu_regs.bg_settings[0].chr_base_addr as usize;
+        let bg2_base_addr = core.ppu_regs.bg_settings[1].chr_base_addr as usize;
+        let bg3_base_addr = core.ppu_regs.bg_settings[2].chr_base_addr as usize;
+        let bg4_base_addr = core.ppu_regs.bg_settings[3].chr_base_addr as usize;
 
         Self::update_atlas(
-            &mut self.atlases[0],
-            snem_core,
+            &mut self.atlas_pixels[0],
+            core,
             bg1_base_addr,
             self.bpp_mode,
             self.bg_palette_index,
         );
         Self::update_atlas(
-            &mut self.atlases[1],
-            snem_core,
+            &mut self.atlas_pixels[1],
+            core,
             bg2_base_addr,
             self.bpp_mode,
             self.bg_palette_index,
         );
         Self::update_atlas(
-            &mut self.atlases[2],
-            snem_core,
+            &mut self.atlas_pixels[2],
+            core,
             bg3_base_addr,
             self.bpp_mode,
             self.bg_palette_index,
         );
         Self::update_atlas(
-            &mut self.atlases[3],
-            snem_core,
+            &mut self.atlas_pixels[3],
+            core,
             bg4_base_addr,
             self.bpp_mode,
             self.bg_palette_index,
         );
 
-        let obj1_base_addr = snem_core.ppu_regs.name_base_addr as usize;
-        let obj2_base_addr = snem_core.ppu_regs.name_secondary_base_addr as usize;
+        let obj1_base_addr = core.ppu_regs.name_base_addr as usize;
+        let obj2_base_addr = core.ppu_regs.name_secondary_base_addr as usize;
 
         Self::update_atlas(
-            &mut self.atlases[4],
-            snem_core,
+            &mut self.atlas_pixels[4],
+            core,
             obj1_base_addr,
             ColorDepth::Bpp4,
             self.obj_palette_index,
         );
         Self::update_atlas(
-            &mut self.atlases[5],
-            snem_core,
+            &mut self.atlas_pixels[5],
+            core,
             obj2_base_addr,
             ColorDepth::Bpp4,
             self.obj_palette_index,
         );
 
         for i in 0..6 {
-            self.atlases[i].update_texture();
+            self.atlases[i].update_texture(&mut self.atlas_pixels[i][..]);
         }
 
         // Display scaled up in a scroll area
@@ -140,7 +152,7 @@ impl ChrViewer {
                 ui.vertical(|ui| {
                     ui.label(monospace_text(format!(
                         "Bg1 Chr Mem (${:04X})",
-                        snem_core.ppu_regs.bg_settings[0].chr_base_addr
+                        core.ppu_regs.bg_settings[0].chr_base_addr
                     )));
 
                     ui.image(egui::load::SizedTexture::new(
@@ -154,7 +166,7 @@ impl ChrViewer {
                 ui.vertical(|ui| {
                     ui.label(monospace_text(format!(
                         "Bg2 Chr Mem (${:04X})",
-                        snem_core.ppu_regs.bg_settings[1].chr_base_addr
+                        core.ppu_regs.bg_settings[1].chr_base_addr
                     )));
 
                     ui.image(egui::load::SizedTexture::new(
@@ -168,7 +180,7 @@ impl ChrViewer {
                 ui.vertical(|ui| {
                     ui.label(monospace_text(format!(
                         "Obj1 Chr Mem (${:04X})",
-                        snem_core.ppu_regs.name_base_addr
+                        core.ppu_regs.name_base_addr
                     )));
 
                     ui.image(egui::load::SizedTexture::new(
@@ -184,7 +196,7 @@ impl ChrViewer {
                 ui.vertical(|ui| {
                     ui.label(monospace_text(format!(
                         "Bg3 Chr Mem (${:04X})",
-                        snem_core.ppu_regs.bg_settings[2].chr_base_addr
+                        core.ppu_regs.bg_settings[2].chr_base_addr
                     )));
 
                     ui.image(egui::load::SizedTexture::new(
@@ -198,7 +210,7 @@ impl ChrViewer {
                 ui.vertical(|ui| {
                     ui.label(monospace_text(format!(
                         "Bg4 Chr Mem (${:04X})",
-                        snem_core.ppu_regs.bg_settings[3].chr_base_addr
+                        core.ppu_regs.bg_settings[3].chr_base_addr
                     )));
 
                     ui.image(egui::load::SizedTexture::new(
@@ -212,7 +224,7 @@ impl ChrViewer {
                 ui.vertical(|ui| {
                     ui.label(monospace_text(format!(
                         "Obj2 Chr Mem (${:04X})",
-                        snem_core.ppu_regs.name_secondary_base_addr
+                        core.ppu_regs.name_secondary_base_addr
                     )));
 
                     ui.image(egui::load::SizedTexture::new(
@@ -225,14 +237,12 @@ impl ChrViewer {
     }
 
     fn update_atlas(
-        atlas: &mut Texture,
-        snem_core: &snemcore::Snemulator,
+        pixels: &mut [u8],
+        snem_core: &Snemulator<Debugger>,
         base_addr: usize,
         bpp: ColorDepth,
         palette_idx: usize,
     ) {
-        let pixels = atlas.pixels_mut();
-
         let words_per_tile = match bpp {
             ColorDepth::Bpp2 => 8,
             ColorDepth::Bpp4 => 16,
