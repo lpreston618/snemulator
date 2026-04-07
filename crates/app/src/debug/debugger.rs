@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use anyhow::Result;
 
 use snemcore::Snemulator;
 use snemcore::probe::DebugProbe;
@@ -6,6 +7,7 @@ use snemcore::sppu::ColorLayer;
 use snemcore::sysinfo::{SCREEN_WIDTH, SCREEN_HEIGHT};
 
 use crate::debug::breakpoints::BreakpointInfo;
+use crate::debug::watchpoints::engine::{WatchpointAction, WatchpointEngine};
 
 const LAYER_BUFFER_SIZE: usize = 4 * ((SCREEN_WIDTH / 2) * (SCREEN_HEIGHT / 2)) as usize;
 
@@ -65,12 +67,29 @@ pub struct Debugger {
     pub breakpoint_hit: bool,
     pub update_textures: bool,
     pub watchpoint_hit: bool,
+    pub wp_engine: WatchpointEngine<Self>,
 }
 
 impl DebugProbe for Debugger {
     fn resume_emulation(&mut self) {
         self.breakpoint_hit = false;
         self.watchpoint_hit = false;
+    }
+    
+    fn on_emulation_cycle(&mut self, core: &mut Snemulator<Self>) {
+        match self.wp_engine.on_emulation_cycle(core) {
+            WatchpointAction::Break => { self.watchpoint_hit = true; },
+            _ => {}
+        }
+    }
+    
+    fn on_frame_end(&mut self, core: &mut Snemulator<Self>) {
+        log::debug!("On frame end.");
+        
+        match self.wp_engine.on_frame(core) {
+            WatchpointAction::Break => { self.watchpoint_hit = true; },
+            _ => {}
+        }
     }
     
     fn on_dot(&mut self, core: &mut Snemulator<Self>) {
@@ -107,13 +126,17 @@ impl DebugProbe for Debugger {
 }
 
 impl Debugger {
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> Result<Self> {
+        let wp_engine = WatchpointEngine::new()
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+        
+        Ok(Self {
             breakpoints: HashSet::new(),
             layer_buffers: LayerBuffers::new(),
             breakpoint_hit: false,
             watchpoint_hit: false,
             update_textures: true,
-        }
+            wp_engine,
+        })
     }
 }

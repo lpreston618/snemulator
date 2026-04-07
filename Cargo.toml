@@ -4,7 +4,6 @@ members = [
     "crates/snemcore",
     "crates/devtools",
     "crates/common",
-    "crates/watchpoint-parser"
 ]
 resolver = "2"
 

@@ -28,7 +28,7 @@ pub struct DebugWindow {
     cpu_tab: Box<tabs::CpuTab>,
     mem_tab: Box<tabs::MemoryTab>,
     ppu_tab: Box<tabs::PpuTab>,
-    // wp_tab: Box<tabs::WatchpointsTab>,
+    wp_tab: Box<tabs::WatchpointsTab>,
     selected_tab: tabs::DebugTab,
     jump_to_bps_on_hit: bool,
     jump_to_wps_on_hit: bool,
@@ -62,7 +62,7 @@ impl DebugWindow {
             cpu_tab: Box::new(tabs::CpuTab::new(rom_mapping_mode)),
             mem_tab: Box::new(tabs::MemoryTab::new()),
             ppu_tab,
-            // wp_tab: Box::new(tabs::WatchpointsTab::new()),
+            wp_tab: Box::new(tabs::WatchpointsTab::new()),
             selected_tab: tabs::DebugTab::Cpu,
             jump_to_bps_on_hit: true,
             jump_to_wps_on_hit: true,
@@ -81,12 +81,9 @@ impl DebugWindow {
         frame_buffer: &mut [u8],
         audio_buffer: &mut Vec<i16>,
     ) -> app::AppAction {
-        let mut clear_watchpoints = false;
         let mut app_action = app::AppAction::Continue;
 
         if !app_state.is_paused {
-            // let mut layer_buffers = self.ppu_tab.layer_buffers();
- 
             if self.hyperspeed_en {       
                 core.probe.as_mut().unwrap().update_textures = false;
                 
@@ -108,23 +105,7 @@ impl DebugWindow {
                 app_state.is_paused = true;
                 self.breakpoint_hit(core);
             }
-                        
-            // match  {
-            //     DebugAction::BreakpointHit => {
-            //         self.breakpoint_hit(&snem_core, app_state);
-            //         clear_watchpoints = true;
-            //     }
-            //     DebugAction::WatchpointHit => {
-            //         self.watchpoint_hit(app_state);
-            //         clear_watchpoints = true;
-            //     }
-            //     _ => {}
-            // }
-
-            // self.ppu_tab.restore_buffers(layer_buffers);
         }
-
-        // self.wp_tab.update_watchpoint_graph();
 
         let mut egui_window = self.egui_window.take().unwrap();
         let mut debug_action: Option<DebugAction> = None;
@@ -148,22 +129,18 @@ impl DebugWindow {
 
                 ui.horizontal(|ui| {
                     if ui.button("Step Instruction").clicked() {
-                        // self.compile_watchpoints(&snem_core);
-                        // debug_action = DebugAction::SingleStep;
+                        debug_action = Some(DebugAction::SingleStep);
                     }
 
                     if ui.button("Step Frame").clicked() {
-                        // self.compile_watchpoints(&snem_core);
-                        // debug_action = DebugAction::StepFrame;
+                        debug_action = Some(DebugAction::StepFrame);
                     }
 
                     if ui.button("Reset").clicked() {
-                        // clear_watchpoints = true;
                         debug_action = Some(DebugAction::Reset);
                     }
 
                     if ui.button("Hard Reset").clicked() {
-                        // clear_watchpoints = true;
                         debug_action = Some(DebugAction::HardReset);
                     }
                     
@@ -172,13 +149,11 @@ impl DebugWindow {
                         .on_hover_text(format!("If enabled, emulator will run at {}x speed, but with no audio and reduced video output", HYPERSPEED_SPEEDUP));
 
                     if app_state.is_paused && ui.button("Resume").clicked() {
-                        // self.compile_watchpoints(&snem_core);
                         debug_action = Some(DebugAction::TogglePause);
                     }
 
                     if !app_state.is_paused && ui.button("Pause").clicked() {
                         debug_action = Some(DebugAction::TogglePause);
-                        // clear_watchpoints = true;
                     }
 
                     ui.label(format!("Frame: {}", core.frame));
@@ -198,10 +173,9 @@ impl DebugWindow {
                     }
                     tabs::DebugTab::Memory => self.mem_tab.render(ui, core),
                     tabs::DebugTab::Ppu => self.ppu_tab.render(ui, core),
-                    // tabs::DebugTab::Watchpoints => {
-                    //     self.wp_tab
-                    //         .render(ui, core, app_state, &mut self.jump_to_wps_on_hit)
-                    // }
+                    tabs::DebugTab::Watchpoints => {
+                        self.wp_tab.render(ui, core, app_state)
+                    }
                     _ => {}
                 };
             });
@@ -224,6 +198,15 @@ impl DebugWindow {
                 }
                 DebugAction::HardReset => {
                     app_action = app::AppAction::PowerOnCore;
+                }
+                DebugAction::SingleStep if app_state.is_paused => {
+                    core.probe.as_mut().unwrap().update_textures = true;
+                    core.cycle_instruction(frame_buffer);
+                    
+                    if core.probe.as_ref().unwrap().breakpoint_hit {
+                        core.probe.as_mut().unwrap().breakpoint_hit = false;
+                        self.breakpoint_hit(core);
+                    }
                 }
                 
                 _ => {}

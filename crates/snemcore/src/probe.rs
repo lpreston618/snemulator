@@ -1,6 +1,7 @@
-use crate::{Snemulator, sppu::Ppu5C7x};
+use crate::Snemulator;
 
 pub trait DebugProbe: Sized {
+    fn on_emulation_cycle(&mut self, core: &mut Snemulator<Self>) {}
     /// Called before the emulator starts running again.
     fn resume_emulation(&mut self) {}
     /// Called before the instruction at full_pc is executed.

@@ -7,100 +7,51 @@
 // use crate::core::debug::watchpoints::NodeKind;
 // use crate::core::debug::watchpoints::CompiledGraph;
 
-// pub struct WatchpointsTab {
-//     editor: Editor,
-//     watchpoints_en: bool,
-//     compiled_wps: CompiledGraph,
-// }
+use std::io::Read;
 
-// impl WatchpointsTab {
-//     pub fn new() -> Self {
-//         Self {
-//             editor: Editor::new(),
-//             watchpoints_en: true,
-//             compiled_wps: CompiledGraph::default(),
-//         }
-//     }
+use rfd::FileDialog;
+use snemcore::Snemulator;
+
+use anyhow::Result;
+
+use crate::{app::AppState, debug::debugger::Debugger};
+
+pub struct WatchpointsTab {
     
-//     pub fn render(&mut self, ui: &mut egui::Ui, snem_core: &snemcore::Snemulator, app_state: &app::AppState, jump_to_wps_on_hit: &mut bool) {
-//         ui.horizontal(|ui| {
-//             ui.add_enabled_ui(app_state.is_paused, |ui| {
-//                 if ui.button("Add Watchpoint").clicked() {
-//                     self.add_watchpoint();
-//                 }
-                
-//                 ui.menu_button("Add Logic", |ui| {
-//                     if ui.button("And").clicked() {
-//                         self.add_node(NodeKind::And);
-//                         ui.close();
-//                     }
-                    
-//                     if ui.button("Or").clicked() {
-//                         self.add_node(NodeKind::Or);
-//                         ui.close();
-//                     }
-                    
-//                     if ui.button("Not").clicked() {
-//                         self.add_node(NodeKind::Not);
-//                         ui.close();
-//                     }
-                    
-//                     if ui.button("Counter").clicked() {
-//                         self.add_node(NodeKind::Counter(Counter::default()));
-//                         ui.close();
-//                     }
-//                 });
-                
-//                 if ui.button("Add Break").clicked() {
-//                     self.add_node(NodeKind::Break { lit: false });
-//                 }
-                
-//                 if ui.button("Add Log Point").clicked() {
-//                     self.add_node(NodeKind::Log(Logpoint::default()));
-//                 }
-                
-//                 ui.checkbox(&mut self.watchpoints_en, "Enable Watchpoints");
-                
-//                 ui.add_space(5.0);
-                
-//                 ui.checkbox(jump_to_wps_on_hit, "Jump to Watchpoints on Hit");
-//             });
-            
-//         });
+}
+
+impl WatchpointsTab {
+    pub fn new() -> Self {
+        Self {}
+    }
+    
+    pub fn render(&mut self, ui: &mut egui::Ui, core: &mut Snemulator<Debugger>, app_state: &AppState) {
+        ui.horizontal(|ui| {
+            if ui.button("Load Watchpoint Script").clicked() {
+                if let Err(e) = try_load_watchpoint_script(core) {
+                    log::error!("failed to load watchpoint script: {}", e);
+                }
+            }
+        });
         
-//         ui.separator();
-        
-//         self.editor.show(ui, app_state, snem_core);
-//     }
+        ui.separator();
+    }
+}
+
+fn try_load_watchpoint_script(core: &mut Snemulator<Debugger>) -> Result<()> {
+    let wp_script_file = FileDialog::new()
+        .add_filter("Watchpoint Script", &["lua"])
+        .set_directory("/")
+        .pick_file()
+        .ok_or(anyhow::anyhow!("Invalid file chosen"))?;
     
-//     fn add_watchpoint(&mut self) {
-//         self.editor.create_new_watchpoint(Watchpoint::default());
-//     }
+    let mut file = std::fs::File::open(wp_script_file)?;
+    let mut script = String::new();
+    let _ = file.read_to_string(&mut script)?;
     
-//     fn add_node(&mut self, kind: NodeKind) {
-//         match kind {
-//             NodeKind::Condition { .. } => {},
-//             _ => self.editor.create_new_logic(kind),
-//         }
-//     }
+    core.probe.as_mut().unwrap().wp_engine
+        .load_script(&mut script)
+        .map_err(|e| anyhow::anyhow!("Failed to load script: {}", e))?;
     
-//     pub fn compile_watchpoints(&mut self, snem_core: &snemcore::Snemulator) {        
-//         self.compiled_wps = self.editor.graph.compile(snem_core);
-//     }
-    
-//     pub fn clear_compiled_watchpoints(&mut self) {
-//         self.compiled_wps = CompiledGraph::default();
-//     }
-    
-//     pub fn update_watchpoint_graph(&mut self) {
-//         self.editor.update_watchpoints(&self.compiled_wps);
-//     }
-    
-//     pub fn watchpoints(&self) -> &CompiledGraph {
-//         &self.compiled_wps
-//     }
-    
-//     pub fn watchpoints_enabled(&self) -> bool {
-//         self.watchpoints_en
-//     }
-// }
+    Ok(())
+}

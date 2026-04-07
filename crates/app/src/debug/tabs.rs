@@ -6,7 +6,7 @@ mod watchpoints;
 pub use cpu::CpuTab;
 pub use ppu::PpuTab;
 pub use mem::MemoryTab;
-// pub use watchpoints::WatchpointsTab;
+pub use watchpoints::WatchpointsTab;
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum DebugTab { Cpu, Memory, Ppu, Watchpoints }

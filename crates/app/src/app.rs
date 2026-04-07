@@ -112,7 +112,7 @@ impl SnemulatorApp {
         let main_window = MainWindow::new(&video_subsystem, &settings)?;
         
         #[cfg(feature = "debug")]
-        let snem_core = Snemulator::with_probe(Debugger::new());
+        let snem_core = Snemulator::with_probe(Debugger::new()?);
         #[cfg(not(feature = "debug"))]
         let snem_core = Snemulator::new();
         

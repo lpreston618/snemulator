@@ -277,6 +277,16 @@ impl<P: DebugProbe> Snemulator<P> {
         self.probe = Some(probe);
     }
 
+    pub fn cycle_instruction(&mut self, frame_buffer: &mut [u8]) {
+        let mut audio_buffer = Vec::new();
+        
+        while self.cpu.clocks > self.ppu.clocks {
+            self.cycle(frame_buffer, &mut audio_buffer);
+        }
+        
+        self.cycle(frame_buffer, &mut audio_buffer);
+    }
+    
     fn cycle_cpu(&mut self, probe: &mut P) {
         self.cpu.stopped = false;
 
@@ -590,6 +600,37 @@ impl<P: DebugProbe> Snemulator<P> {
         let mut bus = ppu_bus!(self, frame_buffer);
         
         self.ppu.draw_debug_layers(&mut bus, bg1_buffer, bg2_buffer, bg3_buffer, bg4_buffer, obj_buffer);
+    }
+    
+    /// Helper function to read a non-MMIO address from mapped memory
+    pub fn cpu_read_mem(&self, addr: scpu::Address) -> u8 {
+        match addr.bank {
+            // Banks $00-$3F: LoROM mapping
+            0x00..=0x3F | 0x80..=0xBF => match addr.offset {
+                // WRAM mirror (first 8KB)
+                0x0000..=0x1FFF => self.wram[addr.offset as usize],
+
+                // Cartridge (LoROM: $8000-$FFFF)
+                0x8000..=0xFFFF => self.cart.as_ref().unwrap().read(addr),
+
+                _ => 0, // Open bus
+            },
+
+            // Banks $40-$6F: LoROM cartridge
+            0x40..=0x6F => self.cart.as_ref().unwrap().read(addr),
+
+            // Banks $70-$7D: SRAM or ROM
+            0x70..=0x7D => self.cart.as_ref().unwrap().read(addr),
+
+            // Banks $7E-$7F: WRAM (full 128KB)
+            0x7E..=0x7F => {
+                let wram_addr = ((addr.bank as usize & 1) << 16) | (addr.offset as usize);
+                self.wram[wram_addr]
+            }
+
+            // Banks $C0-$FF: HiROM cartridge / mirror
+            0xC0..=0xFF => self.cart.as_ref().unwrap().read(addr),
+        }
     }
 }
 

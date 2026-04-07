@@ -151,7 +151,7 @@ impl Cartridge {
         Ok(cart)
     }
 
-    pub fn read(&mut self, addr: Address) -> u8 {
+    pub fn read(&self, addr: Address) -> u8 {
         let addr = addr.to_u32();
 
         let mapped_addr = match self.mapping_mode {
