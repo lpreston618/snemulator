@@ -7,9 +7,17 @@
     "rust-analyzer": {
       "initialization_options": {
         "cargo": {
-          "features": ["debug"]
-        }
-      }
+          "features": ["debug"],
+        },
+      },
+    },
+  },
+  "file_types": {
+    "C": ["wps"]
+  },
+  "languages": {
+    "C": {
+      "language_servers": ["!clangd"]
     }
   }
 }

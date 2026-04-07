@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::windows::ui_window::UiWindow;
+use common::UiWindow;
 
 const SETTINGS_WINDOW_WIDTH: u32 = 600;
 const SETTINGS_WINDOW_HEIGHT: u32 = 400;

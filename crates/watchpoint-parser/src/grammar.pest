@@ -1,0 +1,107 @@
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+COMMENT = _{ "//" ~ (!"\n" ~ ANY)* }
+
+// Entry point
+script = { SOI ~ section* ~ EOI }
+
+section = {
+    variables
+    | init
+    | logic
+}
+
+// Main sections
+variables = { "VARIABLES" ~ ":" ~ (variable_list | ";") }
+variable_list = { variable_decl ~ (";" ~ variable_decl)* ~ ";"? }
+variable_decl = { type_name ~ ident }
+
+init = { "INIT" ~ ":" ~ (statement+ | ";") }
+logic = { "LOGIC" ~ ":" ~ (conditional+ | ";") }
+
+conditional = {
+    always_statement
+    | if_statement
+}
+// Statements
+statement = {
+    if_statement
+    | assignment ~ ";"
+    | break_statement ~ ";"
+    | log_statement ~ ";"
+}
+
+if_statement = {
+    "if" ~ "(" ~ expression ~ ")" ~ "{" ~ statement* ~ "}" ~ else_clause?
+}
+always_statement = {
+    "always" ~ "{" ~ statement* ~ "}"
+}
+
+else_clause = { "else" ~ "{" ~ statement* ~ "}" }
+
+assignment = { ident ~ "=" ~ expression }
+
+break_statement = { "BREAK" }
+
+log_statement = { "LOG" ~ "(" ~ log_args ~ ")" }
+log_args = { (log_arg ~ ("," ~ log_arg)*)? }
+log_arg = { string_literal | expression }
+
+// Expressions (with precedence)
+expression = { logical_or }
+
+logical_or = { logical_and ~ ("||" ~ logical_and)* }
+logical_and = { bitwise_or ~ ("&&" ~ bitwise_or)* }
+bitwise_or = { bitwise_xor ~ ("|" ~ bitwise_xor)* }
+bitwise_xor = { bitwise_and ~ ("^" ~ bitwise_and)* }
+bitwise_and = { equality ~ ("&" ~ equality)* }
+equality = { comparison ~ (("==" | "!=") ~ comparison)* }
+comparison = { shift ~ ((">=" | "<=" | ">" | "<") ~ shift)* }
+shift = { additive ~ (("<<" | ">>") ~ additive)* }
+additive = { multiplicative ~ (("+" | "-") ~ multiplicative)* }
+multiplicative = { unary ~ (("*" | "/" | "%") ~ unary)* }
+
+unary = {
+    ("!" | "~") ~ unary
+    | postfix
+}
+
+postfix = {
+    primary ~ ("[" ~ expression ~ "]")*
+}
+
+primary = {
+    "(" ~ expression ~ ")"
+    | bool_literal
+    | number_literal
+    | sys_var
+    | ident
+}
+
+sys_var = {
+    ("cpu" | "ppu" | "apu" | "sys" | "io") ~ ("." ~ ident)+
+    | "dma" ~ "[" ~ number_literal ~ "]" ~ "." ~ ident ~ ("." ~ ident)*
+    | "mmio" ~ "[" ~ expression ~ "]"
+    | "cpu" ~ "." ~ "mem" ~ "[" ~ expression ~ "]"
+    | ("wram" | "vram" | "aram" | "cgram" | "oam") ~ "[" ~ expression ~ "]"
+}
+
+// Types
+type_name = { "Bool" | "Byte" | "Word" | "Num" }
+
+// Literals
+bool_literal = { "true" | "false" }
+number_literal = @{
+    hex_literal
+    | decimal_literal
+}
+hex_literal = @{ ("0x" | "$") ~ ASCII_HEX_DIGIT+ }
+decimal_literal = @{ ASCII_DIGIT+ }
+string_literal = @{ "\"" ~ string_char* ~ "\"" }
+string_char = {
+    !("\"" | "\\") ~ ANY
+    | "\\" ~ ("\"" | "\\" | "n" | "r" | "t")
+}
+
+// Identifiers
+ident = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }

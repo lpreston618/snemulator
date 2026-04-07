@@ -6,7 +6,7 @@ use crate::app;
 use snemcore::sysinfo;
 use crate::windows::menu::MainMenuBar;
 use crate::windows::settings::Settings;
-use crate::windows::ui_window::UiWindow;
+use common::UiWindow;
 
 pub struct MainWindow {
     egui_window: UiWindow,

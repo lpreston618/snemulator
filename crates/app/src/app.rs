@@ -9,7 +9,7 @@ use crate::windows::settings::{Settings, SettingsWindow};
 use anyhow::{anyhow, Result};
 use rfd::FileDialog;
 use ringbuf::HeapRb;
-use ringbuf::traits::{Consumer, Observer, RingBuffer};
+use ringbuf::traits::{Observer, RingBuffer};
 use sdl3::event::Event;
 use sdl3::keyboard::{Keycode, Mod};
 use snemcore::controller::{ControllerPlayer, JoypadButton};
@@ -76,14 +76,13 @@ pub struct SnemulatorApp {
     prev_frame_micros: HeapRb<usize>,
     total_frame_micros: usize,
     last_frame: Instant,
+    frame_buffer: Box<[u8; FRAME_BUF_SIZE]>,
 
-    #[cfg(feature = "debug")]
-    snem_core: Snemulator<Debugger>,
     #[cfg(not(feature = "debug"))]
     snem_core: Snemulator,
     
-    frame_buffer: Box<[u8; FRAME_BUF_SIZE]>,
-    
+    #[cfg(feature = "debug")]
+    snem_core: Snemulator<Debugger>,
     #[cfg(feature = "debug")]
     debug_window: Option<DebugWindow>,
 }
@@ -111,8 +110,6 @@ impl SnemulatorApp {
         let settings = SnemulatorApp::try_find_settings().unwrap_or_default();
         let frame_buffer = Box::new([0u8; FRAME_BUF_SIZE]);
         let main_window = MainWindow::new(&video_subsystem, &settings)?;
-        
-        
         
         #[cfg(feature = "debug")]
         let snem_core = Snemulator::with_probe(Debugger::new());
@@ -271,17 +268,7 @@ impl SnemulatorApp {
                 _ => {}
             }
         } else {
-            // Emulate one frame
-            if self.state.rom_loaded {
-                if !self.state.is_paused
-                    && (!self.state.is_minimized || !self.settings.pause_on_minimize)
-                {
-                    self.snem_core
-                        .run_frame(&mut self.frame_buffer[..], &mut temp);
-                }
-            } else {
-                self.render_load_rom_screen();
-            }
+            self.update_emulator();
         }
     }
     

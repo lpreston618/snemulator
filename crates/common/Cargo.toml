@@ -1,0 +1,12 @@
+[package]
+name = "common"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+egui = { workspace = true }
+egui_glow = { workspace = true }
+glow = { workspace = true }
+sdl3 = { workspace = true }
+egui_autocomplete = { workspace = true }

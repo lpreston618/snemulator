@@ -3,6 +3,8 @@ members = [
     "crates/app",
     "crates/snemcore",
     "crates/devtools",
+    "crates/common",
+    "crates/watchpoint-parser"
 ]
 resolver = "2"
 
@@ -11,6 +13,11 @@ anyhow     = "1.0.102"
 rfd        = "0.17.2"
 env_logger = "0.11.9"
 log        = "0.4.29"
+egui       = "0.33.3"
+egui_glow  = "0.33.3"
+glow       = "0.16.0"
+sdl3 = {version = "0.17.3", features = ["build-from-source"]}
+egui_autocomplete = "12.0.0"
 
 [profile.dev]
 overflow-checks = false

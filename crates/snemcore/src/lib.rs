@@ -240,7 +240,9 @@ impl<P: DebugProbe> Snemulator<P> {
         probe.on_frame_end(self);
         self.probe = Some(probe);
 
-        self.frame += 1;
+        if self.frame_ready {
+            self.frame += 1;
+        }
     }
 
     fn cycle(&mut self, frame_buffer: &mut [u8], audio_buffer: &mut Vec<i16>) {
@@ -510,7 +512,9 @@ impl<P: DebugProbe> Snemulator<P> {
         probe.on_frame_end(self);
         self.probe = Some(probe);
 
-        self.frame += 1;
+        if self.frame_ready {
+            self.frame += 1;
+        }
     }
 
     fn cycle_no_output(&mut self) {

@@ -1,7 +1,7 @@
 use snemcore::Snemulator;
 
 use crate::debug::tabs::ppu::texture::Texture;
-use crate::utils::monospace_text;
+use common::app_utils::monospace_text;
 use crate::debug::debugger::Debugger;
 
 use snemcore::sppu::ColorDepth;

@@ -1,0 +1,409 @@
+INPUTS:
+    cpu.a;
+    cpu.pb;
+    cpu.pc;
+    cpu.nmi_pending;
+    ppu.scanline;
+    sys.frame;
+
+VARIABLES:
+    Bool f1;
+    Num cnt;
+    Num cnt2;
+    Num prev_scanline;
+
+INIT:
+    f1 = false;
+    cnt = 0;
+    cnt2 = 0;
+
+LOGIC:
+    if (cpu.a == 0xFF && cpu.mem[cpu.full_pc]):
+        BREAK;
+    
+    if (cpu.pb != 0 && cpu.pc >= 0x8000):
+        f1 = true;
+    
+    if (f1 && cpu.nmi_pending):
+        cnt = cnt + 1;
+    
+    if (cnt == 1000):
+        cnt = 0;
+        LOG("1000th NMI outside of PB: 0 && pc < 0x8000");
+        BREAK;
+    
+    if ( (ppu.scanline & 0xFF) != prev_scanline ):
+        prev_scanline = ppu.scanline & 0xFF;
+        cnt2 = cnt2 + 1;
+    
+    if (cnt2 == 1000):
+        cnt2 = 0;
+        if (sys.frame > 1000):
+            LOG("Scanline: ", ppu.scanline, ", Frame: ", sys.frame);
+            BREAK;
+    
+------------------------
+
+Types:
+    Bool, Byte (u8), Word (u16), and Num (usize)
+    String literals in LOG statements only.
+    Types cannot be cast for now.
+    Single line comments can be added using a double forward slash (//).
+
+Keywords:
+    INPUTS - Lists the inputs that the emulator will need to update for the
+             logic. If an input is not listed in the INPUTS section, then it
+             will result in a compile error.
+    VARIABLES - Lists the variables that will be used in the logic block
+                section.
+    INIT - Where variables are initialized. Conditions may be checked here as
+           well. In the future, there may be additional keywords for enabling
+           and disabling watchpoints. This is where the ENABLE_WATCHPOINTS
+           keyword would be. But if the watchpoints are only to be run before
+           frame 1000, for example, then there could be a statement like this:
+        
+            if (sys.frame < 1000):
+                ENABLE_WATCHPOINTS;
+        
+           This would be valid in the INIT block.
+        
+    LOGIC - A set of conditional statements that will be checked when their
+            inputs are changed.
+    BREAK - Causes the emulator to halt. Under the hood, this will store a bool
+            called "fired." If the BREAK is reached, then fired becomes true.
+            The fired flag will remain true until the condition that caused it
+            to fire is re-evaluated and is false.
+    LOG - Works similarly to BREAK, but accepts a list of string literals,
+          input system variables, and script variables. The inputs will be
+          concatenated at runtime and the resulting message will be logged.
+          Emulation will not stop when a LOG statement is hit.
+    if - Each if statement will be evaluated in order (if its inputs are
+         changed).
+    else - Can be paired with if statements to perform logic conditionally
+           without having to type out the negation of the if condition.
+
+Each condition statement must end with a :
+Each line must otherwise end with a ;
+           
+Operators:
+    &   : bitwise AND
+    |   : bitwise OR
+    ^   : bitwise XOR
+    !   : logical NOT
+    &&  : logical AND
+    ||  : logical OR
+    ==  : logical EQUALS
+    !=  : logical NOT EQUALS
+    >   : Greater than
+    <   : Less than
+    >=  : Greater than or equal to
+    <=  : Less than or equal to
+    =   : assignment
+    +   : Addition
+    -   : Subtraction
+
+Literals:
+    ""     : Strings in LOG statements
+    0xFFFF : Hex numbers
+    $FFE0  : Also hex numbers
+    1234   : Base 10 numbers
+    //     : Comments
+    true   : Bool true
+    false  : Bool false
+
+Possible inputs:
+    cpu:
+        Byte:
+            regs.REGNAME : Accesses the raw byte of whatever register is specified by REGNAME. The
+                           list of valid CPU mmio registers is given at the end of this file. Also
+                           accessable via mmio[$cpu_reg_addr]. (e.g. cpu.regs.APUIO0)
+            mem[$addr]  : Reads a byte from the CPU's memory bus. Can only read from ROM or RAM, not MMIO
+                          registers. Any reads from an MMIO address will return 0. (e.g. cpu.mem[$7ef000])
+            pb         : Program Bank
+            db         : Data Bank
+            p          : Processor Status Byte
+            prg_byte_0 : Alias for sys.mem[cpu.full_pc], the current byte of the program
+            prg_byte_1 : Alias for sys.mem[cpu.full_pc + 1], the next byte of the program (first instr arg)
+            prg_byte_2 : Alias for sys.mem[cpu.full_pc + 2], the next next byte of the program (second instr arg)
+            apuio0 : Data from the CPU to the APU   \ apu.apuioN is the value written by the APU
+            apuio1 : Data from the CPU to the APU   | and readable by the CPU. For data written
+            apuio2 : Data from the CPU to the APU   | by the CPU and readable by the APU,
+            apuio3 : Data from the CPU to the APU   / use apu.apuioN.
+        Word:
+            a  : Accumulator
+            x  : X Index Register
+            y  : Y Index Register
+            sp : Stack Pointer
+            pc : Program Counter
+            dp : Direct Page
+        Bool:
+            flagc   : Carry Flag
+            flagz   : Zero Flag
+            flagi   : IRQ Disable Flag
+            flagd   : Decimal Mode Flag
+            flagx   : Index Register Size Flag
+            flagm   : Accumulator Size Flag
+            flagv   : Overflow Flag
+            flagn   : Negative Flag
+            e       : Emulation Mode Flag
+            halted  : CPU Halted
+            stopped : CPU Stopped (For DMA/HDMA)
+            nmi_pending : NMI Pending
+            irq_pending : IRQ Pending
+            waiting     : Awaiting Interrupt Flag
+        Num:
+            full_pc : The concatenated pb and pc (i.e. (pb << 16) | pc). Useful for
+                      accessing memory via cpu.mem[cpu.full_pc].
+        
+    ppu:
+        Byte:
+            regs.REGNAME : Accesses the raw byte/word of the ppu registers. The reg names are listed 
+                           at the end of this file. Also accessable via mmio[$ppu_reg_addr].
+            screen_brightness : From INIDISP
+            obj_size          : From OBJSEL
+            bg_mode           : From BGMODE
+            mosaic_size       : From MOSAIC
+            cgram_addr        : From CGADD
+            window1_left      : From WH0
+            window1_right     : From WH1
+            window2_left      : From WH2
+            window2_right     : From WH3
+        Word:
+            name_base_addr      : Full 15-bit name base address from OBJSEL
+            name_secondary_addr : Full 15-bit name base address + secondary select offset from OBJSEL
+            oam_addr            : Full 9-bit oam address from oamaddl and oamaddh
+            bg1_tilemap_addr    : From BG1SC
+            bg2_tilemap_addr    : From BG2SC
+            bg3_tilemap_addr    : From BG3SC
+            bg4_tilemap_addr    : From BG4SC
+            bg1_hofs            : From BG1HOFS
+            bg1_vofs            : From BG1VOFS
+            bg2_hofs            : From BG2HOFS
+            bg2_vofs            : From BG2VOFS
+            bg3_hofs            : From BG3HOFS
+            bg3_vofs            : From BG3VOFS
+            bg4_hofs            : From BG4HOFS
+            bg4_vofs            : From BG4VOFS
+            m7_hofs             : From M7HOFS
+            m7_vofs             : From M7VOFS
+            vram_addr           : From VMADDL and VMADDH
+            m7_a                : From M7A
+            m7_b                : From M7B
+            m7_c                : From M7C
+            m7_d                : From M7D
+            m7_x                : From M7X
+            m7_y                : From M7Y
+            h_counter           : From OPHCT
+            v_counter           : From OPVCT
+        Bool:
+            f_blank            : From INIDISP 
+            priority_rotation  : From OAMADDH 
+            bg1_large_tiles    : From BGMODE 
+            bg2_large_tiles    : From BGMODE 
+            bg3_large_tiles    : From BGMODE 
+            bg4_large_tiles    : From BGMODE 
+            bg3_mode1_priority : From BGMODE 
+            bg1_mosaic_enable  : From MOSAIC 
+            bg2_mosaic_enable  : From MOSAIC 
+            bg3_mosaic_enable  : From MOSAIC 
+            bg4_mosaic_enable  : From MOSAIC 
+            bg1_main_enable    : From TM 
+            bg2_main_enable    : From TM 
+            bg3_main_enable    : From TM 
+            bg4_main_enable    : From TM 
+            obj_main_enable    : From TM 
+        Num:
+            dot      : Current dot, ranges from [0,339]
+            scanline : Current scanline, ranges from [0,260]
+            screen_x : Current dot position on the screen.  When the dot is visible,
+                       this number ranges from [0,255].  Otherwise it is garbage.
+            screen_y : Current scanline position on screen.  When the scanline is visible,
+                       this number ranges from [0,223].  Otherwise it is garbage.
+            multiply_result : Full 24-bit multiplication result from MPYL, MPYM, and MPYH
+    
+    apu:
+        Byte:
+            apuio0 : Data from the CPU to the APU   \ apu.apuioN is the value written by the CPU
+            apuio1 : Data from the CPU to the APU   | and readable by the APU. For data written
+            apuio2 : Data from the CPU to the APU   | by the APU and readable by the CPU,
+            apuio3 : Data from the CPU to the APU   / use cpu.apuioN.
+    
+    dma[channel]: (e.g. dma[0].dma_en, channel is a number in the range [0,7])
+        Byte:
+            regs.REGNAME : Access the raw value of a DMA register. Also accessable via mmio[$dma_reg_addr].
+                           All DMA registers are detailed at the end of this file.
+            addr_inc_mode    : From DMAP
+            transfer_pattern : From DMAP
+            dma_source_bank  : From A1TB
+            hdma_table_start_bank    : Alias for dma_source_bank
+            hdma_indirect_table_bank : From DASB
+            hdma_scanline_counter    : From NLTR
+            unused_reg               : From UNUSED ($43nB/$43nF)
+        Word:
+            b_bus_addr                 : High byte is always 0x21. From BBAD
+            dma_source_offset          : From A1TL, A1TH
+            hdma_table_start_offset    : Alias for dma_source_offset
+            hdma_indirect_table_offset : From DASL, DASH
+            hdma_table_offset          : From A2AL and A2AH
+        Bool:
+            b_to_a        : From DMAP
+            indirect_hdma : From DMAP
+            hdma_reload   : From NLTR
+        Num:
+            full_dma_source_addr          : From A1TL, A1TH, and A1B
+            full_hdma_table_start_addr    : Alias for full_dma_source_addr
+            full_hdma_indirect_table_addr : From DASnL, DASnH, and DASBn
+            
+    mmio[addr] : Reads the raw value of an MMIO register. This is a byte for most mmio registers, but
+                 some are words. The address will be bitwise ANDed with 0xFFFF, so only the low two 
+                 bytes will be used. The list of addressable registers is provided at the end of this
+                 file. These are aliases for the various parts of the system. For example, mmio[$2100]
+                 is the same thing as ppu.INIDISP, mmio[$4308] is the same thing as dma[0].A2AL, and
+                 mmio[$211B] is the same thing as ppu.M7A.
+    wram[addr]  : Single byte of WRAM at address
+    vram[addr]  : Single byte of VRAM at address
+    aram[addr]  : Single byte of ARAM at address
+    oam[addr]   : Single byte of OAM at address
+    cgram[addr] : Single byte of CGRAM at address
+        
+    sys:
+        Byte: None for now
+        Word: None for now
+        Bool: None for now
+        Num:
+            frame - The current frame number
+            
+
+REGISTER ALIASES:
+
+Registers marked with an "X" cannot be accessed via mmio[$addr].
+These will be noted in the docs for the language.
+If an address not listed here is read, 0 will be returned.
+
+mmio[$addr], aliases for ppu.REGISTER_NAME:
+| Name        | $addr | Bits                | Notes                                                                  |
+|-------------|-------|---------------------|------------------------------------------------------------------------|
+| INIDISP     | $2100 | F... BBBB           | Forced blanking (F), screen brightness (B)                             |
+| OBJSEL      | $2101 | SSSN NbBB           | OBJ sprite size (S), name secondary select (N), name base address (B)  |
+| OAMADDL     | $2102 | AAAA AAAA           | OAM word address (A)                                                   |
+| OAMADDH     | $2103 | P... ...B           | Priority rotation (P), address high bit (B)                            |
+| BGMODE      | $2105 | 4321 PMMM           | Tilemap size for BG layers 1,2,3, and 4, BG3 priority (P), BG mode (M) |
+| MOSAIC      | $2106 | SSSS 4321           | Mosaic size (S), mosaic enable for BG layers 1,2,3, and 4              |
+| BG1SC       | $2107 | AAAA AAYX           | BG1 Tilemap VRAM address, vertical/horizontal tilemap count            |
+| BG2SC       | $2108 | AAAA AAYX           | BG2 Tilemap VRAM address, vertical/horizontal tilemap count            |
+| BG3SC       | $2109 | AAAA AAYX           | BG3 Tilemap VRAM address, vertical/horizontal tilemap count            |
+| BG4SC       | $210A | AAAA AAYX           | BG4 Tilemap VRAM address, vertical/horizontal tilemap count            |
+| BG12NBA     | $210B | BBBB AAAA           | BG2 CHR base address (B), BG1 CHR base addr (A)                        |
+| BG34NBA     | $210C | DDDD CCCC           | BG4 CHR base address (D), BG3 CHR base addr (C)                        |
+| BG1HOFS     | $210D | .... ..XX XXXX XXXX | BG1 horizontal scroll                                                  |
+| M7HOFS      | $210D | .... XXXX XXXX XXXX | Mode 7 horizontal scroll                                               |
+| BG1VOFS     | $210E | .... ..YY YYYY YYYY | BG1 vertical scroll                                                    |
+| M7VOFS      | $210E | .... YYYY YYYY YYYY | Mode 7 vertical scroll                                                 |
+| BG2HOFS     | $210F | .... ..XX XXXX XXXX | BG horizontal scroll                                                   |
+| BG2VOFS     | $2110 | .... ..YY YYYY YYYY | BG vertical scroll                                                     |
+| BG3HOFS     | $2111 | .... ..XX XXXX XXXX | BG horizontal scroll                                                   |
+| BG3VOFS     | $2112 | .... ..YY YYYY YYYY | BG vertical scroll                                                     |
+| BG4HOFS     | $2113 | .... ..XX XXXX XXXX | BG horizontal scroll                                                   |
+| BG4VOFS     | $2114 | .... ..YY YYYY YYYY | BG vertical scroll                                                     |
+| VMAIN       | $2115 | M... RRII           | VRAM increment mode (M), remapping (R), increment size (I)             |
+| VMADDL      | $2116 | LLLL LLLL           | VRAM word address (low)                                                |
+| VMADDH      | $2117 | HHHH HHHH           | VRAM word address (high)                                               |
+| M7SEL       | $211A | RF.. ..YX           | Mode 7 settings (repeat, fill, flip X, flip Y)                         |
+| M7A         | $211B | DDDD DDDD dddd dddd | Mode 7 matrix A                                                        |
+| M7B         | $211C | DDDD DDDD dddd dddd | Mode 7 matrix B                                                        |
+| M7C         | $211D | DDDD DDDD dddd dddd | Mode 7 matrix C                                                        |
+| M7D         | $211E | DDDD DDDD dddd dddd | Mode 7 matrix D                                                        |
+| M7X         | $211F | .... XXXX XXXX XXXX | Mode 7 center X                                                        |
+| M7Y         | $2120 | .... YYYY YYYY YYYY | Mode 7 center Y                                                        |
+| CGADD       | $2121 | AAAA AAAA           | CGRAM word address                                                     |
+| W12SEL      | $2123 | DdCc BbAa           | Window enable/invert (EN/inv) BG1/BG2                                  |
+| W34SEL      | $2124 | DdCc BbAa           | Window enable/invert (EN/inv) BG3/BG4                                  |
+| WOBJSEL     | $2125 | LlKk JjIi           | Window enable/invert (EN/inv) OBJ/color                                |
+| WH0         | $2126 | LLLL LLLL           | Window 1 left position                                                 |
+| WH1         | $2127 | RRRR RRRR           | Window 1 right position                                                |
+| WH2         | $2128 | LLLL LLLL           | Window 2 left position                                                 |
+| WH3         | $2129 | RRRR RRRR           | Window 2 right position                                                |
+| WBGLOG      | $212A | 4433 2211           | Window mask logic for BG layers                                        |
+| WOBJLOG     | $212B | .... CC00           | Window mask logic for OBJ/color                                        |
+| TM          | $212C | ...O 4321           | Main screen layer enable                                               |
+| TS          | $212D | ...O 4321           | Sub screen layer enable                                                |
+| TMW         | $212E | ...O 4321           | Main screen window enable                                              |
+| TSW         | $212F | ...O 4321           | Sub screen window enable                                               |
+| CGWSEL      | $2130 | MMSS ..AD           | Color math/window settings                                             |
+| CGADSUB     | $2131 | MHBO 4321           | Color math add/subtract                                                |
+| COLDATA     | $2132 | BGRC CCCC           | Fixed color channel select/value                                       |
+| SETINI      | $2133 | EX.. HOii           | Screen/EXTBG/interlace settings                                        |
+| MPYL        | $2134 | LLLL LLLL           | Multiplication result (low)                                            |
+| MPYM        | $2135 | MMMM MMMM           | Multiplication result (mid)                                            |
+| MPYH        | $2136 | HHHH HHHH           | Multiplication result (high)                                           |
+| SLHV        | $2137 | ........            | Latch H/V counters                                                     |
+| OPHCT       | $213C | .... HHHH HHHH HHHH | Horizontal counter                                                     |
+| OPVCT       | $213D | .... VVVV VVVV VVVV | Vertical counter                                                       |
+| STAT77      | $213E | TRM. VVVV           | Sprite overflow (T) tile overflow (R) master/slave (M) PPU1 ver. (V)   |
+| STAT78      | $213F | FL.M VVVV           | Interlace field (F) counter latch value (L) NTSC/PAL (M) PPU2 ver. (V) |
+
+mmio[$addr] aliases for cpu.REGISTER_NAME:
+| Name     | $addr | Bits      | Notes                                                                    |
+|----------|-------|-----------|--------------------------------------------------------------------------|
+| APUIO0   | $2140 | DDDD DDDD | Data to/from APU.                                                        |
+| APUIO1   | $2141 | DDDD DDDD | Data to/from APU.                                                        |
+| APUIO2   | $2142 | DDDD DDDD | Data to/from APU.                                                        |
+| APUIO3   | $2143 | DDDD DDDD | Data to/from APU.                                                        |
+| WMDATA   | $2180 | DDDD DDDD | Data to/from S-WRAM, increments WMADD.                                   |
+| WMADDL   | $2181 | LLLL LLLL | S-WRAM address for WMDATA access.                                        |
+| WMADDM   | $2182 | MMMM MMMM | S-WRAM address for WMDATA access.                                        |
+| WMADDH   | $2183 | .... ...H | S-WRAM address for WMDATA access.                                        |
+| NMITIMEN | $4200 | N.VH ...J | Vblank NMI enable (N), timer IRQ mode (VH), joypad auto-read enable (J). |
+| WRMPYA   | $4202 | DDDD DDDD | Unsigned multiplication factor A.                                        |
+| WRMPYB   | $4203 | DDDD DDDD | Unsigned multiplication factor B, starts 8-cycle multiplication.         |
+| WRDIVL   | $4204 | LLLL LLLL | Unsigned dividend.                                                       |
+| WRDIVH   | $4205 | HHHH HHHH | Unsigned dividend.                                                       |
+| WRDIVB   | $4206 | DDDD DDDD | Unsigned divisor, starts 16-cycle division.                              |
+| HTIMEL   | $4207 | .... ...H | H counter target for timer IRQ.                                          |
+| HTIMEH   | $4208 | LLLL LLLL | H counter target for timer IRQ.                                          |
+| VTIMEL   | $4209 | .... ...H | V counter target for timer IRQ.                                          |
+| VTIMEH   | $420A | LLLL LLLL | V counter target for timer IRQ.                                          |
+| MDMAEN   | $420B | 7654 3210 | DMA enable.                                                              |
+| HDMAEN   | $420C | 7654 3210 | HDMA enable.                                                             |
+| MEMSEL   | $420D | .... ...F | FastROM enable (F).                                                      |
+| RDNMI    | $4210 | N... VVVV | Vblank NMI flag (N), CPU version (V).                                    |
+| TIMEUP   | $4211 | T... .... | Timer IRQ flag (T).                                                      |
+| HVBJOY   | $4212 | VH.. ...J | Vblank flag (V), hblank flag (H), joypad auto-read in-progress flag (J). |
+| RDDIVL   | $4214 | LLLL LLLL | Unsigned quotient.                                                       |
+| RDDIVH   | $4215 | HHHH HHHH | Unsigned quotient.                                                       |
+| RDMPYL   | $4216 | LLLL LLLL | Unsigned product or unsigned remainder.                                  |
+| RDMPYH   | $4217 | HHHH HHHH | Unsigned product or unsigned remainder.                                  |
+    
+mmio[$addr] aliases for io.REGISTER_NAME:
+| Name     | $addr | Bits      | Notes                                                                    |
+|----------|-------|-----------|--------------------------------------------------------------------------|
+| JOYOUT   | $4016 | .... ...D | Output to joypads (latches standard controllers).                        |
+| JOYSER0  | $4016 | .... ..DD | Input from joypad 1.                                                     |
+| JOYSER1  | $4017 | ...1 11DD | Always 1 (1), input from joypad 2 (D).                                   |
+| WRIO     | $4201 | 21DD DDDD | Joypad port 2 I/O (2), joypad port 1 I/O (1), unused I/O (D).            |
+| RDIO     | $4213 | 21DD DDDD | Joypad port 2 I/O (2), joypad port 1 I/O (1), unused I/O (D).            |
+| JOY1L    | $4218 | LLLL LLLL | 16-bit joypad auto-read result (first read high to last read low).       |
+| JOY1H    | $4219 | HHHH HHHH | 16-bit joypad auto-read result (first read high to last read low).       |
+| JOY2L    | $421A | LLLL LLLL | 16-bit joypad auto-read result (first read high to last read low).       |
+| JOY2H    | $421B | HHHH HHHH | 16-bit joypad auto-read result (first read high to last read low).       |
+| JOY3L    | $421C | LLLL LLLL | 16-bit joypad auto-read result (first read high to last read low).       |
+| JOY3H    | $421D | HHHH HHHH | 16-bit joypad auto-read result (first read high to last read low).       |
+| JOY4L    | $421E | LLLL LLLL | 16-bit joypad auto-read result (first read high to last read low).       |
+| JOY4H    | $421F | HHHH HHHH | 16-bit joypad auto-read result (first read high to last read low).       |
+    
+mmio[$addr], Aliases for dma[n].REGISTER where n is in the range [0,7]:
+| Name    | $addr | Bits      | Notes                                                                 |
+|---------|-------|-----------|-----------------------------------------------------------------------|
+| DMAP    | $43n0 | DI.A APPP | Direction (D) Indirect HDMA (I) Addr inc mode (A) Transfer pattern (P)|
+| BBAD    | $43n1 | AAAA AAAA | B-bus address.                                                        |
+| A1TL    | $43n2 | LLLL LLLL | DMA source address / HDMA table start address (low).                  |
+| A1TH    | $43n3 | HHHH HHHH | DMA source address / HDMA table start address (high).                 |
+| A1B     | $43n4 | BBBB BBBB | DMA source address / HDMA table start address (bank).                 |
+| DASL    | $43n5 | LLLL LLLL | DMA byte count / HDMA indirect table address (low).                   |
+| DASH    | $43n6 | HHHH HHHH | DMA byte count / HDMA indirect table address (high).                  |
+| DASB    | $43n7 | BBBB BBBB | DMA byte count / HDMA indirect table address (bank).                  |
+| A2AL    | $43n8 | LLLL LLLL | HDMA table current address within bank (low).                         |
+| A2AH    | $43n9 | HHHH HHHH | HDMA table current address within bank (high).                        |
+| NLTR    | $43nA | RLLL LLLL | HDMA reload flag (R) and scanline counter (L).                        |
+| UNUSED  | $43nB | DDDD DDDD | Unused shared data byte (Same as $43nF).                              |
+| UNUSED  | $43nF | DDDD DDDD | Unused shared data byte (Same as $43nB).                              | 

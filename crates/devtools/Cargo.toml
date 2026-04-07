@@ -11,7 +11,13 @@ path = "speedtest/main.rs"
 name = "hyperspeedtest"
 path = "hyperspeedtest/main.rs"
 
+[[bin]]
+name = "compile-wps"
+path = "compile-wps/main.rs"
+
 [dependencies]
 indicatif = "0.18.4"
+clap = { version = "4.5", features = ["derive"] }
 snemcore = { path = "../snemcore" }
+watchpoint-parser = { path = "../watchpoint-parser" }
 rfd = { workspace = true }

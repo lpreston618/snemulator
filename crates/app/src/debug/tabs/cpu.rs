@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::debug::{breakpoints::BreakpointInfo, debugger::Debugger};
-use crate::utils::monospace_text;
+use common::app_utils::monospace_text;
 use snemcore::{Snemulator, cartridge, scpu};
 
 const DISASM_BLOCK_SIZE: usize = 64;
@@ -9,7 +9,6 @@ const DISASM_BLOCK_SIZE: usize = 64;
 struct DisassemblyView {
     cached_lines: Option<Vec<scpu::disassembler::DisasmLine>>,
     // scroll_offset: usize,
-    breakpoints: std::collections::HashSet<BreakpointInfo>,
     options: scpu::disassembler::DisassemblyOptions,
     follow_pc: bool,
     current_addr: u32,
@@ -20,7 +19,6 @@ impl DisassemblyView {
         Self {
             cached_lines: None,
             // scroll_offset: 0,
-            breakpoints: std::collections::HashSet::new(),
             options: scpu::disassembler::DisassemblyOptions {
                 use_hw_reg_names: true,
                 show_rel_addr_dest: true,
@@ -107,15 +105,11 @@ impl CpuTab {
         }
     }
     
-    pub fn breakpoints(&self) -> &HashSet<BreakpointInfo> {
-        &self.disasm.breakpoints
-    }
-    
     pub fn breakpoint_hit(&mut self, addr: u32) {
         self.disasm.current_addr = addr;
     }
     
-    pub fn render(&mut self, ui: &mut egui::Ui, core: &Snemulator<Debugger>, jump_to_bps_on_hit: &mut bool) {
+    pub fn render(&mut self, ui: &mut egui::Ui, core: &mut Snemulator<Debugger>, jump_to_bps_on_hit: &mut bool) {
         self.update_disasm(core);
         
         let pc = (core.cpu.pb as u32) << 16 | core.cpu.pc as u32;
@@ -204,18 +198,18 @@ impl CpuTab {
             ui.vertical(|ui| {
                 egui::ScrollArea::vertical().id_salt("disasm_scroll").min_scrolled_height(available_height).show(ui, |ui| {
                     let lines = self.disasm.cached_lines.take();
-
+                    
                     if let Some(lines) = lines {
-                        for line in lines {
+                        for line in lines {                            
                             let is_pc  = line.addr == pc;
-                            let has_bp = self.disasm.breakpoints.contains(&BreakpointInfo::new(line.addr));
+                            let has_bp = core.probe.as_ref().unwrap().breakpoints.contains(&BreakpointInfo::new(line.addr));
                             let addr   = line.addr;
 
                             ui.horizontal(|ui| {
                                 let dot = if has_bp { "🔴" } else { "⚪" };
                                 if ui.small_button(dot).clicked() {
                                     if has_bp {
-                                        self.disasm.breakpoints.remove(&BreakpointInfo::new(addr));
+                                        core.probe.as_mut().unwrap().breakpoints.remove(&BreakpointInfo::new(addr));
                                     }
                                     else {
                                         self.add_breakpoint(addr, core);
@@ -382,12 +376,14 @@ impl CpuTab {
         });
     }
     
-    fn breakpoints_section(&mut self, ui: &mut egui::Ui, core: &Snemulator<Debugger>, jump_to_bps_on_hit: &mut bool) {
+    fn breakpoints_section(&mut self, ui: &mut egui::Ui, core: &mut Snemulator<Debugger>, jump_to_bps_on_hit: &mut bool) {
+        let breakpoints = &mut core.probe.as_mut().unwrap().breakpoints;
+        
         ui.horizontal(|ui| {
             ui.heading("Breakpoints");
             
             if ui.button("Clear All").clicked() {
-                self.disasm.breakpoints.clear();
+                breakpoints.clear();
             }
             
             ui.add_space(5.0);
@@ -410,14 +406,16 @@ impl CpuTab {
             }
         });
         ui.separator();
+        
+        let breakpoints = &mut core.probe.as_mut().unwrap().breakpoints; // To appease borrow checker
 
-        if self.disasm.breakpoints.is_empty() {
+        if breakpoints.is_empty() {
             ui.label("No breakpoints set.");
             return;
         }
 
         let mut to_remove: Option<&BreakpointInfo> = None;
-        let mut sorted: Vec<BreakpointInfo> = self.disasm.breakpoints.iter().copied().collect();
+        let mut sorted: Vec<BreakpointInfo> = breakpoints.iter().copied().collect();
         sorted.sort_unstable_by_key(|bp| bp.addr);
 
         egui::ScrollArea::vertical().id_salt("bp_scroll").show(ui, |ui| {
@@ -445,7 +443,7 @@ impl CpuTab {
         });
 
         if let Some(breakpoint) = to_remove {
-            self.disasm.breakpoints.remove(breakpoint);
+            core.probe.as_mut().unwrap().breakpoints.remove(breakpoint);
         }
     }
     
@@ -468,7 +466,7 @@ impl CpuTab {
         self.disasm.update(pc, memory, region, &options, core);
     }
 
-    fn add_breakpoint(&mut self, addr: u32, core: &Snemulator<Debugger>) {
+    fn add_breakpoint(&mut self, addr: u32, core: &mut Snemulator<Debugger>) {
         let mut breakpoint = BreakpointInfo::new(addr);
         breakpoint.force_x = match self.disasm.options.forced_flag_x {
             Some(v) => v,
@@ -483,7 +481,7 @@ impl CpuTab {
             None => core.cpu.e
         };
 
-        self.disasm.breakpoints.insert(breakpoint);
+        core.probe.as_mut().unwrap().breakpoints.insert(breakpoint);
     }
 }
 

@@ -6,13 +6,14 @@ use crate::app;
 use crate::debug::debugger::Debugger;
 // use crate::core;
 use crate::debug::tabs;
-use crate::windows::ui_window::UiWindow;
+use common::UiWindow;
 // use crate::core::debug::breakpoints::BreakpointInfo;
 // use crate::core::debug::watchpoints::CompiledGraph;
 // use crate::core::debug::DebugAction;
 
 const DEBUG_WINDOW_WIDTH: u32 = 800;
 const DEBUG_WINDOW_HEIGHT: u32 = 600;
+const HYPERSPEED_SPEEDUP: usize = 10;
 
 pub enum DebugAction {
     SingleStep,
@@ -89,7 +90,7 @@ impl DebugWindow {
             if self.hyperspeed_en {       
                 core.probe.as_mut().unwrap().update_textures = false;
                 
-                for _ in 0..9 {
+                for _ in 0..HYPERSPEED_SPEEDUP-1 {
                     core.run_frame_no_output();
                 }
                 
@@ -102,6 +103,12 @@ impl DebugWindow {
                 core.run_frame(frame_buffer, audio_buffer);
             }            
             
+            if core.probe.as_ref().unwrap().breakpoint_hit {
+                core.probe.as_mut().unwrap().breakpoint_hit = false;
+                app_state.is_paused = true;
+                self.breakpoint_hit(core);
+            }
+                        
             // match  {
             //     DebugAction::BreakpointHit => {
             //         self.breakpoint_hit(&snem_core, app_state);
@@ -162,7 +169,7 @@ impl DebugWindow {
                     
                     let hyperspeed_text = if self.hyperspeed_en { "Disable Hyperspeed" } else { "Enable Hyperspeed" };
                     ui.toggle_value(&mut self.hyperspeed_en, hyperspeed_text)
-                        .on_hover_text("If enabled, emulator will run at 10x speed, but with no audio and reduced video output");
+                        .on_hover_text(format!("If enabled, emulator will run at {}x speed, but with no audio and reduced video output", HYPERSPEED_SPEEDUP));
 
                     if app_state.is_paused && ui.button("Resume").clicked() {
                         // self.compile_watchpoints(&snem_core);
@@ -304,10 +311,9 @@ impl DebugWindow {
             .handle_sdl_keyboard_event(event);
     }
 
-    pub fn breakpoint_hit(&mut self, core: &Snemulator) {
-        self.cpu_tab
-            .breakpoint_hit((core.cpu.pb as u32) << 16 | core.cpu.pc as u32);
-
+    pub fn breakpoint_hit(&mut self, core: &Snemulator<Debugger>) {
+        self.cpu_tab.breakpoint_hit((core.cpu.pb as u32) << 16 | core.cpu.pc as u32);
+        
         if self.jump_to_bps_on_hit {
             self.selected_tab = tabs::DebugTab::Cpu;
         }

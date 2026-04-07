@@ -1,7 +1,7 @@
 use crate::{app, debug::watchpoints::types::*};
 use crate::debug::watchpoints::notes;
 // use crate::app::debug::watchpoints::types::HWVAL_NAMES;
-use crate::utils::monospace_text;
+use common::app_utils::monospace_text;
 use snemcore;
 use egui::{Color32, Pos2, Rect, Stroke, Vec2};
 use std::collections::{HashMap, HashSet};

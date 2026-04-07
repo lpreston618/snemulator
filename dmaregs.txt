@@ -1,0 +1,15 @@
+| Name    | Addr  | Bits      | Notes                                                                 |
+|---------|-------|-----------|-----------------------------------------------------------------------|
+| DMAPn   | $43n0 | DI.A APPP | Direction (D) Indirect HDMA (I) Addr inc mode (A) Transfer pattern (P)|
+| BBADn   | $43n1 | AAAA AAAA | B-bus address.                                                        |
+| A1TnL   | $43n2 | LLLL LLLL | DMA source address / HDMA table start address (low).                  |
+| A1TnH   | $43n3 | HHHH HHHH | DMA source address / HDMA table start address (high).                 |
+| A1Bn    | $43n4 | BBBB BBBB | DMA source address / HDMA table start address (bank).                 |
+| DASnL   | $43n5 | LLLL LLLL | DMA byte count / HDMA indirect table address (low).                   |
+| DASnH   | $43n6 | HHHH HHHH | DMA byte count / HDMA indirect table address (high).                  |
+| DASBn   | $43n7 | BBBB BBBB | DMA byte count / HDMA indirect table address (bank).                  |
+| A2AnL   | $43n8 | LLLL LLLL | HDMA table current address within bank (low).                         |
+| A2AnH   | $43n9 | HHHH HHHH | HDMA table current address within bank (high).                        |
+| NLTRn   | $43nA | RLLL LLLL | HDMA reload flag (R) and scanline counter (L).                        |
+| UNUSEDn | $43nB | DDDD DDDD | Unused shared data byte (Same as $43nF).                              |
+| UNUSEDn | $43nF | DDDD DDDD | Unused shared data byte (Same as $43nB).                              |

@@ -3,7 +3,6 @@ use log::info;
 use crate::app::SnemulatorApp;
 
 mod app;
-mod utils;
 mod windows;
 
 #[cfg(feature = "debug")]

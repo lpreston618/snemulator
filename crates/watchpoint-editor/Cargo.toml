@@ -1,0 +1,11 @@
+[package]
+name = "watchpoint-editor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+common = { path = "../common" }
+anyhow = { workspace = true }
+egui = { workspace = true }
+sdl3 = { workspace = true }
+rfd = { workspace = true }

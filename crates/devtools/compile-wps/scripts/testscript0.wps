@@ -1,0 +1,15 @@
+VARIABLES:
+    Num counter;
+
+INIT:
+    counter = 0;
+
+LOGIC:
+    if (cpu.a == 0xFF) {
+        counter = counter + 1;
+        LOG("A register is 0xFF, count: ", counter);
+    }
+    
+    if (counter > 99) {
+        BREAK;
+    }

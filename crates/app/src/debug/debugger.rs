@@ -63,8 +63,8 @@ pub struct Debugger {
     pub breakpoints: HashSet<BreakpointInfo>,
     pub layer_buffers: LayerBuffers,
     pub breakpoint_hit: bool,
-    pub watchpoint_hit: bool,
     pub update_textures: bool,
+    pub watchpoint_hit: bool,
 }
 
 impl DebugProbe for Debugger {
