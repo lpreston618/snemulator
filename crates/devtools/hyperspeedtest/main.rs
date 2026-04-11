@@ -58,7 +58,7 @@ pub fn hyperspeed_test(emulated_seconds: u64, snem_core: &mut snemcore::Snemulat
     
     for _ in 0..emulated_seconds {
         for _ in 0..60 {
-            snem_core.run_frame_no_output();
+            snem_core.run_frame(None, None);
         }
         
         pb.inc(1);

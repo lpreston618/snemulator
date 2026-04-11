@@ -80,7 +80,7 @@ impl DebugWindow {
         app_state: &mut app::AppState,
         frame_buffer: &mut [u8],
         audio_buffer: &mut Vec<i16>,
-    ) -> app::AppAction {
+    ) -> app::AppAction {        
         let mut app_action = app::AppAction::Continue;
 
         if !app_state.is_paused {
@@ -88,22 +88,26 @@ impl DebugWindow {
                 core.probe.as_mut().unwrap().update_textures = false;
                 
                 for _ in 0..HYPERSPEED_SPEEDUP-1 {
-                    core.run_frame_no_output();
+                    core.run_frame(None, None);
                 }
                 
                 core.probe.as_mut().unwrap().update_textures = true;
                 
-                let mut fake_audio_buffer = Vec::new();
-                core.run_frame(frame_buffer, &mut fake_audio_buffer);
+                core.run_frame(Some(frame_buffer), None);
             } else {
                 core.probe.as_mut().unwrap().update_textures = true;
-                core.run_frame(frame_buffer, audio_buffer);
+                core.run_frame(Some(frame_buffer), Some(audio_buffer));
             }            
             
             if core.probe.as_ref().unwrap().breakpoint_hit {
                 core.probe.as_mut().unwrap().breakpoint_hit = false;
                 app_state.is_paused = true;
                 self.breakpoint_hit(core);
+            }
+            
+            if core.probe.as_ref().unwrap().watchpoint_hit {
+                app_state.is_paused = true;
+                core.probe.as_mut().unwrap().watchpoint_hit = false;
             }
         }
 
@@ -206,6 +210,23 @@ impl DebugWindow {
                     if core.probe.as_ref().unwrap().breakpoint_hit {
                         core.probe.as_mut().unwrap().breakpoint_hit = false;
                         self.breakpoint_hit(core);
+                    }
+                    
+                    if core.probe.as_ref().unwrap().watchpoint_hit {
+                        core.probe.as_mut().unwrap().watchpoint_hit = false;
+                    }
+                }
+                DebugAction::StepFrame if app_state.is_paused => {
+                    core.probe.as_mut().unwrap().update_textures = true;
+                    core.run_frame(Some(frame_buffer), None);
+                    
+                    if core.probe.as_ref().unwrap().breakpoint_hit {
+                        core.probe.as_mut().unwrap().breakpoint_hit = false;
+                        self.breakpoint_hit(core);
+                    }
+                    
+                    if core.probe.as_ref().unwrap().watchpoint_hit {
+                        core.probe.as_mut().unwrap().watchpoint_hit = false;
                     }
                 }
                 

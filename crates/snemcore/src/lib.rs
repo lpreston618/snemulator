@@ -76,7 +76,7 @@ pub struct Snemulator<P: DebugProbe = NullProbe> {
     p2_controller: SnemController,
 
     pub cpu: Cpu65c816<P>,
-    pub ppu: Ppu5C7x,
+    pub ppu: Ppu5C7x<P>,
     pub ssmp: Ssmp,
 
     pub wram: Box<[u8; WRAM_SIZE]>,
@@ -87,21 +87,21 @@ pub struct Snemulator<P: DebugProbe = NullProbe> {
     pub cpu_regs: CpuIoRegs,
     pub apu_ports: ApuIoPorts,
 
-    dma_regs: [DmaRegs; 8],
-    dma_en: bool,
-    hdma_en: bool,
-    hdma_pending: bool,
-    dma_active_ch: usize,
-    hdma_active_ch: usize,
+    pub dma_regs: [DmaRegs; 8],
+    pub dma_en: bool,
+    pub hdma_en: bool,
+    pub hdma_pending: bool,
+    pub dma_active_ch: usize,
+    pub hdma_active_ch: usize,
 
-    joy1_latch: u16,
-    joy2_latch: u16,
-    joy1_data1_auto: u16,
-    joy2_data1_auto: u16,
-    joy1_data2_auto: u16,
-    joy2_data2_auto: u16,
-    joypad_cmd: Option<JoypadCmd>,
-    cpu_interrupt: Option<CpuInterrupt>,
+    pub joy1_latch: u16,
+    pub joy2_latch: u16,
+    pub joy1_data1_auto: u16,
+    pub joy2_data1_auto: u16,
+    pub joy1_data2_auto: u16,
+    pub joy2_data2_auto: u16,
+    pub joypad_cmd: Option<JoypadCmd>,
+    pub cpu_interrupt: Option<CpuInterrupt>,
 
     pub frame_ready: bool,
 
@@ -147,6 +147,12 @@ impl<P: DebugProbe> Snemulator<P> {
             frame: 0,
             probe: Some(probe),
         }
+    }
+    
+    pub fn init_probe(&mut self) {
+        let mut probe = self.probe.take().unwrap();
+        probe.init(self);
+        self.probe = Some(probe);
     }
 
     pub fn power_on(&mut self) {
@@ -227,17 +233,35 @@ impl<P: DebugProbe> Snemulator<P> {
         }
     }
 
-    pub fn run_frame(&mut self, frame_buffer: &mut [u8], audio_buffer: &mut Vec<i16>) {
+    pub fn run_frame(&mut self, frame_buffer: Option<&mut [u8]>, audio_buffer: Option<&mut Vec<i16>>) {
         self.frame_ready = false;
 
         self.ssmp.start_frame();
 
-        while !self.frame_ready && !self.probe.as_mut().unwrap().should_stop() {
-            self.cycle(frame_buffer, audio_buffer);
+        if let Some(frame_buffer) = frame_buffer {
+            if let Some(audio_buffer) = audio_buffer {
+                while !self.frame_ready && !self.probe.as_mut().unwrap().should_stop() {
+                    self.cycle(frame_buffer, audio_buffer);
+                }
+            } else {
+                while !self.frame_ready && !self.probe.as_mut().unwrap().should_stop() {
+                    self.cycle(frame_buffer, &mut Vec::new());
+                }
+            }
+        } else {
+            if let Some(audio_buffer) = audio_buffer {
+                while !self.frame_ready && !self.probe.as_mut().unwrap().should_stop() {
+                    self.cycle_no_video(audio_buffer);
+                }
+            } else {
+                while !self.frame_ready && !self.probe.as_mut().unwrap().should_stop() {
+                    self.cycle_no_video(&mut Vec::new());
+                }
+            }
         }
 
         let mut probe = self.probe.take().unwrap();
-        probe.on_frame_end(self);
+        probe.on_frame(self);
         self.probe = Some(probe);
 
         if self.frame_ready {
@@ -261,18 +285,18 @@ impl<P: DebugProbe> Snemulator<P> {
         }
 
         if self.ppu.clocks == 0 {
-            let scanline = self.ppu.scanline;
-
             self.cycle_ppu(frame_buffer);
 
             probe.on_dot(self);
 
-            if self.ppu.scanline != scanline {
+            if self.ppu.dot == 0 {
                 probe.on_scanline(self);
             }
         }
 
         self.ssmp.cycle(clocks, audio_buffer, &mut self.apu_ports);
+        
+        probe.on_emulation_cycle(self);
 
         self.probe = Some(probe);
     }
@@ -345,10 +369,15 @@ impl<P: DebugProbe> Snemulator<P> {
 
     fn do_hdma(&mut self, probe: &mut P) {
         let mut hdma_active_ch = self.hdma_active_ch;
+        
         let mut bus = cpu_bus!(self, probe);
 
         // Table entry finished
         if bus.dma_regs[hdma_active_ch].scanlines_left == 0 {
+            probe.on_hdma_end(hdma_active_ch);
+            
+            bus = cpu_bus!(self, probe);
+            
             'seek_next_entry: while hdma_active_ch < 8 {
                 let mut hdma_table_addr = bus.dma_regs[hdma_active_ch].a_bus_addr;
                 hdma_table_addr.offset = bus.dma_regs[hdma_active_ch].hdma_table_offset;
@@ -357,6 +386,10 @@ impl<P: DebugProbe> Snemulator<P> {
 
                 // Found a valid enty in this HDMA table
                 if scanline_counter != 0 {
+                    probe.on_hdma_start(hdma_active_ch);
+                    
+                    bus = cpu_bus!(self, probe);
+                    
                     bus.dma_regs[hdma_active_ch].transfer_pattern_step = 0;
                     bus.dma_regs[hdma_active_ch].scanlines_left = scanline_counter & 0x7F;
                     bus.dma_regs[hdma_active_ch].hdma_reload_flag = get_bit_n!(scanline_counter, 7);
@@ -439,8 +472,10 @@ impl<P: DebugProbe> Snemulator<P> {
         };
 
         let mut bus = cpu_bus!(self, probe);
-        let data = bus.read(src_addr);
-        bus.write(dst_addr, data);
+        let value = bus.read(src_addr);
+        bus.write(dst_addr, value);
+        
+        probe.on_hdma_transfer(self.hdma_active_ch, src_addr.to_u32(), dst_addr.to_u32(), value);
     }
 
     fn do_dma(&mut self, probe: &mut P) {
@@ -451,6 +486,8 @@ impl<P: DebugProbe> Snemulator<P> {
 
         // Channel's DMA transfer complete
         if byte_count == 0 {
+            probe.on_dma_end(self.dma_active_ch);
+            
             dma_ch_regs.dma_en = false;
             self.dma_active_ch += 1;
 
@@ -462,6 +499,7 @@ impl<P: DebugProbe> Snemulator<P> {
                 if dma_ch_regs.dma_en {
                     // Active channel found
                     if byte_count != 0 {
+                        probe.on_dma_start(self.dma_active_ch);
                         break 'seek_active_channel;
                     }
 
@@ -495,8 +533,10 @@ impl<P: DebugProbe> Snemulator<P> {
         dma_ch_regs.inc_a_bus_addr();
 
         let mut bus = cpu_bus!(self, probe);
-        let data = bus.read(src_addr);
-        bus.write(dst_addr, data);
+        let value = bus.read(src_addr);
+        bus.write(dst_addr, value);
+        
+        probe.on_dma_transfer(self.dma_active_ch, src_addr.to_u32(), dst_addr.to_u32(), value);
 
         // if dst_addr.offset == 0x2118 || dst_addr.offset == 0x2119 {
         //     debug!("DMA transfered 0x{:02X} from ${:06X} to VRAM[{:04X}]", data, src_addr.to_u32(), bus.ppu_regs.vram_addr);
@@ -509,25 +549,7 @@ impl<P: DebugProbe> Snemulator<P> {
 }
 
 impl<P: DebugProbe> Snemulator<P> {
-    pub fn run_frame_no_output(&mut self) {
-        self.frame_ready = false;
-
-        self.ssmp.start_frame();
-
-        while !self.frame_ready && !self.probe.as_mut().unwrap().should_stop() {
-            self.cycle_no_output();
-        }
-
-        let mut probe = self.probe.take().unwrap();
-        probe.on_frame_end(self);
-        self.probe = Some(probe);
-
-        if self.frame_ready {
-            self.frame += 1;
-        }
-    }
-
-    fn cycle_no_output(&mut self) {
+    fn cycle_no_video(&mut self, audio_buffer: &mut Vec<i16>) {
         let mut probe = self.probe.take().unwrap();
 
         let clocks = self.cpu.clocks.min(self.ppu.clocks);
@@ -554,7 +576,7 @@ impl<P: DebugProbe> Snemulator<P> {
             }
         }
 
-        self.ssmp.cycle_no_output(clocks, &mut self.apu_ports);
+        self.ssmp.cycle(clocks, audio_buffer, &mut self.apu_ports);
 
         self.probe = Some(probe);
     }

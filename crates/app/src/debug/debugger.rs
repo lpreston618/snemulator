@@ -71,44 +71,63 @@ pub struct Debugger {
 }
 
 impl DebugProbe for Debugger {
+    fn init(&mut self, core: &mut Snemulator<Self>) {
+        match self.wp_engine.init(core) {
+            Err(e) => log::error!("Failed to initialize watchpoint engine: {}", e),
+            _ => {}
+        }
+    }
+    
+    fn should_stop(&mut self) -> bool {
+        self.breakpoint_hit || self.watchpoint_hit
+    }
+    
     fn resume_emulation(&mut self) {
         self.breakpoint_hit = false;
         self.watchpoint_hit = false;
     }
     
     fn on_emulation_cycle(&mut self, core: &mut Snemulator<Self>) {
-        match self.wp_engine.on_emulation_cycle(core) {
-            WatchpointAction::Break => { self.watchpoint_hit = true; },
-            _ => {}
-        }
-    }
-    
-    fn on_frame_end(&mut self, core: &mut Snemulator<Self>) {
-        log::debug!("On frame end.");
-        
-        match self.wp_engine.on_frame(core) {
+        match self.wp_engine.on_emulation_cycle() {
             WatchpointAction::Break => { self.watchpoint_hit = true; },
             _ => {}
         }
     }
     
     fn on_dot(&mut self, core: &mut Snemulator<Self>) {
-        if !self.update_textures {
-            return;
+        if self.update_textures {
+            if core.ppu.x == 0 && core.ppu.y == 0 {
+                self.layer_buffers.clear_all();
+            }
+            
+            if core.ppu.x < 256 && core.ppu.y < 224 {
+                core.update_layer_buffers(
+                    &mut self.layer_buffers.bg1[..],
+                    &mut self.layer_buffers.bg2[..],
+                    &mut self.layer_buffers.bg3[..],
+                    &mut self.layer_buffers.bg4[..],
+                    &mut self.layer_buffers.obj[..],
+                );
+            }
         }
         
-        if core.ppu.x == 0 && core.ppu.y == 0 {
-            self.layer_buffers.clear_all();
+        match self.wp_engine.on_dot() {
+            WatchpointAction::Break => { self.watchpoint_hit = true; },
+            _ => {}
         }
-        
-        if core.ppu.x < 256 && core.ppu.y < 224 {
-            core.update_layer_buffers(
-                &mut self.layer_buffers.bg1[..],
-                &mut self.layer_buffers.bg2[..],
-                &mut self.layer_buffers.bg3[..],
-                &mut self.layer_buffers.bg4[..],
-                &mut self.layer_buffers.obj[..]
-            );
+    }
+    
+    fn on_scanline(&mut self, core: &mut Snemulator<Self>) {
+        match self.wp_engine.on_scanline() {
+            WatchpointAction::Break => { self.watchpoint_hit = true; },
+            _ => {}
+        }
+    }
+    
+    fn on_frame(&mut self, core: &mut Snemulator<Self>) {
+        match self.wp_engine.on_frame() {
+            WatchpointAction::Break => { self.watchpoint_hit = true; },
+            _ => {}
         }
     }
     
@@ -118,25 +137,86 @@ impl DebugProbe for Debugger {
         if self.breakpoints.contains(&BreakpointInfo::new(full_pc)) {
             self.breakpoint_hit = true;
         }
+        
+        match self.wp_engine.on_instruction() {
+            WatchpointAction::Break => { self.watchpoint_hit = true; },
+            _ => {}
+        }
     }
     
-    fn should_stop(&mut self) -> bool {
-        self.breakpoint_hit || self.watchpoint_hit
+    fn on_interrupt(&mut self, kind: snemcore::scpu::CpuInterrupt) {
+        match self.wp_engine.on_interrupt(kind) {
+            WatchpointAction::Break => { self.watchpoint_hit = true; },
+            _ => {}
+        }
+    }
+    
+    fn on_memory_read(&mut self, addr: u32, value: u8) {
+        match self.wp_engine.on_memory_read(addr, value) {
+            WatchpointAction::Break => { self.watchpoint_hit = true; },
+            _ => {}
+        }
+    }
+    
+    fn on_memory_write(&mut self, addr: u32, value: u8) {
+        match self.wp_engine.on_memory_write(addr, value) {
+            WatchpointAction::Break => { self.watchpoint_hit = true; },
+            _ => {}
+        }
+    }
+
+    fn on_dma_start(&mut self, channel: usize) {
+        match self.wp_engine.on_dma_start(channel) {
+            WatchpointAction::Break => { self.watchpoint_hit = true; },
+            _ => {}
+        }
+    }
+    
+    fn on_dma_transfer(&mut self, channel: usize, src_addr: u32, dst_addr: u32, value: u8) {
+        match self.wp_engine.on_dma_transfer(channel, src_addr, dst_addr, value) {
+            WatchpointAction::Break => { self.watchpoint_hit = true; },
+            _ => {}
+        }
+    }
+
+    fn on_dma_end(&mut self, channel: usize) {
+        match self.wp_engine.on_dma_end(channel) {
+            WatchpointAction::Break => { self.watchpoint_hit = true; },
+            _ => {}
+        }
+    }
+    
+    fn on_hdma_start(&mut self, channel: usize) {
+        match self.wp_engine.on_hdma_start(channel) {
+            WatchpointAction::Break => { self.watchpoint_hit = true; },
+            _ => {}
+        }
+    }
+    
+    fn on_hdma_transfer(&mut self, channel: usize, src_addr: u32, dst_addr: u32, value: u8) {
+        match self.wp_engine.on_hdma_transfer(channel, src_addr, dst_addr, value) {
+            WatchpointAction::Break => { self.watchpoint_hit = true; },
+            _ => {}
+        }
+    }
+
+    fn on_hdma_end(&mut self, channel: usize) {
+        match self.wp_engine.on_hdma_end(channel) {
+            WatchpointAction::Break => { self.watchpoint_hit = true; },
+            _ => {}
+        }
     }
 }
 
 impl Debugger {
     pub fn new() -> Result<Self> {
-        let wp_engine = WatchpointEngine::new()
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
-        
         Ok(Self {
             breakpoints: HashSet::new(),
             layer_buffers: LayerBuffers::new(),
             breakpoint_hit: false,
             watchpoint_hit: false,
             update_textures: true,
-            wp_engine,
+            wp_engine: WatchpointEngine::new(),
         })
     }
 }

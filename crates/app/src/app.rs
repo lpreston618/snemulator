@@ -279,8 +279,7 @@ impl SnemulatorApp {
             if !self.state.is_paused
                 && (!self.state.is_minimized || !self.settings.pause_on_minimize)
             {
-                self.snem_core
-                    .run_frame(&mut self.frame_buffer[..], &mut temp);
+                self.snem_core.run_frame(Some(&mut self.frame_buffer[..]), Some(&mut temp));
             }
         } else {
             self.render_load_rom_screen();
@@ -701,6 +700,7 @@ impl SnemulatorApp {
 
         if self.debug_window.is_some() {
             self.state.is_paused = true;
+            self.snem_core.init_probe();
         }
     }
 }

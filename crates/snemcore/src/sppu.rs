@@ -1,3 +1,6 @@
+use std::marker::PhantomData;
+
+use crate::probe::DebugProbe;
 use crate::scpu::ioregs::HVTimerIRQ;
 use crate::scpu::CpuInterrupt;
 use crate::sppu::bus::PpuBus;
@@ -23,7 +26,7 @@ const SCANLINE_END_DOT: usize = 340;
 
 const TILE_CACHE_SIZE: usize = 1;
 
-pub struct Ppu5C7x {
+pub struct Ppu5C7x<P: DebugProbe> {
     pub dot: usize,
     pub scanline: usize,
     /// x position of the current dot on the screen
@@ -45,9 +48,11 @@ pub struct Ppu5C7x {
 
     /// Number of master clocks until the next dot
     pub clocks: usize,
+    
+    _phantom_probe: PhantomData<P>,
 }
 
-impl Ppu5C7x {
+impl<P: DebugProbe> Ppu5C7x<P> {
     pub fn new() -> Self {
         let mut ppu = Self {
             dot: 0,
@@ -63,6 +68,7 @@ impl Ppu5C7x {
             bg_tile_cache_hits: 0,
             bg_tile_cache_accesses: 0,
             clocks: 0,
+            _phantom_probe: PhantomData {},
         };
 
         ppu.x = ppu.screen_x();
@@ -189,8 +195,8 @@ impl Ppu5C7x {
             let main_pixel_idx = 4 * ((2 * self.y + p) * 512 + (2 * self.x + 0));
             let sub_pixel_idx = 4 * ((2 * self.y + p) * 512 + (2 * self.x + 1));
 
-            Ppu5C7x::set_pixel(bus.frame_buffer, main_pixel_idx, main_col);
-            Ppu5C7x::set_pixel(bus.frame_buffer, sub_pixel_idx, sub_col);
+            Ppu5C7x::<P>::set_pixel(bus.frame_buffer, main_pixel_idx, main_col);
+            Ppu5C7x::<P>::set_pixel(bus.frame_buffer, sub_pixel_idx, sub_col);
         } else if regs.screen_interlace_en {
             let dot_col = if cmath_en {
                 self.apply_cmath(bus, main_col, sub_col)
@@ -202,8 +208,8 @@ impl Ppu5C7x {
             let left_pixel_idx = 4 * ((2 * self.y + p) * 512 + (2 * self.x + 0));
             let right_pixel_idx = 4 * ((2 * self.y + p) * 512 + (2 * self.x + 1));
 
-            Ppu5C7x::set_pixel(bus.frame_buffer, left_pixel_idx, dot_col);
-            Ppu5C7x::set_pixel(bus.frame_buffer, right_pixel_idx, dot_col);
+            Ppu5C7x::<P>::set_pixel(bus.frame_buffer, left_pixel_idx, dot_col);
+            Ppu5C7x::<P>::set_pixel(bus.frame_buffer, right_pixel_idx, dot_col);
         } else if regs.hi_res_en {
             let main_col = if cmath_en {
                 self.apply_cmath(bus, main_col, regs.fixed_color)
@@ -221,8 +227,8 @@ impl Ppu5C7x {
             let main_pixel_idx = 4 * ((2 * self.y + p) * 512 + (2 * self.x + 0));
             let sub_pixel_idx = 4 * ((2 * self.y + p) * 512 + (2 * self.x + 1));
 
-            Ppu5C7x::set_pixel(bus.frame_buffer, main_pixel_idx, main_col);
-            Ppu5C7x::set_pixel(bus.frame_buffer, sub_pixel_idx, sub_col);
+            Ppu5C7x::<P>::set_pixel(bus.frame_buffer, main_pixel_idx, main_col);
+            Ppu5C7x::<P>::set_pixel(bus.frame_buffer, sub_pixel_idx, sub_col);
         } else {
             let dot_col = if cmath_en {
                 self.apply_cmath(bus, main_col, sub_col)
@@ -236,10 +242,10 @@ impl Ppu5C7x {
             let bottom_left_pixel_idx = 4 * ((2 * self.y + 1) * 512 + (2 * self.x + 0));
             let bottom_right_pixel_idx = 4 * ((2 * self.y + 1) * 512 + (2 * self.x + 1));
 
-            Ppu5C7x::set_pixel(bus.frame_buffer, top_left_pixel_idx, dot_col);
-            Ppu5C7x::set_pixel(bus.frame_buffer, top_right_pixel_idx, dot_col);
-            Ppu5C7x::set_pixel(bus.frame_buffer, bottom_left_pixel_idx, dot_col);
-            Ppu5C7x::set_pixel(bus.frame_buffer, bottom_right_pixel_idx, dot_col);
+            Ppu5C7x::<P>::set_pixel(bus.frame_buffer, top_left_pixel_idx, dot_col);
+            Ppu5C7x::<P>::set_pixel(bus.frame_buffer, top_right_pixel_idx, dot_col);
+            Ppu5C7x::<P>::set_pixel(bus.frame_buffer, bottom_left_pixel_idx, dot_col);
+            Ppu5C7x::<P>::set_pixel(bus.frame_buffer, bottom_right_pixel_idx, dot_col);
         }
     }
 
@@ -1449,7 +1455,7 @@ impl Ppu5C7x {
     }
 }
 
-impl Ppu5C7x {    
+impl<P: DebugProbe> Ppu5C7x<P> {    
     pub fn draw_debug_layers(
         &mut self, 
         bus: &mut PpuBus, 

@@ -138,21 +138,21 @@ core.mmio = {}
 ---@class DMA
 ---@field addr_inc_mode u8 From DMAP
 ---@field transfer_pattern u8 From DMAP
----@field dma_source_bank u8 From A1TB
----@field hdma_table_start_bank u8 Alias for dma_source_bank
+---@field a_bus_bank u8 From A1TB
+---@field hdma_table_start_bank u8 Alias for a_bus_bank
 ---@field hdma_indirect_table_bank u8 From DASB
 ---@field hdma_scanline_counter u8 From NLTR
 ---@field unused_reg u8 From UNUSED ($43nB/$43nF)
 ---@field b_bus_addr u16 High byte is always 0x21. From BBAD
----@field dma_source_offset u16 From A1TL, A1TH
----@field hdma_table_start_offset u16 Alias for dma_source_offset
+---@field a_bus_offset u16 From A1TL, A1TH
+---@field hdma_table_start_offset u16 Alias for a_bus_offset
 ---@field hdma_indirect_table_offset u16 From DASL, DASH
 ---@field hdma_table_offset u16 From A2AL and A2AH
 ---@field b_to_a boolean From DMAP
 ---@field indirect_hdma boolean From DMAP
 ---@field hdma_reload boolean From NLTR
----@field full_dma_source_addr CpuAddress From A1TL, A1TH, and A1B
----@field full_hdma_table_start_addr CpuAddress Alias for full_dma_source_addr
+---@field full_a_bus_addr CpuAddress From A1TL, A1TH, and A1B
+---@field full_hdma_table_start_addr CpuAddress Alias for full_a_bus_addr
 ---@field full_hdma_indirect_table_addr CpuAddress From DASnL, DASnH, and DASBn
 
 ---@type (DMA?)[] Registers for DMA channels 0-7. `core.dma[n]` reads nil if n is not an integer from 0 to 7.
@@ -175,8 +175,96 @@ core.dma[6] = {} ---@diagnostic disable-line: missing-fields
 ---@type DMA
 core.dma[7] = {} ---@diagnostic disable-line: missing-fields
 
+---@enum Action
+ACTION = {
+    ---Continue emulation
+    Continue = 0,
+    ---Pause emulation
+    Break = 1,
+}
+
+---Log a message with the debug log level
+---@param message string The message to log
+function Log(message) end
+
+---Event handler called every emulation cycle.
+---WARNING: This is called millions of times per frame. Using it will lead to performance decrease.
+---@return Action
+function OnEmulationCycle() return ACTION.Continue end
+
+---Event handler called every PPU cycle.
+---WARNING: This is called millions of times per frame. Using it will lead to performance decrease.
+---@return Action
+function OnDot() return ACTION.Continue end
+
+---Event handler called at start of each scanline.
+---@return Action
+function OnScanline() return ACTION.Continue end
+
+---Event handler called at the end of each frame (start of V-Blank)
+---@return Action
+function OnFrame() return ACTION.Continue end
+
+---Event handler called after every SCPU instruction.
+---WARNING: This is called many, many times per frame and complex logic here can lead to performance decrease.
+---@return Action
+function OnInstruction() return ACTION.Continue end
+
+---Event handler called on SCPU memory writes.
+---@param addr CpuAddress Memory address written
+---@param value u8 Byte value written
+---@return Action
+function OnMemoryWrite(addr, value) return ACTION.Continue end
+
+---Event handler called on SCPU memory reads.
+---@param addr CpuAddress Memory address read
+---@param value u8 Byte value read from memory
+---@return Action
+function OnMemoryRead(addr, value) return ACTION.Continue end
+
+---Event handler called when an SCPU interrupt occurs.
+---@param kind Interrupt The kind of interrupt that has occured.
+---@return Action
+function OnInterrupt(kind) return ACTION.Continue end
+
+---Event handler called when a DMA transfer starts on a given channel.
+---@param channel number DMA channel number
+---@return Action
+function OnDMAStart(channel) return ACTION.Continue end
+
+---Event handler called on each DMA byte transfer.
+---@param channel number DMA channel number
+---@param src_addr CpuAddress Source memory address
+---@param dst_addr CpuAddress Destination memory address
+---@param value u8 Byte value transferred
+---@return Action
+function OnDMATransfer(channel, src_addr, dst_addr, value) return ACTION.Continue end
+
+---Event handler called when a DMA transfer ends on a given channel.
+---@param channel number DMA channel number
+---@return Action
+function OnDMAEnd(channel) return ACTION.Continue end
+
+---Event handler called when an HDMA transfer starts on a given channel.
+---@param channel number HDMA channel number
+---@return Action
+function OnHDMAStart(channel) return ACTION.Continue end
+
+---Event handler called on each HDMA byte transfer.
+---@param channel number HDMA channel number
+---@param src_addr CpuAddress Source memory address
+---@param dst_addr CpuAddress Destination memory address
+---@param value u8 Byte value transferred
+---@return Action
+function OnHDMATransfer(channel, src_addr, dst_addr, value) return ACTION.Continue end
+
+---Event handler called when an HDMA transfer ends on a given channel.
+---@param channel number HDMA channel number
+---@return Action
+function OnHDMAEnd(channel) return ACTION.Continue end
+
 CONSTS = {}
-CONSTS.mmio = {}
+CONSTS.mmio = {} -- MMIO Register Addresses
 CONSTS.mmio.INIDISP = 0x2100 -- F... BBBB           | Forced blanking (F), screen brightness (B)
 CONSTS.mmio.OBJSEL = 0x2101 -- SSSN NbBB           | OBJ sprite size (S), name secondary select (N), name base address (B)
 CONSTS.mmio.OAMADDL = 0x2102 -- AAAA AAAA           | OAM word address (A)
@@ -371,47 +459,14 @@ CONSTS.mmio.DASB7 = 0x4377 -- BBBB BBBB | DMA byte count / HDMA indirect table a
 CONSTS.mmio.A2A7L = 0x4378 -- LLLL LLLL | HDMA table current address within bank (low).
 CONSTS.mmio.A2A7H = 0x4379 -- HHHH HHHH | HDMA table current address within bank (high).
 CONSTS.mmio.NLTR7 = 0x437A -- RLLL LLLL | HDMA reload flag (R) and scanline counter (L).
-CONSTS.mmio.UNUSED7 = 0x437B -- DDDD DDDD | Unused shared data byte (Same as $43nF).
+CONSTS.mmio.UNUSED7 = 0x437B  -- DDDD DDDD | Unused shared data byte (Same as $43nF).
 
----@enum Action
-ACTION = {
-    ---Continue emulation
-    Continue = 0,
-    ---Pause emulation
-    Break = 1,
+---@enum Interrupt
+CONSTS.interrupts = {
+    IRQ = 0,
+    NMI = 1,
+    BRK = 2,
+    COP = 3,
+    RESET = 4,
+    ABORT = 5,
 }
-
----Event handler called every emulation cycle.
----WARNING: This is called many, many times per frame and complex logic here can lead to performance decrease.
----@param core Snemulator The current state of the emulator core
----@return Action
-function OnEmulationCycle(core) return ACTION.Continue end
-
----Event handler called on SCPU memory writes.
----@param core Snemulator The current state of the emulator core
----@param addr CpuAddress Memory address written
----@param value u8 Byte value written
----@return Action
-function OnMemoryWrite(core, addr, value) return ACTION.Continue end
-
----Event handler called after every SCPU instruction.
----WARNING: This is called many, many times per frame and complex logic here can lead to performance decrease.
----@param core Snemulator The current state of the emulator core
----@return Action
-function OnInstruction(core) return ACTION.Continue end
-
----Event handler called at start of each scanline.
----@param core Snemulator The current state of the emulator core
----@return Action
-function OnScanline(core) return ACTION.Continue end
-
----Event handler called every PPU cycle.
----WARNING: This is called many, many times per frame and complex logic here can lead to performance decrease.
----@param core Snemulator The current state of the emulator core
----@return Action
-function OnDot(core) return ACTION.Continue end
-
----Event handler called at the end of each frame (start of V-Blank)
----@param core Snemulator The current state of the emulator core
----@return Action
-function OnFrame(core) return ACTION.Continue end

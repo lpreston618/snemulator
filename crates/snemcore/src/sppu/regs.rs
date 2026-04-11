@@ -114,12 +114,12 @@ pub struct PpuRegs {
     // $210D    ...x xxXX LLLL LLLL    Write x2 Only
     //       - BG1 or Mode 7 horizontal scroll (X)
     //       - mode7_data_latch (L), writing sets new data latch to (...x xxXX)
-    // pub bg1_m7_x_offset: u16,
+    pub m7_scroll_x: u16,
 
     // $210E    ...y yyYY LLLL LLLL    Write x2 Only
     //       - BG1 or Mode 7 vertical scroll (Y)
     //       - mode7_data_latch (L), writing sets new data latch to (.... ..YY)
-    // pub bg1_m7_y_offset: u16,
+    pub m7_scroll_y: u16,
 
     // $210F    .... ..XX XXXX XXXX    Write x2 Only
     //       - BG2 horizontal scroll (X)
@@ -629,19 +629,24 @@ impl PpuRegs {
     pub fn write_210D(&mut self, value: u8) {
         let bgofs_latch = self.bg_offset_latch as u16;
         let bghofs_latch = self.bg_offset_x_latch as u16;
+        let m7_latch = self.m7_latch as u16;
         self.bg_offset_latch = value;
         self.bg_offset_x_latch = value;
-
-        self.bg_settings[0].scroll_x =
-            (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
+        self.m7_latch = value;
+        
+        self.bg_settings[0].scroll_x = (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
+        self.m7_scroll_x = ((value & 0x1F) as u16) << 8 | m7_latch;
     }
 
     #[allow(non_snake_case)]
     pub fn write_210E(&mut self, value: u8) {
         let bgofs_latch = self.bg_offset_latch as u16;
+        let m7_latch = self.m7_latch as u16;
         self.bg_offset_latch = value;
+        self.m7_latch = value;
 
         self.bg_settings[0].scroll_y = (((value & 3) as u16) << 8) | bgofs_latch;
+        self.m7_scroll_y = ((value & 0x1F) as u16) << 8 | m7_latch;
     }
 
     #[allow(non_snake_case)]

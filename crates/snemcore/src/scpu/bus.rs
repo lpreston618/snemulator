@@ -108,14 +108,10 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             0xC0..=0xFF => self.cart.read(addr),
         };
         
-        self.probe.on_memory_read(addr.to_u32(), value);
-        
         value
     }
 
     pub fn write(&mut self, addr: Address, value: u8) {
-        self.probe.on_memory_write(addr.to_u32(), value);
-        
         match addr.bank {
             // WRAM mirror
             0x00..=0x3F | 0x80..=0xBF => match addr.offset {
@@ -710,6 +706,11 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             0x420B => {
                 *self.dma_en = value != 0;
                 *self.dma_active_ch = value.trailing_zeros() as usize;
+                
+                if *self.dma_active_ch < 8 {
+                    self.probe.on_dma_start(*self.dma_active_ch);
+                }
+                
                 for i in 0..8 {
                     self.dma_regs[i].dma_en = get_bit_n!(value, i);
 
@@ -722,6 +723,11 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             0x420C => {
                 *self.hdma_pending = value != 0;
                 *self.hdma_active_ch = value.trailing_zeros() as usize;
+                
+                if *self.hdma_active_ch < 8 {
+                    self.probe.on_hdma_start(*self.hdma_active_ch);
+                }
+                
                 for i in 0..8 {
                     self.dma_regs[i].hdma_en = get_bit_n!(value, i);
 

@@ -150,10 +150,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
     }
 
     pub fn handle_interrupt(&mut self, bus: &mut CpuBus<P>, interrupt: CpuInterrupt) {
-        // log::debug!(
-        //     "handling interrupt: {:?}, ${:02X}{:04X}, sp: 0x{:04X}, p: {:02X}, e: {}",
-        //     interrupt, self.pb, self.pc, self.sp, self.p, self.e
-        // );
+        bus.probe.on_interrupt(interrupt);
 
         match interrupt {
             CpuInterrupt::Reset => {
@@ -217,12 +214,15 @@ impl<P: DebugProbe> Cpu65c816<P> {
     /// Read a byte from the bus at a given address. Adds to cpu clocks.
     fn read(&mut self, bus: &mut CpuBus<P>, addr: Address) -> u8 {
         self.clocks += Self::SLOW_CYCLE_CLOCKS;
-        bus.read(addr)
+        let value = bus.read(addr);
+        bus.probe.on_memory_read(addr.to_u32(), value);
+        value
     }
 
     /// Write a byte to the bus at a given address. Adds to cpu clocks.
     fn write(&mut self, bus: &mut CpuBus<P>, addr: Address, value: u8) {
         self.clocks += Self::SLOW_CYCLE_CLOCKS;
+        bus.probe.on_memory_write(addr.to_u32(), value);
         bus.write(addr, value);
     }
 

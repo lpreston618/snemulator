@@ -61,7 +61,7 @@ pub fn speed_test(emulated_seconds: u64, snem_core: &mut snemcore::Snemulator) -
     
     for _ in 0..emulated_seconds {
         for _ in 0..60 {
-            snem_core.run_frame(&mut frame_buffer, &mut audio_buffer);
+            snem_core.run_frame(Some(&mut frame_buffer), Some(&mut audio_buffer));
         }
         
         pb.inc(1);
