@@ -9,6 +9,16 @@ mod windows;
 mod debug;
 
 fn main() -> Result<()> {
+    #[cfg(feature = "debug")]
+    {   
+        let log_level = std::env::var("RUST_LOG").unwrap_or_default();
+        
+        match log_level.as_str() {
+            "debug" | "trace" => {},
+            _ => std::env::set_var("RUST_LOG", "debug"),
+        }
+    }
+    
     env_logger::init();
     
     info!("Snemulator launched");

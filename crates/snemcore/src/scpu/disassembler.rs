@@ -1,4 +1,4 @@
-use crate::{cartridge::{self, MappingMode}, scpu::{Cpu65c816, Flag}};
+use crate::{Snemulator, cartridge::{self, MappingMode}, probe::DebugProbe, scpu};
 
 #[derive(Clone, Copy)]
 enum AddressingMode {
@@ -44,7 +44,7 @@ pub struct MemBlock<'a> {
     pub bank: u8,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DisassemblyOptions {
     pub use_hw_reg_names: bool,
     pub show_rel_addr_dest: bool,
@@ -61,6 +61,7 @@ pub struct DisasmLine {
     pub disasm_str: String,
 }
 
+#[derive(Debug)]
 pub enum MemoryRegion {
     Rom,
     Ram,
@@ -73,10 +74,9 @@ pub enum MemoryRegion {
 /// addresses are recognized as hardware registers.
 pub struct ExecuteState {
     pub dp: u16,
-    pub pc: u16,
+    pub addr: scpu::Address,
     pub flag_m: bool,
     pub flag_x: bool,
-    pub memory_region: MemoryRegion,
 }
 
 // This table would be defined elsewhere with all 256 entries
@@ -647,139 +647,86 @@ fn format_rel16(pc: u16, offset_word: u16, options: &DisassemblyOptions) -> Stri
     format!("#${:04X}", offset_word as u16)
 }
 
-fn _disassemble(mem: &MemBlock, state: ExecuteState, options: &DisassemblyOptions) -> (DisasmLine, ExecuteState) {
-    let addr = ((mem.bank as u32) << 16) | state.pc as u32;
-    let addr = match state.memory_region {
-        MemoryRegion::Rom => map_rom_addr(addr, options.rom_mapping_mode),
-        _ => addr,
-    };
-    
-    let pc = addr as u16;
+fn _disassemble(prg_bytes: &[u8; 4], state: &ExecuteState, options: &DisassemblyOptions) -> DisasmLine {
     let dp = state.dp;
     let flag_x = state.flag_x;
     let flag_m = state.flag_m;
-    
-    let mut bytes = Vec::new();
-    let op = read_byte!(mem, bytes, pc);
-    let data = &DISASSEMBLE_TABLE[op as usize];
+
+
+    let arg16 = prg_bytes[1] as u16 | (prg_bytes[2] as u16) << 8;
+    let arg24 = arg16 as u32 | (prg_bytes[3] as u32) << 16;
+    let data = &DISASSEMBLE_TABLE[prg_bytes[0] as usize];
     
     let operand = match data.addr_mode {
         AddressingMode::Implied => String::new(),
-        
         AddressingMode::Accumulator => "A".to_string(),
-        
-        AddressingMode::Immediate8 => {
-            format!("#${:02X}", read_byte!(mem, bytes, pc + 1))
-        }
-        
-        AddressingMode::Immediate16 => {
-            format!("#${:04X}", read_word!(mem, bytes, pc + 1))
-        }
-        
-        AddressingMode::ImmediateM => {
-            if flag_m {
-                format!("#${:02X}", read_byte!(mem, bytes, pc + 1))
-            } else {
-                format!("#${:04X}", read_word!(mem, bytes, pc + 1))
-            }
-        }
-        
-        AddressingMode::ImmediateX => {
-            if flag_x {
-                format!("#${:02X}", read_byte!(mem, bytes, pc + 1))
-            } else {
-                format!("#${:04X}", read_word!(mem, bytes, pc + 1))
-            }
-        }
-        
-        AddressingMode::Relative8 => {
-            let offset_byte = read_byte!(mem, bytes, pc + 1);
-            format_rel8(state.pc + 2, offset_byte, options)
-        }
-        
-        AddressingMode::Relative16 => {
-            let offset_word = read_word!(mem, bytes, pc + 1);
-            format_rel16(state.pc + 2, offset_word, options)
-        }
-        
-        AddressingMode::Direct => {
-            format_direct(dp, read_byte!(mem, bytes, pc + 1), options)
-        }
-        
-        AddressingMode::DirectX => {
-            format!("{},X", format_direct(dp, read_byte!(mem, bytes, pc + 1), options))
-        }
-        
-        AddressingMode::DirectY => {
-            format!("{},Y", format_direct(dp, read_byte!(mem, bytes, pc + 1), options))
-        }
-        
-        AddressingMode::DirectIndirect => {
-            format!("({})", format_direct(dp, read_byte!(mem, bytes, pc + 1), options))
-        }
-        
-        AddressingMode::DirectIndirectLong => {
-            format!("[{}]", format_direct(dp, read_byte!(mem, bytes, pc + 1), options))
-        }
-        
-        AddressingMode::DirectXIndirect => {
-            format!("({},X)", format_direct(dp, read_byte!(mem, bytes, pc + 1), options))
-        }
-        
-        AddressingMode::DirectIndirectY => {
-            format!("({}),Y", format_direct(dp, read_byte!(mem, bytes, pc + 1), options))
-        }
-        
-        AddressingMode::DirectIndirectLongY => {
-            format!("[{}],Y", format_direct(dp, read_byte!(mem, bytes, pc + 1), options))
-        }
-        
-        AddressingMode::Absolute => {
-            format_absolute(read_word!(mem, bytes, pc + 1), options)
-        }
-        
-        AddressingMode::AbsoluteX => {
-            format!("{},X", format_absolute(read_word!(mem, bytes, pc + 1), options))
-        }
-        
-        AddressingMode::AbsoluteY => {
-            format!("{},Y", format_absolute(read_word!(mem, bytes, pc + 1), options))
-        }
-        
-        AddressingMode::Long => {
-            format_absolute_long(read_long!(mem, bytes, pc + 1), options)
-        }
-        
-        AddressingMode::LongX => {
-            format!("{},X", format_absolute_long(read_long!(mem, bytes, pc + 1), options))
-        }
-        
-        AddressingMode::AbsoluteIndirect => {
-            format!("({})", format_absolute(read_word!(mem, bytes, pc + 1), options))
-        }
-        
-        AddressingMode::LongIndirect => {
-            format!("[{}]", format_absolute(read_word!(mem, bytes, pc + 1), options))
-        }
-        
-        AddressingMode::AbsoluteXIndirect => {
-            format!("({},X)", format_absolute(read_word!(mem, bytes, pc + 1), options))
-        }
-        
-        AddressingMode::StackRelative => {
-            format!("${:02X},S", read_byte!(mem, bytes, pc + 1))
-        }
-        
-        AddressingMode::StackRelativeIndirectY => {
-            format!("(${:02X},S),Y", read_byte!(mem, bytes, pc + 1))
-        }
-        
+        AddressingMode::Immediate8  => { format!("#${:02X}", prg_bytes[1]) }
+        AddressingMode::Immediate16 => { format!("#${:04X}", arg16) }
+        AddressingMode::ImmediateM if flag_m => { format!("#${:02X}", prg_bytes[1]) }
+        AddressingMode::ImmediateM           => { format!("#${:04X}", arg16) }
+        AddressingMode::ImmediateX if flag_x => { format!("#${:02X}", prg_bytes[1]) }
+        AddressingMode::ImmediateX           => { format!("#${:04X}", arg16) }
+        AddressingMode::Relative8  => { format_rel8(state.addr.offset + 2, prg_bytes[1], options) }
+        AddressingMode::Relative16 => { format_rel16(state.addr.offset + 2, arg16, options) }
+        AddressingMode::Direct  => { format_direct(dp, prg_bytes[1], options) }
+        AddressingMode::DirectX => { format!("{},X", format_direct(dp, prg_bytes[1], options)) }
+        AddressingMode::DirectY => { format!("{},Y", format_direct(dp, prg_bytes[1], options)) }
+        AddressingMode::DirectIndirect      => { format!("({})", format_direct(dp, prg_bytes[1], options)) }
+        AddressingMode::DirectIndirectLong  => { format!("[{}]", format_direct(dp, prg_bytes[1], options)) }
+        AddressingMode::DirectXIndirect     => { format!("({},X)", format_direct(dp, prg_bytes[1], options)) }
+        AddressingMode::DirectIndirectY     => { format!("({}),Y", format_direct(dp, prg_bytes[1], options)) }
+        AddressingMode::DirectIndirectLongY => { format!("[{}],Y", format_direct(dp, prg_bytes[1], options)) }
+        AddressingMode::Absolute  => { format_absolute(arg16, options) }
+        AddressingMode::AbsoluteX => { format!("{},X", format_absolute(arg16, options)) }
+        AddressingMode::AbsoluteY => { format!("{},Y", format_absolute(arg16, options)) }
+        AddressingMode::Long  => { format_absolute_long(arg24, options) }
+        AddressingMode::LongX => { format!("{},X", format_absolute_long(arg24, options)) }
+        AddressingMode::AbsoluteIndirect  => { format!("({})", format_absolute(arg16, options)) }
+        AddressingMode::LongIndirect      => { format!("[{}]", format_absolute(arg16, options)) }
+        AddressingMode::AbsoluteXIndirect => { format!("({},X)", format_absolute(arg16, options)) }
+        AddressingMode::StackRelative     => { format!("${:02X},S", prg_bytes[1]) }
+        AddressingMode::StackRelativeIndirectY => { format!("(${:02X},S),Y", prg_bytes[1]) }
         AddressingMode::SrcDst => {
-            let dst = read_byte!(mem, bytes, pc + 1);
-            let src = read_byte!(mem, bytes, pc + 2);
+            let dst = prg_bytes[1];
+            let src = prg_bytes[2];
             format!("${:02X},${:02X}", src, dst)
         }
     };
+    
+    let num_data_bytes = match data.addr_mode {
+        AddressingMode::Implied => 0,
+        AddressingMode::Accumulator => 0,
+        AddressingMode::Immediate8  => 1,
+        AddressingMode::Immediate16 => 2,
+        AddressingMode::ImmediateM if flag_m => 1,
+        AddressingMode::ImmediateM           => 2,
+        AddressingMode::ImmediateX if flag_x => 1,
+        AddressingMode::ImmediateX           => 2,
+        AddressingMode::Relative8  => 1,
+        AddressingMode::Relative16 => 2,
+        AddressingMode::Direct  => 1,
+        AddressingMode::DirectX => 1,
+        AddressingMode::DirectY => 1,
+        AddressingMode::DirectIndirect      => 1,
+        AddressingMode::DirectIndirectLong  => 1,
+        AddressingMode::DirectXIndirect     => 1,
+        AddressingMode::DirectIndirectY     => 1,
+        AddressingMode::DirectIndirectLongY => 1,
+        AddressingMode::Absolute  => 2,
+        AddressingMode::AbsoluteX => 2,
+        AddressingMode::AbsoluteY => 2,
+        AddressingMode::Long  => 3,
+        AddressingMode::LongX => 3,
+        AddressingMode::AbsoluteIndirect  => 2,
+        AddressingMode::LongIndirect      => 2,
+        AddressingMode::AbsoluteXIndirect => 2,
+        AddressingMode::StackRelative     => 1,
+        AddressingMode::StackRelativeIndirectY => 1,
+        AddressingMode::SrcDst => 2,
+    };
+    let num_bytes = 1 + num_data_bytes;
+    
+    let bytes = prg_bytes[..num_bytes].to_vec();
     
     let instr_str = if operand.is_empty() {
         data.name.to_string()
@@ -787,39 +734,84 @@ fn _disassemble(mem: &MemBlock, state: ExecuteState, options: &DisassemblyOption
         format!("{} {}", data.name, operand)
     };
     
-    let new_state = ExecuteState {
-        dp: state.dp,
-        pc: state.pc + bytes.len() as u16,
-        flag_m: state.flag_m,
-        flag_x: state.flag_x,
-        memory_region: state.memory_region,
-    };
-    
     let disasm_line = DisasmLine {
-        addr: (mem.bank as u32) << 16 | state.pc as u32,
+        addr: state.addr.to_u32(),
         bytes,
         disasm_str: instr_str,
     };
     
-    (disasm_line, new_state)
+    disasm_line
 }
 
-pub fn disassemble_block(mem: &MemBlock, options: &DisassemblyOptions, state: Option<ExecuteState>) -> Vec<DisasmLine> {    
+// pub fn disassemble_block(mem: &MemBlock, options: &DisassemblyOptions, state: Option<ExecuteState>) -> Vec<DisasmLine> {    
+//     let mut disassembly = Vec::new();
+//     let pc = mem.start_addr;
+//     let mut state = state.unwrap_or(ExecuteState { dp: 0, pc, flag_m: false, flag_x: false, memory_region: MemoryRegion::Rom });
+    
+//     let mut instr_count = 0;
+//     while (state.pc as usize - mem.start_addr as usize) < mem.data.len() && instr_count < options.max_instr_count {
+//         let (disasm_line, new_state) = _disassemble(
+//             mem,
+//             state,
+//             options
+//         );
+        
+//         disassembly.push(disasm_line);
+        
+//         state = new_state;
+//         instr_count += 1;
+//     }
+    
+//     disassembly
+// }
+
+pub fn disassemble_forward<P: DebugProbe>(core: &Snemulator<P>, options: &DisassemblyOptions, start_addr: u32) -> Vec<DisasmLine> {
     let mut disassembly = Vec::new();
-    let pc = mem.start_addr;
-    let mut state = state.unwrap_or(ExecuteState { dp: 0, pc, flag_m: false, flag_x: false, memory_region: MemoryRegion::Rom });
+    let mut addr = scpu::Address::from_u32(start_addr);
+    
+    let flag_e = if options.forced_e.is_some() {
+        options.forced_e.unwrap()
+    } else {
+        core.cpu.e
+    };
+
+    let flag_m = if options.forced_flag_m.is_some() {
+        options.forced_flag_m.unwrap() | flag_e
+    } else {
+        core.cpu.is_flag_set(scpu::Flag::FlagM) | flag_e
+    };
+
+    let flag_x = if options.forced_flag_x.is_some() {
+        options.forced_flag_x.unwrap() | flag_e
+    } else {
+        core.cpu.is_flag_set(scpu::Flag::FlagX) | flag_e
+    };
+    
+    let mut state = ExecuteState {
+        dp: 0,
+        addr,
+        flag_m,
+        flag_x,
+    };
     
     let mut instr_count = 0;
-    while (state.pc as usize - mem.start_addr as usize) < mem.data.len() && instr_count < options.max_instr_count {
-        let (disasm_line, new_state) = _disassemble(
-            mem,
-            state,
+    while instr_count < options.max_instr_count {
+        let b0 = core.cpu_read_mem(scpu::Address::from_u32(addr.to_u32() + 0));
+        let b1 = core.cpu_read_mem(scpu::Address::from_u32(addr.to_u32() + 1));
+        let b2 = core.cpu_read_mem(scpu::Address::from_u32(addr.to_u32() + 2));
+        let b3 = core.cpu_read_mem(scpu::Address::from_u32(addr.to_u32() + 3));
+        
+        let disasm_line = _disassemble(
+            &[b0, b1, b2, b3],
+            &state,
             options
         );
         
+        addr = scpu::Address::from_u32(addr.to_u32() + disasm_line.bytes.len() as u32);
+        
         disassembly.push(disasm_line);
         
-        state = new_state;
+        state.addr = addr;
         instr_count += 1;
     }
     

@@ -15,7 +15,7 @@ struct DisassemblyView {
 }
 
 impl DisassemblyView {
-    fn new(rom_mapping_mode: cartridge::MappingMode) -> Self {
+    fn new(rom_mapping_mode: cartridge::MappingMode) -> Self {        
         Self {
             cached_lines: None,
             // scroll_offset: 0,
@@ -33,62 +33,15 @@ impl DisassemblyView {
         }
     }
 
-    /// Call when PC changes significantly or user navigates manually.
-    /// Decodes `count` instructions forward from `start_addr`.
-    fn decode_forward(
-        start_addr: u32,
-        memory: &[u8],
-        memory_region: scpu::disassembler::MemoryRegion,
-        options: &scpu::disassembler::DisassemblyOptions,
-        core: &Snemulator<Debugger>,
-    ) -> Vec<scpu::disassembler::DisasmLine> {
-        let mem = scpu::disassembler::MemBlock {
-            data: memory,
-            start_addr: 0,
-            bank: (start_addr >> 16) as u8,
-        };
-
-        let flag_e = if options.forced_e.is_some() {
-            options.forced_e.unwrap()
-        } else {
-            core.cpu.e
-        };
-
-        let flag_m = if options.forced_flag_m.is_some() {
-            options.forced_flag_m.unwrap() | flag_e
-        } else {
-            core.cpu.is_flag_set(scpu::Flag::FlagM) | flag_e
-        };
-
-        let flag_x = if options.forced_flag_x.is_some() {
-            options.forced_flag_x.unwrap() | flag_e
-        } else {
-            core.cpu.is_flag_set(scpu::Flag::FlagX) | flag_e
-        };
-
-        let state = scpu::disassembler::ExecuteState {
-            dp: core.cpu.dp,
-            pc: start_addr as u16,
-            flag_m,
-            flag_x,
-            memory_region,
-        };
-
-        scpu::disassembler::disassemble_block(&mem, options, Some(state))
-    }
-
     fn update(&mut self,
-        pc: u32,
-        memory: &[u8],
-        memory_region: scpu::disassembler::MemoryRegion,
+        core: &Snemulator<Debugger>,
         options: &scpu::disassembler::DisassemblyOptions,
-        core: &Snemulator<Debugger>
     ) {
         if self.follow_pc {
-            self.current_addr = pc;
+            self.current_addr = (core.cpu.pb as u32) << 16 | core.cpu.pc as u32;
         }
 
-        self.cached_lines = Some(Self::decode_forward(self.current_addr, memory, memory_region, options, core));
+        self.cached_lines = Some(scpu::disassembler::disassemble_forward(core, options, self.current_addr));
     }
 }
 
@@ -449,21 +402,8 @@ impl CpuTab {
     
     fn update_disasm(&mut self, core: &Snemulator<Debugger>) {
         let options = self.disasm.options.clone();
-        let pc = (core.cpu.pb as u32) << 16 | core.cpu.pc as u32;
 
-        let region = scpu::disassembler::get_memory_region(pc);
-
-        let memory = match region {
-            scpu::disassembler::MemoryRegion::LowRamMirror => &core.wram[..0x2000],
-            scpu::disassembler::MemoryRegion::Ram => &core.wram[..],
-            scpu::disassembler::MemoryRegion::Rom => &core.rom_slice(),
-            _ => {
-                log::warn!("Tried to disassemble invalid memory region at: {:06X}", pc);
-                return;
-            },
-        };
-
-        self.disasm.update(pc, memory, region, &options, core);
+        self.disasm.update(core, &options);
     }
 
     fn add_breakpoint(&mut self, addr: u32, core: &mut Snemulator<Debugger>) {
