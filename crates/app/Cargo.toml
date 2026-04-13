@@ -18,7 +18,7 @@ egui_glow = { workspace = true }
 glow = { workspace = true }
 sdl3 = { workspace = true }
 egui_autocomplete = { workspace = true }
-mlua = { version = "0.11", optional = true, features = ["luajit52", "vendored"] }
+mlua = { version = "0.11", optional = true, features = ["lua55", "vendored", "anyhow"] }
 
 [features]
 debug = [ "dep:mlua" ]

@@ -79,34 +79,22 @@ impl<P: DebugProbe + 'static> WatchpointEngine<P> {
             } else {
                 Err(mlua::Error::RuntimeError(format!("Module not found: {}", module)))
             }
-        })
-        .map_err(|e| anyhow::anyhow!("{}", e))?)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+        })?)?;
         
         // Register logging function
         globals.set("Log", self.lua.create_function(|_, msg: String| {
             log::debug!("{}", msg);
             Ok(())
-        })
-        .map_err(|e| anyhow::anyhow!("{}", e))?)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+        })?)?;
         
-        let action_table = self.lua.create_table()
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
-        action_table.set("Continue", self.lua.create_userdata(WatchpointAction::Continue)
-            .map_err(|e| anyhow::anyhow!("{}", e))?)
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
-        action_table.set("Break", self.lua.create_userdata(WatchpointAction::Break)
-            .map_err(|e| anyhow::anyhow!("{}", e))?)
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
-        globals.set("ACTION", action_table)
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
+        let action_table = self.lua.create_table()?;
+        action_table.set("Continue", self.lua.create_userdata(WatchpointAction::Continue)?)?;
+        action_table.set("Break", self.lua.create_userdata(WatchpointAction::Break)?)?;
+        globals.set("ACTION", action_table)?;
         
-        let core_access = self.lua.create_userdata(SnemulatorInterface::new(core))
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
+        let core_access = self.lua.create_userdata(SnemulatorInterface::new(core))?;
     
-        globals.set("core", core_access)
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
+        globals.set("core", core_access)?;
         
         self.initialized = true;
         
@@ -128,25 +116,20 @@ impl<P: DebugProbe + 'static> WatchpointEngine<P> {
         let mut full_script = LUA_INCLUDE.to_string();
         full_script += script;
         
-        let res = self.lua.load(full_script).exec()
-            .map_err(|e| anyhow::anyhow!("{}", e));
+        self.lua.load(full_script).exec()?;
 
-        if res.is_ok() {        
-            let globals = self.lua.globals();
-            
-            let wp_func: Option<Function> = globals.get("OnLoad").ok();
-            
-            if let Some(func) = wp_func {
-                match func.call::<()>(()) {
-                    Ok(_) => {},
-                    Err(e) => {
-                        return Err(anyhow::anyhow!("Failed to run OnLoad: {}", e));
-                    }
-                };
-            }
-        }
-        
         let globals = self.lua.globals();
+        
+        let wp_func: Option<Function> = globals.get("OnLoad").ok();
+        
+        if let Some(func) = wp_func {
+            match func.call::<()>(()) {
+                Ok(_) => {},
+                Err(e) => {
+                    return Err(anyhow::anyhow!("Failed to run OnLoad: {}", e));
+                }
+            };
+        }
         
         self.callbacks.on_emulation_cycle = globals.get("OnEmulationCycle").ok();
         self.callbacks.on_dot             = globals.get("OnDot").ok();
@@ -179,7 +162,7 @@ impl<P: DebugProbe + 'static> WatchpointEngine<P> {
         log::trace!("  on_hdma_transfer: {}",   self.callbacks.on_hdma_transfer.is_some());
         log::trace!("  on_hdma_end: {}",        self.callbacks.on_hdma_end.is_some());
 
-        res
+        Ok(())
     }
     
     fn try_execute_fn<T: IntoLuaMulti>(&self, wp_func: &Function, args: T) -> Result<WatchpointAction> {        

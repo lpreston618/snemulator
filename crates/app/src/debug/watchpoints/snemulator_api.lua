@@ -24,9 +24,9 @@ core.meta = {}
 ---@field apuio1 u8 Data from the CPU to the APU (Data from APU to CPU is accessible via `core.apu.apuio1`)
 ---@field apuio2 u8 Data from the CPU to the APU (Data from APU to CPU is accessible via `core.apu.apuio2`)
 ---@field apuio3 u8 Data from the CPU to the APU (Data from APU to CPU is accessible via `core.apu.apuio3`)
----@field prg0 u8 Alias for core.mem[cpu.full_pc], the current byte of the program
----@field prg1 u8 Alias for core.mem[cpu.full_pc + 1], the next byte of the program (address wrapped at bank)
----@field prg2 u8 Alias for core.mem[cpu.full_pc + 2], the next next byte of the program (address wrapped at bank)
+---@field prg0 u8 Alias for core.mem[cpu.full_pc], the current byte of the program (Read-only)
+---@field prg1 u8 Alias for core.mem[cpu.full_pc + 1], the next byte of the program (address wrapped at bank) (Read-only)
+---@field prg2 u8 Alias for core.mem[cpu.full_pc + 2], the next next byte of the program (address wrapped at bank) (Read-only)
 ---@field a u16 Accumulator
 ---@field x u16 X Index Register
 ---@field y u16 Y Index Register
@@ -43,23 +43,23 @@ core.meta = {}
 ---@field flagn boolean Negative Flag
 ---@field e boolean Emulation Mode Flag
 ---@field halted boolean CPU Halted
----@field stopped boolean CPU Stopped (For DMA/HDMA)
+---@field stopped boolean CPU Stopped (For DMA/HDMA) (Read-only)
 ---@field nmi_pending boolean NMI Pending
 ---@field irq_pending boolean IRQ Pending
 ---@field waiting boolean Awaiting Interrupt Flag
----@field full_pc CpuAddress The concatenated pb and pc (i.e. (pb << 16) | pc). Useful for accessing program memory via `core.mem[core.cpu.full_pc]`
+---@field full_pc CpuAddress The concatenated pb and pc (i.e. (pb << 16) | pc). Useful for accessing program memory via `core.mem[core.cpu.full_pc]` (Read-only)
 core.cpu = {}
 
 ---@class Snemulator.PPU
----@field screen_brightness u8 From INIDISP
----@field obj_size u8 From OBJSEL
----@field bg_mode u8 From BGMODE
----@field mosaic_size u8 From MOSAIC
----@field cgram_addr u8 From CGADD
----@field window1_left u8 From WH0
----@field window1_right u8 From WH1
----@field window2_left u8 From WH2
----@field window2_right u8 From WH3
+---@field screen_brightness u8 Screen brightness from 0-15 (INIDISP)
+---@field obj_size u8 Object Size (0 = 8x8, 1 = 16x16) (OBJSEL)
+---@field bg_mode u8 BG Mode from 0-7 (BGMODE)
+---@field mosaic_size u8 Mosaic size from 0-15 (MOSAIC)
+---@field cgram_addr u8 8-bit CGRAM address (CGADD)
+---@field window1_left u8 Window 1 left position from 0-255 (WH0)
+---@field window1_right u8 Window 1 right position from 0-255 (WH1)
+---@field window2_left u8 Window 2 left position from 0-255 (WH2)
+---@field window2_right u8 Window 2 right position from 0-255 (WH3)
 ---@field name_base_addr u16 Full 15-bit name base address from OBJSEL
 ---@field name_secondary_addr u16 Full 15-bit name base address + secondary select offset from OBJSEL
 ---@field oam_addr u16 Full 9-bit oam address from oamaddl and oamaddh
@@ -140,6 +140,8 @@ core.cgram = {}
 core.mmio = {}
 
 ---@class DMA
+---@field dma_en boolean Whether this DMA channel has DMA enabled.
+---@field hdma_en boolean Whether this DMA channel has HDMA enabled.
 ---@field addr_inc_mode u8 From DMAP
 ---@field transfer_pattern u8 From DMAP
 ---@field a_bus_bank u8 From A1TB
