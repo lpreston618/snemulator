@@ -86,7 +86,6 @@ core.cpu = {}
 ---@field m7_y u16 From M7Y
 ---@field h_counter u16 From OPHCT
 ---@field v_counter u16 From OPVCT
----@field f_blank boolean From INIDISP
 ---@field priority_rotation boolean From OAMADDH
 ---@field bg1_large_tiles boolean From BGMODE
 ---@field bg2_large_tiles boolean From BGMODE
@@ -107,6 +106,11 @@ core.cpu = {}
 ---@field screen_x number Current dot position on the screen. When the dot is visible, this number ranges from [0,255]. Otherwise it is garbage.
 ---@field screen_y number Current scanline position on screen. When the scanline is visible, this number ranges from [0,223]. Otherwise it is garbage.
 ---@field multiply_result number Full 24-bit multiplication result from MPYL, MPYM, and MPYH
+---@field f_blank boolean Whether the PPU is currently in forced blank.
+---@field v_blank boolean Whether the PPU is currently in vertical blank.
+---@field h_blank boolean Whether the PPU is currently in horizontal blank.
+---@field v_blank_nmi boolean Whether the PPU will generate and NMI upon entering its v-blank period.
+---@field hv_timer_mode number The current mode of the HV timer IRQ mechanism.
 core.ppu = {}
 
 ---@type (u8?)[] Direct access to ROM. Size is unknown at compile time, but can be accessed via `core.rom_size`

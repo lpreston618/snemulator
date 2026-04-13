@@ -356,10 +356,6 @@ impl<P: DebugProbe> UserData for PpuInterface<P> {
             Ok(core.ppu_regs.v_counter)
         });
         
-        fields.add_field_method_get("f_blank", |_, this| {
-            let core = unsafe { &*this.core };
-            Ok(core.ppu_regs.in_fblank)
-        });
         fields.add_field_method_get("priority_rotation", |_, this| {
             let core = unsafe { &*this.core };
             Ok(core.ppu_regs.priority_rotation)
@@ -440,6 +436,27 @@ impl<P: DebugProbe> UserData for PpuInterface<P> {
         fields.add_field_method_get("multiply_result", |_, this| {
             let core = unsafe { &*this.core };
             Ok(core.ppu_regs.multiply_result)
+        });
+        
+        fields.add_field_method_get("f_blank", |_, this| {
+            let core = unsafe { &*this.core };
+            Ok(core.ppu_regs.in_fblank)
+        });
+        fields.add_field_method_get("v_blank", |_, this| {
+            let core = unsafe { &*this.core };
+            Ok(core.cpu_regs.vblank_flag)
+        });
+        fields.add_field_method_get("h_blank", |_, this| {
+            let core = unsafe { &*this.core };
+            Ok(core.cpu_regs.hblank_flag)
+        });
+        fields.add_field_method_get("v_blank_nmi", |_, this| {
+            let core = unsafe { &*this.core };
+            Ok(core.cpu_regs.vblank_nmi_en)
+        });
+        fields.add_field_method_get("hv_timer_mode", |_, this| {
+            let core = unsafe { &*this.core };
+            Ok(core.cpu_regs.hv_timer_irq_mode as u8)
         });
     }
 }

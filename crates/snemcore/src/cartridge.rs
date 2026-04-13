@@ -152,13 +152,7 @@ impl Cartridge {
     }
 
     pub fn read(&self, addr: Address) -> u8 {
-        let addr = addr.to_u32();
-
-        let mapped_addr = match self.mapping_mode {
-            MappingMode::LoROM => ((addr & 0x7F0000) >> 1) | (addr & 0x7FFF),
-            MappingMode::HiROM => addr & 0x3FFFFF,
-            MappingMode::ExHiROM => (((addr & 0x800000) ^ 0x800000) >> 1) | (addr & 0x3FFFFF),
-        };
+        let mapped_addr = self.map_addr(addr);
 
         let mapped_addr = (mapped_addr as usize) & (self.rom.len() - 1);
 
@@ -167,8 +161,29 @@ impl Cartridge {
 
     pub fn write(&mut self, addr: Address, value: u8) {}
 
+    /// Can overwrite ROM data.
+    pub fn force_write(&mut self, addr: Address, value: u8) {
+        let mapped_addr = self.map_addr(addr);
+        let mapped_addr = (mapped_addr as usize) & (self.rom.len() - 1);
+        self.rom[mapped_addr] = value;
+    }
+    
     pub fn rom_slice(&self) -> &[u8] {
         &self.rom[..]
+    }
+
+    pub fn rom_slice_mut(&mut self) -> &mut [u8] {
+        &mut self.rom[..]
+    }
+    
+    fn map_addr(&self, addr: Address) -> usize {
+        let addr = addr.to_u32();
+        let mapped_addr = match self.mapping_mode {
+            MappingMode::LoROM => ((addr & 0x7F0000) >> 1) | (addr & 0x7FFF),
+            MappingMode::HiROM => addr & 0x3FFFFF,
+            MappingMode::ExHiROM => (((addr & 0x800000) ^ 0x800000) >> 1) | (addr & 0x3FFFFF),
+        };
+        (mapped_addr as usize) & (self.rom.len() - 1)
     }
 }
 
