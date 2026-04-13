@@ -2,28 +2,28 @@ use mlua::{UserData, Value};
 use snemcore::{Snemulator, probe::DebugProbe, scpu::{self, dma::Direction}, sppu::TileSize};
 
 pub struct SnemulatorInterface<P: DebugProbe> {
-    core: *const Snemulator<P>
+    core: *mut Snemulator<P>
 }
 
 pub struct MetaInterface<P: DebugProbe> {
-    core: *const Snemulator<P>
+    core: *mut Snemulator<P>
 }
 
 pub struct CpuInterface<P: DebugProbe> {
-    core: *const Snemulator<P>
+    core: *mut Snemulator<P>
 }
 
 pub struct PpuInterface<P: DebugProbe> {
-    core: *const Snemulator<P>
+    core: *mut Snemulator<P>
 }
 
 pub struct DmaInterface<P: DebugProbe> {
-    core: *const Snemulator<P>,
+    core: *mut Snemulator<P>,
     channel: usize,
 }
 
 impl<P: DebugProbe> SnemulatorInterface<P> {
-    pub fn new(core: &Snemulator<P>) -> Self {
+    pub fn new(core: &mut Snemulator<P>) -> Self {
         Self { core }
     }
 }
@@ -60,7 +60,7 @@ impl<P: DebugProbe + 'static> UserData for SnemulatorInterface<P> {
                 }
             })?)?;
             
-            dma_table.set_metatable(Some(dma_meta));
+            dma_table.set_metatable(Some(dma_meta)).ok();
             
             Ok(dma_table)
         });
@@ -208,6 +208,132 @@ impl<P: DebugProbe> UserData for CpuInterface<P> {
                 bank: core.cpu.pb,
                 offset: core.cpu.pc,
             }.to_u32())
+        });
+        
+        fields.add_field_method_set("db", |_, this, value: u8| {
+            let core = unsafe { &mut *this.core };
+            core.cpu.db = value;
+            Ok(())
+        });
+        fields.add_field_method_set("p", |_, this, value: u8| {
+            let core = unsafe { &mut *this.core };
+            core.cpu.p = value;
+            Ok(())
+        });
+        fields.add_field_method_set("apuio0", |_, this, value: u8| {
+            let core = unsafe { &mut *this.core };
+            core.apu_ports.cpuio0 = value;
+            Ok(())
+        });
+        fields.add_field_method_set("apuio1", |_, this, value: u8| {
+            let core = unsafe { &mut *this.core };
+            core.apu_ports.cpuio1 = value;
+            Ok(())
+        });
+        fields.add_field_method_set("apuio2", |_, this, value: u8| {
+            let core = unsafe { &mut *this.core };
+            core.apu_ports.cpuio2 = value;
+            Ok(())
+        });
+        fields.add_field_method_set("apuio3", |_, this, value: u8| {
+            let core = unsafe { &mut *this.core };
+            core.apu_ports.cpuio3 = value;
+            Ok(())
+        });
+        fields.add_field_method_set("a", |_, this, value: u16| {
+            let core = unsafe { &mut *this.core };
+            core.cpu.a = value;
+            Ok(())
+        });
+        fields.add_field_method_set("x", |_, this, value: u16| {
+            let core = unsafe { &mut *this.core };
+            core.cpu.x = value;
+            Ok(())
+        });
+        fields.add_field_method_set("y", |_, this, value: u16| {
+            let core = unsafe { &mut *this.core };
+            core.cpu.y = value;
+            Ok(())
+        });
+        fields.add_field_method_set("sp", |_, this, value: u16| {
+            let core = unsafe { &mut *this.core };
+            core.cpu.sp = value;
+            Ok(())
+        });
+        fields.add_field_method_set("pc", |_, this, value: u16| {
+            let core = unsafe { &mut *this.core };
+            core.cpu.pc = value;
+            Ok(())
+        });
+        fields.add_field_method_set("dp", |_, this, value: u16| {
+            let core = unsafe { &mut *this.core };
+            core.cpu.dp = value;
+            Ok(())
+        });
+        fields.add_field_method_set("flagc", |_, this, value: bool| {
+            let core = unsafe { &mut *this.core };
+            core.cpu.set_flag_to_bool(scpu::Flag::FlagC, value);
+            Ok(())
+        });
+        fields.add_field_method_set("flagz", |_, this, value: bool| {
+            let core = unsafe { &mut *this.core };
+            core.cpu.set_flag_to_bool(scpu::Flag::FlagZ, value);
+            Ok(())
+        });
+        fields.add_field_method_set("flagi", |_, this, value: bool| {
+            let core = unsafe { &mut *this.core };
+            core.cpu.set_flag_to_bool(scpu::Flag::FlagI, value);
+            Ok(())
+        });
+        fields.add_field_method_set("flagd", |_, this, value: bool| {
+            let core = unsafe { &mut *this.core };
+            core.cpu.set_flag_to_bool(scpu::Flag::FlagD, value);
+            Ok(())
+        });
+        fields.add_field_method_set("flagx", |_, this, value: bool| {
+            let core = unsafe { &mut *this.core };
+            core.cpu.set_flag_to_bool(scpu::Flag::FlagX, value);
+            Ok(())
+        });
+        fields.add_field_method_set("flagm", |_, this, value: bool| {
+            let core = unsafe { &mut *this.core };
+            core.cpu.set_flag_to_bool(scpu::Flag::FlagM, value);
+            Ok(())
+        });
+        fields.add_field_method_set("flagv", |_, this, value: bool| {
+            let core = unsafe { &mut *this.core };
+            core.cpu.set_flag_to_bool(scpu::Flag::FlagV, value);
+            Ok(())
+        });
+        fields.add_field_method_set("flagn", |_, this, value: bool| {
+            let core = unsafe { &mut *this.core };
+            core.cpu.set_flag_to_bool(scpu::Flag::FlagN, value);
+            Ok(())
+        });
+        fields.add_field_method_set("e", |_, this, value: bool| {
+            let core = unsafe { &mut *this.core };
+            core.cpu.e = value;
+            Ok(())
+        });
+        fields.add_field_method_set("halted", |_, this, value: bool| {
+            let core = unsafe { &mut *this.core };
+            core.cpu.halted = value;
+            Ok(())
+        });
+        fields.add_field_method_set("nmi_pending", |_, this, value: bool| {
+            let core = unsafe { &mut *this.core };
+            core.cpu.nmi_pending = value;
+            Ok(())
+        });
+        fields.add_field_method_set("irq_pending", |_, this, value: bool| {
+            let core = unsafe { &mut *this.core };
+            core.cpu.irq_pending = value;
+            Ok(())
+        });
+        fields.add_field_method_set("waiting", |_, this, value: bool| {
+            let core = unsafe { &mut *this.core };
+            core.cpu.waiting_for_interrupt = value;
+            Ok(())
         });
     }
 }

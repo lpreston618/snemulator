@@ -787,80 +787,103 @@ impl<P: DebugProbe> Cpu65c816<P> {
 // Instructions
 impl<P: DebugProbe> Cpu65c816<P> {
     fn adc_m8(&mut self, bus: &mut CpuBus<P>, addr: Address) {
-        let mut result: u16;
-        let data = self.read(bus, addr) as u16;
-        let c = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
-
-        if self.is_flag_set(Flag::FlagD) {
-            result = (self.a & 0x0F) + (data & 0x0F) + c;
-
-            if result >= 0xA {
-                result += 0x6;
-            }
-
-            let c = if result > 0xF { 0x10 } else { 0 };
-            result = (self.a & 0xF0) + (data & 0xF0) + c + (result & 0xF);
+    	let operand = self.read(bus, addr);
+    	let mut carry = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
+    	
+    	self.p &= !(Flag::FlagN as u8 | Flag::FlagV as u8 | Flag::FlagZ as u8 | Flag::FlagC as u8);
+    	
+    	let mut result;
+    	
+    	if !self.is_flag_set(Flag::FlagD) {
+            result = self.a as u16 + operand as u16 + carry as u16;
         } else {
-            result = self.a + data + c;
-        };
-
-        self.set_flag_to_bool(Flag::FlagV, get_bit_n!(!(self.a ^ data) & (data ^ result), 7));
-
-        if self.is_flag_set(Flag::FlagD) && result >= 0xA0 {
+            result = (self.a as u16 & 0x0F) + (operand as u16 & 0x0F) + carry as u16;
+            if result > 9 {
+                result += 6;
+            }
+            carry = (result > 0x0F) as u16;
+            result = (self.a as u16 & 0xF0) + (operand as u16 & 0xF0) + (result & 0x0F) + (carry * 0x10);
+        }
+     
+    	if (self.a & 0x80) == (operand as u16 & 0x80) && (self.a & 0x80) != (result & 0x80) {
+            self.set_flag_to_bool(Flag::FlagV, true);
+        }
+    	
+    	if self.is_flag_set(Flag::FlagD) && result > 0x9F {
             result += 0x60;
         }
-
-        self.set_flag_to_bool(Flag::FlagC, result > 0xFF);
-
-        set_byte_n!(self.a, result, 0);
-
-        set_nz8!(self, self.a);
+     
+    	if result > 0xFF {
+            self.set_flag_to_bool(Flag::FlagC, true);
+        }
+     
+    	if result & 0x80 != 0 {
+            self.set_flag_to_bool(Flag::FlagN, true);
+        }
+    	
+    	if result & 0xFF == 0 {
+            self.set_flag_to_bool(Flag::FlagZ, true);
+        }
+        
+        set_byte_n!(self.a, result & 0xFF, 0);
     }
     
     fn adc_m16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
+        let operand = self.read_word(bus, addr_lo, addr_hi) as u32;
+        let carry = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
+               
+        self.p &= !(Flag::FlagN as u8 | Flag::FlagV as u8 | Flag::FlagZ as u8 | Flag::FlagC as u8);
+        
         let mut result: u32;
-        let a = self.a as u32;
-        let d = self.read_word(bus, addr_lo, addr_hi) as u32;
-        let c = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
-
-        if self.is_flag_set(Flag::FlagD) {
-            result = (a & 0x000F) + (d & 0x000F) + c;
-
-            if result >= 0xA {
-                result += 6;
-            }
-
-            let c = if result > 0xF { 0x10 } else { 0 };
-            result = (a & 0x00F0) + (d & 0x00F0) + c + (result & 0xF);
-
-            if result >= 0xA0 {
-                result += 0x60;
-            }
-
-            let c = if result > 0xFF { 0x100 } else { 0 };
-            result = (a & 0x0F00) + (d & 0x0F00) + c + (result & 0xFF);
-
-            if result >= 0xA00 {
-                result += 0x600;
-            }
-
-            let c = if result > 0xFFF { 0x1000 } else { 0 };
-            result = (a & 0xF000) + (d & 0xF000) + c + (result & 0xFFF);
+        
+        if !self.is_flag_set(Flag::FlagD) {
+            result = self.a as u32 + operand + carry;
         } else {
-            result = a + d + c;
+            result = (self.a as u32 & 0x000F) + (operand & 0x000F) + carry;
+            if result > 0x0009 {
+                result += 0x0006;
+            }
+            
+            let carry = result > 0x000F;
+            
+            result = (self.a as u32 & 0x00F0) + (operand & 0x00F0) + (result & 0x000F) + carry as u32 * 0x10;
+            if result > 0x009F {
+                result += 0x0060;
+            }
+            
+            let carry = result > 0x00FF;
+            
+            result = (self.a as u32 & 0x0F00) + (operand & 0x0F00) + (result & 0x00FF) + carry as u32 * 0x100;
+            if result > 0x09FF {
+                result += 0x0600;
+            }
+            
+            let carry = result > 0x0FFF;
+            
+            result = (self.a as u32 & 0xF000) + (operand & 0xF000) + (result & 0x0FFF) + carry as u32 * 0x1000;
         }
 
-        self.set_flag_to_bool(Flag::FlagV, get_bit_n!(!(a ^ d) & (d ^ result), 15));
-
-        if self.is_flag_set(Flag::FlagD) && result >= 0xA000 {
+        if (self.a as u32 & 0x8000) == (operand & 0x8000) && (self.a as u32 & 0x8000) != (result & 0x8000) {
+            self.set_flag_to_bool(Flag::FlagV, true);
+        }
+        
+        if self.is_flag_set(Flag::FlagD) && result > 0x9FFF {
             result += 0x6000;
         }
-
-        self.set_flag_to_bool(Flag::FlagC, result > 0xFFFF);
-
+        
+        if result > 0xFFFF {
+            self.set_flag_to_bool(Flag::FlagC, true);
+        }
+        
+        if (result & 0x8000) != 0 {
+            self.set_flag_to_bool(Flag::FlagN, true);
+        }
+        
+        if (result & 0xFFFF) == 0 {
+            self.set_flag_to_bool(Flag::FlagZ, true);
+        }
+        
         self.a = result as u16;
-
-        set_nz16!(self, self.a);
     }
     
     fn and_m8(&mut self, bus: &mut CpuBus<P>, addr: Address) {

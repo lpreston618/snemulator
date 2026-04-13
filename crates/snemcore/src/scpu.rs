@@ -291,7 +291,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
         self.p & (flag as u8) != 0
     }
 
-    fn set_flag_to_bool(&mut self, flag: Flag, value: bool) {
+    pub fn set_flag_to_bool(&mut self, flag: Flag, value: bool) {
         if value {
             self.p |= flag as u8;
         } else {

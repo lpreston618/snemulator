@@ -56,11 +56,8 @@ struct RomEdit {
     /// Used to map a flat byte index back to a line index for up/down navigation.
     line_byte_counts: Vec<usize>,
     /// User-typed edits for each byte, as uppercase hex strings. Empty means unchanged.
-    /// At most 2 hex chars; a single char is treated as "0X" on navigation/commit.
+    /// At most 2 hex chars
     bytes_strs: Vec<String>,
-    /// Original byte values as uppercase two-hex-char strings, shown as hint text.
-    /// On commit, any empty entry in `bytes_strs` falls back to the corresponding
-    /// entry here.
     bytes_originals: Vec<String>,
     just_went_down: bool,
     just_went_right: bool,
@@ -174,14 +171,12 @@ impl CpuTab {
                         ui.selectable_value(&mut self.disasm.options.forced_e, None, "Current in Program");
                     });
 
-                let (m_text, x_text) = match self.disasm.options.forced_e {
+                let (m_text, x_text, mx_en) = match self.disasm.options.forced_e {
                     Some(true) => {
-                        ui.disable();
-                        ("m8", "x8")
+                        ("m8", "x8", false)
                     }
                     None if core.cpu.e => {
-                        ui.disable();
-                        ("m8", "x8")
+                        ("m8", "x8", false)
                     }
                     _ => {
                         let m_text = match self.disasm.options.forced_flag_m {
@@ -194,25 +189,39 @@ impl CpuTab {
                             Some(false) => "x16",
                             None => if core.cpu.is_flag_set(scpu::Flag::FlagX) { "x8" } else { "x16" },
                         };
-                        (m_text, x_text)
+                        (m_text, x_text, true)
                     }
                 };
 
-                egui::ComboBox::from_id_salt("m_flag_sel")
-                    .selected_text(m_text)
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut self.disasm.options.forced_flag_m, Some(true), "m8");
-                        ui.selectable_value(&mut self.disasm.options.forced_flag_m, Some(false), "m16");
-                        ui.selectable_value(&mut self.disasm.options.forced_flag_m, None, "Current in Program");
-                    });
-
-                egui::ComboBox::from_id_salt("x_flag_sel")
-                    .selected_text(x_text)
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut self.disasm.options.forced_flag_x, Some(true), "x8");
-                        ui.selectable_value(&mut self.disasm.options.forced_flag_x, Some(false), "x16");
-                        ui.selectable_value(&mut self.disasm.options.forced_flag_x, None, "Current in Program");
-                    });
+                ui.add_enabled_ui(mx_en, |ui| {
+                    egui::ComboBox::from_id_salt("m_flag_sel")
+                        .selected_text(m_text)
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut self.disasm.options.forced_flag_m, Some(true), "m8");
+                            ui.selectable_value(&mut self.disasm.options.forced_flag_m, Some(false), "m16");
+                            ui.selectable_value(&mut self.disasm.options.forced_flag_m, None, "Current in Program");
+                        });
+    
+                    egui::ComboBox::from_id_salt("x_flag_sel")
+                        .selected_text(x_text)
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut self.disasm.options.forced_flag_x, Some(true), "x8");
+                            ui.selectable_value(&mut self.disasm.options.forced_flag_x, Some(false), "x16");
+                            ui.selectable_value(&mut self.disasm.options.forced_flag_x, None, "Current in Program");
+                        });
+                });
+                
+                ui.add_enabled_ui(!self.rom_changes.is_empty(), |ui| {
+                    if ui.button("Reset ROM Data").clicked() {
+                        let cart = core.cart.as_mut().unwrap();
+                        
+                        for (addr, value) in self.rom_changes.iter() {
+                            cart.force_write(scpu::Address::from_u32(*addr), *value);
+                        }
+                        
+                        self.rom_changes.clear();
+                    }
+                });
             });
         });
         ui.separator();

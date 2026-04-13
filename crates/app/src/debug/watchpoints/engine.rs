@@ -69,7 +69,7 @@ impl<P: DebugProbe + 'static> WatchpointEngine<P> {
         }
     }
     
-    pub fn init(&mut self, core: &Snemulator<P>) -> Result<()> {
+    pub fn init(&mut self, core: &mut Snemulator<P>) -> Result<()> {
         let globals = self.lua.globals();
         
         // Ignore emulator_api import, it is only for LSP aid
@@ -115,8 +115,8 @@ impl<P: DebugProbe + 'static> WatchpointEngine<P> {
         Ok(())
     }
     
-    pub fn unload_script(&mut self, core: &Snemulator<P>) {
-        self.lua = Lua::new();
+    pub fn unload_script(&mut self, core: &mut Snemulator<P>) {
+        let _ = self.lua.globals().clear();
         self.init(core).ok();
     }
     

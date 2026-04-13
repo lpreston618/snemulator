@@ -596,7 +596,7 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             0x420E..=0x420F => 0, // Open bus
 
             0x4210 => {
-                let vblank_nmi = if cpu_regs.vblank_nmi_flag {
+                let vblank_nmi = if cpu_regs.vblank_flag {
                     0x80
                 } else {
                     0

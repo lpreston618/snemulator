@@ -156,9 +156,7 @@ impl SnemulatorApp {
 
             match app_action {
                 AppAction::Continue => {}
-                AppAction::Exit => {
-                    break 'running;
-                }
+                AppAction::Exit => break 'running,
                 _ => {
                     self.do_action(app_action);
                 }
@@ -351,6 +349,14 @@ impl SnemulatorApp {
             match event {
                 Event::Quit { .. } => {
                     log::info!("Quit event received, exiting.");
+                    
+                    self.about_window = None;
+                    self.settings_window = None;
+                    
+                    #[cfg(feature = "debug")]
+                    {
+                        self.debug_window = None;
+                    }
 
                     app_action = AppAction::Exit;
                 }
