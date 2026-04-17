@@ -50,12 +50,11 @@ impl WatchpointsTab {
                 
                 if ui.button("Unload Script").clicked() {
                     self.loaded_script_path = None;
-                    if let Some(mut probe) = core.probe.take() {
-                        probe.wp_engine.unload_script(core);
+                    core.do_with_probe(|probe, core| {
+                        probe.wp_engine.unload_script(core, &mut probe.control);
                         self.loaded_script = None;
                         self.loaded_script_path = None;
-                        core.probe = Some(probe);
-                    }
+                    });
                 }
             });
         });
@@ -82,24 +81,18 @@ impl WatchpointsTab {
         self.loaded_script_path = Some(wp_script_file.clone());
         self.loaded_script = Some(script.clone());
         
-        let mut probe = core.probe.take().unwrap();
-        
-        if prev_script_loaded {
-            probe.wp_engine.unload_script(core);
-        }
-        
-        match probe.wp_engine.load_script(&mut script) {
-            Err(e) => {
-                self.loaded_script = None;
-                self.loaded_script_path = None;
-                core.probe = Some(probe);
-                return Err(anyhow::anyhow!("Failed to load script: {}", e));
+        core.do_with_probe(|probe, core| {
+            if prev_script_loaded {
+                probe.wp_engine.unload_script(core, &mut probe.control);
             }
-            Ok(()) => {}
-        }
-        core.probe = Some(probe);
-        
-        Ok(())
+            
+            probe.wp_engine.load_script(&mut script)
+                .map_err(|e| {
+                    self.loaded_script = None;
+                    self.loaded_script_path = None;
+                    anyhow::anyhow!("Failed to load script: {}", e)
+                })
+        }).unwrap()
     }
     
     fn try_select_script(&mut self, core: &mut Snemulator<Debugger>) -> Result<()> {

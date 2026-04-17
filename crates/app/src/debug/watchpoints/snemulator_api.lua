@@ -248,6 +248,12 @@ function OnHDMATransfer(channel, src_addr, dst_addr, value) end
 function OnHDMAEnd(channel) end
 
 ---Callbacks to control emulator output
+---@class Control
+---@field audio_en boolean Whether audio output is enabled
+---@field video_en boolean Whether video output is enabled
+---@field input_en boolean Whether input is enabled
+---@field ff_en boolean Whether fast forwarding is enabled
+---@field ff_speed number Fast forwarding speed multiplier
 control = {}
 
 ---Break/Pause emulation
@@ -267,6 +273,10 @@ function control:SetVideoEnabled(enabled) end
 function control:SetInputEnabled(enabled) end
 ---Enable or disable fast forwarding.
 function control:SetFastForwardEnabled(enabled) end
+---Sets the fast forward speed (1.0 == Normal speed, 2.0 == 2x speed). Note that this target speed is not
+---guaranteed to be reached, as the emulator may slow down if the target speed is too high.
+---@param speed number The speed to run at when fast forwarding is enabled. Clamped to a value between 1.0 and 10.0.
+function control:SetFastForwardSpeed(speed) end
 
 CONSTS = {}
 CONSTS.mmio = {} -- MMIO Register Addresses

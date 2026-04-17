@@ -14,7 +14,7 @@ use common::UiWindow;
 
 const DEBUG_WINDOW_WIDTH: u32 = 800;
 const DEBUG_WINDOW_HEIGHT: u32 = 600;
-const FF_SPEEDUP: usize = 2;
+const DEFAULT_FF_SPEED: f32 = 2.0;
 
 pub enum DebugAction {
     SingleStep,
@@ -33,10 +33,7 @@ pub struct DebugWindow {
     selected_tab: tabs::DebugTab,
     jump_to_bps_on_hit: bool,
     jump_to_wps_on_hit: bool,
-    ff_en: bool,
-    audio_en: bool,
-    video_en: bool,
-    input_en: bool,
+    ff_frames: f32,
 }
 
 impl DebugWindow {
@@ -70,10 +67,7 @@ impl DebugWindow {
             selected_tab: tabs::DebugTab::Cpu,
             jump_to_bps_on_hit: true,
             jump_to_wps_on_hit: true,
-            ff_en: false,
-            audio_en: true,
-            video_en: true,
-            input_en: true,
+            ff_frames: 0.0,
         };
 
         debug_window.egui_window = Some(egui_window);
@@ -90,33 +84,47 @@ impl DebugWindow {
     ) -> app::AppAction {
         let mut app_action = app::AppAction::Continue;
         
-        let frame_buffer = if self.audio_en { Some(frame_buffer) } else { None };
-        let audio_buffer = if self.audio_en { Some(audio_buffer) } else { None };
-
+        let frame_buffer = if core.probe.as_ref().unwrap().control.video_en { Some(frame_buffer) } else { None };
+        let audio_buffer = if core.probe.as_ref().unwrap().control.audio_en { Some(audio_buffer) } else { None };
+        
         if !app_state.is_paused {
-            if self.ff_en {
-                core.probe.as_mut().unwrap().update_textures = false;
+            let mut probe = core.probe.take().unwrap();
+            
+            if probe.control.ff_en {
+                probe.control.update_textures = false;
                 
-                for _ in 0..FF_SPEEDUP-1 {
+                self.ff_frames += probe.control.ff_speed;
+                
+                let frames_to_run = self.ff_frames as usize;
+                
+                self.ff_frames -= frames_to_run as f32;
+                
+                let frames_to_run = frames_to_run.saturating_sub(1);
+                
+                core.probe = Some(probe);
+                
+                for _ in 0..frames_to_run {
                     core.run_frame(None, None);
                 }
                 
-                core.probe.as_mut().unwrap().update_textures = true;
+                core.probe.as_mut().unwrap().control.update_textures = true;
                 
-                core.run_frame(frame_buffer, None);
+                core.run_frame(frame_buffer, audio_buffer);
             } else {
-                core.probe.as_mut().unwrap().update_textures = true;
+                probe.control.update_textures = true;
 
+                core.probe = Some(probe);
+                
                 core.run_frame(frame_buffer, audio_buffer);
             }
             
-            if core.probe.as_ref().unwrap().should_stop {
+            if core.probe.as_ref().unwrap().control.should_stop {
                 app_state.is_paused = true;
             }
             
             self.handle_probe_events(core);
         }
-
+    
         let mut egui_window = self.egui_window.take().unwrap();
         let mut debug_action: Option<DebugAction> = None;
 
@@ -154,9 +162,11 @@ impl DebugWindow {
                         debug_action = Some(DebugAction::HardReset);
                     }
                     
-                    let hyperspeed_text = if self.ff_en { "Disable Hyperspeed" } else { "Enable Hyperspeed" };
-                    ui.toggle_value(&mut self.ff_en, hyperspeed_text)
-                        .on_hover_text(format!("If enabled, emulator will run at {}x speed, but with no audio and reduced video output", FF_SPEEDUP));
+                    let probe = core.probe.as_mut().unwrap();
+                    
+                    let hyperspeed_text = if probe.control.ff_en { "Disable Hyperspeed" } else { "Enable Hyperspeed" };
+                    ui.toggle_value(&mut probe.control.ff_en, hyperspeed_text)
+                        .on_hover_text(format!("If enabled, emulator will run at {}x speed, but with no audio and reduced video output", DEFAULT_FF_SPEED));
 
                     if app_state.is_paused && ui.button("Resume").clicked() {
                         debug_action = Some(DebugAction::TogglePause);
@@ -310,40 +320,20 @@ impl DebugWindow {
         let action = core.do_with_probe(|probe, core| {
             let mut app_action = AppAction::Continue;
             
-            if probe.breakpoint_hit {
-                probe.breakpoint_hit = false;
+            if probe.control.breakpoint_hit {
+                probe.control.breakpoint_hit = false;
                 self.breakpoint_hit(core);
             }
             
-            if probe.watchpoint_hit {
-                probe.watchpoint_hit = false;
+            if probe.control.watchpoint_hit {
+                probe.control.watchpoint_hit = false;
             }
             
             probe.resume_emulation();
             
-            if probe.wp_engine.controls.should_reset {
-                probe.wp_engine.controls.should_reset = false;
+            if probe.control.should_reset {
+                probe.control.should_reset = false;
                 app_action = AppAction::ResetCore;
-            }
-            
-            if let Some(val) = probe.wp_engine.controls.audio_enable_cmd {
-                probe.wp_engine.controls.audio_enable_cmd = None;
-                self.audio_en = val;
-            }
-            
-            if let Some(val) = probe.wp_engine.controls.video_enable_cmd {
-                probe.wp_engine.controls.video_enable_cmd = None;
-                self.video_en = val;
-            }
-            
-            if let Some(val) = probe.wp_engine.controls.ff_enable_cmd {
-                probe.wp_engine.controls.ff_enable_cmd = None;
-                self.ff_en = val;
-            }
-            
-            if let Some(val) = probe.wp_engine.controls.input_enable_cmd {
-                probe.wp_engine.controls.input_enable_cmd = None;
-                self.input_en = val;
             }
             
             app_action

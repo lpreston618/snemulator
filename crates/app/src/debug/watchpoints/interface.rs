@@ -1,7 +1,7 @@
 use mlua::{UserData, Value};
 use snemcore::{Snemulator, probe::DebugProbe, scpu::{self, dma::Direction}, sppu::TileSize};
 
-use crate::debug::{debugger::Debugger, watchpoints::engine::WatchpointControls};
+use crate::debug::{debugger::{DebugControl, Debugger}};
 
 macro_rules! register_fields {
     (
@@ -32,12 +32,14 @@ macro_rules! register_fields {
 }
 
 pub struct ControlInterface {
-    controls: *mut WatchpointControls,
+    controls: *mut DebugControl,
 }
 
 impl ControlInterface {
-    pub fn new(controls: &mut WatchpointControls) -> Self {
-        Self { controls: controls as *mut WatchpointControls }
+    pub fn new(controls: &mut DebugControl) -> Self {
+        Self {
+            controls: controls as *mut DebugControl,
+        }
     }
 }
 
@@ -69,6 +71,29 @@ impl SnemulatorInterface {
 }
 
 impl UserData for ControlInterface {
+    fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("audio_en", |_, this| {
+            let controls = unsafe { &mut *this.controls };
+            Ok(controls.audio_en)
+        });
+        fields.add_field_method_get("video_en", |_, this| {
+            let controls = unsafe { &mut *this.controls };
+            Ok(controls.video_en)
+        });
+        fields.add_field_method_get("input_en", |_, this| {
+            let controls = unsafe { &mut *this.controls };
+            Ok(controls.input_en)
+        });
+        fields.add_field_method_get("ff_en", |_, this| {
+            let controls = unsafe { &mut *this.controls };
+            Ok(controls.ff_en)
+        });
+        fields.add_field_method_get("ff_speed", |_, this| {
+            let controls = unsafe { &mut *this.controls };
+            Ok(controls.ff_speed)
+        });
+    }
+    
     fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("Break", |_, this, ()| {
             let controls = unsafe { &mut *this.controls };
@@ -82,22 +107,27 @@ impl UserData for ControlInterface {
         });
         methods.add_method("SetAudioEnabled", |_, this, enabled: bool| {
             let controls = unsafe { &mut *this.controls };
-            controls.audio_enable_cmd = Some(enabled);
+            controls.audio_en = enabled;
             Ok(())
         });
         methods.add_method("SetVideoEnabled", |_, this, enabled: bool| {
             let controls = unsafe { &mut *this.controls };
-            controls.video_enable_cmd = Some(enabled);
+            controls.video_en = enabled;
             Ok(())
         });
         methods.add_method("SetFastForwardEnabled", |_, this, enabled: bool| {
             let controls = unsafe { &mut *this.controls };
-            controls.ff_enable_cmd = Some(enabled);
+            controls.ff_en = enabled;
             Ok(())
         });
         methods.add_method("SetInputEnabled", |_, this, enabled: bool| {
             let controls = unsafe { &mut *this.controls };
-            controls.input_enable_cmd = Some(enabled);
+            controls.input_en = enabled;
+            Ok(())
+        });
+        methods.add_method("SetFastForwardSpeed", |_, this, speed: f32| {
+            let controls = unsafe { &mut *this.controls };
+            controls.ff_speed = speed.clamp(1.0, 10.0);
             Ok(())
         });
     }

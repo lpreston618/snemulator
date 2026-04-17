@@ -3,7 +3,7 @@ use anyhow::Result;
 use std::marker::PhantomData;
 use std::any::Any;
 
-use crate::debug::{debugger::Debugger, watchpoints::{interface::ControlInterface, luainclude::LUA_INCLUDE}};
+use crate::debug::{debugger::{DebugControl, Debugger}, watchpoints::{interface::ControlInterface, luainclude::LUA_INCLUDE}};
 use mlua::{AnyUserData, Function, IntoLuaMulti, Lua, UserData};
 use snemcore::{Snemulator, probe::DebugProbe, scpu::CpuInterrupt};
 
@@ -149,22 +149,11 @@ impl CallbackType {
     }
 }
 
-pub struct WatchpointControls {
-    pub watchpoint_hit: bool,
-    pub should_reset: bool,
-    pub audio_enable_cmd: Option<bool>,
-    pub video_enable_cmd: Option<bool>,
-    pub ff_enable_cmd: Option<bool>,
-    pub input_enable_cmd: Option<bool>,
-}
-
 pub struct WatchpointEngine {
     pub initialized: bool,
     
     lua: Lua,
     callbacks: Callbacks,
-    
-    pub controls: Box<WatchpointControls>,
 }
 
 impl WatchpointEngine {
@@ -190,19 +179,10 @@ impl WatchpointEngine {
                 on_hdma_end: None,
                 on_interrupt: None,
             },
-            
-            controls: Box::new(WatchpointControls {
-                should_reset: false,
-                watchpoint_hit: false,
-                audio_enable_cmd: None,
-                video_enable_cmd: None,
-                ff_enable_cmd: None,
-                input_enable_cmd: None,
-            }),
         }
     }
     
-    pub fn init(&mut self, core: &mut Snemulator<Debugger>) -> Result<()> {
+    pub fn init(&mut self, core: &mut Snemulator<Debugger>, control: &mut DebugControl) -> Result<()> {
         let globals = self.lua.globals();
         
         // Ignore emulator_api import, it is only for LSP aid
@@ -223,7 +203,7 @@ impl WatchpointEngine {
         let core_access = self.lua.create_userdata(SnemulatorInterface::new(core))?;
         globals.set("core", core_access)?;
         
-        let control_access = self.lua.create_userdata(ControlInterface::new(self.controls.as_mut()))?;
+        let control_access = self.lua.create_userdata(ControlInterface::new(control))?;
         globals.set("control", control_access)?;
         
         self.initialized = true;
@@ -233,13 +213,13 @@ impl WatchpointEngine {
         Ok(())
     }
     
-    pub fn unload_script(&mut self, core: &mut Snemulator<Debugger>) {
+    pub fn unload_script(&mut self, core: &mut Snemulator<Debugger>, control: &mut DebugControl) {
         for callback_type in CallbackType::ALL {
             self.unregister_callback(*callback_type);
         }
         
         let _ = self.lua.globals().clear();
-        self.init(core).ok();
+        self.init(core, control).ok();
     }
     
     pub fn load_script(&mut self, script: &str) -> Result<()> {
@@ -288,24 +268,14 @@ impl WatchpointEngine {
         self.callbacks.set(callback_type, None);
     }
     
-    pub fn execute_callback<T: IntoLuaMulti>(&mut self, callback_type: CallbackType, args: T) -> WatchpointAction {
+    pub fn execute_callback<T: IntoLuaMulti>(&mut self, callback_type: CallbackType, args: T) {
         if let Some(func) = self.callbacks.get(callback_type) {
             match func.call::<()>(args) {
-                Ok(_) => {
-                    if self.controls.watchpoint_hit {
-                        self.controls.watchpoint_hit = false;
-                        WatchpointAction::Break
-                    } else {
-                        WatchpointAction::Continue
-                    }
-                },
+                Ok(_) => {},
                 Err(e) => {
                     log::debug!("function '{}' failed to execute: {}", callback_type.lua_fn_name(), e);
-                    WatchpointAction::Break
                 },
             }
-        } else {
-            WatchpointAction::Continue
         }
     }
     

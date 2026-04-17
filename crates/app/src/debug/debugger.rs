@@ -61,43 +61,54 @@ impl LayerBuffers {
     }
 }
 
+pub struct DebugControl {
+    pub audio_en: bool,
+    pub video_en: bool,
+    pub input_en: bool,
+    pub ff_en: bool,
+    pub ff_speed: f32,
+    pub update_textures: bool,
+    pub should_stop: bool,
+    pub breakpoint_hit: bool,
+    pub watchpoint_hit: bool,
+    pub should_reset: bool,
+}
+
 pub struct Debugger {
     pub breakpoints: HashSet<BreakpointInfo>,
     pub layer_buffers: LayerBuffers,
-    pub breakpoint_hit: bool,
-    pub update_textures: bool,
-    pub watchpoint_hit: bool,
     pub wp_engine: WatchpointEngine,
-    pub should_stop: bool,
+    pub control: Box<DebugControl>,
 }
 
 impl DebugProbe for Debugger {
     fn init(&mut self, core: &mut Snemulator<Self>) {
-        match self.wp_engine.init(core) {
+        match self.wp_engine.init(core, &mut self.control) {
             Err(e) => log::error!("Failed to initialize watchpoint engine: {}", e),
             _ => {}
         }
     }
     
     fn should_stop(&mut self) -> bool {
-        self.should_stop
+        self.control.should_stop
     }
     
     fn resume_emulation(&mut self) {
-        self.breakpoint_hit = false;
-        self.watchpoint_hit = false;
-        self.should_stop = false;
+        self.control.breakpoint_hit = false;
+        self.control.watchpoint_hit = false;
+        self.control.should_stop = false;
     }
     
     fn on_emulation_cycle(&mut self, core: &mut Snemulator<Self>) {
-        match self.wp_engine.execute_callback(CallbackType::EmulationCycle, ()) {
-            WatchpointAction::Break => { self.hit_watchpoint(); },
-            _ => {}
+        self.wp_engine.execute_callback(CallbackType::EmulationCycle, ());
+        
+        if self.control.watchpoint_hit {
+            self.control.should_stop = true;
         }
     }
     
     fn on_dot(&mut self, core: &mut Snemulator<Self>) {
-        if self.update_textures {
+        if self.control.update_textures {
             if core.ppu.x == 0 && core.ppu.y == 0 {
                 self.layer_buffers.clear_all();
             }
@@ -113,23 +124,26 @@ impl DebugProbe for Debugger {
             }
         }
         
-        match self.wp_engine.execute_callback(CallbackType::Dot, ()) {
-            WatchpointAction::Break => { self.hit_watchpoint(); },
-            _ => {}
+        self.wp_engine.execute_callback(CallbackType::Dot, ());
+        
+        if self.control.watchpoint_hit {
+            self.control.should_stop = true;
         }
     }
     
     fn on_scanline(&mut self, core: &mut Snemulator<Self>) {
-        match self.wp_engine.execute_callback(CallbackType::Scanline, ()) {
-            WatchpointAction::Break => { self.hit_watchpoint(); },
-            _ => {}
+        self.wp_engine.execute_callback(CallbackType::Scanline, ());
+        
+        if self.control.watchpoint_hit {
+            self.control.should_stop = true;
         }
     }
     
     fn on_frame(&mut self, core: &mut Snemulator<Self>) {
-        match self.wp_engine.execute_callback(CallbackType::Frame, ()) {
-            WatchpointAction::Break => { self.hit_watchpoint(); },
-            _ => {}
+        self.wp_engine.execute_callback(CallbackType::Frame, ());
+        
+        if self.control.watchpoint_hit {
+            self.control.should_stop = true;
         }
     }
     
@@ -140,72 +154,82 @@ impl DebugProbe for Debugger {
             self.hit_breakpoint();
         }
         
-        match self.wp_engine.execute_callback(CallbackType::Instruction, ()) {
-            WatchpointAction::Break => { self.hit_watchpoint(); },
-            _ => {}
+        self.wp_engine.execute_callback(CallbackType::Instruction, ());
+        
+        if self.control.watchpoint_hit {
+            self.control.should_stop = true;
         }
     }
     
     fn on_interrupt(&mut self, kind: snemcore::scpu::CpuInterrupt) {
-        match self.wp_engine.execute_callback(CallbackType::Interrupt, kind as u8) {
-            WatchpointAction::Break => { self.hit_watchpoint(); },
-            _ => {}
+        self.wp_engine.execute_callback(CallbackType::Interrupt, kind as u8);
+        
+        if self.control.watchpoint_hit {
+            self.control.should_stop = true;
         }
     }
     
     fn on_memory_read(&mut self, addr: u32, value: u8) {
-        match self.wp_engine.execute_callback(CallbackType::MemoryRead, (addr, value)) {
-            WatchpointAction::Break => { self.hit_watchpoint(); },
-            _ => {}
+        self.wp_engine.execute_callback(CallbackType::MemoryRead, (addr, value));
+        
+        if self.control.watchpoint_hit {
+            self.control.should_stop = true;
         }
     }
     
     fn on_memory_write(&mut self, addr: u32, value: u8) {
-        match self.wp_engine.execute_callback(CallbackType::MemoryWrite, (addr, value)) {
-            WatchpointAction::Break => { self.hit_watchpoint(); },
-            _ => {}
+        self.wp_engine.execute_callback(CallbackType::MemoryWrite, (addr, value));
+        
+        if self.control.watchpoint_hit {
+            self.control.should_stop = true;
         }
     }
 
     fn on_dma_start(&mut self, channel: usize) {
-        match self.wp_engine.execute_callback(CallbackType::DmaStart, channel) {
-            WatchpointAction::Break => { self.hit_watchpoint(); },
-            _ => {}
+        self.wp_engine.execute_callback(CallbackType::DmaStart, channel);
+        
+        if self.control.watchpoint_hit {
+            self.control.should_stop = true;
         }
     }
     
     fn on_dma_transfer(&mut self, channel: usize, src_addr: u32, dst_addr: u32, value: u8) {
-        match self.wp_engine.execute_callback(CallbackType::DmaTransfer, (channel, src_addr, dst_addr, value)) {
-            WatchpointAction::Break => { self.hit_watchpoint(); },
-            _ => {}
+        self.wp_engine.execute_callback(CallbackType::DmaTransfer, (channel, src_addr, dst_addr, value));
+        
+        if self.control.watchpoint_hit {
+            self.control.should_stop = true;
         }
     }
 
     fn on_dma_end(&mut self, channel: usize) {
-        match self.wp_engine.execute_callback(CallbackType::DmaEnd, channel) {
-            WatchpointAction::Break => { self.hit_watchpoint(); },
-            _ => {}
+        self.wp_engine.execute_callback(CallbackType::DmaEnd, channel);
+        
+        if self.control.watchpoint_hit {
+            self.control.should_stop = true;
         }
     }
     
     fn on_hdma_start(&mut self, channel: usize) {
-        match self.wp_engine.execute_callback(CallbackType::HdmaStart, channel) {
-            WatchpointAction::Break => { self.hit_watchpoint(); },
-            _ => {}
+        self.wp_engine.execute_callback(CallbackType::HdmaStart, channel);
+        
+        if self.control.watchpoint_hit {
+            self.control.should_stop = true;
         }
     }
     
     fn on_hdma_transfer(&mut self, channel: usize, src_addr: u32, dst_addr: u32, value: u8) {
-        match self.wp_engine.execute_callback(CallbackType::HdmaTransfer, (channel, src_addr, dst_addr, value)) {
-            WatchpointAction::Break => { self.hit_watchpoint(); },
-            _ => {}
+        self.wp_engine.execute_callback(CallbackType::HdmaTransfer, (channel, src_addr, dst_addr, value));
+        
+        if self.control.watchpoint_hit {
+            self.control.should_stop = true;
         }
     }
 
     fn on_hdma_end(&mut self, channel: usize) {
-        match self.wp_engine.execute_callback(CallbackType::HdmaEnd, channel) {
-            WatchpointAction::Break => { self.hit_watchpoint(); },
-            _ => {}
+        self.wp_engine.execute_callback(CallbackType::HdmaEnd, channel);
+        
+        if self.control.watchpoint_hit {
+            self.control.should_stop = true;
         }
     }
 }
@@ -215,21 +239,25 @@ impl Debugger {
         Ok(Self {
             breakpoints: HashSet::new(),
             layer_buffers: LayerBuffers::new(),
-            breakpoint_hit: false,
-            watchpoint_hit: false,
-            update_textures: true,
             wp_engine: WatchpointEngine::new(),
-            should_stop: false,
+            
+            control: Box::new(DebugControl {
+                audio_en: true,
+                video_en: true,
+                input_en: true,
+                ff_en: false,
+                ff_speed: 2.0,
+                update_textures: true,
+                should_stop: false,
+                breakpoint_hit: false,
+                watchpoint_hit: false,
+                should_reset: false,
+            })
         })
     }
     
-    fn hit_watchpoint(&mut self) {
-        self.watchpoint_hit = true;
-        self.should_stop = true;
-    }
-    
     fn hit_breakpoint(&mut self) {
-        self.breakpoint_hit = true;
-        self.should_stop = true;
+        self.control.breakpoint_hit = true;
+        self.control.should_stop = true;
     }
 }
