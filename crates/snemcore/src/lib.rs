@@ -155,6 +155,18 @@ impl<P: DebugProbe> Snemulator<P> {
         self.probe = Some(probe);
     }
 
+    pub fn do_with_probe<F, A>(&mut self, f: F) -> Option<A>
+        where F: FnOnce(&mut P, &mut Self) -> A,
+    {
+        if let Some(mut probe) = self.probe.take() {
+            let result = f(&mut probe, self);
+            self.probe = Some(probe);
+            Some(result)
+        } else {
+            None
+        }
+    }
+    
     pub fn power_on(&mut self) {
         self.clear_regs();
 
@@ -301,14 +313,24 @@ impl<P: DebugProbe> Snemulator<P> {
         self.probe = Some(probe);
     }
 
-    pub fn cycle_instruction(&mut self, frame_buffer: &mut [u8]) {
+    pub fn cycle_instruction(&mut self, frame_buffer: Option<&mut [u8]>) {
         let mut audio_buffer = Vec::new();
+        let video_out = frame_buffer.is_some();
+        let frame_buffer = frame_buffer.unwrap_or_else(|| &mut []);
         
         while self.cpu.clocks > self.ppu.clocks {
-            self.cycle(frame_buffer, &mut audio_buffer);
+            if video_out {
+                self.cycle(frame_buffer, &mut audio_buffer);
+            } else {
+                self.cycle_no_video(&mut audio_buffer);
+            }
         }
         
-        self.cycle(frame_buffer, &mut audio_buffer);
+        if video_out {
+            self.cycle(frame_buffer, &mut audio_buffer);
+        } else {
+            self.cycle_no_video(&mut audio_buffer);
+        }
     }
     
     fn cycle_cpu(&mut self, probe: &mut P) {

@@ -795,7 +795,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
     	let mut result;
     	
     	if !self.is_flag_set(Flag::FlagD) {
-            result = self.a as u16 + operand as u16 + carry as u16;
+            result = (self.a & 0xFF) + operand as u16 + carry as u16;
         } else {
             result = (self.a as u16 & 0x0F) + (operand as u16 & 0x0F) + carry as u16;
             if result > 9 {

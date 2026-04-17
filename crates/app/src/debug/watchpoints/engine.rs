@@ -1,8 +1,9 @@
 use anyhow::Result;
 
 use std::marker::PhantomData;
+use std::any::Any;
 
-use crate::debug::watchpoints::luainclude::LUA_INCLUDE;
+use crate::debug::{debugger::Debugger, watchpoints::{interface::ControlInterface, luainclude::LUA_INCLUDE}};
 use mlua::{AnyUserData, Function, IntoLuaMulti, Lua, UserData};
 use snemcore::{Snemulator, probe::DebugProbe, scpu::CpuInterrupt};
 
@@ -33,16 +34,140 @@ struct Callbacks {
     on_hdma_end: Option<Function>,
 }
 
-pub struct WatchpointEngine<P: DebugProbe> {
+impl Callbacks {
+    fn get(&self, callback: CallbackType) -> Option<&Function> {
+        match callback {
+            CallbackType::EmulationCycle => self.on_emulation_cycle.as_ref(),
+            CallbackType::Dot => self.on_dot.as_ref(),
+            CallbackType::Scanline => self.on_scanline.as_ref(),
+            CallbackType::Frame => self.on_frame.as_ref(),
+            CallbackType::Instruction => self.on_instruction.as_ref(),
+            CallbackType::Interrupt => self.on_interrupt.as_ref(),
+            CallbackType::MemoryRead => self.on_memory_read.as_ref(),
+            CallbackType::MemoryWrite => self.on_memory_write.as_ref(),
+            CallbackType::DmaStart => self.on_dma_start.as_ref(),
+            CallbackType::DmaTransfer => self.on_dma_transfer.as_ref(),
+            CallbackType::DmaEnd => self.on_dma_end.as_ref(),
+            CallbackType::HdmaStart => self.on_hdma_start.as_ref(),
+            CallbackType::HdmaTransfer => self.on_hdma_transfer.as_ref(),
+            CallbackType::HdmaEnd => self.on_hdma_end.as_ref(),
+        }
+    }
+    
+    fn set(&mut self, callback: CallbackType, func: Option<Function>) {
+        match callback {
+            CallbackType::EmulationCycle => self.on_emulation_cycle = func,
+            CallbackType::Dot => self.on_dot = func,
+            CallbackType::Scanline => self.on_scanline = func,
+            CallbackType::Frame => self.on_frame = func,
+            CallbackType::Instruction => self.on_instruction = func,
+            CallbackType::Interrupt => self.on_interrupt = func,
+            CallbackType::MemoryRead => self.on_memory_read = func,
+            CallbackType::MemoryWrite => self.on_memory_write = func,
+            CallbackType::DmaStart => self.on_dma_start = func,
+            CallbackType::DmaTransfer => self.on_dma_transfer = func,
+            CallbackType::DmaEnd => self.on_dma_end = func,
+            CallbackType::HdmaStart => self.on_hdma_start = func,
+            CallbackType::HdmaTransfer => self.on_hdma_transfer = func,
+            CallbackType::HdmaEnd => self.on_hdma_end = func,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum CallbackType {
+    EmulationCycle,
+    Dot,
+    Scanline,
+    Frame,
+    Instruction,
+    Interrupt,
+    MemoryRead,
+    MemoryWrite,
+    DmaStart,
+    DmaTransfer,
+    DmaEnd,
+    HdmaStart,
+    HdmaTransfer,
+    HdmaEnd,
+}
+
+impl CallbackType {
+    const ALL: &'static [Self] = &[
+        Self::EmulationCycle,
+        Self::Dot,
+        Self::Scanline,
+        Self::Frame,
+        Self::Instruction,
+        Self::Interrupt,
+        Self::MemoryRead,
+        Self::MemoryWrite,
+        Self::DmaStart,
+        Self::DmaTransfer,
+        Self::DmaEnd,
+        Self::HdmaStart,
+        Self::HdmaTransfer,
+        Self::HdmaEnd,
+    ];
+    
+    fn lua_fn_name(&self) -> &'static str {
+        match self {
+            CallbackType::EmulationCycle => "OnEmulationCycle",
+            CallbackType::Dot => "OnDot",
+            CallbackType::Scanline => "OnScanline",
+            CallbackType::Frame => "OnFrame",
+            CallbackType::Instruction => "OnInstruction",
+            CallbackType::Interrupt => "OnInterrupt",
+            CallbackType::MemoryRead => "OnMemoryRead",
+            CallbackType::MemoryWrite => "OnMemoryWrite",
+            CallbackType::DmaStart => "OnDMAStart",
+            CallbackType::DmaTransfer => "OnDMATransfer",
+            CallbackType::DmaEnd => "OnDMAEnd",
+            CallbackType::HdmaStart => "OnHDMAStart",
+            CallbackType::HdmaTransfer => "OnHDMATransfer",
+            CallbackType::HdmaEnd => "OnHDMAEnd",
+        }
+    }
+    
+    fn rust_fn_name(&self) -> &'static str {
+        match self {
+            CallbackType::EmulationCycle => "on_emulation_cycle",
+            CallbackType::Dot => "on_dot",
+            CallbackType::Scanline => "on_scanline",
+            CallbackType::Frame => "on_frame",
+            CallbackType::Instruction => "on_instruction",
+            CallbackType::Interrupt => "on_interrupt",
+            CallbackType::MemoryRead => "on_memory_read",
+            CallbackType::MemoryWrite => "on_memory_write",
+            CallbackType::DmaStart => "on_dma_start",
+            CallbackType::DmaTransfer => "on_dma_transfer",
+            CallbackType::DmaEnd => "on_dma_end",
+            CallbackType::HdmaStart => "on_hdma_start",
+            CallbackType::HdmaTransfer => "on_hdma_transfer",
+            CallbackType::HdmaEnd => "on_hdma_end",
+        }
+    }
+}
+
+pub struct WatchpointControls {
+    pub watchpoint_hit: bool,
+    pub should_reset: bool,
+    pub audio_enable_cmd: Option<bool>,
+    pub video_enable_cmd: Option<bool>,
+    pub ff_enable_cmd: Option<bool>,
+    pub input_enable_cmd: Option<bool>,
+}
+
+pub struct WatchpointEngine {
     pub initialized: bool,
     
     lua: Lua,
     callbacks: Callbacks,
     
-    _phantom_probe: PhantomData<P>,
+    pub controls: Box<WatchpointControls>,
 }
 
-impl<P: DebugProbe + 'static> WatchpointEngine<P> {
+impl WatchpointEngine {
     pub fn new() -> Self {
         let lua = Lua::new();
         
@@ -65,11 +190,19 @@ impl<P: DebugProbe + 'static> WatchpointEngine<P> {
                 on_hdma_end: None,
                 on_interrupt: None,
             },
-            _phantom_probe: PhantomData {},
+            
+            controls: Box::new(WatchpointControls {
+                should_reset: false,
+                watchpoint_hit: false,
+                audio_enable_cmd: None,
+                video_enable_cmd: None,
+                ff_enable_cmd: None,
+                input_enable_cmd: None,
+            }),
         }
     }
     
-    pub fn init(&mut self, core: &mut Snemulator<P>) -> Result<()> {
+    pub fn init(&mut self, core: &mut Snemulator<Debugger>) -> Result<()> {
         let globals = self.lua.globals();
         
         // Ignore emulator_api import, it is only for LSP aid
@@ -87,14 +220,11 @@ impl<P: DebugProbe + 'static> WatchpointEngine<P> {
             Ok(())
         })?)?;
         
-        let action_table = self.lua.create_table()?;
-        action_table.set("Continue", self.lua.create_userdata(WatchpointAction::Continue)?)?;
-        action_table.set("Break", self.lua.create_userdata(WatchpointAction::Break)?)?;
-        globals.set("ACTION", action_table)?;
-        
         let core_access = self.lua.create_userdata(SnemulatorInterface::new(core))?;
-    
         globals.set("core", core_access)?;
+        
+        let control_access = self.lua.create_userdata(ControlInterface::new(self.controls.as_mut()))?;
+        globals.set("control", control_access)?;
         
         self.initialized = true;
         
@@ -103,7 +233,11 @@ impl<P: DebugProbe + 'static> WatchpointEngine<P> {
         Ok(())
     }
     
-    pub fn unload_script(&mut self, core: &mut Snemulator<P>) {
+    pub fn unload_script(&mut self, core: &mut Snemulator<Debugger>) {
+        for callback_type in CallbackType::ALL {
+            self.unregister_callback(*callback_type);
+        }
+        
         let _ = self.lua.globals().clear();
         self.init(core).ok();
     }
@@ -131,64 +265,42 @@ impl<P: DebugProbe + 'static> WatchpointEngine<P> {
             };
         }
         
-        self.callbacks.on_emulation_cycle = globals.get("OnEmulationCycle").ok();
-        self.callbacks.on_dot             = globals.get("OnDot").ok();
-        self.callbacks.on_scanline        = globals.get("OnScanline").ok();
-        self.callbacks.on_frame           = globals.get("OnFrame").ok();
-        self.callbacks.on_instruction     = globals.get("OnInstruction").ok();
-        self.callbacks.on_interrupt       = globals.get("OnInterrupt").ok();
-        self.callbacks.on_memory_read     = globals.get("OnMemoryRead").ok();
-        self.callbacks.on_memory_write    = globals.get("OnMemoryWrite").ok();
-        self.callbacks.on_dma_start       = globals.get("OnDMAStart").ok();
-        self.callbacks.on_dma_transfer    = globals.get("OnDMATransfer").ok();
-        self.callbacks.on_dma_end         = globals.get("OnDMAEnd").ok();
-        self.callbacks.on_hdma_start      = globals.get("OnHDMAStart").ok();
-        self.callbacks.on_hdma_transfer   = globals.get("OnHDMATransfer").ok();
-        self.callbacks.on_hdma_end        = globals.get("OnHDMAEnd").ok();
+        for callback_type in CallbackType::ALL {
+            self.register_callback(*callback_type);
+        }
         
         log::trace!("Loaded watchpoint script. Present callbacks:");
-        log::trace!("  on_emulation_cycle: {}", self.callbacks.on_emulation_cycle.is_some());
-        log::trace!("  on_dot: {}",             self.callbacks.on_dot.is_some());
-        log::trace!("  on_scanline: {}",        self.callbacks.on_scanline.is_some());
-        log::trace!("  on_frame_end: {}",       self.callbacks.on_frame.is_some());
-        log::trace!("  on_instruction: {}",     self.callbacks.on_instruction.is_some());
-        log::trace!("  on_interrupt: {}",       self.callbacks.on_interrupt.is_some());
-        log::trace!("  on_memory_read: {}",     self.callbacks.on_memory_read.is_some());
-        log::trace!("  on_memory_write: {}",    self.callbacks.on_memory_write.is_some());
-        log::trace!("  on_dma_start: {}",       self.callbacks.on_dma_start.is_some());
-        log::trace!("  on_dma_transfer: {}",    self.callbacks.on_dma_transfer.is_some());
-        log::trace!("  on_dma_end: {}",         self.callbacks.on_dma_end.is_some());
-        log::trace!("  on_hdma_start: {}",      self.callbacks.on_hdma_start.is_some());
-        log::trace!("  on_hdma_transfer: {}",   self.callbacks.on_hdma_transfer.is_some());
-        log::trace!("  on_hdma_end: {}",        self.callbacks.on_hdma_end.is_some());
+        
+        for callback_type in CallbackType::ALL {
+            log::trace!("  {}: {}", callback_type.lua_fn_name(), self.callbacks.get(*callback_type).is_some());
+        }
 
         Ok(())
     }
     
-    fn try_execute_fn<T: IntoLuaMulti>(&self, wp_func: &Function, args: T) -> Result<WatchpointAction> {        
-        let result: AnyUserData = match wp_func.call(args) {
-            Ok(data) => data,
-            Err(e) => {
-                return Err(anyhow::anyhow!("Expected return type Action, {}", e));
-            }
-        };
-        let action_value = result.borrow::<WatchpointAction>();
-        let action = match action_value {
-            Ok(a) => *a,
-            Err(_) => WatchpointAction::Continue, // Ignore other return types
-        };
+    fn register_callback(&mut self, callback_type: CallbackType) {
+        let callback = self.lua.globals().get(callback_type.lua_fn_name()).ok().flatten();
         
-        Ok(action)
+        self.callbacks.set(callback_type, callback);
     }
     
-    fn execute_fn<T: IntoLuaMulti>(&self, func: &Option<Function>, name: &str, args: T) -> WatchpointAction {
-        if let Some(func) = func {
-            let action = self.try_execute_fn(func, args);
-            
-            match action {
-                Ok(action) => action,
+    fn unregister_callback(&mut self, callback_type: CallbackType) {
+        self.callbacks.set(callback_type, None);
+    }
+    
+    pub fn execute_callback<T: IntoLuaMulti>(&mut self, callback_type: CallbackType, args: T) -> WatchpointAction {
+        if let Some(func) = self.callbacks.get(callback_type) {
+            match func.call::<()>(args) {
+                Ok(_) => {
+                    if self.controls.watchpoint_hit {
+                        self.controls.watchpoint_hit = false;
+                        WatchpointAction::Break
+                    } else {
+                        WatchpointAction::Continue
+                    }
+                },
                 Err(e) => {
-                    log::debug!("function '{}' failed to execute: {}", name, e);
+                    log::debug!("function '{}' failed to execute: {}", callback_type.lua_fn_name(), e);
                     WatchpointAction::Break
                 },
             }
@@ -197,59 +309,59 @@ impl<P: DebugProbe + 'static> WatchpointEngine<P> {
         }
     }
     
-    pub fn on_emulation_cycle(&self) -> WatchpointAction {
-        self.execute_fn(&self.callbacks.on_emulation_cycle, "OnEmulationCycle", ())
-    }
+    // pub fn on_emulation_cycle(&self) -> WatchpointAction {
+    //     self.execute_fn(&self.callbacks.on_emulation_cycle, "OnEmulationCycle", ())
+    // }
     
-    pub fn on_dot(&self) -> WatchpointAction {
-        self.execute_fn(&self.callbacks.on_dot, "OnDot", ())
-    }
+    // pub fn on_dot(&self) -> WatchpointAction {
+    //     self.execute_fn(&self.callbacks.on_dot, "OnDot", ())
+    // }
     
-    pub fn on_scanline(&self) -> WatchpointAction {
-        self.execute_fn(&self.callbacks.on_scanline, "OnScanline", ())
-    }
+    // pub fn on_scanline(&self) -> WatchpointAction {
+    //     self.execute_fn(&self.callbacks.on_scanline, "OnScanline", ())
+    // }
     
-    pub fn on_frame(&self) -> WatchpointAction {
-        self.execute_fn(&self.callbacks.on_frame, "OnFrame", ())
-    }
+    // pub fn on_frame(&self) -> WatchpointAction {
+    //     self.execute_fn(&self.callbacks.on_frame, "OnFrame", ())
+    // }
     
-    pub fn on_instruction(&self) -> WatchpointAction {
-        self.execute_fn(&self.callbacks.on_instruction, "OnInstruction", ())
-    }
+    // pub fn on_instruction(&self) -> WatchpointAction {
+    //     self.execute_fn(&self.callbacks.on_instruction, "OnInstruction", ())
+    // }
     
-    pub fn on_interrupt(&self, kind: CpuInterrupt) -> WatchpointAction {
-        self.execute_fn(&self.callbacks.on_interrupt, "OnInterrupt", kind as u8)
-    }
+    // pub fn on_interrupt(&self, kind: CpuInterrupt) -> WatchpointAction {
+    //     self.execute_fn(&self.callbacks.on_interrupt, "OnInterrupt", kind as u8)
+    // }
     
-    pub fn on_memory_read(&self, addr: u32, value: u8) -> WatchpointAction {
-        self.execute_fn(&self.callbacks.on_memory_read, "OnMemoryRead", (addr, value))
-    }
+    // pub fn on_memory_read(&self, addr: u32, value: u8) -> WatchpointAction {
+    //     self.execute_fn(&self.callbacks.on_memory_read, "OnMemoryRead", (addr, value))
+    // }
     
-    pub fn on_memory_write(&self, addr: u32, value: u8) -> WatchpointAction {
-        self.execute_fn(&self.callbacks.on_memory_write, "OnMemoryWrite", (addr, value))
-    }
+    // pub fn on_memory_write(&self, addr: u32, value: u8) -> WatchpointAction {
+    //     self.execute_fn(&self.callbacks.on_memory_write, "OnMemoryWrite", (addr, value))
+    // }
     
-    pub fn on_dma_start(&self, channel: usize) -> WatchpointAction {
-        self.execute_fn(&self.callbacks.on_dma_start, "OnDMAStart", channel)
-    }
+    // pub fn on_dma_start(&self, channel: usize) -> WatchpointAction {
+    //     self.execute_fn(&self.callbacks.on_dma_start, "OnDMAStart", channel)
+    // }
     
-    pub fn on_dma_transfer(&self, channel: usize, src_addr: u32, dst_addr: u32, value: u8) -> WatchpointAction {
-        self.execute_fn(&self.callbacks.on_dma_transfer, "OnDMATransfer", (channel, src_addr, dst_addr, value))
-    }
+    // pub fn on_dma_transfer(&self, channel: usize, src_addr: u32, dst_addr: u32, value: u8) -> WatchpointAction {
+    //     self.execute_fn(&self.callbacks.on_dma_transfer, "OnDMATransfer", (channel, src_addr, dst_addr, value))
+    // }
     
-    pub fn on_dma_end(&self, channel: usize) -> WatchpointAction {
-        self.execute_fn(&self.callbacks.on_dma_end, "OnDMAEnd", channel)
-    }
+    // pub fn on_dma_end(&self, channel: usize) -> WatchpointAction {
+    //     self.execute_fn(&self.callbacks.on_dma_end, "OnDMAEnd", channel)
+    // }
 
-    pub fn on_hdma_start(&self, channel: usize) -> WatchpointAction {
-        self.execute_fn(&self.callbacks.on_hdma_start, "OnHDMAStart", channel)
-    }
+    // pub fn on_hdma_start(&self, channel: usize) -> WatchpointAction {
+    //     self.execute_fn(&self.callbacks.on_hdma_start, "OnHDMAStart", channel)
+    // }
     
-    pub fn on_hdma_transfer(&self, channel: usize, src_addr: u32, dst_addr: u32, value: u8) -> WatchpointAction {
-        self.execute_fn(&self.callbacks.on_hdma_transfer, "OnHDMATransfer", (channel, src_addr, dst_addr, value))
-    }
+    // pub fn on_hdma_transfer(&self, channel: usize, src_addr: u32, dst_addr: u32, value: u8) -> WatchpointAction {
+    //     self.execute_fn(&self.callbacks.on_hdma_transfer, "OnHDMATransfer", (channel, src_addr, dst_addr, value))
+    // }
     
-    pub fn on_hdma_end(&self, channel: usize) -> WatchpointAction {
-        self.execute_fn(&self.callbacks.on_hdma_end, "OnHDMAEnd", channel)
-    }
+    // pub fn on_hdma_end(&self, channel: usize) -> WatchpointAction {
+    //     self.execute_fn(&self.callbacks.on_hdma_end, "OnHDMAEnd", channel)
+    // }
 }

@@ -1,6 +1,8 @@
 use mlua::{UserData, Value};
 use snemcore::{Snemulator, probe::DebugProbe, scpu::{self, dma::Direction}, sppu::TileSize};
 
+use crate::debug::{debugger::Debugger, watchpoints::engine::WatchpointControls};
+
 macro_rules! register_fields {
     (
         $fields:expr,
@@ -29,34 +31,79 @@ macro_rules! register_fields {
     };
 }
 
-pub struct SnemulatorInterface<P: DebugProbe> {
-    core: *mut Snemulator<P>
+pub struct ControlInterface {
+    controls: *mut WatchpointControls,
 }
 
-pub struct MetaInterface<P: DebugProbe> {
-    core: *mut Snemulator<P>
+impl ControlInterface {
+    pub fn new(controls: &mut WatchpointControls) -> Self {
+        Self { controls: controls as *mut WatchpointControls }
+    }
 }
 
-pub struct CpuInterface<P: DebugProbe> {
-    core: *mut Snemulator<P>
+pub struct SnemulatorInterface {
+    core: *mut Snemulator<Debugger>
 }
 
-pub struct PpuInterface<P: DebugProbe> {
-    core: *mut Snemulator<P>
+pub struct MetaInterface {
+    core: *mut Snemulator<Debugger>
 }
 
-pub struct DmaInterface<P: DebugProbe> {
-    core: *mut Snemulator<P>,
+pub struct CpuInterface {
+    core: *mut Snemulator<Debugger>
+}
+
+pub struct PpuInterface {
+    core: *mut Snemulator<Debugger>
+}
+
+pub struct DmaInterface {
+    core: *mut Snemulator<Debugger>,
     channel: usize,
 }
 
-impl<P: DebugProbe> SnemulatorInterface<P> {
-    pub fn new(core: &mut Snemulator<P>) -> Self {
+impl SnemulatorInterface {
+    pub fn new(core: &mut Snemulator<Debugger>) -> Self {
         Self { core }
     }
 }
 
-impl<P: DebugProbe + 'static> UserData for SnemulatorInterface<P> {
+impl UserData for ControlInterface {
+    fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method("Break", |_, this, ()| {
+            let controls = unsafe { &mut *this.controls };
+            controls.watchpoint_hit = true;
+            Ok(())
+        });
+        methods.add_method("Reset", |_, this, ()| {
+            let controls = unsafe { &mut *this.controls };
+            controls.should_reset = true;
+            Ok(())
+        });
+        methods.add_method("SetAudioEnabled", |_, this, enabled: bool| {
+            let controls = unsafe { &mut *this.controls };
+            controls.audio_enable_cmd = Some(enabled);
+            Ok(())
+        });
+        methods.add_method("SetVideoEnabled", |_, this, enabled: bool| {
+            let controls = unsafe { &mut *this.controls };
+            controls.video_enable_cmd = Some(enabled);
+            Ok(())
+        });
+        methods.add_method("SetFastForwardEnabled", |_, this, enabled: bool| {
+            let controls = unsafe { &mut *this.controls };
+            controls.ff_enable_cmd = Some(enabled);
+            Ok(())
+        });
+        methods.add_method("SetInputEnabled", |_, this, enabled: bool| {
+            let controls = unsafe { &mut *this.controls };
+            controls.input_enable_cmd = Some(enabled);
+            Ok(())
+        });
+    }
+}
+
+impl UserData for SnemulatorInterface {
     fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {
         fields.add_field_method_get("meta", |lua, this| {
             lua.create_userdata(MetaInterface { core: this.core })
@@ -95,20 +142,16 @@ impl<P: DebugProbe + 'static> UserData for SnemulatorInterface<P> {
     }
 }
 
-impl<P: DebugProbe> UserData for MetaInterface<P> {
+impl UserData for MetaInterface {
     fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("frame", |_, this| {
-            let core = unsafe { &*this.core };
-            Ok(core.frame)
-        });
-        fields.add_field_method_get("rom_size", |_, this| {
-            let core = unsafe { &*this.core };
-            Ok(core.cart.as_ref().unwrap().rom_slice().len())
-        });
+        register_fields! { fields,
+            get "frame"  => |_this, core| core.frame;
+            get "rom_size" => |_this, core| core.cart.as_ref().unwrap().rom_slice().len();
+        }
     }
 }
 
-impl<P: DebugProbe> UserData for CpuInterface<P> {
+impl UserData for CpuInterface {
     fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {
         register_fields! { fields,
             // --- GETTERS ---
@@ -197,7 +240,7 @@ impl<P: DebugProbe> UserData for CpuInterface<P> {
     }
 }
 
-impl<P: DebugProbe> UserData for PpuInterface<P> {
+impl UserData for PpuInterface {
     fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {
         register_fields! { fields,
             // --- GETTERS ---
@@ -261,73 +304,11 @@ impl<P: DebugProbe> UserData for PpuInterface<P> {
             get "h_blank"           => |_this, core| core.cpu_regs.hblank_flag;
             get "v_blank_nmi"       => |_this, core| core.cpu_regs.vblank_nmi_en;
             get "hv_timer_mode"     => |_this, core| core.cpu_regs.hv_timer_irq_mode as u8;
-            
-            // --- SETTERS ---
-            // set "screen_brightness" => |_this, core| core.ppu_regs.screen_brightness;
-            // set "obj_size"          => |_this, core| core.ppu_regs.obj_sprite_size as u8;
-            // set "bg_mode"           => |_this, core| core.ppu_regs.bg_mode as u8;
-            // set "mosaic_size"       => |_this, core| core.ppu_regs.mosaic_size;
-            // set "cgram_addr"        => |_this, core| core.ppu_regs.cgram_addr;
-            // set "window1_left"      => |_this, core| core.ppu_regs.w1_left_pos;
-            // set "window1_right"     => |_this, core| core.ppu_regs.w1_right_pos;
-            // set "window2_left"      => |_this, core| core.ppu_regs.w2_left_pos;
-            // set "window2_right"     => |_this, core| core.ppu_regs.w2_right_pos;
-            // set "name_base_addr"    => |_this, core| core.ppu_regs.name_base_addr;
-            // set "name_secondary_addr" => |_this, core| core.ppu_regs.name_secondary_base_addr;
-            // set "oam_addr"          => |_this, core| core.ppu_regs.internal_oam_addr;
-            // set "bg1_tilemap_addr"  => |_this, core| core.ppu_regs.bg_settings[0].tilemap_base_addr;
-            // set "bg2_tilemap_addr"  => |_this, core| core.ppu_regs.bg_settings[1].tilemap_base_addr;
-            // set "bg3_tilemap_addr"  => |_this, core| core.ppu_regs.bg_settings[2].tilemap_base_addr;
-            // set "bg4_tilemap_addr"  => |_this, core| core.ppu_regs.bg_settings[3].tilemap_base_addr;
-            // set "bg1_hofs"          => |_this, core| core.ppu_regs.bg_settings[0].scroll_x;
-            // set "bg1_vofs"          => |_this, core| core.ppu_regs.bg_settings[0].scroll_y;
-            // set "bg2_hofs"          => |_this, core| core.ppu_regs.bg_settings[1].scroll_x;
-            // set "bg2_vofs"          => |_this, core| core.ppu_regs.bg_settings[1].scroll_y;
-            // set "bg3_hofs"          => |_this, core| core.ppu_regs.bg_settings[2].scroll_x;
-            // set "bg3_vofs"          => |_this, core| core.ppu_regs.bg_settings[2].scroll_y;
-            // set "bg4_hofs"          => |_this, core| core.ppu_regs.bg_settings[3].scroll_x;
-            // set "bg4_vofs"          => |_this, core| core.ppu_regs.bg_settings[3].scroll_y;
-            // set "m7_hofs"           => |_this, core| core.ppu_regs.m7_scroll_x;
-            // set "m7_vofs"           => |_this, core| core.ppu_regs.m7_scroll_y;
-            // set "vram_addr"         => |_this, core| core.ppu_regs.vram_addr;
-            // set "m7_a"              => |_this, core| core.ppu_regs.m7_matrix_a;
-            // set "m7_b"              => |_this, core| core.ppu_regs.m7_matrix_b;
-            // set "m7_c"              => |_this, core| core.ppu_regs.m7_matrix_c;
-            // set "m7_d"              => |_this, core| core.ppu_regs.m7_matrix_d;
-            // set "m7_x"              => |_this, core| core.ppu_regs.m7_center_x;
-            // set "m7_y"              => |_this, core| core.ppu_regs.m7_center_y;
-            // set "h_counter"         => |_this, core| core.ppu_regs.h_counter;
-            // set "v_counter"         => |_this, core| core.ppu_regs.v_counter;
-            // set "priority_rotation" => |_this, core| core.ppu_regs.priority_rotation;
-            // set "bg1_large_tiles"   => |_this, core| matches!(core.ppu_regs.bg_settings[0].chr_size, TileSize::Size16x16);
-            // set "bg2_large_tiles"   => |_this, core| matches!(core.ppu_regs.bg_settings[1].chr_size, TileSize::Size16x16);
-            // set "bg3_large_tiles"   => |_this, core| matches!(core.ppu_regs.bg_settings[2].chr_size, TileSize::Size16x16);
-            // set "bg4_large_tiles"   => |_this, core| matches!(core.ppu_regs.bg_settings[3].chr_size, TileSize::Size16x16);
-            // set "bg3_mode1_priority" => |_this, core| core.ppu_regs.bg3_mode1_priority;
-            // set "bg1_mosaic_enable" => |_this, core| core.ppu_regs.bg_settings[0].mosaic_en;
-            // set "bg2_mosaic_enable" => |_this, core| core.ppu_regs.bg_settings[1].mosaic_en;
-            // set "bg3_mosaic_enable" => |_this, core| core.ppu_regs.bg_settings[2].mosaic_en;
-            // set "bg4_mosaic_enable" => |_this, core| core.ppu_regs.bg_settings[3].mosaic_en;
-            // set "bg1_main_enable"   => |_this, core| core.ppu_regs.bg_settings[0].main_en;
-            // set "bg2_main_enable"   => |_this, core| core.ppu_regs.bg_settings[1].main_en;
-            // set "bg3_main_enable"   => |_this, core| core.ppu_regs.bg_settings[2].main_en;
-            // set "bg4_main_enable"   => |_this, core| core.ppu_regs.bg_settings[3].main_en;
-            // set "obj_main_enable"   => |_this, core| core.ppu_regs.obj_settings.main_en;
-            // set "dot"               => |_this, core| core.ppu.dot;
-            // set "scanline"          => |_this, core| core.ppu.scanline;
-            // set "screen_x"          => |_this, core| core.ppu.x;
-            // set "screen_y"          => |_this, core| core.ppu.y;
-            // set "multiply_result"   => |_this, core| core.ppu_regs.multiply_result;
-            // set "f_blank"           => |_this, core| core.ppu_regs.in_fblank;
-            // set "v_blank"           => |_this, core| core.cpu_regs.vblank_flag;
-            // set "h_blank"           => |_this, core| core.cpu_regs.hblank_flag;
-            // set "v_blank_nmi"       => |_this, core| core.cpu_regs.vblank_nmi_en;
-            // set "hv_timer_mode"     => |_this, core| core.cpu_regs.hv_timer_irq_mode as u8;
         }
     }
 }
 
-impl<P: DebugProbe> UserData for DmaInterface<P> {
+impl UserData for DmaInterface {
     fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {
         register_fields! { fields,
             get "dma_en"                   => |this, core| core.dma_regs[this.channel].dma_en;

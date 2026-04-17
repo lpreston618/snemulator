@@ -1,44 +1,26 @@
 require("snemulator_api")
 
-local instr_count = 0
-local bg_mode = 0
+local function enable_ff()
+    control:SetAudioEnabled(false)
+    control:SetVideoEnabled(false)
+    control:SetFastForwardEnabled(true)
+end
+
+local function disable_ff()
+    control:SetAudioEnabled(true)
+    control:SetVideoEnabled(true)
+    control:SetFastForwardEnabled(false)
+end
+
+local ff_enabled = false
 
 function OnFrame()
-    Log("Frame: " .. core.meta.frame .. ", instr_cnt = " .. instr_count .. ", PC & 0xFF = " .. (core.cpu.pc & 0xFF))
-
-    local ch = core.dma[0]
-
-    Log("DMA0: b_to_a = " .. (ch.b_to_a and 1 or 0))
-
-    if core.meta.frame == 300 then
-        Log("Unregistering OnInstruction and OnMemoryRead hooks")
-        _G.OnInstruction = nil
-        _G.OnMemoryRead = nil
+    if core.meta.frame % 300 == 0 then
+        if ff_enabled then
+            disable_ff()
+        else
+            enable_ff()
+        end
+        ff_enabled = not ff_enabled
     end
-
-    return ACTION.Continue
-end
-
-function OnInterrupt(kind)
-    if kind == CONSTS.interrupts.RESET then
-        instr_count = 0
-        bg_mode = core.ppu.bg_mode
-    end
-
-    return ACTION.Continue
-end
-
-function OnInstruction()
-    instr_count = instr_count + 1
-    return ACTION.Continue
-end
-
-function OnMemoryRead(addr, value)
-    if addr == CONSTS.mmio.BGMODE and core.ppu.bg_mode ~= bg_mode then
-        bg_mode = core.ppu.bg_mode
-        Log("Set bg mode to " .. bg_mode)
-        return ACTION.Break
-    end
-
-    return ACTION.Continue
 end

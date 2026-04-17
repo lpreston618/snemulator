@@ -7,7 +7,7 @@ use snemcore::sppu::ColorLayer;
 use snemcore::sysinfo::{SCREEN_WIDTH, SCREEN_HEIGHT};
 
 use crate::debug::breakpoints::BreakpointInfo;
-use crate::debug::watchpoints::engine::{WatchpointAction, WatchpointEngine};
+use crate::debug::watchpoints::engine::{CallbackType, WatchpointAction, WatchpointEngine};
 
 const LAYER_BUFFER_SIZE: usize = 4 * ((SCREEN_WIDTH / 2) * (SCREEN_HEIGHT / 2)) as usize;
 
@@ -67,7 +67,8 @@ pub struct Debugger {
     pub breakpoint_hit: bool,
     pub update_textures: bool,
     pub watchpoint_hit: bool,
-    pub wp_engine: WatchpointEngine<Self>,
+    pub wp_engine: WatchpointEngine,
+    pub should_stop: bool,
 }
 
 impl DebugProbe for Debugger {
@@ -79,17 +80,18 @@ impl DebugProbe for Debugger {
     }
     
     fn should_stop(&mut self) -> bool {
-        self.breakpoint_hit || self.watchpoint_hit
+        self.should_stop
     }
     
     fn resume_emulation(&mut self) {
         self.breakpoint_hit = false;
         self.watchpoint_hit = false;
+        self.should_stop = false;
     }
     
     fn on_emulation_cycle(&mut self, core: &mut Snemulator<Self>) {
-        match self.wp_engine.on_emulation_cycle() {
-            WatchpointAction::Break => { self.watchpoint_hit = true; },
+        match self.wp_engine.execute_callback(CallbackType::EmulationCycle, ()) {
+            WatchpointAction::Break => { self.hit_watchpoint(); },
             _ => {}
         }
     }
@@ -111,22 +113,22 @@ impl DebugProbe for Debugger {
             }
         }
         
-        match self.wp_engine.on_dot() {
-            WatchpointAction::Break => { self.watchpoint_hit = true; },
+        match self.wp_engine.execute_callback(CallbackType::Dot, ()) {
+            WatchpointAction::Break => { self.hit_watchpoint(); },
             _ => {}
         }
     }
     
     fn on_scanline(&mut self, core: &mut Snemulator<Self>) {
-        match self.wp_engine.on_scanline() {
-            WatchpointAction::Break => { self.watchpoint_hit = true; },
+        match self.wp_engine.execute_callback(CallbackType::Scanline, ()) {
+            WatchpointAction::Break => { self.hit_watchpoint(); },
             _ => {}
         }
     }
     
     fn on_frame(&mut self, core: &mut Snemulator<Self>) {
-        match self.wp_engine.on_frame() {
-            WatchpointAction::Break => { self.watchpoint_hit = true; },
+        match self.wp_engine.execute_callback(CallbackType::Frame, ()) {
+            WatchpointAction::Break => { self.hit_watchpoint(); },
             _ => {}
         }
     }
@@ -135,74 +137,74 @@ impl DebugProbe for Debugger {
         let full_pc = (core.cpu.pb as u32) << 16 | core.cpu.pc as u32;
         
         if self.breakpoints.contains(&BreakpointInfo::new(full_pc)) {
-            self.breakpoint_hit = true;
+            self.hit_breakpoint();
         }
         
-        match self.wp_engine.on_instruction() {
-            WatchpointAction::Break => { self.watchpoint_hit = true; },
+        match self.wp_engine.execute_callback(CallbackType::Instruction, ()) {
+            WatchpointAction::Break => { self.hit_watchpoint(); },
             _ => {}
         }
     }
     
     fn on_interrupt(&mut self, kind: snemcore::scpu::CpuInterrupt) {
-        match self.wp_engine.on_interrupt(kind) {
-            WatchpointAction::Break => { self.watchpoint_hit = true; },
+        match self.wp_engine.execute_callback(CallbackType::Interrupt, kind as u8) {
+            WatchpointAction::Break => { self.hit_watchpoint(); },
             _ => {}
         }
     }
     
     fn on_memory_read(&mut self, addr: u32, value: u8) {
-        match self.wp_engine.on_memory_read(addr, value) {
-            WatchpointAction::Break => { self.watchpoint_hit = true; },
+        match self.wp_engine.execute_callback(CallbackType::MemoryRead, (addr, value)) {
+            WatchpointAction::Break => { self.hit_watchpoint(); },
             _ => {}
         }
     }
     
     fn on_memory_write(&mut self, addr: u32, value: u8) {
-        match self.wp_engine.on_memory_write(addr, value) {
-            WatchpointAction::Break => { self.watchpoint_hit = true; },
+        match self.wp_engine.execute_callback(CallbackType::MemoryWrite, (addr, value)) {
+            WatchpointAction::Break => { self.hit_watchpoint(); },
             _ => {}
         }
     }
 
     fn on_dma_start(&mut self, channel: usize) {
-        match self.wp_engine.on_dma_start(channel) {
-            WatchpointAction::Break => { self.watchpoint_hit = true; },
+        match self.wp_engine.execute_callback(CallbackType::DmaStart, channel) {
+            WatchpointAction::Break => { self.hit_watchpoint(); },
             _ => {}
         }
     }
     
     fn on_dma_transfer(&mut self, channel: usize, src_addr: u32, dst_addr: u32, value: u8) {
-        match self.wp_engine.on_dma_transfer(channel, src_addr, dst_addr, value) {
-            WatchpointAction::Break => { self.watchpoint_hit = true; },
+        match self.wp_engine.execute_callback(CallbackType::DmaTransfer, (channel, src_addr, dst_addr, value)) {
+            WatchpointAction::Break => { self.hit_watchpoint(); },
             _ => {}
         }
     }
 
     fn on_dma_end(&mut self, channel: usize) {
-        match self.wp_engine.on_dma_end(channel) {
-            WatchpointAction::Break => { self.watchpoint_hit = true; },
+        match self.wp_engine.execute_callback(CallbackType::DmaEnd, channel) {
+            WatchpointAction::Break => { self.hit_watchpoint(); },
             _ => {}
         }
     }
     
     fn on_hdma_start(&mut self, channel: usize) {
-        match self.wp_engine.on_hdma_start(channel) {
-            WatchpointAction::Break => { self.watchpoint_hit = true; },
+        match self.wp_engine.execute_callback(CallbackType::HdmaStart, channel) {
+            WatchpointAction::Break => { self.hit_watchpoint(); },
             _ => {}
         }
     }
     
     fn on_hdma_transfer(&mut self, channel: usize, src_addr: u32, dst_addr: u32, value: u8) {
-        match self.wp_engine.on_hdma_transfer(channel, src_addr, dst_addr, value) {
-            WatchpointAction::Break => { self.watchpoint_hit = true; },
+        match self.wp_engine.execute_callback(CallbackType::HdmaTransfer, (channel, src_addr, dst_addr, value)) {
+            WatchpointAction::Break => { self.hit_watchpoint(); },
             _ => {}
         }
     }
 
     fn on_hdma_end(&mut self, channel: usize) {
-        match self.wp_engine.on_hdma_end(channel) {
-            WatchpointAction::Break => { self.watchpoint_hit = true; },
+        match self.wp_engine.execute_callback(CallbackType::HdmaEnd, channel) {
+            WatchpointAction::Break => { self.hit_watchpoint(); },
             _ => {}
         }
     }
@@ -217,6 +219,17 @@ impl Debugger {
             watchpoint_hit: false,
             update_textures: true,
             wp_engine: WatchpointEngine::new(),
+            should_stop: false,
         })
+    }
+    
+    fn hit_watchpoint(&mut self) {
+        self.watchpoint_hit = true;
+        self.should_stop = true;
+    }
+    
+    fn hit_breakpoint(&mut self) {
+        self.breakpoint_hit = true;
+        self.should_stop = true;
     }
 }

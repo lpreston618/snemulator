@@ -1,8 +1,9 @@
 use anyhow::Result;
 use snemcore::cartridge::MappingMode;
 use snemcore::Snemulator;
+use snemcore::probe::DebugProbe;
 
-use crate::app;
+use crate::app::{self, AppAction};
 use crate::debug::debugger::Debugger;
 // use crate::core;
 use crate::debug::tabs;
@@ -13,7 +14,7 @@ use common::UiWindow;
 
 const DEBUG_WINDOW_WIDTH: u32 = 800;
 const DEBUG_WINDOW_HEIGHT: u32 = 600;
-const HYPERSPEED_SPEEDUP: usize = 10;
+const FF_SPEEDUP: usize = 2;
 
 pub enum DebugAction {
     SingleStep,
@@ -32,7 +33,10 @@ pub struct DebugWindow {
     selected_tab: tabs::DebugTab,
     jump_to_bps_on_hit: bool,
     jump_to_wps_on_hit: bool,
-    hyperspeed_en: bool,
+    ff_en: bool,
+    audio_en: bool,
+    video_en: bool,
+    input_en: bool,
 }
 
 impl DebugWindow {
@@ -66,7 +70,10 @@ impl DebugWindow {
             selected_tab: tabs::DebugTab::Cpu,
             jump_to_bps_on_hit: true,
             jump_to_wps_on_hit: true,
-            hyperspeed_en: false,
+            ff_en: false,
+            audio_en: true,
+            video_en: true,
+            input_en: true,
         };
 
         debug_window.egui_window = Some(egui_window);
@@ -80,35 +87,34 @@ impl DebugWindow {
         app_state: &mut app::AppState,
         frame_buffer: &mut [u8],
         audio_buffer: &mut Vec<i16>,
-    ) -> app::AppAction {        
+    ) -> app::AppAction {
         let mut app_action = app::AppAction::Continue;
+        
+        let frame_buffer = if self.audio_en { Some(frame_buffer) } else { None };
+        let audio_buffer = if self.audio_en { Some(audio_buffer) } else { None };
 
         if !app_state.is_paused {
-            if self.hyperspeed_en {       
+            if self.ff_en {
                 core.probe.as_mut().unwrap().update_textures = false;
                 
-                for _ in 0..HYPERSPEED_SPEEDUP-1 {
+                for _ in 0..FF_SPEEDUP-1 {
                     core.run_frame(None, None);
                 }
                 
                 core.probe.as_mut().unwrap().update_textures = true;
                 
-                core.run_frame(Some(frame_buffer), None);
+                core.run_frame(frame_buffer, None);
             } else {
                 core.probe.as_mut().unwrap().update_textures = true;
-                core.run_frame(Some(frame_buffer), Some(audio_buffer));
-            }            
-            
-            if core.probe.as_ref().unwrap().breakpoint_hit {
-                core.probe.as_mut().unwrap().breakpoint_hit = false;
-                app_state.is_paused = true;
-                self.breakpoint_hit(core);
+
+                core.run_frame(frame_buffer, audio_buffer);
             }
             
-            if core.probe.as_ref().unwrap().watchpoint_hit {
+            if core.probe.as_ref().unwrap().should_stop {
                 app_state.is_paused = true;
-                core.probe.as_mut().unwrap().watchpoint_hit = false;
             }
+            
+            self.handle_probe_events(core);
         }
 
         let mut egui_window = self.egui_window.take().unwrap();
@@ -148,9 +154,9 @@ impl DebugWindow {
                         debug_action = Some(DebugAction::HardReset);
                     }
                     
-                    let hyperspeed_text = if self.hyperspeed_en { "Disable Hyperspeed" } else { "Enable Hyperspeed" };
-                    ui.toggle_value(&mut self.hyperspeed_en, hyperspeed_text)
-                        .on_hover_text(format!("If enabled, emulator will run at {}x speed, but with no audio and reduced video output", HYPERSPEED_SPEEDUP));
+                    let hyperspeed_text = if self.ff_en { "Disable Hyperspeed" } else { "Enable Hyperspeed" };
+                    ui.toggle_value(&mut self.ff_en, hyperspeed_text)
+                        .on_hover_text(format!("If enabled, emulator will run at {}x speed, but with no audio and reduced video output", FF_SPEEDUP));
 
                     if app_state.is_paused && ui.button("Resume").clicked() {
                         debug_action = Some(DebugAction::TogglePause);
@@ -203,32 +209,32 @@ impl DebugWindow {
                 DebugAction::HardReset => {
                     app_action = app::AppAction::PowerOnCore;
                 }
-                DebugAction::SingleStep if app_state.is_paused => {
-                    core.probe.as_mut().unwrap().update_textures = true;
-                    core.cycle_instruction(frame_buffer);
+                // DebugAction::SingleStep if app_state.is_paused => {
+                //     core.probe.as_mut().unwrap().update_textures = true;
+                //     core.cycle_instruction(frame_buffer);
                     
-                    if core.probe.as_ref().unwrap().breakpoint_hit {
-                        core.probe.as_mut().unwrap().breakpoint_hit = false;
-                        self.breakpoint_hit(core);
-                    }
+                //     if core.probe.as_ref().unwrap().breakpoint_hit {
+                //         core.probe.as_mut().unwrap().breakpoint_hit = false;
+                //         self.breakpoint_hit(core);
+                //     }
                     
-                    if core.probe.as_ref().unwrap().watchpoint_hit {
-                        core.probe.as_mut().unwrap().watchpoint_hit = false;
-                    }
-                }
-                DebugAction::StepFrame if app_state.is_paused => {
-                    core.probe.as_mut().unwrap().update_textures = true;
-                    core.run_frame(Some(frame_buffer), None);
+                //     if core.probe.as_ref().unwrap().watchpoint_hit {
+                //         core.probe.as_mut().unwrap().watchpoint_hit = false;
+                //     }
+                // }
+                // DebugAction::StepFrame if app_state.is_paused => {
+                //     core.probe.as_mut().unwrap().update_textures = true;
+                //     core.run_frame(frame_buffer, None);
                     
-                    if core.probe.as_ref().unwrap().breakpoint_hit {
-                        core.probe.as_mut().unwrap().breakpoint_hit = false;
-                        self.breakpoint_hit(core);
-                    }
+                //     if core.probe.as_ref().unwrap().breakpoint_hit {
+                //         core.probe.as_mut().unwrap().breakpoint_hit = false;
+                //         self.breakpoint_hit(core);
+                //     }
                     
-                    if core.probe.as_ref().unwrap().watchpoint_hit {
-                        core.probe.as_mut().unwrap().watchpoint_hit = false;
-                    }
-                }
+                //     if core.probe.as_ref().unwrap().watchpoint_hit {
+                //         core.probe.as_mut().unwrap().watchpoint_hit = false;
+                //     }
+                // }
                 
                 _ => {}
             }
@@ -298,6 +304,52 @@ impl DebugWindow {
         // }
 
         app_action
+    }
+    
+    fn handle_probe_events(&mut self, core: &mut Snemulator<Debugger>) -> AppAction {
+        let action = core.do_with_probe(|probe, core| {
+            let mut app_action = AppAction::Continue;
+            
+            if probe.breakpoint_hit {
+                probe.breakpoint_hit = false;
+                self.breakpoint_hit(core);
+            }
+            
+            if probe.watchpoint_hit {
+                probe.watchpoint_hit = false;
+            }
+            
+            probe.resume_emulation();
+            
+            if probe.wp_engine.controls.should_reset {
+                probe.wp_engine.controls.should_reset = false;
+                app_action = AppAction::ResetCore;
+            }
+            
+            if let Some(val) = probe.wp_engine.controls.audio_enable_cmd {
+                probe.wp_engine.controls.audio_enable_cmd = None;
+                self.audio_en = val;
+            }
+            
+            if let Some(val) = probe.wp_engine.controls.video_enable_cmd {
+                probe.wp_engine.controls.video_enable_cmd = None;
+                self.video_en = val;
+            }
+            
+            if let Some(val) = probe.wp_engine.controls.ff_enable_cmd {
+                probe.wp_engine.controls.ff_enable_cmd = None;
+                self.ff_en = val;
+            }
+            
+            if let Some(val) = probe.wp_engine.controls.input_enable_cmd {
+                probe.wp_engine.controls.input_enable_cmd = None;
+                self.input_en = val;
+            }
+            
+            app_action
+        }).unwrap();
+        
+        action
     }
 
     pub fn id(&self) -> u32 {

@@ -181,93 +181,92 @@ core.dma[6] = {} ---@diagnostic disable-line: missing-fields
 ---@type DMA
 core.dma[7] = {} ---@diagnostic disable-line: missing-fields
 
----@enum Action
-ACTION = {
-    ---Continue emulation
-    Continue = 0,
-    ---Pause emulation
-    Break = 1,
-}
-
 ---Log a message with the debug log level
 ---@param message string The message to log
 function Log(message) end
 
 ---Event handler called every emulation cycle.
 ---WARNING: This is called millions of times per frame. Using it will lead to performance decrease.
----@return Action
-function OnEmulationCycle() return ACTION.Continue end
+function OnEmulationCycle() end
 
 ---Event handler called every PPU cycle.
 ---WARNING: This is called millions of times per frame. Using it will lead to performance decrease.
----@return Action
-function OnDot() return ACTION.Continue end
+function OnDot() end
 
 ---Event handler called at start of each scanline.
----@return Action
-function OnScanline() return ACTION.Continue end
+function OnScanline() end
 
 ---Event handler called at the end of each frame (start of V-Blank)
----@return Action
-function OnFrame() return ACTION.Continue end
+function OnFrame() end
 
 ---Event handler called after every SCPU instruction.
 ---WARNING: This is called many, many times per frame and complex logic here can lead to performance decrease.
----@return Action
-function OnInstruction() return ACTION.Continue end
+function OnInstruction() end
 
 ---Event handler called on SCPU memory writes.
 ---@param addr CpuAddress Memory address written
 ---@param value u8 Byte value written
----@return Action
-function OnMemoryWrite(addr, value) return ACTION.Continue end
+function OnMemoryWrite(addr, value) end
 
 ---Event handler called on SCPU memory reads.
 ---@param addr CpuAddress Memory address read
 ---@param value u8 Byte value read from memory
----@return Action
-function OnMemoryRead(addr, value) return ACTION.Continue end
+function OnMemoryRead(addr, value) end
 
 ---Event handler called when an SCPU interrupt occurs.
 ---@param kind Interrupt The kind of interrupt that has occured.
----@return Action
-function OnInterrupt(kind) return ACTION.Continue end
+function OnInterrupt(kind) end
 
 ---Event handler called when a DMA transfer starts on a given channel.
 ---@param channel number DMA channel number
----@return Action
-function OnDMAStart(channel) return ACTION.Continue end
+function OnDMAStart(channel) end
 
 ---Event handler called on each DMA byte transfer.
 ---@param channel number DMA channel number
 ---@param src_addr CpuAddress Source memory address
 ---@param dst_addr CpuAddress Destination memory address
 ---@param value u8 Byte value transferred
----@return Action
-function OnDMATransfer(channel, src_addr, dst_addr, value) return ACTION.Continue end
+function OnDMATransfer(channel, src_addr, dst_addr, value) end
 
 ---Event handler called when a DMA transfer ends on a given channel.
 ---@param channel number DMA channel number
----@return Action
-function OnDMAEnd(channel) return ACTION.Continue end
+function OnDMAEnd(channel) end
 
 ---Event handler called when an HDMA transfer starts on a given channel.
 ---@param channel number HDMA channel number
----@return Action
-function OnHDMAStart(channel) return ACTION.Continue end
+function OnHDMAStart(channel) end
 
 ---Event handler called on each HDMA byte transfer.
 ---@param channel number HDMA channel number
 ---@param src_addr CpuAddress Source memory address
 ---@param dst_addr CpuAddress Destination memory address
 ---@param value u8 Byte value transferred
----@return Action
-function OnHDMATransfer(channel, src_addr, dst_addr, value) return ACTION.Continue end
+function OnHDMATransfer(channel, src_addr, dst_addr, value) end
 
 ---Event handler called when an HDMA transfer ends on a given channel.
 ---@param channel number HDMA channel number
----@return Action
-function OnHDMAEnd(channel) return ACTION.Continue end
+function OnHDMAEnd(channel) end
+
+---Callbacks to control emulator output
+control = {}
+
+---Break/Pause emulation
+function control:Break() end
+---Register a callback to be called on an emulation event. This is automatically called for all
+---callbacks when the script is loaded, and should only be used to re-register callbacks unregistered
+---by the user.
+function control:RegisterCallback(callback) end
+---Unregister a callback that was previously registered with `control.RegisterCallback`.
+function control:UnregisterCallback(callback) end
+---Enable or disable audio output. When fast forwarding, this should be used to disable audio output.
+function control:SetAudioEnabled(enabled) end
+---Enable or disable video output. This can dramatically improve performance when debugging with a watchpoint script.
+---At the obvious cost of not having a visible screen.
+function control:SetVideoEnabled(enabled) end
+---Enable or disable input processing.
+function control:SetInputEnabled(enabled) end
+---Enable or disable fast forwarding.
+function control:SetFastForwardEnabled(enabled) end
 
 CONSTS = {}
 CONSTS.mmio = {} -- MMIO Register Addresses
