@@ -86,44 +86,6 @@ impl DebugWindow {
         
         let frame_buffer = if core.probe.as_ref().unwrap().control.video_en { Some(frame_buffer) } else { None };
         let audio_buffer = if core.probe.as_ref().unwrap().control.audio_en { Some(audio_buffer) } else { None };
-        
-        if !app_state.is_paused {
-            let mut probe = core.probe.take().unwrap();
-            
-            if probe.control.ff_en {
-                probe.control.update_textures = false;
-                
-                self.ff_frames += probe.control.ff_speed;
-                
-                let frames_to_run = self.ff_frames as usize;
-                
-                self.ff_frames -= frames_to_run as f32;
-                
-                let frames_to_run = frames_to_run.saturating_sub(1);
-                
-                core.probe = Some(probe);
-                
-                for _ in 0..frames_to_run {
-                    core.run_frame(None, None);
-                }
-                
-                core.probe.as_mut().unwrap().control.update_textures = true;
-                
-                core.run_frame(frame_buffer, audio_buffer);
-            } else {
-                probe.control.update_textures = true;
-
-                core.probe = Some(probe);
-                
-                core.run_frame(frame_buffer, audio_buffer);
-            }
-            
-            if core.probe.as_ref().unwrap().control.should_stop {
-                app_state.is_paused = true;
-            }
-            
-            self.handle_probe_events(core);
-        }
     
         let mut egui_window = self.egui_window.take().unwrap();
         let mut debug_action: Option<DebugAction> = None;
@@ -219,34 +181,72 @@ impl DebugWindow {
                 DebugAction::HardReset => {
                     app_action = app::AppAction::PowerOnCore;
                 }
-                // DebugAction::SingleStep if app_state.is_paused => {
-                //     core.probe.as_mut().unwrap().update_textures = true;
-                //     core.cycle_instruction(frame_buffer);
+                DebugAction::SingleStep if app_state.is_paused => {                    
+                    core.probe.as_mut().unwrap().control.update_textures = true;
+                    core.cycle_instruction(frame_buffer);
                     
-                //     if core.probe.as_ref().unwrap().breakpoint_hit {
-                //         core.probe.as_mut().unwrap().breakpoint_hit = false;
-                //         self.breakpoint_hit(core);
-                //     }
+                    if core.probe.as_ref().unwrap().control.breakpoint_hit {
+                        core.probe.as_mut().unwrap().control.breakpoint_hit = false;
+                        self.breakpoint_hit(core);
+                    }
                     
-                //     if core.probe.as_ref().unwrap().watchpoint_hit {
-                //         core.probe.as_mut().unwrap().watchpoint_hit = false;
-                //     }
-                // }
-                // DebugAction::StepFrame if app_state.is_paused => {
-                //     core.probe.as_mut().unwrap().update_textures = true;
-                //     core.run_frame(frame_buffer, None);
+                    if core.probe.as_ref().unwrap().control.watchpoint_hit {
+                        core.probe.as_mut().unwrap().control.watchpoint_hit = false;
+                    }
+                }
+                DebugAction::StepFrame if app_state.is_paused => {
+                    core.probe.as_mut().unwrap().control.update_textures = true;
+                    core.run_frame(frame_buffer, None);
                     
-                //     if core.probe.as_ref().unwrap().breakpoint_hit {
-                //         core.probe.as_mut().unwrap().breakpoint_hit = false;
-                //         self.breakpoint_hit(core);
-                //     }
+                    if core.probe.as_ref().unwrap().control.breakpoint_hit {
+                        core.probe.as_mut().unwrap().control.breakpoint_hit = false;
+                        self.breakpoint_hit(core);
+                    }
                     
-                //     if core.probe.as_ref().unwrap().watchpoint_hit {
-                //         core.probe.as_mut().unwrap().watchpoint_hit = false;
-                //     }
-                // }
+                    if core.probe.as_ref().unwrap().control.watchpoint_hit {
+                        core.probe.as_mut().unwrap().control.watchpoint_hit = false;
+                    }
+                }
                 
                 _ => {}
+            }
+        } else {
+            if !app_state.is_paused {
+                let mut probe = core.probe.take().unwrap();
+                
+                if probe.control.ff_en {
+                    probe.control.update_textures = false;
+                    
+                    self.ff_frames += probe.control.ff_speed;
+                    
+                    let frames_to_run = self.ff_frames as usize;
+                    
+                    self.ff_frames -= frames_to_run as f32;
+                    
+                    let frames_to_run = frames_to_run.saturating_sub(1);
+                    
+                    core.probe = Some(probe);
+                    
+                    for _ in 0..frames_to_run {
+                        core.run_frame(None, None);
+                    }
+                    
+                    core.probe.as_mut().unwrap().control.update_textures = true;
+                    
+                    core.run_frame(frame_buffer, audio_buffer);
+                } else {
+                    probe.control.update_textures = true;
+    
+                    core.probe = Some(probe);
+                    
+                    core.run_frame(frame_buffer, audio_buffer);
+                }
+                
+                if core.probe.as_ref().unwrap().control.should_stop {
+                    app_state.is_paused = true;
+                }
+                
+                self.handle_probe_events(core);
             }
         }
         
