@@ -413,7 +413,8 @@ impl<P: DebugProbe> Snemulator<P> {
                     bus = cpu_bus!(self, probe);
                     
                     bus.dma_regs[hdma_active_ch].transfer_pattern_step = 0;
-                    bus.dma_regs[hdma_active_ch].scanlines_left = scanline_counter & 0x7F;
+                    bus.dma_regs[hdma_active_ch].entry_scanline_count = scanline_counter & 0x7F;
+                    bus.dma_regs[hdma_active_ch].scanlines_left = scanline_counter & 0x7F + 1;
                     bus.dma_regs[hdma_active_ch].hdma_reload_flag = get_bit_n!(scanline_counter, 7);
 
                     // Load indirect table address
@@ -452,52 +453,81 @@ impl<P: DebugProbe> Snemulator<P> {
 
         let hdma_ch_regs = &mut self.dma_regs[self.hdma_active_ch];
 
-        let a_bus_addr = if hdma_ch_regs.indirect_hdma {
-            let addr = hdma_ch_regs.hdma_indirect_table_addr;
+        let a_bus_addr: scpu::Address;
+        let b_bus_addr: scpu::Address;
 
-            hdma_ch_regs.hdma_indirect_table_addr.offset += 1;
+        if hdma_ch_regs.indirect_hdma {
+            a_bus_addr = hdma_ch_regs.hdma_indirect_table_addr;
+            b_bus_addr = hdma_ch_regs.get_b_with_offset();
 
-            addr
+            if hdma_ch_regs.hdma_reload_flag {
+                hdma_ch_regs.hdma_indirect_table_addr.offset += 1;
+            }
         } else {
-            let addr = scpu::Address {
+            a_bus_addr = scpu::Address {
                 bank: hdma_ch_regs.a_bus_addr.bank,
                 offset: hdma_ch_regs.hdma_table_offset,
             };
+            b_bus_addr = hdma_ch_regs.get_b_with_offset();
 
-            hdma_ch_regs.hdma_table_offset += 1;
-            addr
-        };
-        let b_bus_addr = hdma_ch_regs.get_b_with_offset();
+            if hdma_ch_regs.hdma_reload_flag {
+                hdma_ch_regs.hdma_table_offset += 1;
+            }
+        }
+
+        // let a_bus_addr = if hdma_ch_regs.indirect_hdma {
+        //     let addr = hdma_ch_regs.hdma_indirect_table_addr;
+
+        //     hdma_ch_regs.hdma_indirect_table_addr.offset += 1; // TODO: Check repreat flag logic
+
+        //     addr
+        // } else {
+        //     let addr = scpu::Address {
+        //         bank: hdma_ch_regs.a_bus_addr.bank,
+        //         offset: hdma_ch_regs.hdma_table_offset,
+        //     };
+
+        //     hdma_ch_regs.hdma_table_offset += 1;
+        //     addr
+        // };
+        // let b_bus_addr = hdma_ch_regs.get_b_with_offset();
 
         let (src_addr, dst_addr) = match hdma_ch_regs.direction {
             dma::Direction::AtoB => (a_bus_addr, b_bus_addr),
             dma::Direction::BtoA => (b_bus_addr, a_bus_addr),
         };
 
-        hdma_ch_regs.scanline_counter -= 1;
+        hdma_ch_regs.scanlines_left -= 1;
         hdma_ch_regs.transfer_pattern_step += 1;
 
-        self.hdma_en = match hdma_ch_regs.transfer_pattern {
+        let transfer_pattern_length = match hdma_ch_regs.transfer_pattern {
             // Stop after first byte
-            dma::TransferPattern::Pattern0 => false,
-
+            dma::TransferPattern::Pattern0 => 1,
             // Stop after two bytes
             dma::TransferPattern::Pattern1
             | dma::TransferPattern::Pattern2
-            | dma::TransferPattern::Pattern6 => hdma_ch_regs.transfer_pattern_step < 2,
-
+            | dma::TransferPattern::Pattern6 => 2,
             // Stop after four bytes
             dma::TransferPattern::Pattern3
             | dma::TransferPattern::Pattern4
             | dma::TransferPattern::Pattern5
-            | dma::TransferPattern::Pattern7 => hdma_ch_regs.transfer_pattern_step < 4,
+            | dma::TransferPattern::Pattern7 => 4,
         };
 
-        let mut bus = cpu_bus!(self, probe);
-        let value = bus.read(src_addr);
-        bus.write(dst_addr, value);
-        
-        probe.on_hdma_transfer(self.hdma_active_ch, src_addr.to_u32(), dst_addr.to_u32(), value);
+        hdma_ch_regs.transfer_pattern_step += 1;
+        hdma_ch_regs.transfer_pattern_step %= transfer_pattern_length;
+        // HDMA transfer complete after transferred transfer_pattern_length bytes
+        self.hdma_en = hdma_ch_regs.transfer_pattern_step == 0;
+
+        let is_first_entry_scanline = hdma_ch_regs.scanlines_left == hdma_ch_regs.entry_scanline_count;
+
+        if is_first_entry_scanline || hdma_ch_regs.hdma_reload_flag {
+            let mut bus = cpu_bus!(self, probe);
+            let value = bus.read(src_addr);
+            bus.write(dst_addr, value);
+            
+            probe.on_hdma_transfer(self.hdma_active_ch, src_addr.to_u32(), dst_addr.to_u32(), value);
+        }
     }
 
     fn do_dma(&mut self, probe: &mut P) {

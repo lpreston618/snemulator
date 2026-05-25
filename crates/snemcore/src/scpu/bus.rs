@@ -730,6 +730,7 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
                 
                 for i in 0..8 {
                     self.dma_regs[i].hdma_en = get_bit_n!(value, i);
+                    self.dma_regs[i].scanlines_left = 0; // On startup set to 0x7F, might not want to do this
 
                     if self.dma_regs[i].hdma_en {
                         self.dma_regs[i].hdma_table_offset = self.dma_regs[i].a_bus_addr.offset;
@@ -765,7 +766,7 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             0x9 => get_byte_n!(channel.hdma_table_offset, 1),
             0xA => {
                 let hdma_reload = if channel.hdma_reload_flag { 0x80 } else { 0 };
-                hdma_reload | channel.scanline_counter
+                hdma_reload | channel.entry_scanline_count
             }
             0xB => channel.unused,
             0xC..=0xE => 0, // Open bus
@@ -843,7 +844,8 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             }
             0xA => {
                 channel.hdma_reload_flag = get_bit_n!(value, 7);
-                channel.scanline_counter = value & 0x7F;
+                channel.entry_scanline_count = value & 0x7F;
+                channel.scanlines_left = value & 0x7F;
             }
             0xB => {
                 channel.unused = value;

@@ -75,19 +75,11 @@ pub struct DmaRegs {
 
     // $43nA
     pub hdma_reload_flag: bool,
-    pub scanline_counter: u8,
+    pub entry_scanline_count: u8, // Initial loaded scanline count for an HDMA entry
+    pub scanlines_left: u8, // Current number of scanlines left until next HDMA entry
 
     // $43nB and $43nF
     pub unused: u8,
-
-    // pub byte_count: u16,
-    // pub hdma_indirect_table_bank: u8,
-    // pub dma_src_addr: u32,
-    // pub hdma_table_addr: u16,
-    pub scanlines_left: u8,
-    // pub unused: u8,
-    // pub hdma_repeat: bool,
-    // pub bytes_written: usize, // needed to keep track of B bus increment patterns
 }
 
 impl DmaRegs {
@@ -105,7 +97,8 @@ impl DmaRegs {
         self.a_bus_addr = Address { bank: 0xFF, offset: 0xFFFF };
         self.hdma_indirect_table_addr = Address { bank: 0xFF, offset: 0xFFFF };
         self.hdma_table_offset = 0xFFFF;
-        self.scanline_counter = 0x7F;
+        self.entry_scanline_count = 0x7F;
+        self.scanlines_left = 0x7F;
         self.hdma_reload_flag = true;
     }
     

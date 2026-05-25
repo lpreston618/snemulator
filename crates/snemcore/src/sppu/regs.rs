@@ -39,7 +39,7 @@ pub struct PpuRegs {
     pub bg_settings: [BgSettings; 4],
     pub obj_settings: LayerSettings,
     pub col_settings: LayerSettings,
-    
+
     // $2105    4321 PMMM    Write Only
     //       - Tilemap tile size (#)
     //       - BG3 priority (P)
@@ -633,7 +633,7 @@ impl PpuRegs {
         self.bg_offset_latch = value;
         self.bg_offset_x_latch = value;
         self.m7_latch = value;
-        
+
         self.bg_settings[0].scroll_x = (((value & 3) as u16) << 8) | (bgofs_latch & 0x00F8) | (bghofs_latch & 0x07);
         self.m7_scroll_x = ((value & 0x1F) as u16) << 8 | m7_latch;
     }

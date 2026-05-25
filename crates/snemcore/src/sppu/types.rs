@@ -181,7 +181,7 @@ pub struct ChrData {
     pub tile_width: u8, // 8 or 16; needed to invert chr_col when flip_x
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct WindowSettings {
     pub logic: WindowLogic,
     pub main_en: bool,

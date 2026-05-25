@@ -348,7 +348,7 @@ impl UserData for DmaInterface {
             get "a_bus_bank"               => |this, core| core.dma_regs[this.channel].a_bus_addr.bank;
             get "hdma_table_start_bank"    => |this, core| core.dma_regs[this.channel].a_bus_addr.bank;
             get "hdma_indirect_table_bank" => |this, core| core.dma_regs[this.channel].hdma_indirect_table_addr.bank;
-            get "hdma_scanline_counter"    => |this, core| core.dma_regs[this.channel].scanline_counter;
+            get "hdma_scanline_counter"    => |this, core| core.dma_regs[this.channel].scanlines_left;
             get "unused_reg"               => |this, core| core.dma_regs[this.channel].unused;
             get "b_bus_addr"               => |this, core| 0x2100 | core.dma_regs[this.channel].b_bus_addr as u16;
             get "a_bus_offset"             => |this, core| core.dma_regs[this.channel].a_bus_addr.offset;
