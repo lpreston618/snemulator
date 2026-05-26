@@ -827,18 +827,26 @@ impl PpuRegs {
     }
 
     pub fn write_2126(&mut self, value: u8) {
+        // log::debug!("W1 left pos set to {value}");
+
         self.w1_left_pos = value;
     }
 
     pub fn write_2127(&mut self, value: u8) {
+        // log::debug!("W1 right pos set to {value}");
+
         self.w1_right_pos = value;
     }
 
     pub fn write_2128(&mut self, value: u8) {
+        // log::debug!("W2 left pos set to {value}");
+
         self.w2_left_pos = value;
     }
 
     pub fn write_2129(&mut self, value: u8) {
+        // log::debug!("W2 right pos set to {value}");
+
         self.w2_right_pos = value;
     }
 

@@ -357,7 +357,7 @@ impl UserData for DmaInterface {
             get "hdma_table_offset"             => |this, core| core.dma_regs[this.channel].hdma_table_offset;
             get "b_to_a"                        => |this, core| matches!(core.dma_regs[this.channel].direction, Direction::BtoA);
             get "indirect_hdma"                 => |this, core| core.dma_regs[this.channel].indirect_hdma;
-            get "hdma_reload"                   => |this, core| core.dma_regs[this.channel].hdma_reload_flag;
+            get "hdma_reload"                   => |this, core| core.dma_regs[this.channel].hdma_repeat_flag;
             get "full_a_bus_addr"               => |this, core| core.dma_regs[this.channel].a_bus_addr.to_u32();
             get "full_hdma_table_start_addr"    => |this, core| core.dma_regs[this.channel].a_bus_addr.to_u32();
             get "full_hdma_table_addr"          => |this, core| (core.dma_regs[this.channel].a_bus_addr.bank as u32) << 16 | core.dma_regs[this.channel].hdma_table_offset as u32;

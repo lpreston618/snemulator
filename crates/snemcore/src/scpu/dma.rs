@@ -74,12 +74,16 @@ pub struct DmaRegs {
     pub hdma_table_offset: u16,
 
     // $43nA
-    pub hdma_reload_flag: bool,
+    pub hdma_repeat_flag: bool,
     pub entry_scanline_count: u8, // Initial loaded scanline count for an HDMA entry
     pub scanlines_left: u8, // Current number of scanlines left until next HDMA entry
 
     // $43nB and $43nF
     pub unused: u8,
+
+    pub hdma_entry_just_loaded: bool, // Whether an HDMA entry was just loaded this cycle, used to determine when to decrement scanlines_left
+    pub hdma_initialized: bool,
+    pub hdma_do_transfer: bool, // Set on entry load, cleared after first transfer for non-repeat entries
 }
 
 impl DmaRegs {
@@ -99,7 +103,7 @@ impl DmaRegs {
         self.hdma_table_offset = 0xFFFF;
         self.entry_scanline_count = 0x7F;
         self.scanlines_left = 0x7F;
-        self.hdma_reload_flag = true;
+        self.hdma_repeat_flag = true;
     }
     
     pub fn reset(&mut self) {

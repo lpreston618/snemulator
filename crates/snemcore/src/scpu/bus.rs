@@ -44,6 +44,7 @@ pub struct CpuBus<'a, P: DebugProbe> {
     pub hdma_pending: &'a mut bool,
     pub dma_active_ch: &'a mut usize,
     pub hdma_active_ch: &'a mut usize,
+    pub hdma_needs_init: &'a mut bool,
 
     pub joy1_in: u16,
     pub joy2_in: u16,
@@ -721,21 +722,11 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             }
 
             0x420C => {
-                *self.hdma_pending = value != 0;
-                *self.hdma_active_ch = value.trailing_zeros() as usize;
-                
-                if *self.hdma_active_ch < 8 {
-                    self.probe.on_hdma_start(*self.hdma_active_ch);
-                }
-                
                 for i in 0..8 {
                     self.dma_regs[i].hdma_en = get_bit_n!(value, i);
-                    self.dma_regs[i].scanlines_left = 0; // On startup set to 0x7F, might not want to do this
-
-                    if self.dma_regs[i].hdma_en {
-                        self.dma_regs[i].hdma_table_offset = self.dma_regs[i].a_bus_addr.offset;
-                    }
+                    self.dma_regs[i].hdma_initialized = false; // Mark all as needing init
                 }
+                *self.hdma_needs_init = true;
             }
 
             0x4210..=0x42FF => {} // Read-only regs
@@ -765,7 +756,7 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             0x8 => get_byte_n!(channel.hdma_table_offset, 0),
             0x9 => get_byte_n!(channel.hdma_table_offset, 1),
             0xA => {
-                let hdma_reload = if channel.hdma_reload_flag { 0x80 } else { 0 };
+                let hdma_reload = if channel.hdma_repeat_flag { 0x80 } else { 0 };
                 hdma_reload | channel.entry_scanline_count
             }
             0xB => channel.unused,
@@ -780,7 +771,7 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
 
         // debug!("Write to DMA regs: channel_idx = {}, offset = ${:04X}, value = ${:02X}", channel_idx, offset, value);
 
-        if channel_idx >= 7 {
+        if channel_idx > 7 {
             return; // TODO: Maybe mirror channel_idx & 7?
         }
 
@@ -843,7 +834,7 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
                 set_byte_n!(channel.hdma_table_offset, value as u16, 1);
             }
             0xA => {
-                channel.hdma_reload_flag = get_bit_n!(value, 7);
+                channel.hdma_repeat_flag = get_bit_n!(value, 7);
                 channel.entry_scanline_count = value & 0x7F;
                 channel.scanlines_left = value & 0x7F;
             }
