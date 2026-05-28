@@ -1,11 +1,11 @@
 use snemcore::Snemulator;
 
 use crate::debug::debugger::Debugger;
+use crate::debug::texture::Texture;
 
 mod chr;
 mod regs;
 mod layers;
-mod texture;
 
 #[derive(PartialEq, Clone, Copy)]
 enum PpuSubTab {

@@ -51,17 +51,21 @@ impl DebugWindow {
         log::debug!("Debugging started");
 
         let mut ppu_tab = None;
-
         egui_window.with_painter(|_, painter| {
             ppu_tab = Some(tabs::PpuTab::new(painter));
         });
-
         let ppu_tab = Box::new(ppu_tab.unwrap());
+
+        let mut mem_tab = None;
+        egui_window.with_painter(|_, painter| {
+            mem_tab = Some(tabs::MemoryTab::new(painter))
+        });
+        let mem_tab = Box::new(mem_tab.unwrap());
 
         let mut debug_window = Self {
             egui_window: None,
             cpu_tab: Box::new(tabs::CpuTab::new(rom_mapping_mode)),
-            mem_tab: Box::new(tabs::MemoryTab::new()),
+            mem_tab,
             ppu_tab,
             wp_tab: Box::new(tabs::WatchpointsTab::new()),
             selected_tab: tabs::DebugTab::Cpu,

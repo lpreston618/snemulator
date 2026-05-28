@@ -1,4 +1,4 @@
-use crate::debug::tabs::ppu::texture::Texture;
+use crate::debug::texture::Texture;
 use snemcore::sysinfo;
 
 pub struct LayerView {
