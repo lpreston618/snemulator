@@ -1294,10 +1294,6 @@ impl<P: DebugProbe> Ppu5C7x<P> {
             if self.scanline == VBLANK_END_SCANLINE_NTSC {
                 self.scanline = 0;
             }
-
-            if self.frame > 350 {
-                log::debug!("scanline: {}, frame: {}, in_w1: {}, in_w2: {}", self.scanline, self.frame, self.in_w1, self.in_w2);
-            }
         }
 
         // End of v-blank, scanline 0 is not visible

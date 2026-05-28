@@ -240,9 +240,7 @@ impl DmaController {
         if hdma_ch_regs.hdma_do_transfer {
             let value = bus.read(src_addr);
             bus.write(dst_addr, value);
-            probe.on_hdma_transfer(self.hdma_active_ch, src_addr.to_u32(), dst_addr.to_u32(), value);
-        
-            log::debug!("Wrote HDMA byte 0x{:02X} from ${:06X} to ${:06X}", value, src_addr.to_u32(), dst_addr.to_u32());
+            probe.on_hdma_transfer(self.hdma_active_ch, src_addr.to_u32(), dst_addr.to_u32(), value);        
         }
     }
 
@@ -319,17 +317,7 @@ impl DmaController {
                 offset: u16::from_le_bytes([lo, hi]),
             };
         }
-
-        log::debug!(
-r#"Loaded HDMA Entry:
-    Scanline Count: {},
-    Repeat: {},
-    Indirect: {}"#,
-            self.regs[ch].entry_scanline_count,
-            self.regs[ch].hdma_repeat_flag,
-            self.regs[ch].indirect_hdma
-        );
-
+        
         true
     }
 }

@@ -1,5 +1,5 @@
 use mlua::{UserData, Value};
-use snemcore::{Snemulator, probe::DebugProbe, scpu, sppu::TileSize, dma::types::Direction};
+use snemcore::{Snemulator, probe::DebugProbe, scpu, sppu::TileSize, dma::Direction};
 
 use crate::debug::{debugger::{DebugControl, Debugger}};
 
