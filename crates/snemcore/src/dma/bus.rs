@@ -1,4 +1,10 @@
-use crate::{cartridge::Cartridge, get_byte_n, scpu::Address, set_byte_n, sppu::{Color, MasterSlave, VideoType, VramIncMode, regs::PpuRegs}, ssmp::ioports::ApuIoPorts, sysinfo::{CGRAM_SIZE, OAM_SIZE, VRAM_SIZE, WRAM_SIZE}};
+use crate::cartridge::Cartridge;
+use crate::{get_byte_n, set_byte_n};
+use crate::scpu::Address;
+use crate::sppu::{Color, MasterSlave, VideoType, VramIncMode};
+use crate::sppu::regs::PpuRegs;
+use crate::ssmp::ioports::ApuIoPorts;
+use crate::sysinfo::{CGRAM_SIZE, OAM_SIZE, VRAM_SIZE, WRAM_SIZE};
 
 pub struct DmaBus<'a> {
     pub wram: &'a mut [u8; WRAM_SIZE],

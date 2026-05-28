@@ -1,4 +1,4 @@
-use crate::dma::types::{
+use crate::dma::{
     AddressIncMode,
     TransferPattern,
     Direction,

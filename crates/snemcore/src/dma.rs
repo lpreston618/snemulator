@@ -1,10 +1,14 @@
-use crate::{dma::types::{Direction, TransferPattern}, get_bit_n, probe::DebugProbe, scpu::bus::Address};
-use regs::DmaRegs;
-use bus::DmaBus;
+use crate::get_bit_n;
+use crate::probe::DebugProbe;
+use crate::scpu::Address;
 
 pub mod bus;
-pub mod types;
+mod types;
 mod regs;
+
+pub use types::*;
+use regs::DmaRegs;
+use bus::DmaBus;
 
 pub struct DmaController {
     pub regs: [DmaRegs; 8],

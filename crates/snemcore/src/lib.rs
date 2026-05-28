@@ -38,12 +38,6 @@ macro_rules! cpu_bus {
             apu_ports: &mut $core.apu_ports,
 
             dma: &mut $core.dma,
-            // regs: &mut $core.regs,
-            // dma_en: &mut $core.dma_en,
-            // hdma_pending: &mut $core.hdma_pending,
-            // dma_active_ch: &mut $core.dma_active_ch,
-            // hdma_active_ch: &mut $core.hdma_active_ch,
-            // hdma_needs_init: &mut $core.hdma_needs_init,
 
             joy1_in: $core.joy1_latch,
             joy2_in: $core.joy2_latch,
@@ -109,13 +103,6 @@ pub struct Snemulator<P: DebugProbe = NullProbe> {
     pub apu_ports: ApuIoPorts,
 
     pub dma: DmaController,
-    // pub regs: [DmaRegs; 8],
-    // pub dma_en: bool,
-    // pub hdma_en: bool,
-    // pub hdma_pending: bool,
-    // pub hdma_needs_init: bool,
-    // pub dma_active_ch: usize,
-    // pub hdma_active_ch: usize,
 
     pub joy1_latch: u16,
     pub joy2_latch: u16,
@@ -197,9 +184,6 @@ impl<P: DebugProbe> Snemulator<P> {
         self.cpu_regs.power_on();
         self.apu_ports.power_on();
 
-        // for regs in self.regs.iter_mut() {
-        //     regs.power_on();
-        // }
         self.dma.power_on();
 
         let mut bus = cpu_bus!(self, self.probe.as_mut().unwrap());
@@ -216,9 +200,6 @@ impl<P: DebugProbe> Snemulator<P> {
         self.cpu_regs.reset();
         self.apu_ports.reset();
 
-        // for regs in self.regs.iter_mut() {
-        //     regs.reset();
-        // }
         self.dma.reset();
 
         let mut bus = cpu_bus!(self, self.probe.as_mut().unwrap());
@@ -229,13 +210,6 @@ impl<P: DebugProbe> Snemulator<P> {
     }
 
     fn clear_regs(&mut self) {
-        // self.dma_en = false;
-        // self.hdma_en = false;
-        // self.hdma_pending = false;
-        // self.hdma_needs_init = true;
-        // self.dma_active_ch = 8;
-        // self.hdma_active_ch = 8;
-
         self.p1_controller = SnemController::new();
         self.p2_controller = SnemController::new();
         self.joy1_latch = 0;

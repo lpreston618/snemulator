@@ -7,13 +7,13 @@ use crate::sppu::bus::PpuBus;
 use crate::sppu::regs::PpuRegs;
 use crate::sppu::utils::{interleave_2bpp, interleave_4bpp, interleave_8bpp};
 
-pub use crate::sppu::color::Color;
-pub use crate::sppu::types::*;
+pub use color::Color;
+pub use types::*;
 
 pub mod bus;
 pub mod color;
 pub mod regs;
-pub mod types;
+mod types;
 
 #[macro_use]
 mod utils;

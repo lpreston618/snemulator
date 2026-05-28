@@ -1,12 +1,12 @@
 use crate::cartridge::Cartridge;
 use crate::controller::JoypadCmd;
 use crate::probe::DebugProbe;
-use crate::dma::types::{AddressIncMode, Direction, TransferPattern};
+use crate::dma::{AddressIncMode, Direction, TransferPattern};
 use crate::dma::DmaController;
 use crate::scpu::ioregs::CpuIoRegs;
+use crate::sppu::{MasterSlave, VideoType, VramIncMode};
 use crate::sppu::color::Color;
 use crate::sppu::regs::PpuRegs;
-use crate::sppu::types::*;
 use crate::ssmp::ioports::ApuIoPorts;
 use crate::sysinfo::{CGRAM_SIZE, OAM_SIZE, VRAM_SIZE, WRAM_SIZE};
 use crate::{get_bit_n, get_byte_n, set_byte_n};
