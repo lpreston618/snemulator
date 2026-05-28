@@ -1,5 +1,5 @@
 use mlua::{UserData, Value};
-use snemcore::{Snemulator, probe::DebugProbe, scpu::{self, dma::Direction}, sppu::TileSize};
+use snemcore::{Snemulator, probe::DebugProbe, scpu, sppu::TileSize, dma::types::Direction};
 
 use crate::debug::{debugger::{DebugControl, Debugger}};
 
@@ -341,27 +341,27 @@ impl UserData for PpuInterface {
 impl UserData for DmaInterface {
     fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {
         register_fields! { fields,
-            get "dma_en"                   => |this, core| core.dma_regs[this.channel].dma_en;
-            get "hdma_en"                  => |this, core| core.dma_regs[this.channel].hdma_en;
-            get "addr_inc_mode"            => |this, core| core.dma_regs[this.channel].inc_mode as u8;
-            get "transfer_pattern"         => |this, core| core.dma_regs[this.channel].transfer_pattern as u8;
-            get "a_bus_bank"               => |this, core| core.dma_regs[this.channel].a_bus_addr.bank;
-            get "hdma_table_start_bank"    => |this, core| core.dma_regs[this.channel].a_bus_addr.bank;
-            get "hdma_indirect_table_bank" => |this, core| core.dma_regs[this.channel].hdma_indirect_table_addr.bank;
-            get "hdma_scanline_counter"    => |this, core| core.dma_regs[this.channel].scanlines_left;
-            get "unused_reg"               => |this, core| core.dma_regs[this.channel].unused;
-            get "b_bus_addr"               => |this, core| 0x2100 | core.dma_regs[this.channel].b_bus_addr as u16;
-            get "a_bus_offset"             => |this, core| core.dma_regs[this.channel].a_bus_addr.offset;
-            get "hdma_table_start_offset"  => |this, core| core.dma_regs[this.channel].a_bus_addr.offset;
-            get "hdma_indirect_table_offset"    => |this, core| core.dma_regs[this.channel].hdma_indirect_table_addr.offset;
-            get "hdma_table_offset"             => |this, core| core.dma_regs[this.channel].hdma_table_offset;
-            get "b_to_a"                        => |this, core| matches!(core.dma_regs[this.channel].direction, Direction::BtoA);
-            get "indirect_hdma"                 => |this, core| core.dma_regs[this.channel].indirect_hdma;
-            get "hdma_reload"                   => |this, core| core.dma_regs[this.channel].hdma_repeat_flag;
-            get "full_a_bus_addr"               => |this, core| core.dma_regs[this.channel].a_bus_addr.to_u32();
-            get "full_hdma_table_start_addr"    => |this, core| core.dma_regs[this.channel].a_bus_addr.to_u32();
-            get "full_hdma_table_addr"          => |this, core| (core.dma_regs[this.channel].a_bus_addr.bank as u32) << 16 | core.dma_regs[this.channel].hdma_table_offset as u32;
-            get "full_hdma_indirect_table_addr" => |this, core| core.dma_regs[this.channel].hdma_indirect_table_addr.to_u32();
+            get "dma_en"                   => |this, core| core.dma.regs[this.channel].dma_en;
+            get "hdma_en"                  => |this, core| core.dma.regs[this.channel].hdma_en;
+            get "addr_inc_mode"            => |this, core| core.dma.regs[this.channel].inc_mode as u8;
+            get "transfer_pattern"         => |this, core| core.dma.regs[this.channel].transfer_pattern as u8;
+            get "a_bus_bank"               => |this, core| core.dma.regs[this.channel].a_bus_addr.bank;
+            get "hdma_table_start_bank"    => |this, core| core.dma.regs[this.channel].a_bus_addr.bank;
+            get "hdma_indirect_table_bank" => |this, core| core.dma.regs[this.channel].hdma_indirect_table_addr.bank;
+            get "hdma_scanline_counter"    => |this, core| core.dma.regs[this.channel].scanlines_left;
+            get "unused_reg"               => |this, core| core.dma.regs[this.channel].unused;
+            get "b_bus_addr"               => |this, core| 0x2100 | core.dma.regs[this.channel].b_bus_addr as u16;
+            get "a_bus_offset"             => |this, core| core.dma.regs[this.channel].a_bus_addr.offset;
+            get "hdma_table_start_offset"  => |this, core| core.dma.regs[this.channel].a_bus_addr.offset;
+            get "hdma_indirect_table_offset"    => |this, core| core.dma.regs[this.channel].hdma_indirect_table_addr.offset;
+            get "hdma_table_offset"             => |this, core| core.dma.regs[this.channel].hdma_table_offset;
+            get "b_to_a"                        => |this, core| matches!(core.dma.regs[this.channel].direction, Direction::BtoA);
+            get "indirect_hdma"                 => |this, core| core.dma.regs[this.channel].indirect_hdma;
+            get "hdma_reload"                   => |this, core| core.dma.regs[this.channel].hdma_repeat_flag;
+            get "full_a_bus_addr"               => |this, core| core.dma.regs[this.channel].a_bus_addr.to_u32();
+            get "full_hdma_table_start_addr"    => |this, core| core.dma.regs[this.channel].a_bus_addr.to_u32();
+            get "full_hdma_table_addr"          => |this, core| (core.dma.regs[this.channel].a_bus_addr.bank as u32) << 16 | core.dma.regs[this.channel].hdma_table_offset as u32;
+            get "full_hdma_indirect_table_addr" => |this, core| core.dma.regs[this.channel].hdma_indirect_table_addr.to_u32();
         }
     }
 }

@@ -1207,12 +1207,7 @@ impl<P: DebugProbe> Ppu5C7x<P> {
     fn bg_layer_colors(&mut self, bus: &PpuBus, col_depth: ColorDepth, cgram_base_addr: u8, bg_layer: ColorLayer) -> (ColorData, ColorData) {
         let bg_data = Self::fetch_bg_data(bus.ppu_regs, bg_layer);
 
-
         let win_en = Self::win_active_signal(self.in_w1, self.in_w2, &bg_data.window);
-
-        // if matches!(bg_layer, ColorLayer::Bg1) && self.x == 0x50 && self.y == 0x50 {
-        //     log::debug!("window: in 1: {} in 2: {}, bg_win_settings: {:?}, win_en: {}", self.in_w1, self.in_w2, bg_data.window, win_en);
-        // }
         
         let win_main = bg_data.window.main_en && win_en;
         let win_sub = bg_data.window.sub_en && win_en;
@@ -1300,9 +1295,9 @@ impl<P: DebugProbe> Ppu5C7x<P> {
                 self.scanline = 0;
             }
 
-            // if self.frame > 300 {
-            //     log::debug!("scanline: {}, frame: {}, in_w1: {}, in_w2: {}", self.scanline, self.frame, self.in_w1, self.in_w2);
-            // }
+            if self.frame > 350 {
+                log::debug!("scanline: {}, frame: {}, in_w1: {}, in_w2: {}", self.scanline, self.frame, self.in_w1, self.in_w2);
+            }
         }
 
         // End of v-blank, scanline 0 is not visible

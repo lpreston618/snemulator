@@ -1,8 +1,9 @@
 use anyhow::{anyhow, Result};
 use cartridge::Cartridge;
 use controller::{ControllerPlayer, JoypadButton, JoypadCmd, SnemController};
+use dma::DmaController;
+use dma::bus::DmaBus;
 use scpu::bus::CpuBus;
-use scpu::dma::{self, DmaRegs};
 use scpu::ioregs::CpuIoRegs;
 use scpu::{Cpu65c816, CpuInterrupt};
 use sppu::bus::PpuBus;
@@ -22,6 +23,7 @@ pub mod scpu;
 pub mod sppu;
 pub mod ssmp;
 pub mod sysinfo;
+pub mod dma;
 mod utils;
 
 macro_rules! cpu_bus {
@@ -35,12 +37,13 @@ macro_rules! cpu_bus {
             cpu_regs: &mut $core.cpu_regs,
             apu_ports: &mut $core.apu_ports,
 
-            dma_regs: &mut $core.dma_regs,
-            dma_en: &mut $core.dma_en,
-            hdma_pending: &mut $core.hdma_pending,
-            dma_active_ch: &mut $core.dma_active_ch,
-            hdma_active_ch: &mut $core.hdma_active_ch,
-            hdma_needs_init: &mut $core.hdma_needs_init,
+            dma: &mut $core.dma,
+            // regs: &mut $core.regs,
+            // dma_en: &mut $core.dma_en,
+            // hdma_pending: &mut $core.hdma_pending,
+            // dma_active_ch: &mut $core.dma_active_ch,
+            // hdma_active_ch: &mut $core.hdma_active_ch,
+            // hdma_needs_init: &mut $core.hdma_needs_init,
 
             joy1_in: $core.joy1_latch,
             joy2_in: $core.joy2_latch,
@@ -71,6 +74,23 @@ macro_rules! ppu_bus {
     };
 }
 
+macro_rules! dma_bus {
+    ($core:ident) => {
+        DmaBus {
+            wram: &mut $core.wram,
+            vram: &mut $core.vram,
+            cgram: &mut $core.cgram,
+            oam: &mut $core.oam,
+            ppu_regs: &mut $core.ppu_regs,
+            apu_ports: &mut $core.apu_ports,
+            vblank_flag: $core.cpu_regs.vblank_flag,
+            hblank_flag: $core.cpu_regs.hblank_flag,
+            cart: $core.cart.as_mut().unwrap(),
+        }
+    };
+}
+
+
 // Emulator core
 pub struct Snemulator<P: DebugProbe = NullProbe> {
     p1_controller: SnemController,
@@ -88,13 +108,14 @@ pub struct Snemulator<P: DebugProbe = NullProbe> {
     pub cpu_regs: CpuIoRegs,
     pub apu_ports: ApuIoPorts,
 
-    pub dma_regs: [DmaRegs; 8],
-    pub dma_en: bool,
-    pub hdma_en: bool,
-    pub hdma_pending: bool,
-    pub hdma_needs_init: bool,
-    pub dma_active_ch: usize,
-    pub hdma_active_ch: usize,
+    pub dma: DmaController,
+    // pub regs: [DmaRegs; 8],
+    // pub dma_en: bool,
+    // pub hdma_en: bool,
+    // pub hdma_pending: bool,
+    // pub hdma_needs_init: bool,
+    // pub dma_active_ch: usize,
+    // pub hdma_active_ch: usize,
 
     pub joy1_latch: u16,
     pub joy2_latch: u16,
@@ -129,13 +150,7 @@ impl<P: DebugProbe> Snemulator<P> {
             ppu_regs: PpuRegs::default(),
             cpu_regs: CpuIoRegs::default(),
             apu_ports: ApuIoPorts::default(),
-            dma_regs: [DmaRegs::default(); 8],
-            dma_en: false,
-            hdma_en: false,
-            hdma_pending: false,
-            hdma_needs_init: false,
-            dma_active_ch: 8,
-            hdma_active_ch: 8,
+            dma: DmaController::new(),
             joy1_latch: 0,
             joy2_latch: 0,
             joy1_data1_auto: 0,
@@ -182,9 +197,10 @@ impl<P: DebugProbe> Snemulator<P> {
         self.cpu_regs.power_on();
         self.apu_ports.power_on();
 
-        for regs in self.dma_regs.iter_mut() {
-            regs.power_on();
-        }
+        // for regs in self.regs.iter_mut() {
+        //     regs.power_on();
+        // }
+        self.dma.power_on();
 
         let mut bus = cpu_bus!(self, self.probe.as_mut().unwrap());
         self.cpu.power_on(&mut bus);
@@ -200,9 +216,10 @@ impl<P: DebugProbe> Snemulator<P> {
         self.cpu_regs.reset();
         self.apu_ports.reset();
 
-        for regs in self.dma_regs.iter_mut() {
-            regs.reset();
-        }
+        // for regs in self.regs.iter_mut() {
+        //     regs.reset();
+        // }
+        self.dma.reset();
 
         let mut bus = cpu_bus!(self, self.probe.as_mut().unwrap());
         self.cpu.reset(&mut bus);
@@ -212,12 +229,12 @@ impl<P: DebugProbe> Snemulator<P> {
     }
 
     fn clear_regs(&mut self) {
-        self.dma_en = false;
-        self.hdma_en = false;
-        self.hdma_pending = false;
-        self.hdma_needs_init = true;
-        self.dma_active_ch = 8;
-        self.hdma_active_ch = 8;
+        // self.dma_en = false;
+        // self.hdma_en = false;
+        // self.hdma_pending = false;
+        // self.hdma_needs_init = true;
+        // self.dma_active_ch = 8;
+        // self.hdma_active_ch = 8;
 
         self.p1_controller = SnemController::new();
         self.p2_controller = SnemController::new();
@@ -340,34 +357,32 @@ impl<P: DebugProbe> Snemulator<P> {
     fn cycle_cpu(&mut self, probe: &mut P) {
         self.cpu.stopped = false;
 
-        if self.hdma_needs_init && self.ppu.scanline == 0 {
-            self.hdma_needs_init = false;
-            self.hdma_init_channels(probe);
+        if self.dma.hdma_needs_init && self.ppu.scanline == 0 {
+            self.dma.hdma_needs_init = false;
+            let mut bus = dma_bus!(self);
+            self.dma.hdma_init_channels(&mut bus, probe);
         }
 
-        if self.hdma_en {
+        if self.dma.hdma_en {
             self.cpu.stopped = true;
-            self.do_hdma(probe);
+            let mut bus = dma_bus!(self);
+            self.dma.do_hdma(&mut bus, &mut self.cpu.stopped, probe);
         }
 
-        if !self.hdma_en && self.dma_en {
+        if !self.dma.hdma_en && self.dma.dma_en {
             self.cpu.stopped = true;
-            self.do_dma(probe);
+            let mut bus = dma_bus!(self);
+            self.dma.do_dma(&mut bus, &mut self.cpu.stopped, probe);
         }
 
         self.joypad_cmd = None;
 
         let mut bus = cpu_bus!(self, probe);
-
         self.cpu.cycle(&mut bus);
 
         match self.joypad_cmd {
-            Some(JoypadCmd::ClockJoy1) => {
-                self.joy1_latch >>= 1;
-            }
-            Some(JoypadCmd::ClockJoy2) => {
-                self.joy2_latch >>= 1;
-            }
+            Some(JoypadCmd::ClockJoy1) => self.joy1_latch >>= 1,
+            Some(JoypadCmd::ClockJoy2) => self.joy2_latch >>= 1,
             _ => {}
         }
     }
@@ -376,199 +391,24 @@ impl<P: DebugProbe> Snemulator<P> {
         self.cpu_interrupt = None;
 
         let mut bus = ppu_bus!(self, frame_buffer);
-
         self.ppu.cycle(&mut bus);
 
         match self.cpu_interrupt {
-            Some(CpuInterrupt::IRQ) => {
-                self.cpu.irq_pending = true;
-            }
-            Some(CpuInterrupt::NMI) => {
-                self.cpu.nmi_pending = true;
-            }
+            Some(CpuInterrupt::IRQ) => self.cpu.irq_pending = true,
+            Some(CpuInterrupt::NMI) => self.cpu.nmi_pending = true,
             _ => {}
         }
 
-        if self.hdma_pending && self.ppu.scanline < sppu::VBLANK_START_SCANLINE
+        if self.dma.hdma_pending
+            && self.ppu.scanline < sppu::VBLANK_START_SCANLINE
             && self.ppu.dot == sppu::HBLANK_START_DOT
         {
-            self.hdma_en = self.hdma_active_ch < 8;
+            self.dma.hdma_en = self.dma.hdma_active_ch < 8;
 
-            if self.hdma_active_ch < 8 {
-                self.dma_regs[self.hdma_active_ch].hdma_do_transfer = true;
+            if self.dma.hdma_active_ch < 8 {
+                self.dma.regs[self.dma.hdma_active_ch].hdma_do_transfer = true;
             }
         }
-    }
-
-    fn do_hdma(&mut self, probe: &mut P) {
-        let hdma_active_ch = self.hdma_active_ch;
-        
-        if self.dma_regs[hdma_active_ch].hdma_entry_just_loaded {
-            self.dma_regs[hdma_active_ch].hdma_entry_just_loaded = false;
-        } else {
-            self.dma_regs[hdma_active_ch].scanlines_left -= 1;
-        }
-
-        // Table entry finished
-        if self.dma_regs[self.hdma_active_ch].scanlines_left == 0 {
-            probe.on_hdma_end(hdma_active_ch);
-            
-            if !self.hdma_load_entry(self.hdma_active_ch, probe) {
-                // Channel exhausted, find next active channel
-                self.hdma_active_ch = (self.hdma_active_ch + 1..8)
-                    .find(|&ch| self.dma_regs[ch].hdma_en)
-                    .unwrap_or(8);
-
-                if self.hdma_active_ch == 8 {
-                    self.hdma_en = false;
-                    self.hdma_pending = false;
-                    self.cpu.stopped = false;
-                }
-            }
-
-            self.hdma_en = false;
-            self.cpu.stopped = false;
-            return;
-        }
-
-        self.hdma_active_ch = hdma_active_ch;
-
-        // No active HDMA channel found
-        if self.hdma_active_ch == 8 {
-            self.hdma_en = false;
-            self.hdma_pending = false;
-            self.cpu.stopped = false;
-            return;
-        }
-
-        let hdma_ch_regs = &mut self.dma_regs[self.hdma_active_ch];
-
-        let a_bus_addr: scpu::Address;
-        let b_bus_addr: scpu::Address;
-
-        if hdma_ch_regs.indirect_hdma {
-            a_bus_addr = hdma_ch_regs.hdma_indirect_table_addr;
-            b_bus_addr = hdma_ch_regs.get_b_with_offset();
-
-            if hdma_ch_regs.hdma_repeat_flag {
-                hdma_ch_regs.hdma_indirect_table_addr.offset += 1;
-            }
-        } else {
-            a_bus_addr = scpu::Address {
-                bank: hdma_ch_regs.a_bus_addr.bank,
-                offset: hdma_ch_regs.hdma_table_offset,
-            };
-            b_bus_addr = hdma_ch_regs.get_b_with_offset();
-
-            if hdma_ch_regs.hdma_repeat_flag {
-                hdma_ch_regs.hdma_table_offset += 1;
-            }
-        }
-
-        let (src_addr, dst_addr) = match hdma_ch_regs.direction {
-            dma::Direction::AtoB => (a_bus_addr, b_bus_addr),
-            dma::Direction::BtoA => (b_bus_addr, a_bus_addr),
-        };
-
-        let transfer_pattern_length = match hdma_ch_regs.transfer_pattern {
-            // Stop after first byte
-            dma::TransferPattern::Pattern0 => 1,
-            // Stop after two bytes
-            dma::TransferPattern::Pattern1
-            | dma::TransferPattern::Pattern2
-            | dma::TransferPattern::Pattern6 => 2,
-            // Stop after four bytes
-            dma::TransferPattern::Pattern3
-            | dma::TransferPattern::Pattern4
-            | dma::TransferPattern::Pattern5
-            | dma::TransferPattern::Pattern7 => 4,
-        };
-
-        hdma_ch_regs.transfer_pattern_step += 1;
-        hdma_ch_regs.transfer_pattern_step %= transfer_pattern_length;
-
-        if hdma_ch_regs.transfer_pattern_step == 0 {
-            // Full pattern transferred for this scanline; stop until next hblank
-            self.hdma_en = false;
-            self.cpu.stopped = false;
-
-            // Non-repeat: only transfer once per entry. Repeat: transfer every scanline.
-            if !hdma_ch_regs.hdma_repeat_flag {
-                hdma_ch_regs.hdma_do_transfer = false;
-            }
-        }
-
-        if hdma_ch_regs.hdma_do_transfer {
-            let mut bus = cpu_bus!(self, probe);
-            let value = bus.read(src_addr);
-            bus.write(dst_addr, value);
-            probe.on_hdma_transfer(self.hdma_active_ch, src_addr.to_u32(), dst_addr.to_u32(), value);
-        }
-    }
-
-    fn do_dma(&mut self, probe: &mut P) {
-        let mut dma_ch_regs = &mut self.dma_regs[self.dma_active_ch];
-
-        // HDMA indirect table register is same as DMA byte count register
-        let byte_count = dma_ch_regs.hdma_indirect_table_addr.offset;
-
-        // Channel's DMA transfer complete
-        if byte_count == 0 {
-            probe.on_dma_end(self.dma_active_ch);
-            
-            dma_ch_regs.dma_en = false;
-            self.dma_active_ch += 1;
-
-            'seek_active_channel: while self.dma_active_ch < 8 {
-                dma_ch_regs = &mut self.dma_regs[self.dma_active_ch];
-
-                let byte_count = dma_ch_regs.hdma_indirect_table_addr.offset;
-
-                if dma_ch_regs.dma_en {
-                    // Active channel found
-                    if byte_count != 0 {
-                        probe.on_dma_start(self.dma_active_ch);
-                        break 'seek_active_channel;
-                    }
-
-                    // Enabled channel has no bytes to transfer, disable it
-                    dma_ch_regs.dma_en = false;
-                }
-
-                self.dma_active_ch += 1;
-            }
-        }
-
-        // No DMA channels are enabled, disable DMA
-        if self.dma_active_ch == 8 {
-            self.dma_en = false;
-            self.cpu.stopped = false;
-            return;
-        }
-
-        let dma_ch_regs = &mut self.dma_regs[self.dma_active_ch]; // No longer mutable
-
-        let a_bus_addr = dma_ch_regs.a_bus_addr;
-        let b_bus_addr = dma_ch_regs.get_b_with_offset();
-
-        let (src_addr, dst_addr) = match dma_ch_regs.direction {
-            dma::Direction::AtoB => (a_bus_addr, b_bus_addr),
-            dma::Direction::BtoA => (b_bus_addr, a_bus_addr),
-        };
-
-        dma_ch_regs.hdma_indirect_table_addr.offset -= 1; // byte_count -= 1
-        dma_ch_regs.transfer_pattern_step += 1;
-        dma_ch_regs.inc_a_bus_addr();
-
-        let mut bus = cpu_bus!(self, probe);
-        let value = bus.read(src_addr);
-        bus.write(dst_addr, value);
-        
-        probe.on_dma_transfer(self.dma_active_ch, src_addr.to_u32(), dst_addr.to_u32(), value);
-
-        // if dst_addr.offset == 0x2118 || dst_addr.offset == 0x2119 {
-        //     debug!("DMA transfered 0x{:02X} from ${:06X} to VRAM[{:04X}]", data, src_addr.to_u32(), bus.ppu_regs.vram_addr);
-        // }
     }
 
     pub fn rom_slice(&self) -> &[u8] {
@@ -628,12 +468,12 @@ impl<P: DebugProbe> Snemulator<P> {
             _ => {}
         }
 
-        if self.hdma_pending
+        if self.dma.hdma_pending
             && self.ppu.scanline < sppu::VBLANK_START_SCANLINE
             && self.ppu.dot == sppu::HBLANK_START_DOT
         {
-            self.hdma_en = true;
-            self.dma_regs[self.hdma_active_ch].transfer_pattern_step = 0;
+            self.dma.hdma_en = true;
+            self.dma.regs[self.dma.hdma_active_ch].transfer_pattern_step = 0;
         }
     }
     
@@ -681,85 +521,6 @@ impl<P: DebugProbe> Snemulator<P> {
             // Banks $C0-$FF: HiROM cartridge / mirror
             0xC0..=0xFF => self.cart.as_ref().unwrap().read(addr),
         }
-    }
-
-    /// Reads the next HDMA table entry for `ch` into runtime state.
-    /// Advances hdma_table_offset past the consumed bytes.
-    /// For indirect mode, also reads and stores hdma_indirect_table_addr.
-    /// Returns false if scanline_count == 0 (end of table), disabling the channel.
-    fn hdma_load_entry(&mut self, ch: usize, probe: &mut P) -> bool {
-        let mut bus = cpu_bus!(self, probe);
-
-        let table_addr = scpu::Address {
-            bank: bus.dma_regs[ch].a_bus_addr.bank,
-            offset: bus.dma_regs[ch].hdma_table_offset,
-        };
-
-        let scanline_count = bus.read(table_addr);
-        bus.dma_regs[ch].hdma_table_offset += 1;
-
-        if scanline_count == 0 {
-            bus.dma_regs[ch].hdma_en = false;
-            return false;
-        }
-
-        bus.dma_regs[ch].entry_scanline_count = scanline_count & 0x7F;
-        bus.dma_regs[ch].scanlines_left = scanline_count & 0x7F;
-        bus.dma_regs[ch].hdma_repeat_flag = get_bit_n!(scanline_count, 7);
-        bus.dma_regs[ch].hdma_entry_just_loaded = true;
-        bus.dma_regs[ch].transfer_pattern_step = 0;
-        bus.dma_regs[ch].hdma_do_transfer = true;
-
-        if bus.dma_regs[ch].indirect_hdma {
-            let lo_addr = scpu::Address {
-                bank: bus.dma_regs[ch].a_bus_addr.bank,
-                offset: bus.dma_regs[ch].hdma_table_offset,
-            };
-            let lo = bus.read(lo_addr);
-
-            let hi_addr = scpu::Address { offset: lo_addr.offset + 1, ..lo_addr };
-            let hi = bus.read(hi_addr);
-
-            bus.dma_regs[ch].hdma_table_offset += 2;
-
-            // Bank byte comes from $43n7, already stored in hdma_indirect_table_addr.bank
-            let indirect_bank = bus.dma_regs[ch].hdma_indirect_table_addr.bank;
-            bus.dma_regs[ch].hdma_indirect_table_addr = scpu::Address {
-                bank: indirect_bank,
-                offset: u16::from_le_bytes([lo, hi]),
-            };
-        }
-
-        true
-    }
-
-    /// Called once per frame before the first hblank of active display.
-    /// Resets table pointers and loads the first entry for every HDMA-enabled channel.
-    /// Channels whose first entry has scanline_count == 0 are disabled immediately.
-    fn hdma_init_channels(&mut self, probe: &mut P) {
-        for ch in 0..8 {
-            if !self.dma_regs[ch].hdma_en {
-                continue;
-            }
-
-            // Reset table pointer to the base A-bus address for this frame
-            self.dma_regs[ch].hdma_table_offset = self.dma_regs[ch].a_bus_addr.offset;
-            self.dma_regs[ch].hdma_initialized = true;
-
-            if !self.hdma_load_entry(ch, probe) {
-                // Channel had an empty table; already disabled inside hdma_load_entry
-                continue;
-            }
-
-            probe.on_hdma_start(ch);
-        }
-
-        // Set hdma_active_ch to first still-enabled channel
-        self.hdma_active_ch = (0..8)
-            .find(|&ch| self.dma_regs[ch].hdma_en)
-            .unwrap_or(8);
-
-        self.hdma_pending = self.hdma_active_ch < 8;
     }
 }
 

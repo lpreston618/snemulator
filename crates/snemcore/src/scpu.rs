@@ -4,7 +4,6 @@ use crate::{probe::DebugProbe, scpu::bus::CpuBus};
 
 pub mod bus;
 pub mod disassembler;
-pub mod dma;
 mod instructions;
 pub mod ioregs;
 pub mod mult;
