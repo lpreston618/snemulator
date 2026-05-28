@@ -269,7 +269,7 @@ impl<P: DebugProbe> Ppu5C7x<P> {
     }
 
     /// Gets the color of the first visible sprite on the screen.
-    fn sprite_col(&mut self, bus: &PpuBus) -> ColorData {
+    fn sprite_col(&self, bus: &PpuBus) -> ColorData {
         let regs = &bus.ppu_regs;
 
         let mut scanline_spr_cnt = self.scanline_spr_cnt;
@@ -342,7 +342,7 @@ impl<P: DebugProbe> Ppu5C7x<P> {
                     if i == self.scanline_sprites.len() - 1 {
                         return ColorData {
                             color: Color::BLACK,
-                            priority: sprite.priority,
+                            priority: 0,
                             transparent: true,
                         };
                     }
@@ -1247,7 +1247,7 @@ impl<P: DebugProbe> Ppu5C7x<P> {
     }
 
     fn obj_layer_colors(&mut self, bus: &PpuBus) -> (ColorData, ColorData) {
-        let win_en = Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.col_settings.window);
+        let win_en = Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.obj_settings.window);
 
         let obj_win_main = bus.ppu_regs.obj_settings.window.main_en && win_en;
         let obj_win_sub = bus.ppu_regs.obj_settings.window.sub_en && win_en;

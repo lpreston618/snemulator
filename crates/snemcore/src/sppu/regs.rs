@@ -36,18 +36,10 @@ pub struct PpuRegs {
     //       - OAM data write byte (2x for word) (D), increments OAMADD byte
     pub oam_data_latch: u8,
 
-    pub bg_settings: [BgSettings; 4],
-    pub obj_settings: LayerSettings,
-    pub col_settings: LayerSettings,
-
     // $2105    4321 PMMM    Write Only
     //       - Tilemap tile size (#)
     //       - BG3 priority (P)
     //       - BG mode (M)
-    // pub bg4_char_size: TileSize,
-    // pub bg3_char_size: TileSize,
-    // pub bg2_char_size: TileSize,
-    // pub bg1_char_size: TileSize,
     pub bg3_mode1_priority: bool,
     pub bg_mode: BgMode,
 
@@ -55,54 +47,13 @@ pub struct PpuRegs {
     //       - Mosaic size (S)
     //       - Mosaic BG enable (#)
     pub mosaic_size: u8,
-    // pub bg4_mosaic_en: bool,
-    // pub bg3_mosaic_en: bool,
-    // pub bg2_mosaic_en: bool,
-    // pub bg1_mosaic_en: bool,
 
-    // $2107    AAAA AAYX    Write Only
-    //       - BG1 Tilemap VRAM address (A)
-    //       - BG1 Vertical tilemap count (Y)
-    //       - BG1 Horizontal tilemap count (X)
-    // pub bg1_tilemap_base_addr: u16,
-    // pub bg1_tilemap_count_y: TilemapCount,
-    // pub bg1_tilemap_count_x: TilemapCount,
+    // Contains several PPU registers for all layers. See snesdev for full list 
+    // of registers for BG layers, OBJ layer, and Color layer.
 
-    // $2108    AAAA AAYX    Write Only
-    //       - BG2 Tilemap VRAM address (A)
-    //       - BG2 Vertical tilemap count (Y)
-    //       - BG2 Horizontal tilemap count (X)
-    // pub bg2_tilemap_base_addr: u16,
-    // pub bg2_tilemap_count_y: TilemapCount,
-    // pub bg2_tilemap_count_x: TilemapCount,
-
-    // $2109    AAAA AAYX    Write Only
-    //       - BG3 Tilemap VRAM address (A)
-    //       - BG3 Vertical tilemap count (Y)
-    //       - BG3 Horizontal tilemap count (X)
-    // pub bg3_tilemap_base_addr: u16,
-    // pub bg3_tilemap_count_y: TilemapCount,
-    // pub bg3_tilemap_count_x: TilemapCount,
-
-    // $210A    AAAA AAYX    Write Only
-    //       - BG4 Tilemap VRAM address (A)
-    //       - BG4 Vertical tilemap count (Y)
-    //       - BG4 Horizontal tilemap count (X)
-    // pub bg4_tilemap_base_addr: u16,
-    // pub bg4_tilemap_count_y: TilemapCount,
-    // pub bg4_tilemap_count_x: TilemapCount,
-
-    // $210B    BBBB AAAA    W8
-    //       - BG2 CHR base address (B)
-    //       - BG1 CHR base address (A)
-    // pub bg2_chr_base_addr: u16,
-    // pub bg1_chr_base_addr: u16,
-
-    // $210C    DDDD CCCC    W8
-    //       - BG4 CHR base address (D)
-    //       - BG3 CHR base address (C)
-    // pub bg4_chr_base_addr: u16,
-    // pub bg3_chr_base_addr: u16,
+    pub bg_settings: [BgSettings; 4],
+    pub obj_settings: LayerSettings,
+    pub col_settings: LayerSettings,
 
     // Used for many registers affecting mode 7 behavior
     pub m7_latch: u8,
@@ -120,30 +71,6 @@ pub struct PpuRegs {
     //       - BG1 or Mode 7 vertical scroll (Y)
     //       - mode7_data_latch (L), writing sets new data latch to (.... ..YY)
     pub m7_scroll_y: u16,
-
-    // $210F    .... ..XX XXXX XXXX    Write x2 Only
-    //       - BG2 horizontal scroll (X)
-    // pub bg2_x_offset: u16,
-
-    // $2110    .... ..YY YYYY YYYY    Write x2 Only
-    //       - BG2 vertical scroll (Y)
-    // pub bg2_y_offset: u16,
-
-    // $2111    .... ..XX XXXX XXXX    Write x2 Only
-    //       - BG3 horizontal scroll (X)
-    // pub bg3_x_offset: u16,
-
-    // $2112    .... ..YY YYYY YYYY    Write x2 Only
-    //       - BG3 vertical scroll (Y)
-    // pub bg3_y_offset: u16,
-
-    // $2113    .... ..XX XXXX XXXX    Write x2 Only
-    //       - BG4 horizontal scroll (X)
-    // pub bg4_x_offset: u16,
-
-    // $2114    .... ..YY YYYY YYYY    Write x2 Only
-    //       - BG4 vertical scroll (Y)
-    // pub bg4_y_offset: u16,
 
     // $2115    M... RRII    W8
     //       - VRAM address increment mode (M)
@@ -209,32 +136,6 @@ pub struct PpuRegs {
     pub cgram_addr: u8,
     pub cgram_latch: u8,
 
-    // $2123    DdCc BbAa    Write Only
-    //       - Enable (ABCD) and Invert (abcd) windows for BG1 (AB) and BG2 (CD)
-    // pub bg2_w2_en: bool,
-    // pub bg2_w2_inv: bool,
-    // pub bg2_w1_en: bool,
-    // pub bg2_w1_inv: bool,
-    // pub bg1_w2_en: bool,
-    // pub bg1_w2_inv: bool,
-    // pub bg1_w1_en: bool,
-    // pub bg1_w1_inv: bool,
-
-    // $2124    DdCc BbAa    Write Only
-    //       - Enable (EFGH) and Invert (efgh) windows for BG3 (EF) and BG2 (GH)
-    // pub bg4_w2_en: bool,
-    // pub bg4_w2_inv: bool,
-    // pub bg4_w1_en: bool,
-    // pub bg4_w1_inv: bool,
-    // pub bg3_w2_en: bool,
-    // pub bg3_w2_inv: bool,
-    // pub bg3_w1_en: bool,
-    // pub bg3_w1_inv: bool,
-
-    // $2125    LlKk JjIi    Write Only
-    //       - Enable (IJKL) and Invert (ijkl) windows for OBJ (IJ) and color (KL)
-    // pub col_win: WinSettings,
-    // pub obj_win: WinSettings,
 
     // $2126    LLLL LLLL    Write Only
     //       - Window 1 left position (L)
@@ -251,50 +152,6 @@ pub struct PpuRegs {
     // $2129    RRRR RRRR    Write Only
     //       - Window 2 right position (R)
     pub w2_right_pos: u8,
-
-    // $212A    4433 2211    Write Only
-    //       - Window mask logic for BG layers (00=OR, 01=AND, 10=XOR, 11=XNOR)
-    // pub bg4_win_logic: WindowLogic,
-    // pub bg3_win_logic: WindowLogic,
-    // pub bg2_win_logic: WindowLogic,
-    // pub bg1_win_logic: WindowLogic,
-
-    // $212B    .... CCOO    Write Only
-    //       - Window mask logic for OBJ (O) and color (C)
-    // pub obj_win_logic: WindowLogic,
-    // pub col_win_logic: WindowLogic,
-
-    // $212C    ...O 4321    Write Only
-    //       - Main screen layer enable (#)
-    // pub obj_main_en: bool,
-    // pub bg4_main_en: bool,
-    // pub bg3_main_en: bool,
-    // pub bg2_main_en: bool,
-    // pub bg1_main_en: bool,
-
-    // $212D    ...O 4321    Write Only
-    //       - Sub screen layer enable (#)
-    // pub obj_sub_en: bool,
-    // pub bg4_sub_en: bool,
-    // pub bg3_sub_en: bool,
-    // pub bg2_sub_en: bool,
-    // pub bg1_sub_en: bool,
-
-    // $212E    ...O 4321    Write Only
-    //       - Main screen layer window enable
-    // pub obj_win_main_en: bool,
-    // pub bg4_win_main_en: bool,
-    // pub bg3_win_main_en: bool,
-    // pub bg2_win_main_en: bool,
-    // pub bg1_win_main_en: bool,
-
-    // $212F    ...O 4321    Write Only
-    //       - Sub screen layer window enable
-    // pub obj_win_sub_en: bool,
-    // pub bg4_win_sub_en: bool,
-    // pub bg3_win_sub_en: bool,
-    // pub bg2_win_sub_en: bool,
-    // pub bg1_win_sub_en: bool,
 
     // $2130    MMSS ..AD    Write Only
     //       - main/sub screen color window black/transparent regions (MS)
@@ -313,11 +170,6 @@ pub struct PpuRegs {
     pub cmath_operator: CMathOperator,
     pub cmath_half: bool,
     pub back_cmath_en: bool,
-    // pub obj_cmath_en: bool,
-    // pub bg4_cmath_en: bool,
-    // pub bg3_cmath_en: bool,
-    // pub bg2_cmath_en: bool,
-    // pub bg1_cmath_en: bool,
 
     // $2132    BGRC CCCC    Write Only
     //       - Fixed color channel select (BGR) and value (C)
