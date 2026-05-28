@@ -340,6 +340,8 @@ impl PpuRegs {
             _ => unreachable!(),
         };
 
+        // let new_obj_size = ObjectSizeSelect::Size16x16_32x32;
+
         self.obj_sprite_size = new_obj_size;
         self.name_base_addr = ((value as u16) & 3) << 13;
 

@@ -1,19 +1,8 @@
 require("snemulator_api")
 
-function OnMemoryRead(addr, value)
-    if addr >= 0x07f7db and addr <= 0x07fc36 then
-        Log("Read circle coord")
-        control:Break()
-    end
-end
-
 function OnMemoryWrite(addr, value)
-    -- if addr >= 0x2123 and addr <= 0x212B then
-    --     Log(string.format("MMIO[$%04X] = %02X", addr, value))
-    -- end
-    if addr == CONSTS.mmio.A1B7 then
-        Log("Wrote A1B7 with " .. value)
-        control:Break()
+    if addr % 0x10000 == 0x2103 and value % 2 == 1 then
+        Log("Write to 0x2103 with " .. value)
     end
 end
 

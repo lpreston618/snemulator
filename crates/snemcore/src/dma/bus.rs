@@ -254,11 +254,15 @@ impl<'a> DmaBus<'a> {
                 }
 
                 if ppu_regs.oam_write_high_table {
-                    self.oam[internal_oam_addr & 0x1F] = value;
+                    self.oam[0x200 | internal_oam_addr & 0x1F] = value;
                 }
 
                 ppu_regs.internal_oam_addr += 1;
                 ppu_regs.internal_oam_addr &= 0x1FF;
+
+                if ppu_regs.internal_oam_addr == 0 {
+                    ppu_regs.oam_write_high_table = !ppu_regs.oam_write_high_table;
+                }
             }
 
             0x2105 => {

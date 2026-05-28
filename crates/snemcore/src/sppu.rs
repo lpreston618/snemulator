@@ -1412,15 +1412,17 @@ impl<P: DebugProbe> Ppu5C7x<P> {
             };
             let spr_y = spr_data[1];
             let spr_x = (((spr_extra_data as u16) & 1) << 8) | (spr_data[0] as u16);
-            let (spr_x_max, spr_y_max) = match spr_size {
-                ObjectSize::Size8x8 => (spr_x + 8, spr_y + 8),
-                ObjectSize::Size16x16 => (spr_x + 16, spr_y + 16),
-                ObjectSize::Size16x32 | ObjectSize::Size32x32 => (spr_x + 32, spr_y + 32),
-                ObjectSize::Size32x64 | ObjectSize::Size64x64 => (spr_x + 64, spr_y + 64),
+            let spr_x_max = spr_x + spr_w as u16;
+            let spr_y_max = spr_y as u16 + spr_h as u16;
+
+            let in_y_range = if spr_y_max > 256 {
+                true_y >= spr_y as usize || true_y < (spr_y_max & 0xFF) as usize
+            } else {
+                true_y >= spr_y as usize && true_y < spr_y_max as usize
             };
 
             // Sprite should be on scanline
-            if spr_y as usize <= true_y && true_y < spr_y_max as usize {
+            if in_y_range {
                 let sprite = OAMSprite {
                     x: spr_x,
                     max_x: spr_x_max,

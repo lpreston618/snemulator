@@ -4,7 +4,6 @@ use crate::debug::debugger::Debugger;
 use crate::debug::texture::Texture;
 
 mod chr;
-mod regs;
 mod layers;
 
 #[derive(PartialEq, Clone, Copy)]
