@@ -39,14 +39,8 @@ pub struct CpuBus<'a, P: DebugProbe> {
     pub cpu_regs: &'a mut CpuIoRegs,
     pub apu_ports: &'a mut ApuIoPorts,
 
-    pub cart: &'a mut Cartridge, // or rom or what have you
-    // pub dma_regs: &'a mut [DmaRegs; 8],
-    // pub dma_en: &'a mut bool,
-    // pub hdma_pending: &'a mut bool,
-    // pub dma_active_ch: &'a mut usize,
-    // pub hdma_active_ch: &'a mut usize,
-    // pub hdma_needs_init: &'a mut bool,
-    pub dma: &'a mut DmaController,
+    pub cart: &'a mut Cartridge,
+    pub dma: Option<&'a mut DmaController>,
 
     pub joy1_in: u16,
     pub joy2_in: u16,
@@ -116,8 +110,8 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
 
     pub fn write(&mut self, addr: Address, value: u8) {
         match addr.bank {
-            // WRAM mirror
             0x00..=0x3F | 0x80..=0xBF => match addr.offset {
+                // WRAM mirror
                 0x0000..=0x1FFF => self.wram[addr.offset as usize] = value,
 
                 // PPU registers
@@ -711,11 +705,15 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             }
 
             0x420B => {
-                self.dma.write_420B(value, self.probe);
+                if let Some(ref mut dma) = self.dma {
+                    dma.write_420B(value, self.probe);
+                }
             }
 
             0x420C => {
-                self.dma.write_420C(value);
+                if let Some(ref mut dma) = self.dma {
+                    dma.write_420C(value);
+                }
             }
 
             0x4210..=0x42FF => {} // Read-only regs
@@ -725,13 +723,17 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
     }
 
     fn read_dma_regs(&mut self, offset: u16) -> u8 {
+        if self.dma.is_none() {
+            return 0;
+        }
+
         let channel_idx = ((offset >> 4) & 0xF) as usize;
 
         if channel_idx >= 7 {
             return 0; // TODO: Maybe mirror channel_idx & 7?
         }
 
-        let channel = &mut self.dma.regs[channel_idx];
+        let channel = &mut self.dma.as_mut().unwrap().regs[channel_idx];
 
         match offset & 0xF {
             0x0 => channel.params_raw,
@@ -756,15 +758,17 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
     }
 
     fn write_dma_regs(&mut self, offset: u16, value: u8) {
-        let channel_idx = ((offset >> 4) & 0xF) as usize;
+        if self.dma.is_none() {
+            return;
+        }
 
-        // debug!("Write to DMA regs: channel_idx = {}, offset = ${:04X}, value = ${:02X}", channel_idx, offset, value);
+        let channel_idx = ((offset >> 4) & 0xF) as usize;
 
         if channel_idx > 7 {
             return; // TODO: Maybe mirror channel_idx & 7?
         }
 
-        let channel = &mut self.dma.regs[channel_idx];
+        let channel = &mut self.dma.as_mut().unwrap().regs[channel_idx];
 
         match offset & 0xF {
             0x0 => {

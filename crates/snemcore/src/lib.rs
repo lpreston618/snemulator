@@ -2,7 +2,6 @@ use anyhow::{anyhow, Result};
 use cartridge::Cartridge;
 use controller::{ControllerPlayer, JoypadButton, JoypadCmd, SnemController};
 use dma::DmaController;
-use dma::bus::DmaBus;
 use scpu::bus::CpuBus;
 use scpu::ioregs::CpuIoRegs;
 use scpu::{Cpu65c816, CpuInterrupt};
@@ -37,7 +36,34 @@ macro_rules! cpu_bus {
             cpu_regs: &mut $core.cpu_regs,
             apu_ports: &mut $core.apu_ports,
 
-            dma: &mut $core.dma,
+            dma: Some(&mut $core.dma),
+
+            joy1_in: $core.joy1_latch,
+            joy2_in: $core.joy2_latch,
+            joy1_data1_auto: $core.joy1_data1_auto,
+            joy2_data1_auto: $core.joy2_data1_auto,
+            joy1_data2_auto: $core.joy1_data2_auto,
+            joy2_data2_auto: $core.joy2_data2_auto,
+            joypad_cmd: &mut $core.joypad_cmd,
+            cart: $core.cart.as_mut().unwrap(),
+
+            probe: $probe,
+        }
+    };
+}
+
+macro_rules! dma_bus {
+    ($core:ident, $probe:expr) => {
+        CpuBus {
+            wram: &mut $core.wram,
+            vram: &mut $core.vram,
+            cgram: &mut $core.cgram,
+            oam: &mut $core.oam,
+            ppu_regs: &mut $core.ppu_regs,
+            cpu_regs: &mut $core.cpu_regs,
+            apu_ports: &mut $core.apu_ports,
+
+            dma: None,
 
             joy1_in: $core.joy1_latch,
             joy2_in: $core.joy2_latch,
@@ -67,23 +93,6 @@ macro_rules! ppu_bus {
         }
     };
 }
-
-macro_rules! dma_bus {
-    ($core:ident) => {
-        DmaBus {
-            wram: &mut $core.wram,
-            vram: &mut $core.vram,
-            cgram: &mut $core.cgram,
-            oam: &mut $core.oam,
-            ppu_regs: &mut $core.ppu_regs,
-            apu_ports: &mut $core.apu_ports,
-            vblank_flag: $core.cpu_regs.vblank_flag,
-            hblank_flag: $core.cpu_regs.hblank_flag,
-            cart: $core.cart.as_mut().unwrap(),
-        }
-    };
-}
-
 
 // Emulator core
 pub struct Snemulator<P: DebugProbe = NullProbe> {
@@ -333,20 +342,20 @@ impl<P: DebugProbe> Snemulator<P> {
 
         if self.dma.hdma_needs_init && self.ppu.scanline == 0 {
             self.dma.hdma_needs_init = false;
-            let mut bus = dma_bus!(self);
-            self.dma.hdma_init_channels(&mut bus, probe);
+            let mut bus = dma_bus!(self, probe);
+            self.dma.hdma_init_channels(&mut bus);
         }
 
         if self.dma.hdma_en {
             self.cpu.stopped = true;
-            let mut bus = dma_bus!(self);
-            self.dma.do_hdma(&mut bus, &mut self.cpu.stopped, probe);
+            let mut bus = dma_bus!(self, probe);
+            self.dma.do_hdma(&mut bus, &mut self.cpu.stopped);
         }
 
         if !self.dma.hdma_en && self.dma.dma_en {
             self.cpu.stopped = true;
-            let mut bus = dma_bus!(self);
-            self.dma.do_dma(&mut bus, &mut self.cpu.stopped, probe);
+            let mut bus = dma_bus!(self, probe);
+            self.dma.do_dma(&mut bus, &mut self.cpu.stopped);
         }
 
         self.joypad_cmd = None;
