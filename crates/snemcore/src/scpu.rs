@@ -57,7 +57,7 @@ pub struct Cpu65c816<P: DebugProbe> {
 
     pub branch_taken: bool,
     pub page_crossed: bool,
-    
+
     _phantom_probe: PhantomData<P>,
 }
 
@@ -94,7 +94,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
             branch_taken: false,
             page_crossed: false,
             stopped: false,
-            
+
             _phantom_probe: PhantomData {},
         }
     }
@@ -159,7 +159,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
                 self.sp = 0x100 | (self.sp & 0xFF);
             }
             CpuInterrupt::BRK => {
-                panic!("BRK");
+                // panic!("BRK");
             }
             _ => {}
         }

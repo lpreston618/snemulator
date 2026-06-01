@@ -1,3 +1,5 @@
+//use std::intrinsics::simd::SimdAlign::Vector;
+
 use log::trace;
 
 use crate::scpu::bus::Address;
@@ -13,6 +15,7 @@ pub enum MappingMode {
 #[derive(Default)]
 pub struct Cartridge {
     rom: Vec<u8>,
+    ram: Vec<u8>,
 
     title: [u8; 0x15],
 
@@ -24,8 +27,10 @@ pub struct Cartridge {
     coprocessor: bool,
     coprocessor_id: u8,
 
-    rom_size: u8, // ROM size is (1 << rom_size) KiB
-    ram_size: u8, // RAM size is (1 << ram_size) KiB
+    rom_size_shift: u8, // ROM size is (1 << rom_size) KiB
+    ram_size_shift: u8, // RAM size is (1 << ram_size) KiB
+
+    ram_size: usize,
 
     is_ntsc: bool,
 
@@ -80,8 +85,15 @@ impl Cartridge {
             _ => (false, false, false), // Should not happen?
         };
         cart.coprocessor_id = header_bytes[0x16] >> 4;
-        cart.rom_size = header_bytes[0x17];
-        cart.ram_size = header_bytes[0x18];
+        cart.rom_size_shift = header_bytes[0x17];
+        cart.ram_size_shift = header_bytes[0x18];
+        if cart.extra_ram {
+            cart.ram_size = 0x400 * (1 << cart.ram_size_shift);
+            cart.ram = vec![0u8; cart.ram_size];
+        } else {
+            cart.ram_size = 0;
+        }
+
         cart.is_ntsc = header_bytes[0x19] > 0;
         cart.interrupt_vectors
             .copy_from_slice(&header_bytes[0x20..0x40]);
@@ -98,13 +110,13 @@ impl Cartridge {
         trace!("  coprocessor_id: {}", cart.coprocessor_id);
         trace!(
             "  rom_size: {} (= {} KiB)",
-            cart.rom_size,
-            1 << cart.rom_size
+            cart.rom_size_shift,
+            1 << cart.rom_size_shift
         );
         trace!(
             "  ram_size: {} (= {} KiB)",
-            cart.ram_size,
-            1 << cart.ram_size
+            cart.ram_size_shift,
+            1 << cart.ram_size_shift
         );
         trace!("  is_ntsc: {}", cart.is_ntsc);
         trace!("  padded rom size: 0x{:X}", cart.rom.len());
@@ -154,12 +166,84 @@ impl Cartridge {
     pub fn read(&self, addr: Address) -> u8 {
         let mapped_addr = self.map_addr(addr);
 
-        let mapped_addr = (mapped_addr as usize) & (self.rom.len() - 1);
+        // Check for / perform SRAM reads
+        match self.mapping_mode {
+            MappingMode::LoROM => {
+                if addr.bank >= 0x70 && addr.bank <= 0x7D && addr.offset < 0x8000 {
+                    if self.ram_size != 0 {
+                        let sram_addr = self.map_sram_addr(addr);
+                        return self.ram[sram_addr];
+                    }
+                }
+            }
+            MappingMode::HiROM => {
+                if addr.bank >= 0x30
+                    && addr.bank <= 0x3F
+                    && addr.offset >= 0x6000
+                    && addr.offset <= 0x7FFF
+                {
+                    if self.ram_size != 0 {
+                        let sram_addr = self.map_sram_addr(addr);
+                        return self.ram[sram_addr];
+                    }
+                }
+            }
+            MappingMode::ExHiROM => {
+                if addr.bank >= 0x80
+                    && addr.bank <= 0xBF
+                    && addr.offset >= 0x6000
+                    && addr.offset <= 0x7FFF
+                {
+                    if self.ram_size != 0 {
+                        let sram_addr = self.map_sram_addr(addr);
+                        return self.ram[sram_addr];
+                    }
+                }
+            }
+        };
 
+        // If not SRAM, read from ROM
+        let mapped_addr = (mapped_addr as usize) & (self.rom.len() - 1);
         self.rom[mapped_addr]
     }
 
-    pub fn write(&mut self, addr: Address, value: u8) {}
+    pub fn write(&mut self, addr: Address, value: u8) {
+        // Check for / perform SRAM write
+        match self.mapping_mode {
+            MappingMode::LoROM => {
+                if addr.bank >= 0x70 && addr.bank <= 0x7D && addr.offset < 0x8000 {
+                    if self.ram_size != 0 {
+                        let sram_addr = self.map_sram_addr(addr);
+                        self.ram[sram_addr] = value;
+                    }
+                }
+            }
+            MappingMode::HiROM => {
+                if addr.bank >= 0x30
+                    && addr.bank <= 0x3F
+                    && addr.offset >= 0x6000
+                    && addr.offset <= 0x7FFF
+                {
+                    if self.ram_size != 0 {
+                        let sram_addr = self.map_sram_addr(addr);
+                        self.ram[sram_addr] = value;
+                    }
+                }
+            }
+            MappingMode::ExHiROM => {
+                if addr.bank >= 0x80
+                    && addr.bank <= 0xBF
+                    && addr.offset >= 0x6000
+                    && addr.offset <= 0x7FFF
+                {
+                    if self.ram_size != 0 {
+                        let sram_addr = self.map_sram_addr(addr);
+                        self.ram[sram_addr] = value;
+                    }
+                }
+            }
+        }
+    }
 
     /// Can overwrite ROM data.
     pub fn force_write(&mut self, addr: Address, value: u8) {
@@ -167,7 +251,11 @@ impl Cartridge {
         let mapped_addr = (mapped_addr as usize) & (self.rom.len() - 1);
         self.rom[mapped_addr] = value;
     }
-    
+
+    pub fn sram_slice(&self) -> &[u8] {
+        &self.ram[..]
+    }
+
     pub fn rom_slice(&self) -> &[u8] {
         &self.rom[..]
     }
@@ -175,7 +263,7 @@ impl Cartridge {
     pub fn rom_slice_mut(&mut self) -> &mut [u8] {
         &mut self.rom[..]
     }
-    
+
     fn map_addr(&self, addr: Address) -> usize {
         let addr = addr.to_u32();
         let mapped_addr = match self.mapping_mode {
@@ -184,6 +272,21 @@ impl Cartridge {
             MappingMode::ExHiROM => (((addr & 0x800000) ^ 0x800000) >> 1) | (addr & 0x3FFFFF),
         };
         (mapped_addr as usize) & (self.rom.len() - 1)
+    }
+
+    // Take an address and map it into an SRAM / extra cart ram vector address.
+    // Assumes that the given address is actually a valid SRAM address - up to cart.read()/write() to validate this.
+    fn map_sram_addr(&self, addr: Address) -> usize {
+        let mapped_addr = match self.mapping_mode {
+            MappingMode::LoROM => addr.offset as usize + 0x8000 * (addr.bank as usize - 0x7F),
+            MappingMode::HiROM => {
+                0x2000 * (addr.bank as usize - 0x30) + addr.offset as usize - 0x6000
+            }
+            MappingMode::ExHiROM => {
+                0x2000 * (addr.bank as usize - 0x80) + addr.offset as usize - 0x6000
+            }
+        };
+        mapped_addr & (self.ram_size - 1)
     }
 }
 

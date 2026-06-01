@@ -1,4 +1,4 @@
-use crate::{get_bit_n, set_byte_n};
+use crate::{clr_bit_n, get_bit_n, set_bit_n, set_byte_n};
 
 #[derive(Clone, Copy, Debug, Default)]
 pub enum HVTimerIRQ {
@@ -11,6 +11,11 @@ pub enum HVTimerIRQ {
 
 #[derive(Debug, Default)]
 pub struct CpuIoRegs {
+    // $2181 - LLLL LLLL
+    // $2182 - MMMM MMMM
+    // $2183 - .... ...H
+    pub wram_address: usize,
+
     // $4016
     pub latch_controllers: bool,
 
@@ -18,16 +23,16 @@ pub struct CpuIoRegs {
     pub vblank_nmi_en: bool,
     pub hv_timer_irq_mode: HVTimerIRQ,
     pub joypad_autoread_en: bool,
-    
+
     // $4202
     pub mult_factor1: u8,
-    
+
     // $4203
     pub mult_factor2: u8,
-    
+
     // $4204-$4205
     pub div_numer: u16,
-    
+
     // $4206
     pub div_denom: u8,
 
@@ -51,10 +56,10 @@ pub struct CpuIoRegs {
     pub raw_rdwrio: u8,
     pub joy1_io: bool,
     pub joy2_io: bool,
-    
+
     // $4214-$4215
     pub div_quotient: u16,
-    
+
     // $4216-$4217
     pub mult_result: u16, // Also the division remainder
 }
@@ -72,7 +77,7 @@ impl CpuIoRegs {
         self.write_4208(1);
         self.write_4209(0xFF);
         self.write_420A(1);
-        
+
         self.vblank_flag = false;
         self.hblank_flag = true;
         self.hv_timer_irq_flag = false;
@@ -83,16 +88,32 @@ impl CpuIoRegs {
     pub fn reset(&mut self) {
         self.write_4200(0);
         self.write_4201(0xFF);
-        
+
         self.vblank_flag = false;
         self.hblank_flag = true;
         self.hv_timer_irq_flag = false;
     }
-    
+
+    pub fn write_2181(&mut self, value: u8) {
+        set_byte_n!(self.wram_address, value as usize, 0);
+    }
+
+    pub fn write_2182(&mut self, value: u8) {
+        set_byte_n!(self.wram_address, value as usize, 1);
+    }
+
+    pub fn write_2183(&mut self, value: u8) {
+        if get_bit_n!(value, 0) {
+            set_bit_n!(self.wram_address, 16);
+        } else {
+            clr_bit_n!(self.wram_address, 16);
+        }
+    }
+
     pub fn write_4200(&mut self, value: u8) {
         self.vblank_nmi_en = get_bit_n!(value, 7);
         self.joypad_autoread_en = get_bit_n!(value, 0);
-        
+
         self.hv_timer_irq_mode = match (value >> 4) & 3 {
             0 => HVTimerIRQ::None,
             1 => HVTimerIRQ::HTimer,
@@ -101,13 +122,13 @@ impl CpuIoRegs {
             _ => unreachable!(),
         };
     }
-    
-    pub fn write_4201(&mut self, value: u8 ) {
+
+    pub fn write_4201(&mut self, value: u8) {
         self.raw_rdwrio = value;
         self.joy2_io = get_bit_n!(value, 7);
         self.joy1_io = get_bit_n!(value, 6);
     }
-    
+
     pub fn write_4202(&mut self, value: u8) {
         self.mult_factor1 = value;
     }
@@ -139,15 +160,15 @@ impl CpuIoRegs {
     pub fn write_4207(&mut self, value: u8) {
         set_byte_n!(self.h_counter_target, value as u16, 0);
     }
-    
+
     pub fn write_4208(&mut self, value: u8) {
         set_byte_n!(self.h_counter_target, (value & 1) as u16, 1);
     }
-    
+
     pub fn write_4209(&mut self, value: u8) {
         set_byte_n!(self.v_counter_target, value as u16, 0);
     }
-    
+
     #[allow(non_snake_case)]
     pub fn write_420A(&mut self, value: u8) {
         set_byte_n!(self.v_counter_target, (value & 1) as u16, 1);

@@ -1,12 +1,12 @@
 use crate::cartridge::Cartridge;
 use crate::controller::JoypadCmd;
-use crate::probe::DebugProbe;
-use crate::dma::{AddressIncMode, Direction, TransferPattern};
 use crate::dma::DmaController;
+use crate::dma::{AddressIncMode, Direction, TransferPattern};
+use crate::probe::DebugProbe;
 use crate::scpu::ioregs::CpuIoRegs;
-use crate::sppu::{MasterSlave, VideoType, VramIncMode};
 use crate::sppu::color::Color;
 use crate::sppu::regs::PpuRegs;
+use crate::sppu::{MasterSlave, VideoType, VramIncMode};
 use crate::ssmp::ioports::ApuIoPorts;
 use crate::sysinfo::{CGRAM_SIZE, OAM_SIZE, VRAM_SIZE, WRAM_SIZE};
 use crate::{get_bit_n, get_byte_n, set_byte_n};
@@ -55,7 +55,7 @@ pub struct CpuBus<'a, P: DebugProbe> {
     pub joy1_data2_auto: u16,
     pub joy2_data2_auto: u16,
     pub joypad_cmd: &'a mut Option<JoypadCmd>,
-    
+
     pub probe: &'a mut P,
 }
 
@@ -110,7 +110,7 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             // Banks $C0-$FF: HiROM cartridge / mirror
             0xC0..=0xFF => self.cart.read(addr),
         };
-        
+
         value
     }
 
@@ -160,6 +160,7 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
     }
 
     fn read_wram_port(&mut self, offset: u16) -> u8 {
+        log::debug!("Attempting to read to WRAM port");
         // match offset {
         //     0x2180 => {
         //         let addr = self.cpu_regs.wram_addr as usize;
@@ -173,6 +174,12 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
     }
 
     fn write_wram_port(&mut self, offset: u16, value: u8) {
+        log::debug!(
+            "Attempting to write to WRAM ports: {:02X} to ${:04X}",
+            value,
+            offset
+        );
+        // uncomment and pray it works
         // match offset {
         //     0x2180 => {
         //         let addr = self.cpu_regs.wram_addr as usize;
@@ -500,7 +507,7 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
                 if !self.cpu_regs.vblank_flag && !self.cpu_regs.hblank_flag && !ppu_regs.in_fblank {
                     return;
                 }
-                
+
                 if !ppu_regs.cgram_toggle {
                     ppu_regs.cgram_latch = value;
                 } else {
@@ -572,7 +579,7 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
 
     fn read_cpuio_regs(&mut self, offset: u16) -> u8 {
         let cpu_regs = &mut self.cpu_regs;
-        
+
         match offset {
             0x4000..=0x4015 => 0, // Open bus
 
@@ -603,11 +610,7 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             0x420E..=0x420F => 0, // Open bus
 
             0x4210 => {
-                let vblank_nmi = if cpu_regs.vblank_flag {
-                    0x80
-                } else {
-                    0
-                };
+                let vblank_nmi = if cpu_regs.vblank_flag { 0x80 } else { 0 };
                 let cpu_version = 0x02;
 
                 cpu_regs.vblank_nmi_flag = false;
@@ -616,11 +619,7 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             }
 
             0x4211 => {
-                let timer_irq = if cpu_regs.hv_timer_irq_flag {
-                    0x80
-                } else {
-                    0
-                };
+                let timer_irq = if cpu_regs.hv_timer_irq_flag { 0x80 } else { 0 };
 
                 cpu_regs.hv_timer_irq_flag = false;
 
@@ -630,11 +629,7 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             0x4212 => {
                 let in_vblank = if cpu_regs.vblank_flag { 0x80 } else { 0 };
                 let in_hblank = if cpu_regs.hblank_flag { 0x40 } else { 0 };
-                let in_joypad_autoread = if cpu_regs.joypad_autoread_flag {
-                    1
-                } else {
-                    0
-                };
+                let in_joypad_autoread = if cpu_regs.joypad_autoread_flag { 1 } else { 0 };
 
                 in_vblank | in_hblank | in_joypad_autoread
             }
