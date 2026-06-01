@@ -1,23 +1,37 @@
-use snemcore::{Snemulator, sppu::{Color, ObjectSizeSelect}};
+use snemcore::{
+    sppu::{Color, ObjectSizeSelect},
+    Snemulator,
+};
 
 use crate::debug::{debugger::Debugger, texture::Texture};
 
 #[derive(PartialEq, Clone, Copy)]
-enum MemViewRegion { Wram, Rom, Vram, Oam, Cgram }
+enum MemViewRegion {
+    Wram,
+    Sram,
+    Rom,
+    Vram,
+    Oam,
+    Cgram,
+}
 
 impl MemViewRegion {
     fn label(&self) -> &'static str {
         match self {
-            MemViewRegion::Wram  => "WRAM",
-            MemViewRegion::Rom   => "ROM",
-            MemViewRegion::Vram  => "VRAM",
-            MemViewRegion::Oam   => "OAM",
+            MemViewRegion::Wram => "WRAM",
+            MemViewRegion::Sram => "SRAM",
+            MemViewRegion::Rom => "ROM",
+            MemViewRegion::Vram => "VRAM",
+            MemViewRegion::Oam => "OAM",
             MemViewRegion::Cgram => "CGRAM",
         }
     }
     // Address display width: WRAM/ROM are 24-bit, rest are 16-bit offsets into their own space
     fn addr_width(&self) -> usize {
-        match self { MemViewRegion::Wram | MemViewRegion::Rom => 6, _ => 4 }
+        match self {
+            MemViewRegion::Wram | MemViewRegion::Rom => 6,
+            _ => 4,
+        }
     }
 }
 
@@ -115,14 +129,15 @@ impl MemoryTab {
             selected_sprite: None,
         }
     }
-    
+
     pub fn render(&mut self, ui: &mut egui::Ui, snem_core: &Snemulator<Debugger>) {
         ui.horizontal(|ui| {
             egui::ComboBox::from_id_salt("mem_region")
                 .selected_text(self.region.label())
                 .show_ui(ui, |ui| {
                     for region in [
-                        MemViewRegion::Wram, 
+                        MemViewRegion::Wram,
+                        MemViewRegion::Sram,
                         MemViewRegion::Rom,
                         MemViewRegion::Vram,
                         MemViewRegion::Oam,
@@ -138,8 +153,16 @@ impl MemoryTab {
                 egui::ComboBox::from_id_salt("oam_mode")
                     .selected_text(self.oam_view_mode.label())
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut self.oam_view_mode, OamViewMode::Raw, OamViewMode::Raw.label());
-                        ui.selectable_value(&mut self.oam_view_mode, OamViewMode::Sprites, OamViewMode::Sprites.label());
+                        ui.selectable_value(
+                            &mut self.oam_view_mode,
+                            OamViewMode::Raw,
+                            OamViewMode::Raw.label(),
+                        );
+                        ui.selectable_value(
+                            &mut self.oam_view_mode,
+                            OamViewMode::Sprites,
+                            OamViewMode::Sprites.label(),
+                        );
                     });
             }
         });
@@ -148,7 +171,7 @@ impl MemoryTab {
         let addr_w = self.region.addr_width();
 
         match self.region {
-            MemViewRegion::Vram  => Self::render_vram_dump(ui, &snem_core.vram[..]),
+            MemViewRegion::Vram => Self::render_vram_dump(ui, &snem_core.vram[..]),
             MemViewRegion::Cgram => Self::render_cgram_dump(ui, &snem_core.cgram[..]),
             MemViewRegion::Oam if self.oam_view_mode == OamViewMode::Sprites => {
                 self.render_oam_sprites(ui, snem_core);
@@ -156,9 +179,10 @@ impl MemoryTab {
             _ => {
                 let data: &[u8] = match self.region {
                     MemViewRegion::Wram => &snem_core.wram[..],
-                    MemViewRegion::Rom  => &snem_core.rom_slice(),
-                    MemViewRegion::Oam  => &snem_core.oam[..],
-                    _                   => unreachable!(),
+                    MemViewRegion::Sram => &snem_core.sram_slice(),
+                    MemViewRegion::Rom => &snem_core.rom_slice(),
+                    MemViewRegion::Oam => &snem_core.oam[..],
+                    _ => unreachable!(),
                 };
                 Self::render_byte_dump(ui, data, addr_w);
             }
@@ -178,45 +202,61 @@ impl MemoryTab {
                     egui::ScrollArea::vertical()
                         .auto_shrink([false, false]) // Now this only fills the left column's height
                         .show(ui, |ui| {
-                            egui::Grid::new("oam_sprites_grid").striped(true).show(ui, |ui| {
-                                ui.label("Idx");
-                                ui.label("X, Y");
-                                ui.label("Tile");
-                                ui.label("Pal");
-                                ui.label("Pri");
-                                ui.label("Size");
-                                ui.end_row();
-
-                                for i in 0..128 {
-                                    let sprite = OamSprite::from_oam(&core.oam[..], i);
-                                    
-                                    // Dim off-screen or unused sprites
-                                    let is_active = sprite.y < 224 && sprite.x > -64 && sprite.x < 256;
-                                    let color = if is_active { egui::Color32::WHITE } else { egui::Color32::DARK_GRAY };
-
-                                    let is_selected = self.selected_sprite == Some(i);
-                                    if ui.selectable_label(is_selected, format!("{:03}", i)).clicked() {
-                                        self.selected_sprite = Some(i);
-                                    }
-                                    
-                                    ui.colored_label(color, format!("{}, {}", sprite.x, sprite.y));
-                                    ui.colored_label(color, format!("${:03X}", sprite.tile));
-                                    ui.colored_label(color, format!("{}", sprite.palette));
-                                    ui.colored_label(color, format!("{}", sprite.priority));
-                                    ui.colored_label(color, if sprite.size_large { "L" } else { "S" });
+                            egui::Grid::new("oam_sprites_grid")
+                                .striped(true)
+                                .show(ui, |ui| {
+                                    ui.label("Idx");
+                                    ui.label("X, Y");
+                                    ui.label("Tile");
+                                    ui.label("Pal");
+                                    ui.label("Pri");
+                                    ui.label("Size");
                                     ui.end_row();
-                                }
-                            });
+
+                                    for i in 0..128 {
+                                        let sprite = OamSprite::from_oam(&core.oam[..], i);
+
+                                        // Dim off-screen or unused sprites
+                                        let is_active =
+                                            sprite.y < 224 && sprite.x > -64 && sprite.x < 256;
+                                        let color = if is_active {
+                                            egui::Color32::WHITE
+                                        } else {
+                                            egui::Color32::DARK_GRAY
+                                        };
+
+                                        let is_selected = self.selected_sprite == Some(i);
+                                        if ui
+                                            .selectable_label(is_selected, format!("{:03}", i))
+                                            .clicked()
+                                        {
+                                            self.selected_sprite = Some(i);
+                                        }
+
+                                        ui.colored_label(
+                                            color,
+                                            format!("{}, {}", sprite.x, sprite.y),
+                                        );
+                                        ui.colored_label(color, format!("${:03X}", sprite.tile));
+                                        ui.colored_label(color, format!("{}", sprite.palette));
+                                        ui.colored_label(color, format!("{}", sprite.priority));
+                                        ui.colored_label(
+                                            color,
+                                            if sprite.size_large { "L" } else { "S" },
+                                        );
+                                        ui.end_row();
+                                    }
+                                });
                         });
-                }
+                },
             );
 
-            ui.separator(); 
+            ui.separator();
 
             ui.vertical(|ui| {
                 if let Some(idx) = self.selected_sprite {
                     let sprite = OamSprite::from_oam(&core.oam[..], idx);
-                    
+
                     let (pixels, width, height) = decode_sprite(
                         &sprite,
                         &core.vram[..],
@@ -246,9 +286,12 @@ impl MemoryTab {
                     // Scale up for visibility
                     let scale = 16.0;
                     let image_size = egui::Vec2::new(width as f32, height as f32) * scale;
-                    
+
                     // Render the texture
-                    ui.image(egui::load::SizedTexture::new(self.sprite_texture.texture_id(), image_size));
+                    ui.image(egui::load::SizedTexture::new(
+                        self.sprite_texture.texture_id(),
+                        image_size,
+                    ));
                 } else {
                     ui.centered_and_justified(|ui| {
                         ui.label("Select a sprite from the list to view its texture.");
@@ -257,7 +300,7 @@ impl MemoryTab {
             });
         }); // End of horizontal
     }
-    
+
     fn render_vram_dump(ui: &mut egui::Ui, vram: &[u16]) {
         const COLS: usize = 8;
         let total_rows = vram.len().div_ceil(COLS);
@@ -267,10 +310,14 @@ impl MemoryTab {
             .auto_shrink([false, false])
             .show_rows(ui, row_height, total_rows, |ui, row_range| {
                 for row in row_range {
-                    let base  = row * COLS;
+                    let base = row * COLS;
                     let chunk = &vram[base..vram.len().min(base + COLS)];
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(format!("{:04X}:", base)).monospace().weak());
+                        ui.label(
+                            egui::RichText::new(format!("{:04X}:", base))
+                                .monospace()
+                                .weak(),
+                        );
                         for word in chunk {
                             ui.label(egui::RichText::new(format!(" {:04X}", word)).monospace());
                         }
@@ -278,72 +325,95 @@ impl MemoryTab {
                 }
             });
     }
-    
+
     fn render_cgram_dump(ui: &mut egui::Ui, cgram: &[Color]) {
         const COLS: usize = 16;
         let total_rows = cgram.len().div_ceil(COLS);
         let row_height = ui.text_style_height(&egui::TextStyle::Monospace) + 2.0;
-    
-        egui::ScrollArea::vertical().auto_shrink([false, false])
+
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
             .show_rows(ui, row_height, total_rows, |ui, row_range| {
                 for row in row_range {
-                    let base  = row * COLS;
+                    let base = row * COLS;
                     let chunk = &cgram[base..cgram.len().min(base + COLS)];
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(format!("{:03X}:", base)).monospace().weak());
+                        ui.label(
+                            egui::RichText::new(format!("{:03X}:", base))
+                                .monospace()
+                                .weak(),
+                        );
                         for color in chunk {
                             let egui_color = egui::Color32::from_rgb(color.r, color.g, color.b);
                             // Color swatch
                             let (rect, response) = ui.allocate_exact_size(
                                 egui::vec2(row_height, row_height),
-                                egui::Sense::hover()
+                                egui::Sense::hover(),
                             );
                             ui.painter().rect_filled(rect, 1.0, egui_color);
-                            response.on_hover_text(format!("#{:02X}{:02X}{:02X}", color.r, color.g, color.b));
+                            response.on_hover_text(format!(
+                                "#{:02X}{:02X}{:02X}",
+                                color.r, color.g, color.b
+                            ));
                         }
                     });
                 }
             });
     }
-    
+
     fn render_byte_dump(ui: &mut egui::Ui, data: &[u8], addr_w: usize) {
         const COLS: usize = 16;
-    
-        // let anchor = self.mem.anchor() as usize;
-        let total_rows  = data.len().div_ceil(COLS);
-        let row_height  = ui.text_style_height(&egui::TextStyle::Monospace) + 2.0;
 
-        egui::ScrollArea::vertical().auto_shrink([false, false])
+        // let anchor = self.mem.anchor() as usize;
+        let total_rows = data.len().div_ceil(COLS);
+        let row_height = ui.text_style_height(&egui::TextStyle::Monospace) + 2.0;
+
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
             .show_rows(ui, row_height, total_rows, |ui, row_range| {
                 for row in row_range {
                     let base = row * COLS;
                     let chunk = &data[base..data.len().min(base + COLS)];
-        
+
                     ui.horizontal(|ui| {
                         // Address gutter
-                        ui.label(egui::RichText::new(
-                            format!("{:0>width$X}:", base, width = addr_w)
-                            // Note: for ROM/WRAM the base IS the absolute offset since data starts at 0
-                            // For banked views you'd add a base_addr offset here
-                        ).monospace().weak());
-        
+                        ui.label(
+                            egui::RichText::new(
+                                format!("{:0>width$X}:", base, width = addr_w), // Note: for ROM/WRAM the base IS the absolute offset since data starts at 0
+                                                                                // For banked views you'd add a base_addr offset here
+                            )
+                            .monospace()
+                            .weak(),
+                        );
+
                         // Hex bytes — group in sets of 8 for readability
                         for (i, byte) in chunk.iter().enumerate() {
-                            if i == 8 { ui.label(egui::RichText::new("·").weak()); }
+                            if i == 8 {
+                                ui.label(egui::RichText::new("·").weak());
+                            }
                             ui.label(egui::RichText::new(format!("{:02X}", byte)).monospace());
                         }
                         // Pad if last row is short
                         for i in chunk.len()..COLS {
-                            if i == 8 { ui.label(egui::RichText::new("·").weak()); }
+                            if i == 8 {
+                                ui.label(egui::RichText::new("·").weak());
+                            }
                             ui.label(egui::RichText::new("   ").monospace());
                         }
-        
+
                         ui.separator();
-        
+
                         // ASCII sidebar
-                        let ascii: String = chunk.iter().map(|&b| {
-                            if b.is_ascii_graphic() || b == b' ' { b as char } else { '.' }
-                        }).collect();
+                        let ascii: String = chunk
+                            .iter()
+                            .map(|&b| {
+                                if b.is_ascii_graphic() || b == b' ' {
+                                    b as char
+                                } else {
+                                    '.'
+                                }
+                            })
+                            .collect();
                         ui.label(egui::RichText::new(ascii).monospace().weak());
                     });
                 }
@@ -362,21 +432,21 @@ fn decode_sprite(
     // 1. Determine physical dimensions
     let (w, h) = match (obsel, sprite.size_large) {
         (ObjectSizeSelect::Size8x8_16x16, false) => (8, 8),
-        (ObjectSizeSelect::Size8x8_16x16, true)  => (16, 16),
+        (ObjectSizeSelect::Size8x8_16x16, true) => (16, 16),
         (ObjectSizeSelect::Size8x8_32x32, false) => (8, 8),
-        (ObjectSizeSelect::Size8x8_32x32, true)  => (32, 32),
+        (ObjectSizeSelect::Size8x8_32x32, true) => (32, 32),
         (ObjectSizeSelect::Size8x8_64x64, false) => (8, 8),
-        (ObjectSizeSelect::Size8x8_64x64, true)  => (64, 64),
+        (ObjectSizeSelect::Size8x8_64x64, true) => (64, 64),
         (ObjectSizeSelect::Size16x16_32x32, false) => (16, 16),
-        (ObjectSizeSelect::Size16x16_32x32, true)  => (32, 32),
+        (ObjectSizeSelect::Size16x16_32x32, true) => (32, 32),
         (ObjectSizeSelect::Size16x16_64x64, false) => (16, 16),
-        (ObjectSizeSelect::Size16x16_64x64, true)  => (64, 64),
+        (ObjectSizeSelect::Size16x16_64x64, true) => (64, 64),
         (ObjectSizeSelect::Size32x32_64x64, false) => (32, 32),
-        (ObjectSizeSelect::Size32x32_64x64, true)  => (64, 64),
+        (ObjectSizeSelect::Size32x32_64x64, true) => (64, 64),
         (ObjectSizeSelect::Size16x32_32x64, false) => (16, 32),
-        (ObjectSizeSelect::Size16x32_32x64, true)  => (32, 64),
+        (ObjectSizeSelect::Size16x32_32x64, true) => (32, 64),
         (ObjectSizeSelect::Size16x32_32x32, false) => (16, 32),
-        (ObjectSizeSelect::Size16x32_32x32, true)  => (32, 32),
+        (ObjectSizeSelect::Size16x32_32x32, true) => (32, 32),
     };
 
     let mut pixels = vec![0u8; w * h * 4];
@@ -394,18 +464,22 @@ fn decode_sprite(
 
             // SNES multi-tile offsets shift by 16 horizontally across the 16x16 256-tile page
             let tile_offset = tile_x + (tile_y * 16);
-            
+
             // The 9th bit (0x100) dictates the name table base, lower 8 bits wrap
             let current_tile = (sprite.tile & 0x100) | ((sprite.tile + tile_offset as u16) & 0xFF);
 
-            let base_addr = if (current_tile & 0x100) == 0 { name_base } else { name_second_base };
-            
+            let base_addr = if (current_tile & 0x100) == 0 {
+                name_base
+            } else {
+                name_second_base
+            };
+
             // 1 tile = 16 words. VRAM slice is presumed to be u16 word-indexed
             let tile_addr = base_addr as usize + (current_tile & 0xFF) as usize * 16;
 
             // Bounds protection
             if tile_addr + py + 8 >= vram.len() {
-                continue; 
+                continue;
             }
 
             // Planar 4bpp Decoding
@@ -430,7 +504,7 @@ fn decode_sprite(
             } else {
                 // Palettes 128-255. 8 palettes, 16 colors each.
                 let cgram_idx = 128 + (sprite.palette as usize * 16) + color_idx as usize;
-                
+
                 if cgram_idx < cgram.len() {
                     let color = &cgram[cgram_idx];
                     pixels[pixel_index + 0] = color.r;
