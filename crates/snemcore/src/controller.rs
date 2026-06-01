@@ -45,3 +45,14 @@ impl SnemController {
         }
     }
 }
+
+#[derive(Default)]
+pub struct ControllerData {
+    pub joy1_latch: u16,
+    pub joy2_latch: u16,
+    pub joy1_data1_auto: u16,
+    pub joy2_data1_auto: u16,
+    pub joy1_data2_auto: u16,
+    pub joy2_data2_auto: u16,
+    pub joypad_cmd: Option<JoypadCmd>,
+}
