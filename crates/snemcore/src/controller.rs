@@ -44,6 +44,12 @@ impl SnemController {
             self.buttons &= !(button as u16);
         }
     }
+
+    pub fn is_button_pressed(&self, button: JoypadButton) -> bool {
+        self.buttons & (button as u16) != 0
+    }
+
+    pub fn read_state(&self) -> u16 { self.buttons }
 }
 
 #[derive(Default)]
@@ -54,5 +60,7 @@ pub struct ControllerData {
     pub joy2_data1_auto: u16,
     pub joy1_data2_auto: u16,
     pub joy2_data2_auto: u16,
+    pub joypad_autoread_step: u8,
+    pub cycles_until_autoread: usize,
     pub joypad_cmd: Option<JoypadCmd>,
 }

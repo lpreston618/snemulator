@@ -15,6 +15,8 @@ use sysinfo::{CGRAM_SIZE, OAM_SIZE, VRAM_SIZE, WRAM_SIZE};
 
 use crate::controller::ControllerData;
 use crate::probe::{DebugProbe, NullProbe};
+use crate::sppu::VBLANK_START_SCANLINE;
+use crate::sysinfo::CLOCKS_BETWEEN_AUTOREAD_STEPS;
 
 pub mod cartridge;
 pub mod controller;
@@ -288,6 +290,16 @@ impl<P: DebugProbe> Snemulator<P> {
         }
 
         self.ssmp.cycle(clocks, audio_buffer, &mut self.apu_ports);
+
+        if self.cpu_regs.joypad_autoread_flag {
+            if clocks >= self.controller_data.cycles_until_autoread {
+                self.controller_data.cycles_until_autoread += CLOCKS_BETWEEN_AUTOREAD_STEPS - clocks;
+
+                self.do_joypad_autoread_step();
+            } else {
+                self.controller_data.cycles_until_autoread -= clocks;
+            }
+        }
         
         probe.on_emulation_cycle(self);
 
@@ -344,6 +356,19 @@ impl<P: DebugProbe> Snemulator<P> {
             Some(JoypadCmd::ClockJoy2) => self.controller_data.joy2_latch >>= 1,
             _ => {}
         }
+
+        if self.cpu_regs.latch_controllers {
+            self.controller_data.joy1_latch = self.p1_controller.read_state();
+            self.controller_data.joy2_latch = self.p2_controller.read_state();
+        }
+
+        if self.ppu.scanline == VBLANK_START_SCANLINE
+            && self.cpu_regs.joypad_autoread_en
+            && !self.cpu_regs.joypad_autoread_flag
+        {
+            self.controller_data.joypad_autoread_step = 0;
+            self.cpu_regs.joypad_autoread_flag = true;
+        }
     }
 
     fn cycle_ppu(&mut self, frame_buffer: &mut [u8]) {
@@ -367,6 +392,48 @@ impl<P: DebugProbe> Snemulator<P> {
             if self.dma.hdma_active_ch < 8 {
                 self.dma.regs[self.dma.hdma_active_ch].hdma_do_transfer = true;
             }
+        }
+    }
+
+    fn do_joypad_autoread_step(&mut self) {
+        if self.controller_data.joypad_autoread_step < 12 {
+            let button = match self.controller_data.joypad_autoread_step {
+                0  => JoypadButton::B,
+                1  => JoypadButton::Y,
+                2  => JoypadButton::Select,
+                3  => JoypadButton::Start,
+                4  => JoypadButton::Up,
+                5  => JoypadButton::Down,
+                6  => JoypadButton::Left,
+                7  => JoypadButton::Right,
+                8  => JoypadButton::A,
+                9 => JoypadButton::X,
+                10 => JoypadButton::L1,
+                11 => JoypadButton::R1,
+                _ => unreachable!(),
+            };
+
+            self.controller_data.joy1_data1_auto <<= 1;
+            self.controller_data.joy2_data1_auto <<= 1;
+            // self.controller_data.joy1_data2_auto <<= 1;
+            // self.controller_data.joy2_data2_auto <<= 1;
+
+            self.controller_data.joy1_data1_auto |= if self.p1_controller.is_button_pressed(button) { 1 } else { 0 };
+            self.controller_data.joy2_data1_auto |= if self.p2_controller.is_button_pressed(button) { 1 } else { 0 };
+            // self.controller_data.joy1_data2_auto |= 
+            // self.controller_data.joy2_data2_auto |= 
+        } else {
+            self.controller_data.joy1_data1_auto <<= 1;
+            self.controller_data.joy2_data1_auto <<= 1;
+        }
+        
+        self.controller_data.joypad_autoread_step += 1;
+
+        if self.controller_data.joypad_autoread_step == 16 {
+            self.controller_data.joypad_autoread_step = 0;
+            self.cpu_regs.joypad_autoread_flag = false;
+
+            log::debug!("Autoread complete, P1: {}, P2: {}", self.controller_data.joy1_data1_auto, self.controller_data.joy2_data1_auto);
         }
     }
 

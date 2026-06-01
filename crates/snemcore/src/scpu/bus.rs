@@ -567,6 +567,7 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             0x4016 => {
                 self.controller_data.joypad_cmd = Some(JoypadCmd::ClockJoy1);
 
+                
                 let joy1_data1 = (self.controller_data.joy1_latch & 1) as u8;
                 let joy1_data2 = 0x00; // unused for joypads
 
@@ -655,7 +656,7 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             0x4000..=0x4015 => {} // Open bus
 
             0x4016 => {
-                cpu_regs.latch_controllers = get_bit_n!(value, 0);
+                self.cpu_regs.latch_controllers = get_bit_n!(value, 0);
             }
 
             0x4017 => {} // Write-only register
