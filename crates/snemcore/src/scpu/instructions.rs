@@ -1,10 +1,7 @@
 use crate::probe::DebugProbe;
 use crate::scpu::bus::{Address, CpuBus};
 use crate::scpu::{Cpu65c816, CpuInterrupt, Flag};
-use crate::{
-    set_byte_n,
-    get_bit_n,
-};
+use crate::{get_bit_n, set_byte_n};
 use paste::paste;
 
 /// Set the N and Z flags based on an 8-bit value.
@@ -28,7 +25,7 @@ macro_rules! cmp_reg8 {
         let result = ($reg as u8) - data;
 
         $cpu.set_flag_to_bool(Flag::FlagC, ($reg as u8) >= data);
-        
+
         set_nz8!($cpu, result);
     };
 }
@@ -39,7 +36,7 @@ macro_rules! cmp_reg16 {
         let result = $reg - data;
 
         $cpu.set_flag_to_bool(Flag::FlagC, $reg >= data);
-        
+
         set_nz16!($cpu, result);
     };
 }
@@ -90,72 +87,63 @@ macro_rules! inc_addr {
 
 macro_rules! inc_addr16 {
     ($addr:expr) => {
-        Address { bank: $addr.bank, offset: $addr.offset + 1 }
+        Address {
+            bank: $addr.bank,
+            offset: $addr.offset + 1,
+        }
     };
 }
 
 macro_rules! op_case {
-    ($cpu:ident, $bus:ident, $addr_mode:ident, $instr:ident) => {
-        {
-            let addr = $cpu.$addr_mode($bus);
-            $cpu.$instr($bus, addr);
-        }
-    };
+    ($cpu:ident, $bus:ident, $addr_mode:ident, $instr:ident) => {{
+        let addr = $cpu.$addr_mode($bus);
+        $cpu.$instr($bus, addr);
+    }};
 }
 
 macro_rules! op_case_imm {
-    ($cpu:ident, $bus:ident, $instr:ident) => {
-        {
-            let addr = $cpu.immediate();
-            $cpu.$instr($bus, addr);
-        }
-    };
+    ($cpu:ident, $bus:ident, $instr:ident) => {{
+        let addr = $cpu.immediate();
+        $cpu.$instr($bus, addr);
+    }};
 }
 
 macro_rules! op_case_br {
-    ($cpu:ident, $bus:ident, $addr_mode:ident, $instr:ident) => {
-        {
-            let addr = $cpu.$addr_mode($bus);
-            $cpu.$instr(addr);
-        }
-    };
+    ($cpu:ident, $bus:ident, $addr_mode:ident, $instr:ident) => {{
+        let addr = $cpu.$addr_mode($bus);
+        $cpu.$instr(addr);
+    }};
 }
 
 macro_rules! op_case_src_dst {
-    ($cpu:ident, $bus:ident, $instr:ident) => {
-        {
-            let src_addr = $cpu.source($bus);
-            let dst_addr = $cpu.destination($bus);
-            $cpu.$instr($bus, src_addr, dst_addr);
-        }
-    };
+    ($cpu:ident, $bus:ident, $instr:ident) => {{
+        let src_addr = $cpu.source($bus);
+        let dst_addr = $cpu.destination($bus);
+        $cpu.$instr($bus, src_addr, dst_addr);
+    }};
 }
 
 macro_rules! op_case_long {
-    ($cpu:ident, $bus:ident, $addr_mode:ident, $instr:ident, $wrap_add:ident) => {
-        {
-            let addr_lo = $cpu.$addr_mode($bus);
-            let addr_hi = $wrap_add!(addr_lo);
-            $cpu.$instr($bus, addr_lo, addr_hi);
-        }
-    };
+    ($cpu:ident, $bus:ident, $addr_mode:ident, $instr:ident, $wrap_add:ident) => {{
+        let addr_lo = $cpu.$addr_mode($bus);
+        let addr_hi = $wrap_add!(addr_lo);
+        $cpu.$instr($bus, addr_lo, addr_hi);
+    }};
 }
 
 macro_rules! op_case_long_imm {
-    ($cpu:ident, $bus:ident, $instr:ident) => {
-        {
-            let addr_lo = $cpu.immediate();
-            let addr_hi = $cpu.immediate();
-            $cpu.$instr($bus, addr_lo, addr_hi);
-        }
-    };
+    ($cpu:ident, $bus:ident, $instr:ident) => {{
+        let addr_lo = $cpu.immediate();
+        let addr_hi = $cpu.immediate();
+        $cpu.$instr($bus, addr_lo, addr_hi);
+    }};
 }
 
 macro_rules! op_case_flagm {
     ($cpu:ident, $bus:ident, $addr_mode:ident, $instr:ident, $wrap_add:ident) => {
         paste!( {
             let addr = $cpu.$addr_mode($bus);
-        
+
             if $cpu.is_flag_set(Flag::FlagM) {
                 $cpu.[<$instr _m8>]($bus, addr);
             } else {
@@ -169,7 +157,7 @@ macro_rules! op_case_flagm_imm {
     ($cpu:ident, $bus:ident, $instr:ident) => {
         paste!( {
             let addr = $cpu.immediate();
-        
+
             if $cpu.is_flag_set(Flag::FlagM) {
                 $cpu.[<$instr _m8>]($bus, addr);
             } else {
@@ -184,7 +172,7 @@ macro_rules! op_case_flagx {
     ($cpu:ident, $bus:ident, $addr_mode:ident, $instr:ident, $wrap_add:ident) => {
         paste!( {
             let addr = $cpu.$addr_mode($bus);
-        
+
             if $cpu.is_flag_set(Flag::FlagX) {
                 $cpu.[<$instr _x8>]($bus, addr);
             } else {
@@ -198,7 +186,7 @@ macro_rules! op_case_flagx_imm {
     ($cpu:ident, $bus:ident, $instr:ident) => {
         paste!( {
             let addr = $cpu.immediate();
-        
+
             if $cpu.is_flag_set(Flag::FlagX) {
                 $cpu.[<$instr _x8>]($bus, addr);
             } else {
@@ -209,37 +197,29 @@ macro_rules! op_case_flagx_imm {
     };
 }
 
-
 // Instr execution
 impl<P: DebugProbe> Cpu65c816<P> {
     /// Some instructions take extra cycles beyond what is spent reading/writing memory.
     /// This is a lookup for the extra cycles needed for each opcode.
     const EXTRA_CYCLES_LOOKUP: [u8; 256] = [
-        1, 2, 0, 1, 2, 1, 2, 1, 1, 0, 1, 1, 1, 0, 1, 1,
-        0, 2, 1, 2, 2, 2, 3, 1, 1, 1, 1, 1, 1, 1, 2, 0,
-        1, 2, 2, 1, 1, 1, 2, 1, 2, 0, 1, 2, 0, 0, 1, 1,
-        0, 2, 1, 2, 2, 2, 3, 1, 1, 1, 1, 1, 1, 1, 2, 0,
-        2, 2, 0, 1, 2, 1, 2, 1, 1, 0, 1, 1, 0, 0, 1, 1,
-        0, 2, 1, 2, 2, 2, 3, 1, 1, 1, 1, 1, 1, 1, 2, 0,
-        4, 2, 1, 1, 1, 1, 2, 1, 2, 0, 1, 3, 0, 0, 1, 1,
-        0, 2, 1, 2, 2, 2, 3, 1, 1, 1, 2, 1, 1, 1, 2, 0,
-        0, 2, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 1,
-        0, 2, 1, 2, 2, 2, 2, 1, 1, 1, 1, 1, 0, 1, 1, 0,
-        0, 2, 0, 1, 1, 1, 1, 1, 1, 0, 1, 2, 0, 0, 0, 1,
-        0, 2, 1, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 0,
-        0, 2, 1, 1, 1, 1, 2, 1, 1, 0, 1, 2, 0, 0, 1, 1,
-        0, 2, 1, 2, 1, 2, 3, 1, 1, 1, 1, 2, 0, 1, 2, 0,
-        0, 2, 1, 1, 1, 1, 2, 1, 1, 0, 1, 2, 0, 0, 1, 1,
+        1, 2, 0, 1, 2, 1, 2, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 2, 1, 2, 2, 2, 3, 1, 1, 1, 1, 1, 1, 1,
+        2, 0, 1, 2, 2, 1, 1, 1, 2, 1, 2, 0, 1, 2, 0, 0, 1, 1, 0, 2, 1, 2, 2, 2, 3, 1, 1, 1, 1, 1,
+        1, 1, 2, 0, 2, 2, 0, 1, 2, 1, 2, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0, 2, 1, 2, 2, 2, 3, 1, 1, 1,
+        1, 1, 1, 1, 2, 0, 4, 2, 1, 1, 1, 1, 2, 1, 2, 0, 1, 3, 0, 0, 1, 1, 0, 2, 1, 2, 2, 2, 3, 1,
+        1, 1, 2, 1, 1, 1, 2, 0, 0, 2, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 2, 1, 2, 2, 2,
+        2, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 2, 0, 1, 1, 1, 1, 1, 1, 0, 1, 2, 0, 0, 0, 1, 0, 2, 1, 2,
+        2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 2, 1, 1, 1, 1, 2, 1, 1, 0, 1, 2, 0, 0, 1, 1, 0, 2,
+        1, 2, 1, 2, 3, 1, 1, 1, 1, 2, 0, 1, 2, 0, 0, 2, 1, 1, 1, 1, 2, 1, 1, 0, 1, 2, 0, 0, 1, 1,
         0, 2, 1, 2, 0, 2, 3, 1, 1, 1, 2, 1, 1, 1, 2, 0,
     ];
 
     /// Fetch, decode, and execute a single instruction. The number of system clocks taken
     /// to complete the instruction is added to the CPU's internal clock counter.
-    pub fn execute(&mut self, bus: &mut CpuBus<P>) {    
+    pub fn execute(&mut self, bus: &mut CpuBus<P>) {
         let opcode = self.read_prg(bus);
 
         self.branch_taken = false;
-        
+
         match opcode {
             0x00 => self.brk(bus),
             0x01 => op_case_flagm!(self, bus, direct_x_indirect, ora, inc_addr),
@@ -333,7 +313,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
             0x59 => op_case_flagm!(self, bus, absolute_y, eor, inc_addr),
             0x5A => self.phy(bus),
             0x5B => self.tcd(),
-            0x5C => op_case_br!(self, bus, long, jmp),
+            0x5C => op_case_br!(self, bus, long, jmp_long),
             0x5D => op_case_flagm!(self, bus, absolute_x, eor, inc_addr),
             0x5E => op_case_flagm!(self, bus, absolute_x, lsr_mem, inc_addr),
             0x5F => op_case_flagm!(self, bus, long_x, eor, inc_addr),
@@ -498,17 +478,17 @@ impl<P: DebugProbe> Cpu65c816<P> {
             0xFE => op_case_flagm!(self, bus, absolute_x, inc_mem, inc_addr),
             0xFF => op_case_flagm!(self, bus, long_x, sbc, inc_addr),
         };
-        
-        if self.branch_taken {  
+
+        if self.branch_taken {
             self.clocks += Self::CYCLE_CLOCKS;
 
             if self.e {
                 self.clocks += Self::CYCLE_CLOCKS;
             }
         }
-        
+
         let extra_cycles = Self::EXTRA_CYCLES_LOOKUP[opcode as usize] as usize;
-        
+
         self.clocks += Self::CYCLE_CLOCKS * extra_cycles;
     }
 }
@@ -517,8 +497,8 @@ impl<P: DebugProbe> Cpu65c816<P> {
 impl<P: DebugProbe> Cpu65c816<P> {
     fn immediate(&mut self) -> Address {
         let offset = self.pc;
-        self.pc += 1;        
-        
+        self.pc += 1;
+
         Address {
             bank: self.pb,
             offset,
@@ -528,7 +508,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
     fn absolute(&mut self, bus: &mut CpuBus<P>) -> Address {
         let lo = self.read_prg(bus);
         let hi = self.read_prg(bus);
-        
+
         Address {
             bank: self.db,
             offset: u16::from_le_bytes([lo, hi]),
@@ -538,19 +518,15 @@ impl<P: DebugProbe> Cpu65c816<P> {
     fn absolute_x(&mut self, bus: &mut CpuBus<P>) -> Address {
         let lo = self.read_prg(bus);
         let hi = self.read_prg(bus);
-        
-        Address::from_u32(
-            u32::from_le_bytes([lo, hi, self.db, 0]) + self.x as u32
-        )
+
+        Address::from_u32(u32::from_le_bytes([lo, hi, self.db, 0]) + self.x as u32)
     }
 
     fn absolute_y(&mut self, bus: &mut CpuBus<P>) -> Address {
         let lo = self.read_prg(bus);
         let hi = self.read_prg(bus);
-        
-        Address::from_u32(
-            u32::from_le_bytes([lo, hi, self.db, 0]) + self.y as u32
-        )
+
+        Address::from_u32(u32::from_le_bytes([lo, hi, self.db, 0]) + self.y as u32)
     }
 
     fn absolute_indirect(&mut self, bus: &mut CpuBus<P>) -> Address {
@@ -560,15 +536,27 @@ impl<P: DebugProbe> Cpu65c816<P> {
         let ptr_lo = u16::from_le_bytes([ll, hh]);
         let ptr_hi = ptr_lo + 1;
 
-        let lo = self.read(bus, Address { bank: 0, offset: ptr_lo });
-        let hi = self.read(bus, Address { bank: 0, offset: ptr_hi });
+        let lo = self.read(
+            bus,
+            Address {
+                bank: 0,
+                offset: ptr_lo,
+            },
+        );
+        let hi = self.read(
+            bus,
+            Address {
+                bank: 0,
+                offset: ptr_hi,
+            },
+        );
 
         Address {
             bank: self.pb,
             offset: u16::from_le_bytes([lo, hi]),
         }
     }
-    
+
     fn absolute_x_indirect(&mut self, bus: &mut CpuBus<P>) -> Address {
         let ll = self.read_prg(bus);
         let hh = self.read_prg(bus);
@@ -576,52 +564,58 @@ impl<P: DebugProbe> Cpu65c816<P> {
         let ptr_lo = u16::from_le_bytes([ll, hh]);
         let ptr_hi = ptr_lo + 1;
 
-        let lo = self.read(bus, Address { bank: self.db, offset: ptr_lo });
-        let hi = self.read(bus, Address { bank: self.db, offset: ptr_hi });
+        let lo = self.read(
+            bus,
+            Address {
+                bank: self.db,
+                offset: ptr_lo,
+            },
+        );
+        let hi = self.read(
+            bus,
+            Address {
+                bank: self.db,
+                offset: ptr_hi,
+            },
+        );
 
         Address {
             bank: self.pb,
             offset: u16::from_le_bytes([lo, hi]),
         }
     }
-        
+
     fn direct(&mut self, bus: &mut CpuBus<P>) -> Address {
         Address {
             bank: 0,
             offset: self.dp + self.read_prg(bus) as u16,
         }
     }
-        
+
     fn direct_x(&mut self, bus: &mut CpuBus<P>) -> Address {
         let data = self.read_prg(bus);
-        
+
         let offset = if self.e && (self.dp & 0xFF) == 0 {
             self.dp | ((data + self.x as u8) as u16)
         } else {
             self.dp + (data as u16) + self.x
         };
-        
-        Address {
-            bank: 0,
-            offset,
-        }
+
+        Address { bank: 0, offset }
     }
-        
+
     fn direct_y(&mut self, bus: &mut CpuBus<P>) -> Address {
         let data = self.read_prg(bus);
-        
+
         let offset = if self.e && (self.dp & 0xFF) == 0 {
             self.dp | ((data + self.y as u8) as u16)
         } else {
             self.dp + (data as u16) + self.y
         };
-        
-        Address {
-            bank: 0,
-            offset,
-        }
+
+        Address { bank: 0, offset }
     }
-        
+
     fn direct_indirect(&mut self, bus: &mut CpuBus<P>) -> Address {
         let data = self.read_prg(bus);
 
@@ -632,15 +626,27 @@ impl<P: DebugProbe> Cpu65c816<P> {
             self.dp + (data as u16) + 1
         };
 
-        let lo = self.read(bus, Address { bank: 0, offset: ptr_lo });
-        let hi = self.read(bus, Address { bank: 0, offset: ptr_hi });
+        let lo = self.read(
+            bus,
+            Address {
+                bank: 0,
+                offset: ptr_lo,
+            },
+        );
+        let hi = self.read(
+            bus,
+            Address {
+                bank: 0,
+                offset: ptr_hi,
+            },
+        );
 
         Address {
             bank: self.db,
             offset: u16::from_le_bytes([lo, hi]),
         }
     }
-        
+
     fn direct_indirect_long(&mut self, bus: &mut CpuBus<P>) -> Address {
         let data = self.read_prg(bus);
 
@@ -648,19 +654,37 @@ impl<P: DebugProbe> Cpu65c816<P> {
         let ptr_mi = ptr_lo + 1;
         let ptr_hi = ptr_mi + 1;
 
-        let lo = self.read(bus, Address { bank: 0, offset: ptr_lo });
-        let mi = self.read(bus, Address { bank: 0, offset: ptr_mi });
-        let hi = self.read(bus, Address { bank: 0, offset: ptr_hi });
+        let lo = self.read(
+            bus,
+            Address {
+                bank: 0,
+                offset: ptr_lo,
+            },
+        );
+        let mi = self.read(
+            bus,
+            Address {
+                bank: 0,
+                offset: ptr_mi,
+            },
+        );
+        let hi = self.read(
+            bus,
+            Address {
+                bank: 0,
+                offset: ptr_hi,
+            },
+        );
 
         Address {
             bank: hi,
             offset: u16::from_le_bytes([lo, mi]),
         }
     }
-        
+
     fn direct_x_indirect(&mut self, bus: &mut CpuBus<P>) -> Address {
         let data = self.read_prg(bus);
-        
+
         let ptr_lo = if self.e && (self.dp & 0xFF) == 0 {
             self.dp | (data + self.x as u8) as u16
         } else {
@@ -672,62 +696,86 @@ impl<P: DebugProbe> Cpu65c816<P> {
             self.dp + (data as u16) + self.x + 1
         };
 
-        let lo = self.read(bus, Address { bank: 0, offset: ptr_lo });
-        let hi = self.read(bus, Address { bank: 0, offset: ptr_hi });
+        let lo = self.read(
+            bus,
+            Address {
+                bank: 0,
+                offset: ptr_lo,
+            },
+        );
+        let hi = self.read(
+            bus,
+            Address {
+                bank: 0,
+                offset: ptr_hi,
+            },
+        );
 
         Address {
             bank: self.db,
             offset: u16::from_le_bytes([lo, hi]),
         }
     }
-        
+
     fn direct_indirect_y(&mut self, bus: &mut CpuBus<P>) -> Address {
-        Address::from_u32(
-            self.direct_indirect(bus).to_u32() + self.y as u32
-        )
+        Address::from_u32(self.direct_indirect(bus).to_u32() + self.y as u32)
     }
-        
+
     fn direct_indirect_long_y(&mut self, bus: &mut CpuBus<P>) -> Address {
-        Address::from_u32(
-            self.direct_indirect_long(bus).to_u32() + self.y as u32
-        )
+        Address::from_u32(self.direct_indirect_long(bus).to_u32() + self.y as u32)
     }
-        
+
     fn long(&mut self, bus: &mut CpuBus<P>) -> Address {
         let lo = self.read_prg(bus);
         let mi = self.read_prg(bus);
         let hi = self.read_prg(bus);
-        
+
         Address {
             bank: hi,
             offset: u16::from_le_bytes([lo, mi]),
         }
     }
-        
+
     fn long_x(&mut self, bus: &mut CpuBus<P>) -> Address {
-        Address::from_u32(
-            self.long(bus).to_u32() + self.x as u32
-        )
+        Address::from_u32(self.long(bus).to_u32() + self.x as u32)
     }
-        
+
     fn long_indirect(&mut self, bus: &mut CpuBus<P>) -> Address {
         let ll = self.read_prg(bus);
         let hh = self.read_prg(bus);
-        
+
         let ptr_lo = u16::from_le_bytes([ll, hh]);
         let ptr_mi = ptr_lo + 1;
         let ptr_hi = ptr_mi + 1;
 
-        let lo = self.read(bus, Address { bank: 0, offset: ptr_lo });
-        let mi = self.read(bus, Address { bank: 0, offset: ptr_mi });
-        let hi = self.read(bus, Address { bank: 0, offset: ptr_hi });
+        let lo = self.read(
+            bus,
+            Address {
+                bank: 0,
+                offset: ptr_lo,
+            },
+        );
+        let mi = self.read(
+            bus,
+            Address {
+                bank: 0,
+                offset: ptr_mi,
+            },
+        );
+        let hi = self.read(
+            bus,
+            Address {
+                bank: 0,
+                offset: ptr_hi,
+            },
+        );
 
         Address {
             bank: hi,
             offset: u16::from_le_bytes([lo, mi]),
         }
     }
-        
+
     fn relative(&mut self, bus: &mut CpuBus<P>) -> Address {
         let rel_offset = ((self.read_prg(bus) as i8) as i16) as u16; // sign extend u8 to u16
         let offset = self.pc + rel_offset;
@@ -737,7 +785,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
             offset,
         }
     }
-        
+
     fn relative_long(&mut self, bus: &mut CpuBus<P>) -> Address {
         let lo = self.read_prg(bus);
         let hi = self.read_prg(bus);
@@ -749,52 +797,62 @@ impl<P: DebugProbe> Cpu65c816<P> {
             offset,
         }
     }
-     
+
     fn source(&mut self, bus: &mut CpuBus<P>) -> Address {
         Address {
             bank: self.read_prg(bus),
             offset: self.x,
         }
     }
-    
+
     fn destination(&mut self, bus: &mut CpuBus<P>) -> Address {
         Address {
             bank: self.read_prg(bus),
             offset: self.y,
         }
     }
-    
+
     fn stack_relative(&mut self, bus: &mut CpuBus<P>) -> Address {
         Address {
             bank: 0,
             offset: self.sp + self.read_prg(bus) as u16,
         }
     }
-    
+
     fn stack_relative_indirect_y(&mut self, bus: &mut CpuBus<P>) -> Address {
         let ptr_lo = self.sp + self.read_prg(bus) as u16;
         let ptr_hi = ptr_lo + 1;
 
-        let lo = self.read(bus, Address { bank: 0, offset: ptr_lo });
-        let hi = self.read(bus, Address { bank: 0, offset: ptr_hi });
-        
-        Address::from_u32(
-            u32::from_le_bytes([lo, hi, self.db, 0]) + self.y as u32
-        )
+        let lo = self.read(
+            bus,
+            Address {
+                bank: 0,
+                offset: ptr_lo,
+            },
+        );
+        let hi = self.read(
+            bus,
+            Address {
+                bank: 0,
+                offset: ptr_hi,
+            },
+        );
+
+        Address::from_u32(u32::from_le_bytes([lo, hi, self.db, 0]) + self.y as u32)
     }
 }
 
 // Instructions
 impl<P: DebugProbe> Cpu65c816<P> {
     fn adc_m8(&mut self, bus: &mut CpuBus<P>, addr: Address) {
-    	let operand = self.read(bus, addr);
-    	let mut carry = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
-    	
-    	self.p &= !(Flag::FlagN as u8 | Flag::FlagV as u8 | Flag::FlagZ as u8 | Flag::FlagC as u8);
-    	
-    	let mut result;
-    	
-    	if !self.is_flag_set(Flag::FlagD) {
+        let operand = self.read(bus, addr);
+        let mut carry = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
+
+        self.p &= !(Flag::FlagN as u8 | Flag::FlagV as u8 | Flag::FlagZ as u8 | Flag::FlagC as u8);
+
+        let mut result;
+
+        if !self.is_flag_set(Flag::FlagD) {
             result = (self.a & 0xFF) + operand as u16 + carry as u16;
         } else {
             result = (self.a as u16 & 0x0F) + (operand as u16 & 0x0F) + carry as u16;
@@ -802,40 +860,41 @@ impl<P: DebugProbe> Cpu65c816<P> {
                 result += 6;
             }
             carry = (result > 0x0F) as u16;
-            result = (self.a as u16 & 0xF0) + (operand as u16 & 0xF0) + (result & 0x0F) + (carry * 0x10);
+            result =
+                (self.a as u16 & 0xF0) + (operand as u16 & 0xF0) + (result & 0x0F) + (carry * 0x10);
         }
-     
-    	if (self.a & 0x80) == (operand as u16 & 0x80) && (self.a & 0x80) != (result & 0x80) {
+
+        if (self.a & 0x80) == (operand as u16 & 0x80) && (self.a & 0x80) != (result & 0x80) {
             self.set_flag_to_bool(Flag::FlagV, true);
         }
-    	
-    	if self.is_flag_set(Flag::FlagD) && result > 0x9F {
+
+        if self.is_flag_set(Flag::FlagD) && result > 0x9F {
             result += 0x60;
         }
-     
-    	if result > 0xFF {
+
+        if result > 0xFF {
             self.set_flag_to_bool(Flag::FlagC, true);
         }
-     
-    	if result & 0x80 != 0 {
+
+        if result & 0x80 != 0 {
             self.set_flag_to_bool(Flag::FlagN, true);
         }
-    	
-    	if result & 0xFF == 0 {
+
+        if result & 0xFF == 0 {
             self.set_flag_to_bool(Flag::FlagZ, true);
         }
-        
+
         set_byte_n!(self.a, result & 0xFF, 0);
     }
-    
+
     fn adc_m16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         let operand = self.read_word(bus, addr_lo, addr_hi) as u32;
         let carry = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
-               
+
         self.p &= !(Flag::FlagN as u8 | Flag::FlagV as u8 | Flag::FlagZ as u8 | Flag::FlagC as u8);
-        
+
         let mut result: u32;
-        
+
         if !self.is_flag_set(Flag::FlagD) {
             result = self.a as u32 + operand + carry;
         } else {
@@ -843,59 +902,70 @@ impl<P: DebugProbe> Cpu65c816<P> {
             if result > 0x0009 {
                 result += 0x0006;
             }
-            
+
             let carry = result > 0x000F;
-            
-            result = (self.a as u32 & 0x00F0) + (operand & 0x00F0) + (result & 0x000F) + carry as u32 * 0x10;
+
+            result = (self.a as u32 & 0x00F0)
+                + (operand & 0x00F0)
+                + (result & 0x000F)
+                + carry as u32 * 0x10;
             if result > 0x009F {
                 result += 0x0060;
             }
-            
+
             let carry = result > 0x00FF;
-            
-            result = (self.a as u32 & 0x0F00) + (operand & 0x0F00) + (result & 0x00FF) + carry as u32 * 0x100;
+
+            result = (self.a as u32 & 0x0F00)
+                + (operand & 0x0F00)
+                + (result & 0x00FF)
+                + carry as u32 * 0x100;
             if result > 0x09FF {
                 result += 0x0600;
             }
-            
+
             let carry = result > 0x0FFF;
-            
-            result = (self.a as u32 & 0xF000) + (operand & 0xF000) + (result & 0x0FFF) + carry as u32 * 0x1000;
+
+            result = (self.a as u32 & 0xF000)
+                + (operand & 0xF000)
+                + (result & 0x0FFF)
+                + carry as u32 * 0x1000;
         }
 
-        if (self.a as u32 & 0x8000) == (operand & 0x8000) && (self.a as u32 & 0x8000) != (result & 0x8000) {
+        if (self.a as u32 & 0x8000) == (operand & 0x8000)
+            && (self.a as u32 & 0x8000) != (result & 0x8000)
+        {
             self.set_flag_to_bool(Flag::FlagV, true);
         }
-        
+
         if self.is_flag_set(Flag::FlagD) && result > 0x9FFF {
             result += 0x6000;
         }
-        
+
         if result > 0xFFFF {
             self.set_flag_to_bool(Flag::FlagC, true);
         }
-        
+
         if (result & 0x8000) != 0 {
             self.set_flag_to_bool(Flag::FlagN, true);
         }
-        
+
         if (result & 0xFFFF) == 0 {
             self.set_flag_to_bool(Flag::FlagZ, true);
         }
-        
+
         self.a = result as u16;
     }
-    
+
     fn and_m8(&mut self, bus: &mut CpuBus<P>, addr: Address) {
         set_byte_n!(self.a, self.a & self.read(bus, addr) as u16, 0);
         set_nz8!(self, self.a);
     }
-    
+
     fn and_m16(&mut self, bus: &mut CpuBus<P>, addr1: Address, addr2: Address) {
         self.a &= self.read_word(bus, addr1, addr2);
         set_nz16!(self, self.a);
     }
-    
+
     fn asl(&mut self) {
         if self.is_flag_set(Flag::FlagM) {
             self.set_flag_to_bool(Flag::FlagC, get_bit_n!(self.a, 7));
@@ -929,7 +999,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
 
         set_nz16!(self, result);
     }
-    
+
     fn bcc(&mut self, addr: Address) {
         if !self.is_flag_set(Flag::FlagC) {
             self.pc = addr.offset;
@@ -959,7 +1029,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
         self.set_flag_to_bool(Flag::FlagV, get_bit_n!(data, 6));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
-    
+
     fn bit_m16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         let data = self.read_word(bus, addr_lo, addr_hi);
         let result = self.a & data;
@@ -968,14 +1038,14 @@ impl<P: DebugProbe> Cpu65c816<P> {
         self.set_flag_to_bool(Flag::FlagV, get_bit_n!(data, 14));
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
-    
+
     fn bit_imm_m8(&mut self, bus: &mut CpuBus<P>, addr: Address) {
         let data = self.read(bus, addr);
         let result = (self.a as u8) & data;
 
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
-    
+
     fn bit_imm_m16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         let data = self.read_word(bus, addr_lo, addr_hi);
         let result = self.a & data;
@@ -1009,7 +1079,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
         self.branch_taken = true;
     }
 
-    fn brk(&mut self, bus: &mut CpuBus<P>) {   
+    fn brk(&mut self, bus: &mut CpuBus<P>) {
         self.pc += 1; // Push address of next instruction
 
         self.handle_interrupt(bus, CpuInterrupt::BRK);
@@ -1028,7 +1098,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
             self.branch_taken = true;
         }
     }
-    
+
     fn clc(&mut self) {
         self.set_flag_to_bool(Flag::FlagC, false);
     }
@@ -1048,7 +1118,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
     fn cmp_m8(&mut self, bus: &mut CpuBus<P>, addr: Address) {
         cmp_reg8!(self, self.a, bus, addr);
     }
-    
+
     fn cmp_m16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         cmp_reg16!(self, self.a, bus, addr_lo, addr_hi);
     }
@@ -1062,7 +1132,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
     fn cpx_x8(&mut self, bus: &mut CpuBus<P>, addr: Address) {
         cmp_reg8!(self, self.x, bus, addr);
     }
-    
+
     fn cpx_x16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         cmp_reg16!(self, self.x, bus, addr_lo, addr_hi);
     }
@@ -1070,11 +1140,11 @@ impl<P: DebugProbe> Cpu65c816<P> {
     fn cpy_x8(&mut self, bus: &mut CpuBus<P>, addr: Address) {
         cmp_reg8!(self, self.y, bus, addr);
     }
-    
+
     fn cpy_x16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         cmp_reg16!(self, self.y, bus, addr_lo, addr_hi);
     }
-    
+
     fn dec(&mut self) {
         if self.is_flag_set(Flag::FlagM) {
             set_byte_n!(self.a, self.a - 1, 0);
@@ -1084,7 +1154,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
             set_nz16!(self, self.a);
         }
     }
-    
+
     fn dec_mem_m8(&mut self, bus: &mut CpuBus<P>, addr: Address) {
         let result = self.read(bus, addr) - 1;
 
@@ -1092,7 +1162,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
 
         set_nz8!(self, result);
     }
-    
+
     fn dec_mem_m16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         let result = self.read_word(bus, addr_lo, addr_hi) - 1;
 
@@ -1108,19 +1178,19 @@ impl<P: DebugProbe> Cpu65c816<P> {
     fn dey(&mut self) {
         dec_idx!(self, self.y);
     }
-    
+
     fn eor_m8(&mut self, bus: &mut CpuBus<P>, addr: Address) {
         self.a ^= self.read(bus, addr) as u16;
 
         set_nz8!(self, self.a);
     }
-    
+
     fn eor_m16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         self.a ^= self.read_word(bus, addr_lo, addr_hi);
 
         set_nz16!(self, self.a);
     }
-    
+
     fn inc(&mut self) {
         if self.is_flag_set(Flag::FlagM) {
             set_byte_n!(self.a, self.a + 1, 0);
@@ -1138,7 +1208,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
 
         set_nz8!(self, result);
     }
-    
+
     fn inc_mem_m16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         let result = self.read_word(bus, addr_lo, addr_hi) + 1;
 
@@ -1154,7 +1224,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
     fn iny(&mut self) {
         inc_idx!(self, self.y);
     }
-    
+
     fn jmp(&mut self, addr: Address) {
         self.pc = addr.offset;
     }
@@ -1176,12 +1246,12 @@ impl<P: DebugProbe> Cpu65c816<P> {
         self.pb = addr.bank;
         self.pc = addr.offset;
     }
-    
+
     fn lda_m8(&mut self, bus: &mut CpuBus<P>, addr: Address) {
         set_byte_n!(self.a, self.read(bus, addr) as u16, 0);
         set_nz8!(self, self.a);
     }
-    
+
     fn lda_m16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         self.a = self.read_word(bus, addr_lo, addr_hi);
         set_nz16!(self, self.a);
@@ -1191,7 +1261,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
         self.x = self.read(bus, addr) as u16;
         set_nz8!(self, self.x);
     }
-    
+
     fn ldx_x16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         self.x = self.read_word(bus, addr_lo, addr_hi);
         set_nz16!(self, self.x);
@@ -1201,7 +1271,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
         self.y = self.read(bus, addr) as u16;
         set_nz8!(self, self.y);
     }
-    
+
     fn ldy_x16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         self.y = self.read_word(bus, addr_lo, addr_hi);
         set_nz16!(self, self.y);
@@ -1210,29 +1280,29 @@ impl<P: DebugProbe> Cpu65c816<P> {
     fn lsr(&mut self) {
         self.set_flag_to_bool(Flag::FlagC, get_bit_n!(self.a, 0));
         self.set_flag_to_bool(Flag::FlagN, false); // 0 shifted into high bit, result always positive
-        
+
         if self.is_flag_set(Flag::FlagM) {
             set_byte_n!(self.a, (self.a >> 1) & 0x7F, 0);
-            
+
             self.set_flag_to_bool(Flag::FlagZ, (self.a & 0xFF) == 0);
         } else {
             self.a >>= 1;
-            
+
             self.set_flag_to_bool(Flag::FlagZ, self.a == 0);
         }
     }
-   
+
     fn lsr_mem_m8(&mut self, bus: &mut CpuBus<P>, addr: Address) {
         let data = self.read(bus, addr);
         let result = data >> 1;
-        
+
         self.write(bus, addr, result);
 
         self.set_flag_to_bool(Flag::FlagC, get_bit_n!(data, 0));
         self.set_flag_to_bool(Flag::FlagN, false); // 0 shifted into high bit, result always positive
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
-    
+
     fn lsr_mem_m16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         let data = self.read_word(bus, addr_lo, addr_hi);
         let result = data >> 1;
@@ -1299,20 +1369,19 @@ impl<P: DebugProbe> Cpu65c816<P> {
             self.db = dst_addr.bank; // overwrites the dataBank register with the destination bank when finished
         }
     }
-    
-    fn nop(&mut self) {
-    }
-    
+
+    fn nop(&mut self) {}
+
     fn ora_m8(&mut self, bus: &mut CpuBus<P>, address: Address) {
         self.a |= self.read(bus, address) as u16;
         set_nz8!(self, self.a);
     }
-    
+
     fn ora_m16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         self.a |= self.read_word(bus, addr_lo, addr_hi) as u16;
         set_nz16!(self, self.a);
     }
-    
+
     fn pex(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         let data = self.read_word(bus, addr_lo, addr_hi);
         self.push_word(bus, data);
@@ -1385,7 +1454,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
 
     fn plp(&mut self, bus: &mut CpuBus<P>) {
         self.p = self.pop(bus);
-        
+
         if self.e {
             self.set_flag_to_bool(Flag::FlagX, true);
             self.set_flag_to_bool(Flag::FlagM, true);
@@ -1416,10 +1485,10 @@ impl<P: DebugProbe> Cpu65c816<P> {
             set_nz16!(self, self.y);
         }
     }
-    
+
     fn rep(&mut self, bus: &mut CpuBus<P>, addr: Address) {
         self.p &= !self.read(bus, addr);
-        
+
         if self.e {
             self.set_flag_to_bool(Flag::FlagM, true);
             self.set_flag_to_bool(Flag::FlagX, true);
@@ -1428,36 +1497,36 @@ impl<P: DebugProbe> Cpu65c816<P> {
 
     fn rol(&mut self) {
         let c = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
-        
+
         if self.is_flag_set(Flag::FlagM) {
             self.set_flag_to_bool(Flag::FlagC, get_bit_n!(self.a, 7));
-    
+
             set_byte_n!(self.a, self.a << 1, 0);
             self.a |= c;
-    
+
             set_nz8!(self, self.a);
         } else {
             self.set_flag_to_bool(Flag::FlagC, get_bit_n!(self.a, 15));
-    
+
             self.a <<= 1;
             self.a |= c;
-    
+
             set_nz16!(self, self.a);
         }
     }
-    
+
     fn rol_mem_m8(&mut self, bus: &mut CpuBus<P>, addr: Address) {
         let c = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
         let data = self.read(bus, addr);
         let result = (data << 1) | c;
-        
+
         self.write(bus, addr, result);
 
         self.set_flag_to_bool(Flag::FlagC, get_bit_n!(data, 7));
 
         set_nz8!(self, result);
     }
-    
+
     fn rol_mem_m16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         let c = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
         let data = self.read_word(bus, addr_lo, addr_hi);
@@ -1473,8 +1542,8 @@ impl<P: DebugProbe> Cpu65c816<P> {
     fn ror(&mut self) {
         let c = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
         self.set_flag_to_bool(Flag::FlagC, get_bit_n!(self.a, 0));
-        
-        if self.is_flag_set(Flag::FlagM) {    
+
+        if self.is_flag_set(Flag::FlagM) {
             set_byte_n!(self.a, (self.a >> 1) | (c << 7), 0);
             set_nz8!(self, self.a);
         } else {
@@ -1491,10 +1560,10 @@ impl<P: DebugProbe> Cpu65c816<P> {
         self.write(bus, addr, result);
 
         self.set_flag_to_bool(Flag::FlagC, get_bit_n!(data, 0));
-        
+
         set_nz8!(self, result);
     }
-    
+
     fn ror_mem_m16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         let c = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
         let data = self.read_word(bus, addr_lo, addr_hi);
@@ -1503,21 +1572,21 @@ impl<P: DebugProbe> Cpu65c816<P> {
         self.write_word(bus, addr_lo, addr_hi, result);
 
         self.set_flag_to_bool(Flag::FlagC, get_bit_n!(data, 0));
-        
+
         set_nz16!(self, result);
     }
 
     fn rti(&mut self, bus: &mut CpuBus<P>) {
         self.p = self.pop(bus);
         self.pc = self.pop_word(bus);
-        
+
         if self.e {
             self.set_flag_to_bool(Flag::FlagM, true);
             self.set_flag_to_bool(Flag::FlagX, true);
         } else {
             self.pb = self.pop(bus);
         }
-        
+
         if self.is_flag_set(Flag::FlagX) {
             self.x &= 0xFF;
             self.y &= 0xFF;
@@ -1532,7 +1601,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
     fn rts(&mut self, bus: &mut CpuBus<P>) {
         self.pc = self.pop_word(bus) + 1;
     }
-    
+
     fn sbc_m8(&mut self, bus: &mut CpuBus<P>, addr: Address) {
         let data = self.read(bus, addr);
         let comp = !data;
@@ -1566,7 +1635,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
 
         set_nz8!(self, self.a);
     }
-    
+
     fn sbc_m16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         let data = self.read_word(bus, addr_lo, addr_hi);
         let comp = !data;
@@ -1639,7 +1708,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
     fn sta_m8(&mut self, bus: &mut CpuBus<P>, addr: Address) {
         self.write(bus, addr, self.a as u8);
     }
-    
+
     fn sta_m16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         self.write_word(bus, addr_lo, addr_hi, self.a)
     }
@@ -1651,15 +1720,15 @@ impl<P: DebugProbe> Cpu65c816<P> {
     fn stx_x8(&mut self, bus: &mut CpuBus<P>, addr: Address) {
         self.write(bus, addr, self.x as u8);
     }
-    
+
     fn stx_x16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         self.write_word(bus, addr_lo, addr_hi, self.x)
     }
-    
+
     fn sty_x8(&mut self, bus: &mut CpuBus<P>, addr: Address) {
         self.write(bus, addr, self.y as u8);
     }
-    
+
     fn sty_x16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         self.write_word(bus, addr_lo, addr_hi, self.y)
     }
@@ -1667,11 +1736,11 @@ impl<P: DebugProbe> Cpu65c816<P> {
     fn stz_m8(&mut self, bus: &mut CpuBus<P>, addr: Address) {
         self.write(bus, addr, 0);
     }
-    
+
     fn stz_m16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         self.write_word(bus, addr_lo, addr_hi, 0)
     }
-    
+
     fn tax(&mut self) {
         transfer_reg!(self, self.a, self.x, Flag::FlagX);
     }
@@ -1706,7 +1775,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
 
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
-    
+
     fn trb_m16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         let data = self.read_word(bus, addr_lo, addr_hi);
         let result = data & self.a;
@@ -1766,7 +1835,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
     fn tyx(&mut self) {
         transfer_reg!(self, self.y, self.x, Flag::FlagX);
     }
-    
+
     fn wai(&mut self) {
         self.waiting_for_interrupt = true;
     }
@@ -1782,7 +1851,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
 
     fn xce(&mut self) {
         self.e = !self.e;
-        
+
         if self.e {
             self.x &= 0xFF;
             self.y &= 0xFF;
