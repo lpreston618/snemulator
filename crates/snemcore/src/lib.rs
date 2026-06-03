@@ -1,10 +1,6 @@
 use anyhow::{anyhow, Result};
 use cartridge::Cartridge;
 use controller::{ControllerPlayer, JoypadButton, JoypadCmd, SnemController};
-<<<<<<< HEAD
-=======
-use dma::bus::DmaBus;
->>>>>>> 0ee7322 (working on sram stuff)
 use dma::DmaController;
 use scpu::bus::CpuBus;
 use scpu::ioregs::CpuIoRegs;
@@ -98,25 +94,6 @@ macro_rules! ppu_bus {
     };
 }
 
-<<<<<<< HEAD
-=======
-macro_rules! dma_bus {
-    ($core:ident) => {
-        DmaBus {
-            wram: &mut $core.wram,
-            vram: &mut $core.vram,
-            cgram: &mut $core.cgram,
-            oam: &mut $core.oam,
-            ppu_regs: &mut $core.ppu_regs,
-            apu_ports: &mut $core.apu_ports,
-            vblank_flag: $core.cpu_regs.vblank_flag,
-            hblank_flag: $core.cpu_regs.hblank_flag,
-            cart: $core.cart.as_mut().unwrap(),
-        }
-    };
-}
-
->>>>>>> 0ee7322 (working on sram stuff)
 // Emulator core
 pub struct Snemulator<P: DebugProbe = NullProbe> {
     p1_controller: SnemController,
