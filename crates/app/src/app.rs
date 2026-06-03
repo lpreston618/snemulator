@@ -493,19 +493,19 @@ impl SnemulatorApp {
             }
             Keycode::Z => {
                 self.snem_core
-                    .set_button(ControllerPlayer::Player2, JoypadButton::A, true)
+                    .set_button(ControllerPlayer::Player1, JoypadButton::A, true)
             }
             Keycode::X => {
                 self.snem_core
-                    .set_button(ControllerPlayer::Player2, JoypadButton::B, true)
+                    .set_button(ControllerPlayer::Player1, JoypadButton::B, true)
             }
             Keycode::Return => {
                 self.snem_core
-                    .set_button(ControllerPlayer::Player2, JoypadButton::Start, true)
+                    .set_button(ControllerPlayer::Player1, JoypadButton::Start, true)
             }
             Keycode::Backspace => {
                 self.snem_core
-                    .set_button(ControllerPlayer::Player2, JoypadButton::Select, true)
+                    .set_button(ControllerPlayer::Player1, JoypadButton::Select, true)
             }
 
             _ => {}
@@ -534,19 +534,19 @@ impl SnemulatorApp {
             }
             Keycode::Z => {
                 self.snem_core
-                    .set_button(ControllerPlayer::Player2, JoypadButton::A, false)
+                    .set_button(ControllerPlayer::Player1, JoypadButton::A, false)
             }
             Keycode::X => {
                 self.snem_core
-                    .set_button(ControllerPlayer::Player2, JoypadButton::B, false)
+                    .set_button(ControllerPlayer::Player1, JoypadButton::B, false)
             }
             Keycode::Return => {
                 self.snem_core
-                    .set_button(ControllerPlayer::Player2, JoypadButton::Start, false)
+                    .set_button(ControllerPlayer::Player1, JoypadButton::Start, false)
             }
             Keycode::Backspace => {
                 self.snem_core
-                    .set_button(ControllerPlayer::Player2, JoypadButton::Select, false)
+                    .set_button(ControllerPlayer::Player1, JoypadButton::Select, false)
             }
             _ => {}
         }

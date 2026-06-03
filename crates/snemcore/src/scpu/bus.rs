@@ -1,5 +1,5 @@
 use crate::cartridge::Cartridge;
-use crate::controller::JoypadCmd;
+use crate::controller::{ControllerData, JoypadCmd};
 use crate::dma::DmaController;
 use crate::dma::{AddressIncMode, Direction, TransferPattern};
 use crate::probe::DebugProbe;
@@ -42,13 +42,7 @@ pub struct CpuBus<'a, P: DebugProbe> {
     pub cart: &'a mut Cartridge,
     pub dma: Option<&'a mut DmaController>,
 
-    pub joy1_in: u16,
-    pub joy2_in: u16,
-    pub joy1_data1_auto: u16,
-    pub joy2_data1_auto: u16,
-    pub joy1_data2_auto: u16,
-    pub joy2_data2_auto: u16,
-    pub joypad_cmd: &'a mut Option<JoypadCmd>,
+    pub controller_data: &'a mut ControllerData,
 
     pub probe: &'a mut P,
 }
@@ -578,9 +572,9 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             0x4000..=0x4015 => 0, // Open bus
 
             0x4016 => {
-                *self.joypad_cmd = Some(JoypadCmd::ClockJoy1);
+                self.controller_data.joypad_cmd = Some(JoypadCmd::ClockJoy1);
 
-                let joy1_data1 = (self.joy1_in & 1) as u8;
+                let joy1_data1 = (self.controller_data.joy1_latch & 1) as u8;
                 let joy1_data2 = 0x00; // unused for joypads
 
                 joy1_data2 | joy1_data1
@@ -589,9 +583,9 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             0x4017 => {
                 const ALWAYS_ON: u8 = 0x1C;
 
-                *self.joypad_cmd = Some(JoypadCmd::ClockJoy2);
+                self.controller_data.joypad_cmd = Some(JoypadCmd::ClockJoy2);
 
-                let joy2_data1 = (self.joy2_in & 1) as u8;
+                let joy2_data1 = (self.controller_data.joy2_latch & 1) as u8;
                 let joy2_data2 = 0x00; // unused for joypads
 
                 ALWAYS_ON | joy2_data2 | joy2_data1
@@ -636,14 +630,14 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             0x4216 => get_byte_n!(cpu_regs.mult_result, 0),
             0x4217 => get_byte_n!(cpu_regs.mult_result, 1),
 
-            0x4218 => get_byte_n!(self.joy1_data1_auto, 0),
-            0x4219 => get_byte_n!(self.joy1_data1_auto, 1),
-            0x421A => get_byte_n!(self.joy2_data1_auto, 0),
-            0x421B => get_byte_n!(self.joy2_data1_auto, 1),
-            0x421C => get_byte_n!(self.joy1_data2_auto, 0),
-            0x421D => get_byte_n!(self.joy1_data2_auto, 1),
-            0x421E => get_byte_n!(self.joy2_data2_auto, 0),
-            0x421F => get_byte_n!(self.joy2_data2_auto, 1),
+            0x4218 => get_byte_n!(self.controller_data.joy1_data1_auto, 0),
+            0x4219 => get_byte_n!(self.controller_data.joy1_data1_auto, 1),
+            0x421A => get_byte_n!(self.controller_data.joy2_data1_auto, 0),
+            0x421B => get_byte_n!(self.controller_data.joy2_data1_auto, 1),
+            0x421C => get_byte_n!(self.controller_data.joy1_data2_auto, 0),
+            0x421D => get_byte_n!(self.controller_data.joy1_data2_auto, 1),
+            0x421E => get_byte_n!(self.controller_data.joy2_data2_auto, 0),
+            0x421F => get_byte_n!(self.controller_data.joy2_data2_auto, 1),
 
             _ => 0,
         }
@@ -656,7 +650,7 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             0x4000..=0x4015 => {} // Open bus
 
             0x4016 => {
-                cpu_regs.latch_controllers = get_bit_n!(value, 0);
+                self.cpu_regs.latch_controllers = get_bit_n!(value, 0);
             }
 
             0x4017 => {} // Write-only register
