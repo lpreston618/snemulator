@@ -88,12 +88,28 @@ impl CpuIoRegs {
     pub fn reset(&mut self) {
         self.write_4200(0);
         self.write_4201(0xFF);
-        
+
         self.vblank_flag = false;
         self.hblank_flag = true;
         self.hv_timer_irq_flag = false;
     }
-    
+
+    pub fn write_2181(&mut self, value: u8) {
+        set_byte_n!(self.wram_address, value as usize, 0);
+    }
+
+    pub fn write_2182(&mut self, value: u8) {
+        set_byte_n!(self.wram_address, value as usize, 1);
+    }
+
+    pub fn write_2183(&mut self, value: u8) {
+        if get_bit_n!(value, 0) {
+            set_bit_n!(self.wram_address, 16);
+        } else {
+            clr_bit_n!(self.wram_address, 16);
+        }
+    }
+
     pub fn write_4200(&mut self, value: u8) {
         self.vblank_nmi_en = get_bit_n!(value, 7);
         self.joypad_autoread_en = get_bit_n!(value, 0);
