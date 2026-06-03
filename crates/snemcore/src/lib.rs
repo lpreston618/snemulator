@@ -20,12 +20,12 @@ use crate::sysinfo::CLOCKS_BETWEEN_AUTOREAD_STEPS;
 
 pub mod cartridge;
 pub mod controller;
+pub mod dma;
 pub mod probe;
 pub mod scpu;
 pub mod sppu;
 pub mod ssmp;
 pub mod sysinfo;
-pub mod dma;
 mod utils;
 
 macro_rules! cpu_bus {
@@ -141,7 +141,7 @@ impl<P: DebugProbe> Snemulator<P> {
             probe: Some(probe),
         }
     }
-    
+
     pub fn init_probe(&mut self) {
         let mut probe = self.probe.take().unwrap();
         probe.init(self);
@@ -149,7 +149,8 @@ impl<P: DebugProbe> Snemulator<P> {
     }
 
     pub fn do_with_probe<F, A>(&mut self, f: F) -> Option<A>
-        where F: FnOnce(&mut P, &mut Self) -> A,
+    where
+        F: FnOnce(&mut P, &mut Self) -> A,
     {
         if let Some(mut probe) = self.probe.take() {
             let result = f(&mut probe, self);
@@ -159,7 +160,7 @@ impl<P: DebugProbe> Snemulator<P> {
             None
         }
     }
-    
+
     pub fn power_on(&mut self) {
         self.clear_regs();
 
@@ -228,7 +229,11 @@ impl<P: DebugProbe> Snemulator<P> {
         }
     }
 
-    pub fn run_frame(&mut self, frame_buffer: Option<&mut [u8]>, audio_buffer: Option<&mut Vec<i16>>) {
+    pub fn run_frame(
+        &mut self,
+        frame_buffer: Option<&mut [u8]>,
+        audio_buffer: Option<&mut Vec<i16>>,
+    ) {
         self.frame_ready = false;
 
         self.ssmp.start_frame();
@@ -293,14 +298,15 @@ impl<P: DebugProbe> Snemulator<P> {
 
         if self.cpu_regs.joypad_autoread_flag {
             if clocks >= self.controller_data.cycles_until_autoread {
-                self.controller_data.cycles_until_autoread += CLOCKS_BETWEEN_AUTOREAD_STEPS - clocks;
+                self.controller_data.cycles_until_autoread +=
+                    CLOCKS_BETWEEN_AUTOREAD_STEPS - clocks;
 
                 self.do_joypad_autoread_step();
             } else {
                 self.controller_data.cycles_until_autoread -= clocks;
             }
         }
-        
+
         probe.on_emulation_cycle(self);
 
         self.probe = Some(probe);
@@ -310,7 +316,7 @@ impl<P: DebugProbe> Snemulator<P> {
         let mut audio_buffer = Vec::new();
         let video_out = frame_buffer.is_some();
         let frame_buffer = frame_buffer.unwrap_or_else(|| &mut []);
-        
+
         while self.cpu.clocks > self.ppu.clocks {
             if video_out {
                 self.cycle(frame_buffer, &mut audio_buffer);
@@ -318,14 +324,14 @@ impl<P: DebugProbe> Snemulator<P> {
                 self.cycle_no_video(&mut audio_buffer);
             }
         }
-        
+
         if video_out {
             self.cycle(frame_buffer, &mut audio_buffer);
         } else {
             self.cycle_no_video(&mut audio_buffer);
         }
     }
-    
+
     fn cycle_cpu(&mut self, probe: &mut P) {
         self.cpu.stopped = false;
         self.controller_data.joypad_cmd = None;
@@ -398,15 +404,15 @@ impl<P: DebugProbe> Snemulator<P> {
     fn do_joypad_autoread_step(&mut self) {
         if self.controller_data.joypad_autoread_step < 12 {
             let button = match self.controller_data.joypad_autoread_step {
-                0  => JoypadButton::B,
-                1  => JoypadButton::Y,
-                2  => JoypadButton::Select,
-                3  => JoypadButton::Start,
-                4  => JoypadButton::Up,
-                5  => JoypadButton::Down,
-                6  => JoypadButton::Left,
-                7  => JoypadButton::Right,
-                8  => JoypadButton::A,
+                0 => JoypadButton::B,
+                1 => JoypadButton::Y,
+                2 => JoypadButton::Select,
+                3 => JoypadButton::Start,
+                4 => JoypadButton::Up,
+                5 => JoypadButton::Down,
+                6 => JoypadButton::Left,
+                7 => JoypadButton::Right,
+                8 => JoypadButton::A,
                 9 => JoypadButton::X,
                 10 => JoypadButton::L1,
                 11 => JoypadButton::R1,
@@ -418,22 +424,30 @@ impl<P: DebugProbe> Snemulator<P> {
             // self.controller_data.joy1_data2_auto <<= 1;
             // self.controller_data.joy2_data2_auto <<= 1;
 
-            self.controller_data.joy1_data1_auto |= if self.p1_controller.is_button_pressed(button) { 1 } else { 0 };
-            self.controller_data.joy2_data1_auto |= if self.p2_controller.is_button_pressed(button) { 1 } else { 0 };
-            // self.controller_data.joy1_data2_auto |= 
-            // self.controller_data.joy2_data2_auto |= 
+            self.controller_data.joy1_data1_auto |= if self.p1_controller.is_button_pressed(button)
+            {
+                1
+            } else {
+                0
+            };
+            self.controller_data.joy2_data1_auto |= if self.p2_controller.is_button_pressed(button)
+            {
+                1
+            } else {
+                0
+            };
+            // self.controller_data.joy1_data2_auto |=
+            // self.controller_data.joy2_data2_auto |=
         } else {
             self.controller_data.joy1_data1_auto <<= 1;
             self.controller_data.joy2_data1_auto <<= 1;
         }
-        
+
         self.controller_data.joypad_autoread_step += 1;
 
         if self.controller_data.joypad_autoread_step == 16 {
             self.controller_data.joypad_autoread_step = 0;
             self.cpu_regs.joypad_autoread_flag = false;
-
-            log::debug!("Autoread complete, P1: {}, P2: {}", self.controller_data.joy1_data1_auto, self.controller_data.joy2_data1_auto);
         }
     }
 
@@ -474,14 +488,14 @@ impl<P: DebugProbe> Snemulator<P> {
 
         self.probe = Some(probe);
     }
-    
+
     fn cycle_ppu_no_output(&mut self) {
         self.cpu_interrupt = None;
-        
+
         let frame_buffer = &mut [];
 
         let mut bus = ppu_bus!(self, frame_buffer);
-        
+
         self.ppu.cycle_no_output(&mut bus);
 
         match self.cpu_interrupt {
@@ -502,7 +516,7 @@ impl<P: DebugProbe> Snemulator<P> {
             self.dma.regs[self.dma.hdma_active_ch].transfer_pattern_step = 0;
         }
     }
-    
+
     pub fn update_layer_buffers(
         &mut self,
         bg1_buffer: &mut [u8],
@@ -512,12 +526,14 @@ impl<P: DebugProbe> Snemulator<P> {
         obj_buffer: &mut [u8],
     ) {
         let frame_buffer = &mut [];
-        
+
         let mut bus = ppu_bus!(self, frame_buffer);
-        
-        self.ppu.draw_debug_layers(&mut bus, bg1_buffer, bg2_buffer, bg3_buffer, bg4_buffer, obj_buffer);
+
+        self.ppu.draw_debug_layers(
+            &mut bus, bg1_buffer, bg2_buffer, bg3_buffer, bg4_buffer, obj_buffer,
+        );
     }
-    
+
     /// Helper function to read a non-MMIO address from mapped memory
     pub fn cpu_read_mem(&self, addr: scpu::Address) -> u8 {
         match addr.bank {
