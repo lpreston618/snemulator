@@ -21,7 +21,7 @@ impl CpuStateLogger {
     fn write_to_file(self, path: &str) {
         let mut f = std::fs::File::create(path).unwrap();
 
-        f.write(self.outstr.as_bytes());
+        f.write(self.outstr.as_bytes()).unwrap();
     }
 
     fn state_str(&self, core: &mut snemcore::Snemulator<Self>) -> String {
@@ -48,12 +48,14 @@ impl snemcore::probe::DebugProbe for CpuStateLogger {
             let state = self.state_str(core) + "\n";
             self.outstr.push_str(&state);
         }
+
+        self.instr_count += 1;
     }
 }
 
 fn main() {
-    const START_FRAME: usize = 720;
-    const END_FRAME: usize = 725;
+    const START_FRAME: usize = 0;
+    const END_FRAME: usize = 60;
     // const NUM_INSTRS: usize = 100000;
 
     let mut rom_path: Option<PathBuf> = None;
@@ -82,13 +84,13 @@ fn main() {
     core.power_on();
 
     for frame in 0..START_FRAME {
-        if frame == 600 || frame == 660 {
+        if frame == 600 || frame == 660 || frame == 720 {
             core.set_button(Player1, JoypadButton::A, true);
         }
 
         core.run_frame(None, None);
 
-        if frame == 601 || frame == 661 {
+        if frame == 601 || frame == 661 || frame == 721 {
             core.set_button(Player1, JoypadButton::A, false);
         }
     }
