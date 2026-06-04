@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [[bin]]
+name = "cpustatelogger"
+path = "cpustatelogger/main.rs"
+
+[[bin]]
 name = "speedtest"
 path = "speedtest/main.rs"
 
