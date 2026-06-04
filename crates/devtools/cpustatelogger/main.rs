@@ -25,9 +25,10 @@ impl CpuStateLogger {
     }
 
     fn state_str(&self, core: &mut snemcore::Snemulator<Self>) -> String {
-        format!("{} {} {:X} {:X} {:X} {:X} {:X} {:X} {:X} {:X} {:X} {}",
+        format!("{} {} {:X} {:X} {:X} {:X} {:X} {:X} {:X} {:X} {:X} {:X} {}",
             core.frame,
             self.instr_count,
+            core.cpu_read_mem(snemcore::scpu::Address { bank: core.cpu.pb, offset: core.cpu.pc }),
             core.cpu.a,
             core.cpu.x,
             core.cpu.y,
