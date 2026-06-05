@@ -1850,7 +1850,9 @@ impl<P: DebugProbe> Cpu65c816<P> {
     }
 
     fn xce(&mut self) {
-        self.e = !self.e;
+        let new_e = self.is_flag_set(Flag::FlagC);
+        self.set_flag_to_bool(Flag::FlagC, self.e);
+        self.e = new_e;
 
         if self.e {
             self.x &= 0xFF;
