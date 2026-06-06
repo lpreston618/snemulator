@@ -1291,7 +1291,7 @@ impl<P: DebugProbe> Ppu5C7x<P> {
             self.scanline += 1;
             self.y = self.screen_y();
 
-            if self.scanline == VBLANK_END_SCANLINE_NTSC {
+            if self.scanline > VBLANK_END_SCANLINE_NTSC {
                 self.scanline = 0;
             }
         }

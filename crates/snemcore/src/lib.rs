@@ -236,8 +236,6 @@ impl<P: DebugProbe> Snemulator<P> {
     ) {
         self.frame_ready = false;
 
-        self.ssmp.start_frame();
-
         if let Some(frame_buffer) = frame_buffer {
             if let Some(audio_buffer) = audio_buffer {
                 while !self.frame_ready && !self.probe.as_mut().unwrap().should_stop() {

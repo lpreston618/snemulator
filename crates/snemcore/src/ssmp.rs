@@ -1,13 +1,12 @@
 use crate::{
     ssmp::{
         ioports::ApuIoPorts,
-        sdsp::{regs::SdspRegs, voices::VoiceRegs, SuperDSP},
-        spc::{bus::SpcBus, ioregs::SpcIoRegs, Spc700},
+        sdsp::{SuperDSP, regs::SdspRegs, voices::VoiceRegs},
+        spc::{Spc700, bus::SpcBus, ioregs::SpcIoRegs},
         timers::Timer,
     },
     sysinfo::{
-        ARAM_SIZE, AUDIO_SAMPLE_HZ, FAST_TIMER_CLOCK_PERIOD, MASTER_CLOCK_HZ,
-        SLOW_TIMER_CLOCK_PERIOD, SPC_CLOCK_HZ,
+        self, ARAM_SIZE, AUDIO_SAMPLE_HZ, FAST_TIMER_CLOCK_PERIOD, MASTER_CLOCK_HZ, SLOW_TIMER_CLOCK_PERIOD, SPC_CLOCK_HZ
     },
 };
 
@@ -33,9 +32,8 @@ pub struct Ssmp {
     timer2: Timer<FAST_TIMER_CLOCK_PERIOD>,
     voice_regs: [VoiceRegs; 8],
 
-    next_sample: f32,
-    next_spc_clock: f32,
-    frame_time: f32,
+    sample_cycle_accumulator: usize,
+    spc_cycle_accumulator: usize,
 }
 
 impl Ssmp {
@@ -52,9 +50,8 @@ impl Ssmp {
             timer2: Timer::new(),
             voice_regs: [VoiceRegs::new(); 8],
 
-            next_sample: 0.0,
-            next_spc_clock: 0.0,
-            frame_time: 0.0,
+            sample_cycle_accumulator: 0,
+            spc_cycle_accumulator: 0,
         }
     }
 
@@ -72,26 +69,21 @@ impl Ssmp {
         self.spc_regs.reset();
     }
 
-    pub fn start_frame(&mut self) {
-        self.next_sample -= self.frame_time;
-        self.next_spc_clock -= self.frame_time;
-        self.frame_time = 0.0;
-    }
-
     /// Clocks the sound processor, checking if it is time to generate a new
     /// sample and/or clock the S-DSP and SPC700 processors.
     pub fn cycle(&mut self, clocks: usize, audio_buffer: &mut Vec<i16>, apu_regs: &mut ApuIoPorts) {
-        self.frame_time += MASTER_CLOCK_PERIOD * clocks as f32;
+        self.sample_cycle_accumulator += clocks * sysinfo::AUDIO_SAMPLE_HZ;
+        self.spc_cycle_accumulator += clocks * sysinfo::SPC_CLOCK_HZ;
 
-        if self.frame_time >= self.next_sample {
-            self.next_sample += AUDIO_SAMPLE_PERIOD;
+        if self.sample_cycle_accumulator >= sysinfo::MASTER_CLOCK_HZ {
+            self.sample_cycle_accumulator -= sysinfo::MASTER_CLOCK_HZ;
 
             self.sdsp.clock_envelopes();
-            self.sdsp.generate_sample();
+            self.sdsp.generate_sample(audio_buffer);
         }
 
-        if self.frame_time >= self.next_spc_clock {
-            self.next_spc_clock += SPC_CLOCK_PERIOD;
+        if self.spc_cycle_accumulator >= sysinfo::MASTER_CLOCK_HZ {
+            self.spc_cycle_accumulator -= sysinfo::MASTER_CLOCK_HZ;
 
             let mut bus = SpcBus {
                 aram: &mut self.aram,
@@ -113,16 +105,18 @@ impl Ssmp {
     }
 
     pub fn cycle_no_output(&mut self, clocks: usize, apu_regs: &mut ApuIoPorts) {
-        self.frame_time += MASTER_CLOCK_PERIOD * clocks as f32;
+        self.sample_cycle_accumulator += clocks * sysinfo::AUDIO_SAMPLE_HZ;
+        self.spc_cycle_accumulator += clocks * sysinfo::SPC_CLOCK_HZ;
 
-        if self.frame_time >= self.next_sample {
-            self.next_sample += AUDIO_SAMPLE_PERIOD;
+        if self.sample_cycle_accumulator >= sysinfo::MASTER_CLOCK_HZ {
+            self.sample_cycle_accumulator -= sysinfo::MASTER_CLOCK_HZ;
 
             self.sdsp.clock_envelopes();
+            // self.sdsp.generate_sample(audio_buffer);
         }
 
-        if self.frame_time >= self.next_spc_clock {
-            self.next_spc_clock += SPC_CLOCK_PERIOD;
+        if self.spc_cycle_accumulator >= sysinfo::MASTER_CLOCK_HZ {
+            self.spc_cycle_accumulator -= sysinfo::MASTER_CLOCK_HZ;
 
             let mut bus = SpcBus {
                 aram: &mut self.aram,

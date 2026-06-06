@@ -10,10 +10,11 @@ use anyhow::{anyhow, Result};
 use rfd::FileDialog;
 use ringbuf::HeapRb;
 use ringbuf::traits::{Observer, RingBuffer};
+use sdl3::audio::{AudioFormat, AudioSpec, AudioStreamOwner};
 use sdl3::event::Event;
 use sdl3::keyboard::{Keycode, Mod};
 use snemcore::controller::{ControllerPlayer, JoypadButton};
-use snemcore::sysinfo::{SCREEN_HEIGHT, SCREEN_WIDTH};
+use snemcore::sysinfo::{self, FRAMES_PER_SECOND, SCREEN_HEIGHT, SCREEN_WIDTH};
 use snemcore::Snemulator;
 use std::time::{Duration, Instant};
 
@@ -22,12 +23,12 @@ pub const FRAME_BUF_SIZE: usize = (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize;
 pub const WINDOW_WIDTH: u32 = 640;
 pub const WINDOW_HEIGHT: u32 = 480;
 
-const TARGET_FPS: u32 = 60;
-const PREV_FPS_BUFFER_LEN: usize = TARGET_FPS as usize * 1;
+// const TARGET_FPS: u32 = 60;
+const PREV_FPS_BUFFER_LEN: usize = FRAMES_PER_SECOND as usize * 1;
 const SECS_BEFORE_HIDE_MENU: f32 = 3.0;
 const SECS_BEFORE_HIDE_MOUSE: f32 = 3.0;
-const FRAMES_BEFORE_HIDE_MENU: u64 = (SECS_BEFORE_HIDE_MENU * TARGET_FPS as f32) as u64;
-const FRAMES_BEFORE_HIDE_MOUSE: u64 = (SECS_BEFORE_HIDE_MOUSE * TARGET_FPS as f32) as u64;
+const FRAMES_BEFORE_HIDE_MENU: u64 = (SECS_BEFORE_HIDE_MENU * FRAMES_PER_SECOND) as u64;
+const FRAMES_BEFORE_HIDE_MOUSE: u64 = (SECS_BEFORE_HIDE_MOUSE * FRAMES_PER_SECOND) as u64;
 
 pub enum AppAction {
     Continue,
@@ -66,6 +67,8 @@ pub struct AppState {
 pub struct SnemulatorApp {
     sdl_context: sdl3::Sdl,
     video_subsystem: sdl3::VideoSubsystem,
+    audio_subsystem: sdl3::AudioSubsystem,
+    audio_stream: AudioStreamOwner,
     event_pump: Option<sdl3::EventPump>,
 
     main_window: MainWindow,
@@ -77,6 +80,7 @@ pub struct SnemulatorApp {
     total_frame_micros: usize,
     last_frame: Instant,
     frame_buffer: Box<[u8; FRAME_BUF_SIZE]>,
+    audio_buffer: Vec<i16>,
 
     #[cfg(not(feature = "debug"))]
     snem_core: Snemulator,
@@ -106,10 +110,21 @@ impl SnemulatorApp {
 
         let sdl_context = sdl3::init()?;
         let video_subsystem = sdl_context.video()?;
+        let audio_subsystem = sdl_context.audio()?;
         let event_pump = Some(sdl_context.event_pump()?);
         let settings = SnemulatorApp::try_find_settings().unwrap_or_default();
         let frame_buffer = Box::new([0u8; FRAME_BUF_SIZE]);
+        let audio_buffer = Vec::new();
         let main_window = MainWindow::new(&video_subsystem, &settings)?;
+
+        let audio_spec = AudioSpec {
+            format: Some(AudioFormat::S16LE),
+            channels: Some(2),
+            freq: Some(sysinfo::AUDIO_SAMPLE_HZ as i32),
+        };
+        let audio_device = audio_subsystem.open_playback_device(&audio_spec)?;
+        let audio_stream = audio_device.open_device_stream(Some(&audio_spec))?;
+        audio_stream.resume()?;
         
         #[cfg(feature = "debug")]
         let snem_core = Snemulator::with_probe(Debugger::new()?);
@@ -120,6 +135,8 @@ impl SnemulatorApp {
         Ok(Self {
             sdl_context,
             video_subsystem,
+            audio_subsystem,
+            audio_stream,
             event_pump,
 
             main_window,
@@ -133,7 +150,8 @@ impl SnemulatorApp {
             
             snem_core,
             frame_buffer,
-            
+            audio_buffer,
+
             #[cfg(feature = "debug")]
             debug_window: None,
         })
@@ -144,7 +162,7 @@ impl SnemulatorApp {
     }
 
     pub fn run(&mut self) -> Result<()> {
-        const FRAME_DURATION: Duration = Duration::from_micros(1_000_000 / TARGET_FPS as u64);
+        let frame_duration = Duration::from_secs_f32(1.0 / FRAMES_PER_SECOND);
 
         'running: loop {
             #[cfg(feature = "debug")]
@@ -214,8 +232,8 @@ impl SnemulatorApp {
 
             // info!("Frame time: {} us, Time left: {} us", elapsed.as_micros(), FRAME_DURATION.as_micros() - elapsed.as_micros());
 
-            if elapsed < FRAME_DURATION {
-                std::thread::sleep(FRAME_DURATION - elapsed);
+            if elapsed < frame_duration {
+                std::thread::sleep(frame_duration - elapsed);
             }
         }
 
@@ -271,17 +289,34 @@ impl SnemulatorApp {
     }
     
     fn update_emulator(&mut self) {
-        let mut temp = Vec::new();
-        
         if self.state.rom_loaded {
             if !self.state.is_paused
                 && (!self.state.is_minimized || !self.settings.pause_on_minimize)
             {
-                self.snem_core.run_frame(Some(&mut self.frame_buffer[..]), Some(&mut temp));
+                self.snem_core.run_frame(Some(&mut self.frame_buffer[..]), Some(&mut self.audio_buffer));
+            
+                self.render_audio();
             }
         } else {
             self.render_load_rom_screen();
         }
+    }
+
+    fn render_audio(&mut self) {
+        if self.audio_buffer.is_empty() {
+            return;
+        }
+
+        // Convert &[i16] to &[u8] for the stream
+        let byte_slice = bytemuck::cast_slice::<i16, u8>(&self.audio_buffer);
+
+        log::debug!("{} {}", self.audio_buffer.len(), byte_slice.len());
+        
+        if let Err(e) = self.audio_stream.put_data(byte_slice) {
+            log::warn!("Audio stream write failed: {e}");
+        }
+
+        self.audio_buffer.clear();
     }
 
     fn handle_input(&mut self) -> AppAction {
@@ -621,8 +656,10 @@ impl SnemulatorApp {
         self.state.is_paused = !self.state.is_paused;
 
         if self.state.is_paused {
+            self.audio_stream.pause().unwrap();
             log::trace!("Paused emulation");
         } else {
+            self.audio_stream.resume().unwrap();
             log::trace!("Resumed emulation");
         }
     }
