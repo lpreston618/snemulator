@@ -1,3 +1,5 @@
+use crate::sysinfo::AUDIO_SAMPLE_HZ;
+
 pub mod regs;
 pub mod voices;
 
@@ -27,13 +29,13 @@ pub enum BrrFilter {
 }
 
 pub struct SuperDSP {
-    time: std::time::Instant,
+    sample_count: u64,
 }
 
 impl SuperDSP {
     pub fn new() -> Self {
         Self {
-            time: std::time::Instant::now(),
+            sample_count: 0,
         }
     }
     
@@ -44,7 +46,8 @@ impl SuperDSP {
     pub fn generate_sample(&mut self, audio_buffer: &mut Vec<i16>) {
         const FREQ: f64 = 440.0;
 
-        let t = self.time.elapsed().as_secs_f64();
+        let t = self.sample_count as f64 / AUDIO_SAMPLE_HZ as f64;
+        self.sample_count += 1;
 
         let sample = (t * FREQ * std::f64::consts::TAU).sin();
         let sample = (sample * i16::MAX as f64) as i16;

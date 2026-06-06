@@ -14,7 +14,7 @@ use sdl3::audio::{AudioFormat, AudioSpec, AudioStreamOwner};
 use sdl3::event::Event;
 use sdl3::keyboard::{Keycode, Mod};
 use snemcore::controller::{ControllerPlayer, JoypadButton};
-use snemcore::sysinfo::{self, FRAMES_PER_SECOND, SCREEN_HEIGHT, SCREEN_WIDTH};
+use snemcore::sysinfo::{self, AUDIO_SAMPLE_HZ, FRAMES_PER_SECOND, SCREEN_HEIGHT, SCREEN_WIDTH};
 use snemcore::Snemulator;
 use std::time::{Duration, Instant};
 
@@ -124,7 +124,6 @@ impl SnemulatorApp {
         };
         let audio_device = audio_subsystem.open_playback_device(&audio_spec)?;
         let audio_stream = audio_device.open_device_stream(Some(&audio_spec))?;
-        audio_stream.resume()?;
         
         #[cfg(feature = "debug")]
         let snem_core = Snemulator::with_probe(Debugger::new()?);
@@ -643,6 +642,12 @@ impl SnemulatorApp {
             let data = std::fs::read(&romfile)?;
 
             self.snem_core.load_rom(data)?;
+
+            const AUDIO_SAMPLES_PER_FRAME: usize = 2 * AUDIO_SAMPLE_HZ / FRAMES_PER_SECOND as usize;
+
+            self.audio_buffer.extend([0; AUDIO_SAMPLES_PER_FRAME]);
+            self.render_audio();
+            self.audio_stream.resume()?;
 
             log::info!("Loaded rom '{file_name}'");
 
