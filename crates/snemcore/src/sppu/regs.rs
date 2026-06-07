@@ -833,13 +833,13 @@ impl PpuRegs {
         let new_val = value & 0x1F;
 
         if get_bit_n!(value, 7) {
-            self.fixed_color.b = new_val;
+            self.fixed_color.b = new_val << 3;
         }
         if get_bit_n!(value, 6) {
-            self.fixed_color.g = new_val;
+            self.fixed_color.g = new_val << 3;
         }
         if get_bit_n!(value, 5) {
-            self.fixed_color.r = new_val;
+            self.fixed_color.r = new_val << 3;
         }
     }
 

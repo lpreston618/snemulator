@@ -1,4 +1,4 @@
-use rand::{Rng, RngExt, rngs::StdRng};
+use rand::{Rng, rngs::StdRng};
 
 #[macro_export]
 macro_rules! set_byte_n {

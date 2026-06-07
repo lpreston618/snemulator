@@ -12,7 +12,7 @@ use sppu::Ppu5C7x;
 use ssmp::ioports::ApuIoPorts;
 use ssmp::Ssmp;
 use sysinfo::{CGRAM_SIZE, OAM_SIZE, VRAM_SIZE, WRAM_SIZE};
-use rand::{Rng, SeedableRng};
+use rand::SeedableRng;
 use rand::rngs::StdRng;
 
 use crate::controller::ControllerData;

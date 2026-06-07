@@ -20,6 +20,9 @@ pub struct SnemulatorArgs {
     #[arg(long)]
     pub start_paused: bool,
 
+    #[arg(long)]
+    pub no_audio: bool,
+
     /// Enable debug mode
     #[cfg(feature = "debug")]
     #[arg(long)]

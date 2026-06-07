@@ -153,28 +153,38 @@ impl SnemulatorApp {
             debug_window: None,
         };
 
-        if let Some(seed) = args.seed {
-            app.snem_core.set_random_seed(seed);
-        }
+        app.handle_args(args)?;
 
         log::trace!("Random Seed: {}", app.snem_core.get_random_seed());
 
-        if let Some(rom_path) = args.rom {
-            log::trace!("Loading ROM from command line argument: '{}'", rom_path);
-            app.try_load_rom_from_path(rom_path.into())?;
+        Ok(app)
+    }
+
+    fn handle_args(&mut self, args: SnemulatorArgs) -> Result<()> {
+        if let Some(seed) = args.seed {
+            self.snem_core.set_random_seed(seed);
         }
 
-        if args.start_paused && !app.state.is_paused {
-            app.toggle_pause();
+        if let Some(rom_path) = args.rom {
+            log::trace!("Loading ROM from command line argument: '{}'", rom_path);
+            self.try_load_rom_from_path(rom_path.into())?;
+        }
+
+        if args.start_paused && !self.state.is_paused {
+            self.toggle_pause();
+        }
+
+        if args.no_audio {
+            self.settings.audio_enabled = false;
         }
 
         #[cfg(feature = "debug")]
         if args.debug {
             log::trace!("Debug mode enabled from command line argument");
-            app.show_debug();
+            self.show_debug();
         }
 
-        Ok(app)
+        Ok(())
     }
 
     fn try_find_settings() -> Option<Settings> {
@@ -316,12 +326,12 @@ impl SnemulatorApp {
     }
     
     fn update_emulator(&mut self) {
-        if self.state.rom_loaded {
-            if !self.state.is_paused
-                && (!self.state.is_minimized || !self.settings.pause_on_minimize)
-            {
-                self.snem_core.run_frame(Some(&mut self.frame_buffer[..]), Some(&mut self.audio_buffer));
-            }
+        if self.state.rom_loaded && !self.state.is_paused
+            && (!self.state.is_minimized || !self.settings.pause_on_minimize)
+        {
+            let audio_buf = if self.settings.audio_enabled { Some(&mut self.audio_buffer) } else { None };
+
+            self.snem_core.run_frame(Some(&mut self.frame_buffer[..]), audio_buf);
         }
     }
 
