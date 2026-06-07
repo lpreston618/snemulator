@@ -327,6 +327,10 @@ impl<'a> SpcBus<'a> {
                         self.sdsp_regs.mute_all = get_bit_n!(value, 6);
                         self.sdsp_regs.echo_en = get_bit_n!(value, 5);
                         self.sdsp_regs.noise_freq = value & 0x1F;
+
+                        if self.sdsp_regs.soft_reset {
+                            self.voice_regs.iter_mut().for_each(|voice| voice.soft_reset());
+                        }
                     },
                     _ =>  {},
                 }

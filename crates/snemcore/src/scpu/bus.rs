@@ -147,8 +147,8 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
         }
     }
 
-    fn read_wram_port(&mut self, offset: u16) -> u8 {
-        log::debug!("Attempting to read to WRAM port");
+    fn read_wram_port(&mut self, _offset: u16) -> u8 {
+        log::warn!("Attempting to read from WRAM port");
         // match offset {
         //     0x2180 => {
         //         let addr = self.cpu_regs.wram_addr as usize;
@@ -162,7 +162,7 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
     }
 
     fn write_wram_port(&mut self, offset: u16, value: u8) {
-        log::debug!(
+        log::warn!(
             "Attempting to write to WRAM ports: {:02X} to ${:04X}",
             value,
             offset

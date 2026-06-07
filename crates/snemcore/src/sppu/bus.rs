@@ -1,9 +1,8 @@
-use crate::probe::DebugProbe;
 use crate::scpu::CpuInterrupt;
 use crate::scpu::ioregs::CpuIoRegs;
 use crate::sppu::color::Color;
 use crate::sppu::regs::PpuRegs;
-use crate::sysinfo::{CGRAM_SIZE, OAM_SIZE, SCREEN_HEIGHT, SCREEN_WIDTH, VRAM_SIZE};
+use crate::sysinfo::{CGRAM_SIZE, OAM_SIZE, VRAM_SIZE};
 
 pub struct PpuBus<'a> {
     pub vram: &'a mut [u16; VRAM_SIZE],

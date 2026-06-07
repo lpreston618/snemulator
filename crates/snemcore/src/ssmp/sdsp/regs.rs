@@ -1,3 +1,4 @@
+#[derive(Default)]
 pub struct SdspRegs {
     // $0C
     pub lmain_volume: u8,
@@ -41,24 +42,7 @@ pub struct SdspRegs {
 }
 
 impl SdspRegs {
-    pub fn new() -> Self {
-        // TODO: Initialize w/ power on vals
-        Self {
-            lmain_volume: 0,
-            rmain_volume: 0,
-            lecho_volume: 0,
-            recho_volume: 0,
-            key_on: 0,
-            key_off: 0,
-            soft_reset: false,
-            mute_all: false,
-            echo_en: false,
-            noise_freq: 0,
-            echo_feedback: 0,
-            unused: 0,
-            sample_directory_page: 0,
-            echo_page: 0,
-            echo_delay_time: 0,
-        }
+    pub fn reset(&mut self) {
+        self.mute_all = true;
     }
 }

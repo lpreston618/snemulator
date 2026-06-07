@@ -1,4 +1,4 @@
-use crate::{Snemulator, cartridge::{self, MappingMode}, probe::DebugProbe, scpu};
+use crate::{Snemulator, cartridge, probe::DebugProbe, scpu};
 
 #[derive(Clone, Copy)]
 enum AddressingMode {
@@ -342,38 +342,6 @@ static DISASSEMBLE_TABLE: [DisassembleData; 256] = [
     DisassembleData {name: "sbc", addr_mode: AddressingMode::LongX},
 ];
 
-macro_rules! read_byte {
-    ($mem:expr, $bytes:expr, $offset:expr) => {
-        {
-            let shifted_addr = $offset as usize - $mem.start_addr as usize;
-            let data = $mem.data[shifted_addr];
-            $bytes.push(data);
-            data
-        }
-    };
-}
-
-macro_rules! read_word {
-    ($mem:expr, $bytes:expr, $offset:expr) => {
-        {
-            let lo = read_byte!($mem, $bytes, $offset) as u16;
-            let hi = read_byte!($mem, $bytes, $offset + 1) as u16;
-            (hi << 8) | lo
-        }
-    };
-}
-
-macro_rules! read_long {
-    ($mem:expr, $bytes:expr, $offset:expr) => {
-        {
-            let lo = read_byte!($mem, $bytes, $offset) as u32;
-            let mid = read_byte!($mem, $bytes, $offset + 1) as u32;
-            let hi = read_byte!($mem, $bytes, $offset + 2) as u32;
-            (hi << 16) | (mid << 8) | lo
-        }
-    };
-}
-
 pub fn get_memory_region(addr: u32) -> MemoryRegion {
     let bank = addr >> 16;
     let offset = addr & 0xFFFF;
@@ -388,20 +356,6 @@ pub fn get_memory_region(addr: u32) -> MemoryRegion {
         MemoryRegion::Ram
     } else {
         MemoryRegion::Rom
-    }
-}
-
-fn map_rom_addr(addr: u32, mapping_mode: MappingMode) -> u32 {
-    match mapping_mode {
-        MappingMode::LoROM => {
-            ((addr & 0x7F0000) >> 1) | (addr & 0x7FFF)
-        }
-        MappingMode::HiROM => {
-            addr & 0x3FFFFF
-        }
-        MappingMode::ExHiROM => {
-            (((addr & 0x800000) ^ 0x800000) >> 1) | (addr & 0x3FFFFF)
-        }
     }
 }
 

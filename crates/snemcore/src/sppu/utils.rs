@@ -1,24 +1,3 @@
-macro_rules! win_active_signals {
-    ($ppu:ident, $bus:ident, $win_settings:expr) => {
-        paste!( {
-            let win_en = if $win_settings.win_main_en || $win_settings.win_sub_en {
-                Ppu5C7x::win_active_signal(
-                    $bus.ppu_regs,
-                    $ppu.x,
-                    $win_settings,
-                )
-            } else {
-                false
-            };
-
-            let win_main_en = win_en && $win_settings.win_main_en;
-            let win_sub_en = win_en && $win_settings.win_sub_en;
-
-            (win_main_en, win_sub_en)
-        } )
-    };
-}
-
 macro_rules! _bg_colors {
     ($ppu:ident, $bus:expr, $col_depth:expr, $cgram_base_addr:expr, $bg_name:ident, $bg_layer:expr) => {
         paste!( {
@@ -58,68 +37,6 @@ macro_rules! _bg_colors {
             (bg_main_col, bg_sub_col)
         } )
     };
-}
-
-macro_rules! layer_colors {
-    ($ppu:ident, $bus:ident, $col_depth:expr, $cgram_base_addr:expr, ColorLayer::Bg1) => {
-        _bg_colors!(
-            $ppu,
-            $bus,
-            $col_depth,
-            $cgram_base_addr,
-            bg1,
-            ColorLayer::Bg1
-        )
-    };
-    ($ppu:ident, $bus:ident, $col_depth:expr, $cgram_base_addr:expr, ColorLayer::Bg2) => {
-        _bg_colors!(
-            $ppu,
-            $bus,
-            $col_depth,
-            $cgram_base_addr,
-            bg2,
-            ColorLayer::Bg2
-        )
-    };
-    ($ppu:ident, $bus:ident, $col_depth:expr, $cgram_base_addr:expr, ColorLayer::Bg3) => {
-        _bg_colors!(
-            $ppu,
-            $bus,
-            $col_depth,
-            $cgram_base_addr,
-            bg3,
-            ColorLayer::Bg3
-        )
-    };
-    ($ppu:ident, $bus:ident, $col_depth:expr, $cgram_base_addr:expr, ColorLayer::Bg4) => {
-        _bg_colors!(
-            $ppu,
-            $bus,
-            $col_depth,
-            $cgram_base_addr,
-            bg4,
-            ColorLayer::Bg4
-        )
-    };
-    ($ppu:ident, $bus:ident, ColorLayer::Obj) => {{
-        let (obj_win_main, obj_win_sub) = win_active_signals!($ppu, $bus, &$bus.ppu_regs.col_win);
-
-        let mut obj_main_col = None;
-        let mut obj_sub_col = None;
-
-        if $bus.ppu_regs.obj_main_en && !obj_win_main {
-            obj_main_col = Some($ppu.sprite_col($bus));
-        }
-
-        if $bus.ppu_regs.obj_sub_en && !obj_win_sub {
-            obj_sub_col = Some(obj_main_col.unwrap_or($ppu.sprite_col($bus)));
-        }
-
-        let obj_main_col = obj_main_col.unwrap_or($ppu.transparent_color_data($bus));
-        let obj_sub_col = obj_sub_col.unwrap_or($ppu.transparent_color_data($bus));
-
-        (obj_main_col, obj_sub_col)
-    }};
 }
 
 // Generate the 256-element Morton lookup table at compile time.

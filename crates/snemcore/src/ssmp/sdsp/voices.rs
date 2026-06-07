@@ -1,4 +1,4 @@
-use crate::ssmp::sdsp::{ADSRStage, BrrFilter, GainMode};
+use crate::ssmp::sdsp::{ADSRStage, GainMode};
 
 /// Contains all registers controlling a single voice of the S-DSP
 #[derive(Clone, Copy)]
@@ -99,5 +99,17 @@ impl VoiceRegs {
             brr_group_addr: 0,
             brr_group_step: 0,
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.adsr_stage = ADSRStage::Release;
+        self.end_of_sample_flag = true;
+        self.sample_out_high = 0;
+        self.envelope = 0;
+    }
+
+    pub fn soft_reset(&mut self) {
+        self.adsr_stage = ADSRStage::Release;
+        self.envelope = 0;
     }
 }

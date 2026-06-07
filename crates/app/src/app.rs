@@ -70,7 +70,6 @@ pub struct AppState {
 pub struct SnemulatorApp {
     sdl_context: sdl3::Sdl,
     video_subsystem: sdl3::VideoSubsystem,
-    audio_subsystem: sdl3::AudioSubsystem,
     audio_stream: AudioStreamOwner,
     event_pump: Option<sdl3::EventPump>,
 
@@ -80,7 +79,6 @@ pub struct SnemulatorApp {
     settings: Settings,
     prev_frame_micros: HeapRb<usize>,
     total_frame_micros: usize,
-    last_frame: Instant,
     frame_buffer: Box<[u8; FRAME_BUF_SIZE]>,
     audio_buffer: Vec<i16>,
 
@@ -137,7 +135,6 @@ impl SnemulatorApp {
         let mut app = Self {
             sdl_context,
             video_subsystem,
-            audio_subsystem,
             audio_stream,
             event_pump,
 
@@ -147,7 +144,6 @@ impl SnemulatorApp {
             settings,
             prev_frame_micros: HeapRb::new(PREV_FPS_BUFFER_LEN),
             total_frame_micros: 0,
-            last_frame: Instant::now(),
             
             snem_core,
             frame_buffer,

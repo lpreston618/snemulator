@@ -1,4 +1,4 @@
-use crate::{get_bit_n, sysinfo::{ARAM_SIZE, AUDIO_SAMPLE_HZ}};
+use crate::get_bit_n;
 
 use bus::SdspBus;
 
