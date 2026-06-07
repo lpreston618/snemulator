@@ -5,16 +5,16 @@ use crate::ssmp::sdsp::{ADSRStage, GainMode};
 pub struct VoiceRegs {
     // $X0
     pub lchannel_volume: u8,
-    
+
     // $X1
     pub rchannel_volume: u8,
-    
+
     // $X2 (low), $X3 (high)
     pub pitch: u16,
-    
+
     // $X4
     pub sample_source: u8,
-    
+
     // $X5
     pub adsr_en: bool,
     pub adsr_decay: u8,
@@ -23,38 +23,35 @@ pub struct VoiceRegs {
     // $X6
     pub adsr_sustain_level: u8,
     pub adsr_sustain_rate: u8,
-    
+
     // $X7
     pub gain_reg_raw: u8,
     pub gain_fixed: u8,
     pub gain_rate: u8,
     pub gain_mode: GainMode,
-    
+
     // $X8
     pub envelope: i16,
-    
+
     // $X9
     pub sample_out_high: u16,
 
     // $XA, $XB
     pub ram_a: u8,
     pub ram_b: u8,
-    
+
     // $7C + BRR header data
     pub end_of_sample_flag: bool,
     pub loop_flag: bool,
-    
+
     // $2D
     pub pitchmod_en: bool,
-    
+
     // $3D
     pub noise_en: bool,
-    
+
     // $4D
     pub echo_en: bool,
-    
-    // $XF
-    pub filter_coeff: u8,
 
     pub adsr_stage: ADSRStage,
     pub interpolation_idx: usize,
@@ -62,8 +59,8 @@ pub struct VoiceRegs {
     pub brr_sample_buffer: [u16; 12],
     pub brr_group_addr: u16, // Base address of the BRR sample group (9 bytes)
     pub brr_group_step: usize, // Keeps track of how many sets of 4 BRR samples
-                               // have been read into the buffer so far from
-                               // the current BRR group.
+                             // have been read into the buffer so far from
+                             // the current BRR group.
 }
 
 impl VoiceRegs {
@@ -89,7 +86,6 @@ impl VoiceRegs {
             pitchmod_en: false,
             noise_en: false,
             echo_en: false,
-            filter_coeff: 0,
             ram_a: 0,
             ram_b: 0,
             adsr_stage: ADSRStage::Attack,
