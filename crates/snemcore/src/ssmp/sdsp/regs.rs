@@ -31,7 +31,7 @@ pub struct SdspRegs {
     pub unused: u8,
     
     // $5D
-    pub sample_page: u8,
+    pub sample_directory_page: u8,
     
     // $6D
     pub echo_page: u8,
@@ -56,7 +56,7 @@ impl SdspRegs {
             noise_freq: 0,
             echo_feedback: 0,
             unused: 0,
-            sample_page: 0,
+            sample_directory_page: 0,
             echo_page: 0,
             echo_delay_time: 0,
         }

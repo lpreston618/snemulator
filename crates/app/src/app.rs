@@ -308,8 +308,6 @@ impl SnemulatorApp {
 
         // Convert &[i16] to &[u8] for the stream
         let byte_slice = bytemuck::cast_slice::<i16, u8>(&self.audio_buffer);
-
-        log::debug!("{} {}", self.audio_buffer.len(), byte_slice.len());
         
         if let Err(e) = self.audio_stream.put_data(byte_slice) {
             log::warn!("Audio stream write failed: {e}");

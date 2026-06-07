@@ -1,7 +1,7 @@
 use crate::{
     ssmp::{
         ioports::ApuIoPorts,
-        sdsp::{SuperDSP, regs::SdspRegs, voices::VoiceRegs},
+        sdsp::{SuperDSP, bus::SdspBus, regs::SdspRegs, voices::VoiceRegs},
         spc::{Spc700, bus::SpcBus, ioregs::SpcIoRegs},
         timers::Timer,
     },
@@ -60,6 +60,7 @@ impl Ssmp {
 
         self.spc.power_on();
         self.spc_regs.power_on();
+        self.sdsp.power_on();
     }
 
     pub fn reset(&mut self) {
@@ -67,6 +68,7 @@ impl Ssmp {
 
         self.spc.reset();
         self.spc_regs.reset();
+        self.sdsp.reset();
     }
 
     /// Clocks the sound processor, checking if it is time to generate a new
@@ -78,14 +80,20 @@ impl Ssmp {
         if self.sample_cycle_accumulator >= sysinfo::MASTER_CLOCK_HZ {
             self.sample_cycle_accumulator -= sysinfo::MASTER_CLOCK_HZ;
 
-            self.sdsp.clock_envelopes();
-            self.sdsp.generate_sample(audio_buffer);
+            let mut sdsp_bus = SdspBus {
+                aram: &mut self.aram,
+                sdsp_regs: &mut self.sdsp_regs,
+                voice_regs: &mut self.voice_regs,
+            };
+
+            self.sdsp.clock_envelopes(&mut sdsp_bus);
+            self.sdsp.generate_sample(audio_buffer, &mut sdsp_bus);
         }
 
         if self.spc_cycle_accumulator >= sysinfo::MASTER_CLOCK_HZ {
             self.spc_cycle_accumulator -= sysinfo::MASTER_CLOCK_HZ;
 
-            let mut bus = SpcBus {
+            let mut spc_bus = SpcBus {
                 aram: &mut self.aram,
                 spc_regs: &mut self.spc_regs,
                 sdsp_regs: &mut self.sdsp_regs,
@@ -96,7 +104,7 @@ impl Ssmp {
                 apuio_regs: apu_regs,
             };
 
-            self.spc.clock(&mut bus);
+            self.spc.clock(&mut spc_bus);
 
             self.timer0.clock();
             self.timer1.clock();
@@ -111,7 +119,7 @@ impl Ssmp {
         if self.sample_cycle_accumulator >= sysinfo::MASTER_CLOCK_HZ {
             self.sample_cycle_accumulator -= sysinfo::MASTER_CLOCK_HZ;
 
-            self.sdsp.clock_envelopes();
+            // self.sdsp.clock_envelopes();
             // self.sdsp.generate_sample(audio_buffer);
         }
 

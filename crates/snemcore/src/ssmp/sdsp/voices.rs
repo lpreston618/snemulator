@@ -1,4 +1,4 @@
-use crate::ssmp::sdsp::GainMode;
+use crate::ssmp::sdsp::{ADSRStage, BrrFilter, GainMode};
 
 /// Contains all registers controlling a single voice of the S-DSP
 #[derive(Clone, Copy)]
@@ -31,13 +31,18 @@ pub struct VoiceRegs {
     pub gain_mode: GainMode,
     
     // $X8
-    pub envelope_high: u8,
+    pub envelope: i16,
     
     // $X9
     pub sample_out_high: u8,
+
+    // $XA, $XB
+    pub ram_a: u8,
+    pub ram_b: u8,
     
-    // $7C
+    // $7C + BRR header data
     pub end_of_sample_flag: bool,
+    pub loop_flag: bool,
     
     // $2D
     pub pitchmod_en: bool,
@@ -50,6 +55,15 @@ pub struct VoiceRegs {
     
     // $XF
     pub filter_coeff: u8,
+
+    pub adsr_stage: ADSRStage,
+    pub interpolation_idx: usize,
+    pub brr_sample_buffer_idx: usize,
+    pub brr_sample_buffer: [u16; 12],
+    pub brr_group_addr: u16, // Base address of the BRR sample group (9 bytes)
+    pub brr_group_step: usize, // Keeps track of how many sets of 4 BRR samples
+                               // have been read into the buffer so far from
+                               // the current BRR group.
 }
 
 impl VoiceRegs {
@@ -68,13 +82,22 @@ impl VoiceRegs {
             gain_fixed: 0,
             gain_rate: 0,
             gain_mode: GainMode::BentIncrease,
-            envelope_high: 0,
+            envelope: 0,
             sample_out_high: 0,
             end_of_sample_flag: false,
+            loop_flag: false,
             pitchmod_en: false,
             noise_en: false,
             echo_en: false,
             filter_coeff: 0,
+            ram_a: 0,
+            ram_b: 0,
+            adsr_stage: ADSRStage::Attack,
+            interpolation_idx: 0,
+            brr_sample_buffer_idx: 0,
+            brr_sample_buffer: [0; 12],
+            brr_group_addr: 0,
+            brr_group_step: 0,
         }
     }
 }
