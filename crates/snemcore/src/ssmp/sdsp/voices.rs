@@ -34,7 +34,7 @@ pub struct VoiceRegs {
     pub envelope: i16,
     
     // $X9
-    pub sample_out_high: u8,
+    pub sample_out_high: u16,
 
     // $XA, $XB
     pub ram_a: u8,

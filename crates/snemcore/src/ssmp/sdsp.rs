@@ -310,7 +310,7 @@ impl SuperDSP {
 
         let volume_adjusted_sample = (raw_sample * voice.envelope as i32) >> 11;
 
-        voice.sample_out_high = (volume_adjusted_sample >> 7) as u8;
+        voice.sample_out_high = (volume_adjusted_sample as u16) & 0x7FFF;
 
         let l_volume = (voice.lchannel_volume as i8) as i32;
         let r_volume = (voice.rchannel_volume as i8) as i32;
@@ -318,11 +318,17 @@ impl SuperDSP {
         let left_sample = ((volume_adjusted_sample * l_volume) >> 7) as i16;
         let right_sample = ((volume_adjusted_sample * r_volume) >> 7) as i16;
 
-        if voice.pitchmod_en {
-            // TODO
-        } else {
-            voice.interpolation_idx += voice.pitch as usize;
+        let mut step = voice.pitch as usize;
+
+        if voice_idx != 0 && voice.pitchmod_en {
+            let prev_out = sign_extend::<15>(bus.voice_regs[voice_idx - 1].sample_out_high as i32);
+
+            let factor = ((prev_out >> 4) + 0x400) as usize;
+
+            step = (step * factor) >> 10
         }
+
+        bus.voice_regs[voice_idx].interpolation_idx += step;
 
         (left_sample, right_sample)
     }

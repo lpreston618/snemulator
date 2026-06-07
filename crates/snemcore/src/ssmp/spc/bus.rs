@@ -134,7 +134,7 @@ impl<'a> SpcBus<'a> {
                     6 => (voice.adsr_sustain_level << 5) | voice.adsr_sustain_rate,
                     7 => voice.gain_reg_raw,
                     8 => (voice.envelope >> 4) as u8,
-                    9 => voice.sample_out_high,
+                    9 => (voice.sample_out_high >> 7) as u8,
                     0xA => voice.ram_a,
                     0xB => voice.ram_b,
                     _ => 0,
@@ -280,7 +280,10 @@ impl<'a> SpcBus<'a> {
                         voice.gain_rate = value & 0x1F;
                     },
                     8 => { voice.envelope = (value << 4) as i16; },
-                    9 => { voice.sample_out_high = value; },
+                    9 => {
+                        voice.sample_out_high &= 0x00EF;
+                        voice.sample_out_high |= (value as u16) << 7;
+                    },
                     0xA => { voice.ram_a = value; },
                     0xB => { voice.ram_b = value; },
                     _ => {},
