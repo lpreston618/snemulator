@@ -1,10 +1,9 @@
-use rand::RngExt;
 use rand::rngs::StdRng;
 
 use crate::sppu::color::Color;
 use crate::sppu::types::*;
 use crate::utils::RandomExt;
-use crate::{get_bit_n, utils};
+use crate::get_bit_n;
 
 /// Contains all of the shared data (registers, memory, etc.) between the S-CPU and S-PPU.
 #[derive(Default, Debug)]
