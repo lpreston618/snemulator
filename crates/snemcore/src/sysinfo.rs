@@ -32,4 +32,4 @@ pub const AUDIO_SAMPLE_HZ: usize = 32000;
 /// master clocks, four 16-bit regs need filling.
 pub const CLOCKS_BETWEEN_AUTOREAD_STEPS: usize = 4224/16 * 4;
 
-pub const FRAMES_PER_SECOND: f32 = 60.099;
+pub const FRAMES_PER_SECOND: f32 = 60.0;

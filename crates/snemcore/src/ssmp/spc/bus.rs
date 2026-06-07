@@ -311,10 +311,6 @@ impl<'a> SpcBus<'a> {
                                     self.aram[start_addr_ptr as usize + 1],
                                 ]);
 
-                                if voice_idx == 6 {
-                                    log::debug!("Voice 6 KeyOn w/ start addr: ${:04X}", start_addr);
-                                }
-
                                 voice.brr_group_addr = start_addr;
                                 voice.brr_group_step = 0;
                             }
@@ -328,13 +324,6 @@ impl<'a> SpcBus<'a> {
                         self.sdsp_regs.mute_all = get_bit_n!(value, 6);
                         self.sdsp_regs.echo_en = get_bit_n!(value, 5);
                         self.sdsp_regs.noise_freq = value & 0x1F;
-
-                        log::debug!("Write to FLG: Soft Reset: {}, Mute All: {}, Echo: {}, Noise Freq.: {}",
-                            self.sdsp_regs.soft_reset,
-                            self.sdsp_regs.mute_all,
-                            self.sdsp_regs.echo_en,
-                            self.sdsp_regs.noise_freq,
-                        );
                     },
                     _ =>  {},
                 }

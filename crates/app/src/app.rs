@@ -164,6 +164,8 @@ impl SnemulatorApp {
         let frame_duration = Duration::from_secs_f32(1.0 / FRAMES_PER_SECOND);
 
         'running: loop {
+            let frame_start = Instant::now();
+
             #[cfg(feature = "debug")]
             {
                 self.state.debug_active = self.debug_window.is_some();
@@ -222,14 +224,10 @@ impl SnemulatorApp {
 
             // Frame timing
             self.state.frame_count += 1;
-            let last_frame = self.last_frame;
-            self.last_frame = Instant::now();
             
-            let elapsed = self.last_frame - last_frame;
+            let elapsed = frame_start.elapsed();
             
             self.update_fps(elapsed);
-
-            // info!("Frame time: {} us, Time left: {} us", elapsed.as_micros(), FRAME_DURATION.as_micros() - elapsed.as_micros());
 
             if elapsed < frame_duration {
                 std::thread::sleep(frame_duration - elapsed);
@@ -306,9 +304,6 @@ impl SnemulatorApp {
             return;
         }
 
-        // Convert &[i16] to &[u8] for the stream
-        // let byte_slice = bytemuck::cast_slice::<i16, u8>(&self.audio_buffer);
-        
         if let Err(e) = self.audio_stream.put_data_i16(&self.audio_buffer) {
             log::warn!("Audio stream write failed: {e}");
         }

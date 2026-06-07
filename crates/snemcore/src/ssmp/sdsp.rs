@@ -398,10 +398,6 @@ impl SuperDSP {
                 voice.adsr_stage = ADSRStage::Release;
                 voice.envelope = 0;
             }
-
-            // if voice_idx == 0 {
-            //     log::debug!("BRR Header: ARAM[${:04X}] = {:02X}, end: {}, loop: {}, shift: {}, filter: {:?}", voice.brr_group_addr, brr_header, voice.end_of_sample_flag, voice.loop_flag, shift, filter);
-            // }
         }
 
         let brr_sample_addr = voice.brr_group_addr + 2 * voice.brr_group_step as u16 + 1;
