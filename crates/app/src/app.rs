@@ -1,3 +1,4 @@
+use crate::SnemulatorArgs;
 #[cfg(feature = "debug")]
 use crate::debug::window::DebugWindow;
 #[cfg(feature = "debug")]
@@ -92,7 +93,7 @@ pub struct SnemulatorApp {
 }
 
 impl SnemulatorApp {
-    pub fn new() -> Result<Self> {
+    pub fn new(args: SnemulatorArgs) -> Result<Self> {
         let state = AppState {
             frame_count: 0,
             last_mouse_input_frame: 0,
@@ -129,9 +130,8 @@ impl SnemulatorApp {
         let snem_core = Snemulator::with_probe(Debugger::new()?);
         #[cfg(not(feature = "debug"))]
         let snem_core = Snemulator::new();
-        
 
-        Ok(Self {
+        let mut app = Self {
             sdl_context,
             video_subsystem,
             audio_subsystem,
@@ -153,7 +153,14 @@ impl SnemulatorApp {
 
             #[cfg(feature = "debug")]
             debug_window: None,
-        })
+        };
+
+        if let Some(rom_path) = args.rom {
+            log::trace!("Loading ROM from command line argument: '{}'", rom_path);
+            app.try_load_rom_from_path(rom_path)?;
+        }
+
+        Ok(app)
     }
 
     fn try_find_settings() -> Option<Settings> {
