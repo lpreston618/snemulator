@@ -118,9 +118,9 @@ impl SnemulatorApp {
         let main_window = MainWindow::new(&video_subsystem, &settings)?;
 
         let audio_spec = AudioSpec {
-            format: Some(AudioFormat::S16LE),
-            channels: Some(2),
             freq: Some(sysinfo::AUDIO_SAMPLE_HZ as i32),
+            channels: Some(2),
+            format: Some(AudioFormat::s16_sys()),
         };
         let audio_device = audio_subsystem.open_playback_device(&audio_spec)?;
         let audio_stream = audio_device.open_device_stream(Some(&audio_spec))?;
@@ -307,9 +307,9 @@ impl SnemulatorApp {
         }
 
         // Convert &[i16] to &[u8] for the stream
-        let byte_slice = bytemuck::cast_slice::<i16, u8>(&self.audio_buffer);
+        // let byte_slice = bytemuck::cast_slice::<i16, u8>(&self.audio_buffer);
         
-        if let Err(e) = self.audio_stream.put_data(byte_slice) {
+        if let Err(e) = self.audio_stream.put_data_i16(&self.audio_buffer) {
             log::warn!("Audio stream write failed: {e}");
         }
 
@@ -647,6 +647,8 @@ impl SnemulatorApp {
             self.render_audio();
             self.audio_stream.resume()?;
 
+            log::debug!("{:?} audio samples at the start", self.audio_stream.queued_bytes());
+
             log::info!("Loaded rom '{file_name}'");
 
             self.state.rom_loaded = true;
@@ -661,6 +663,8 @@ impl SnemulatorApp {
         if self.state.is_paused {
             self.audio_stream.pause().unwrap();
             log::trace!("Paused emulation");
+
+            log::debug!("{:?} samples in audio stream", self.audio_stream.queued_bytes());
         } else {
             self.audio_stream.resume().unwrap();
             log::trace!("Resumed emulation");

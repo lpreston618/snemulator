@@ -39,9 +39,6 @@ pub enum BrrFilter {
 pub struct SuperDSP {
     envelope_counter: usize,
     noise_output: u16,
-
-    debug_counter: usize,
-    brr_sample_cnt: usize,
 }
 
 impl SuperDSP {
@@ -91,9 +88,6 @@ impl SuperDSP {
         Self {
             envelope_counter: 0,
             noise_output: 0,
-
-            brr_sample_cnt: 0,
-            debug_counter: 0,
         }
     }
 
@@ -191,13 +185,19 @@ impl SuperDSP {
                     voice.envelope -= 1;
                     voice.envelope -= voice.envelope >> 8;
 
+                    let sustain_threshold = ((voice.adsr_sustain_level as i16) + 1) << 8;
+
+                    if voice.envelope <= sustain_threshold {
+                        voice.adsr_stage = ADSRStage::Sustain;
+                    }
+
                     // if (voice.envelope >> 8) == voice.adsr_sustain_level as i16 {
                     //     voice.adsr_stage = ADSRStage::Sustain;
                     // }
 
-                    if voice.envelope <= voice.adsr_sustain_level as i16 {
-                        voice.adsr_stage = ADSRStage::Sustain;
-                    }
+                    // if voice.envelope <= voice.adsr_sustain_level as i16 {
+                    //     voice.adsr_stage = ADSRStage::Sustain;
+                    // }
                 }
             }
             ADSRStage::Sustain => {
@@ -218,9 +218,7 @@ impl SuperDSP {
                 }
             }
             ADSRStage::Release => {
-                voice.envelope = voice.envelope
-                    .checked_sub(8)
-                    .unwrap_or(0);
+                voice.envelope = (voice.envelope - 8).max(0);
             }
         }
     }
@@ -262,16 +260,17 @@ impl SuperDSP {
             GainMode::Fixed => unreachable!(), // Handled above match
         };
 
-        let clipped_envelope = new_envelope & 0x7FF;
+        // let clipped_envelope = new_envelope & 0x7FF;
+        let clamped_envelope = new_envelope.clamp(0, 0x7FF);
 
-        voice.envelope = clipped_envelope;
+        voice.envelope = clamped_envelope;
     }
 
     pub fn generate_sample(&mut self, audio_buffer: &mut Vec<i16>, bus: &mut SdspBus) {
         let mut left_sample: i16 = 0;
         let mut right_sample: i16 = 0;
 
-        for voice_idx in 0..1 {
+        for voice_idx in 0..8 {
             let (voice_left, voice_right) = self.generate_voice_sample(bus, voice_idx);
 
             left_sample = left_sample.saturating_add(voice_left);
@@ -291,8 +290,6 @@ impl SuperDSP {
             left_sample = 0;
             right_sample = 0;
         }
-
-        self.debug_counter += 1;
 
         audio_buffer.push(left_sample);
         audio_buffer.push(right_sample);
@@ -376,10 +373,6 @@ impl SuperDSP {
                     bus.aram[loop_addr_ptr as usize + 0],
                     bus.aram[loop_addr_ptr as usize + 1],
                 ]);
-                    
-                if voice_idx == 6 && voice.loop_flag {
-                    log::debug!("Voice 6 Looping to ${:04X}", loop_addr);
-                }
 
                 voice.brr_group_addr = loop_addr;
             } else {
