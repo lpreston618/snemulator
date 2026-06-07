@@ -1,4 +1,4 @@
-use rand::RngExt;
+use rand::{Rng, RngExt, rngs::StdRng};
 
 #[macro_export]
 macro_rules! set_byte_n {
@@ -37,14 +37,20 @@ macro_rules! get_bit_n {
     };
 }
 
-pub fn rand_bool() -> bool {
-    (rand_byte() & 1) != 0
+pub trait RandomExt {
+    fn rand_bool(&mut self) -> bool {
+        self.rand_byte() & 1 != 0
+    }
+    fn rand_byte(&mut self) -> u8;
+    fn rand_word(&mut self) -> u16;
 }
 
-pub fn rand_byte() -> u8 {
-    rand::rng().random()
-}
+impl RandomExt for StdRng {
+    fn rand_byte(&mut self) -> u8 {
+        self.next_u32() as u8
+    }
 
-pub fn rand_word() -> u16 {
-    rand::rng().random()
+    fn rand_word(&mut self) -> u16 {
+        self.next_u32() as u16
+    }
 }

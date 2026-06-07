@@ -153,9 +153,19 @@ impl SnemulatorApp {
             debug_window: None,
         };
 
+        if let Some(seed) = args.seed {
+            app.snem_core.set_random_seed(seed);
+        }
+
+        log::trace!("Random Seed: {}", app.snem_core.get_random_seed());
+
         if let Some(rom_path) = args.rom {
             log::trace!("Loading ROM from command line argument: '{}'", rom_path);
             app.try_load_rom_from_path(rom_path.into())?;
+        }
+
+        if args.start_paused && !app.state.is_paused {
+            app.toggle_pause();
         }
 
         #[cfg(feature = "debug")]
@@ -640,8 +650,6 @@ impl SnemulatorApp {
         if self.state.is_paused {
             self.audio_stream.pause().unwrap();
             log::trace!("Paused emulation");
-
-            log::debug!("{:?} samples in audio stream", self.audio_stream.queued_bytes());
         } else {
             self.audio_stream.resume().unwrap();
             log::trace!("Resumed emulation");

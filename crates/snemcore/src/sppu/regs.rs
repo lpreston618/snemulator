@@ -1,9 +1,13 @@
+use rand::RngExt;
+use rand::rngs::StdRng;
+
 use crate::sppu::color::Color;
 use crate::sppu::types::*;
+use crate::utils::RandomExt;
 use crate::{get_bit_n, utils};
 
 /// Contains all of the shared data (registers, memory, etc.) between the S-CPU and S-PPU.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct PpuRegs {
     pub h_counter: u16,
     pub v_counter: u16,
@@ -242,77 +246,79 @@ pub struct PpuRegs {
 }
 
 impl PpuRegs {
-    pub fn power_on(&mut self) {
-        self.write_2100(0x80 | utils::rand_byte() & 0x0F);
-        self.write_2101(utils::rand_byte());
-        self.write_2102(utils::rand_byte());
-        self.write_2103(utils::rand_byte());
-        self.oam_data_latch = utils::rand_byte();
-        self.write_2105(0xF0 | utils::rand_byte());
-        self.write_2106(utils::rand_byte());
-        self.write_2107(utils::rand_byte());
-        self.write_2108(utils::rand_byte());
-        self.write_2109(utils::rand_byte());
-        self.write_210A(utils::rand_byte());
-        self.write_210B(utils::rand_byte());
-        self.write_210C(utils::rand_byte());
-        self.write_210D(utils::rand_byte());
-        self.write_210D(utils::rand_byte());
-        self.write_210E(utils::rand_byte());
-        self.write_210E(utils::rand_byte());
-        self.write_210F(utils::rand_byte());
-        self.write_210F(utils::rand_byte());
-        self.write_2110(utils::rand_byte());
-        self.write_2110(utils::rand_byte());
-        self.write_2111(utils::rand_byte());
-        self.write_2111(utils::rand_byte());
-        self.write_2112(utils::rand_byte());
-        self.write_2112(utils::rand_byte());
-        self.write_2113(utils::rand_byte());
-        self.write_2113(utils::rand_byte());
-        self.write_2114(utils::rand_byte());
-        self.write_2114(utils::rand_byte());
-        self.write_2115(0x0F | utils::rand_byte());
-        self.vram_addr = utils::rand_word();
-        self.vram_latch = utils::rand_word();
-        self.write_211A(utils::rand_byte());
+    pub fn power_on(&mut self, rng: &mut StdRng) {
+        self.write_2100(0x80 | rng.rand_byte() & 0x0F);
+        self.write_2101(rng.rand_byte());
+        self.write_2102(rng.rand_byte());
+        self.write_2103(rng.rand_byte());
+        self.oam_data_latch = rng.rand_byte();
+        self.write_2105(0xF0 | rng.rand_byte());
+        self.write_2106(rng.rand_byte());
+        self.write_2107(rng.rand_byte());
+        self.write_2108(rng.rand_byte());
+        self.write_2109(rng.rand_byte());
+        self.write_210A(rng.rand_byte());
+        self.write_210B(rng.rand_byte());
+        self.write_210C(rng.rand_byte());
+        self.write_210D(rng.rand_byte());
+        self.write_210D(rng.rand_byte());
+        self.write_210E(rng.rand_byte());
+        self.write_210E(rng.rand_byte());
+        self.write_210F(rng.rand_byte());
+        self.write_210F(rng.rand_byte());
+        self.write_2110(rng.rand_byte());
+        self.write_2110(rng.rand_byte());
+        self.write_2111(rng.rand_byte());
+        self.write_2111(rng.rand_byte());
+        self.write_2112(rng.rand_byte());
+        self.write_2112(rng.rand_byte());
+        self.write_2113(rng.rand_byte());
+        self.write_2113(rng.rand_byte());
+        self.write_2114(rng.rand_byte());
+        self.write_2114(rng.rand_byte());
+        self.write_2115(0x0F | rng.rand_byte());
+        self.vram_addr = rng.rand_word();
+        self.vram_latch = rng.rand_word();
+        self.write_211A(rng.rand_byte());
         self.write_211B(0xFF);
         self.write_211B(0xFF);
         self.write_211C(0xFF);
         self.write_211C(0xFF);
-        self.write_211D(utils::rand_byte());
-        self.write_211D(utils::rand_byte());
-        self.write_211E(utils::rand_byte());
-        self.write_211E(utils::rand_byte());
-        self.write_211F(utils::rand_byte());
-        self.write_211F(utils::rand_byte());
-        self.write_2120(utils::rand_byte());
-        self.write_2120(utils::rand_byte());
-        self.write_2121(utils::rand_byte());
-        self.cgram_addr = utils::rand_byte();
-        self.cgram_latch = utils::rand_byte();
-        self.cgram_toggle = utils::rand_bool();
-        self.write_2123(utils::rand_byte());
-        self.write_2124(utils::rand_byte());
-        self.write_2125(utils::rand_byte());
-        self.write_2126(utils::rand_byte());
-        self.write_2127(utils::rand_byte());
-        self.write_2128(utils::rand_byte());
-        self.write_2129(utils::rand_byte());
-        self.write_212A(utils::rand_byte());
-        self.write_212B(utils::rand_byte());
-        self.write_212C(utils::rand_byte());
-        self.write_212D(utils::rand_byte());
-        self.write_212E(utils::rand_byte());
-        self.write_212F(utils::rand_byte());
-        self.write_2130(utils::rand_byte());
-        self.write_2131(utils::rand_byte());
-        self.write_2132(utils::rand_byte());
+        self.write_211D(rng.rand_byte());
+        self.write_211D(rng.rand_byte());
+        self.write_211E(rng.rand_byte());
+        self.write_211E(rng.rand_byte());
+        self.write_211F(rng.rand_byte());
+        self.write_211F(rng.rand_byte());
+        self.write_2120(rng.rand_byte());
+        self.write_2120(rng.rand_byte());
+        self.write_2121(rng.rand_byte());
+        self.cgram_addr = rng.rand_byte();
+        self.cgram_latch = rng.rand_byte();
+        self.cgram_toggle = rng.rand_bool();
+        self.write_2123(rng.rand_byte());
+        self.write_2124(rng.rand_byte());
+        self.write_2125(rng.rand_byte());
+        self.write_2126(rng.rand_byte());
+        self.write_2127(rng.rand_byte());
+        self.write_2128(rng.rand_byte());
+        self.write_2129(rng.rand_byte());
+        self.write_212A(rng.rand_byte());
+        self.write_212B(rng.rand_byte());
+        self.write_212C(rng.rand_byte());
+        self.write_212D(rng.rand_byte());
+        self.write_212E(rng.rand_byte());
+        self.write_212F(rng.rand_byte());
+        self.write_2130(rng.rand_byte());
+        self.write_2131(rng.rand_byte());
+        self.write_2132(rng.rand_byte());
         self.write_2133(0);
 
         self.multiply_result = 0x000001;
         self.h_counter_latch = 0x01FF;
         self.v_counter_latch = 0x01FF;
+
+        log::debug!("PpuRegs powered on with random values: {:#?}", self);
     }
 
     pub fn reset(&mut self) {

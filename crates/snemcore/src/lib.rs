@@ -12,6 +12,8 @@ use sppu::Ppu5C7x;
 use ssmp::ioports::ApuIoPorts;
 use ssmp::Ssmp;
 use sysinfo::{CGRAM_SIZE, OAM_SIZE, VRAM_SIZE, WRAM_SIZE};
+use rand::{Rng, SeedableRng};
+use rand::rngs::StdRng;
 
 use crate::controller::ControllerData;
 use crate::probe::{DebugProbe, NullProbe};
@@ -113,11 +115,16 @@ pub struct Snemulator<P: DebugProbe = NullProbe> {
     pub total_cycles: u64,
     pub frame: u64,
 
+    random_seed: u64,
+    rng: StdRng,
+
     pub probe: Option<P>,
 }
 
 impl<P: DebugProbe> Snemulator<P> {
     pub fn with_probe(probe: P) -> Self {
+        let random_seed = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs();
+
         Self {
             p1_controller: SnemController::new(),
             p2_controller: SnemController::new(),
@@ -138,8 +145,19 @@ impl<P: DebugProbe> Snemulator<P> {
             cart: None,
             total_cycles: 0,
             frame: 0,
+            random_seed,
+            rng: StdRng::seed_from_u64(random_seed),
             probe: Some(probe),
         }
+    }
+
+    pub fn set_random_seed(&mut self, seed: u64) {
+        self.random_seed = seed;
+        self.rng = StdRng::seed_from_u64(self.random_seed);
+    }
+
+    pub fn get_random_seed(&self) -> u64 {
+        self.random_seed
     }
 
     pub fn init_probe(&mut self) {
@@ -169,7 +187,7 @@ impl<P: DebugProbe> Snemulator<P> {
         self.cgram.fill(Color::BLACK);
         self.oam.fill(0);
 
-        self.ppu_regs.power_on();
+        self.ppu_regs.power_on(&mut self.rng);
         self.cpu_regs.power_on();
         self.apu_ports.power_on();
 

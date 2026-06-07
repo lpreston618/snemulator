@@ -192,7 +192,7 @@ pub struct WindowSettings {
     pub w2_inv: bool,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct LayerSettings {
     pub main_en: bool,
     pub sub_en: bool,
@@ -200,7 +200,7 @@ pub struct LayerSettings {
     pub window: WindowSettings,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct BgSettings {
     pub main_en: bool,
     pub sub_en: bool,

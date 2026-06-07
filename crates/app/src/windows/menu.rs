@@ -91,6 +91,10 @@ impl MainMenuBar {
                             app_action = AppAction::ResetCore;
                             ui.close();
                         }
+                        if ui.button("Hard Reset").clicked() {
+                            app_action = AppAction::PowerOnCore;
+                            ui.close();
+                        }
                         
                         ui.separator();
                         

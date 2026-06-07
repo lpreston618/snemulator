@@ -1,6 +1,5 @@
 use anyhow::Result;
 use clap::Parser;
-use log::info;
 use crate::app::SnemulatorApp;
 
 mod app;
@@ -12,9 +11,14 @@ mod debug;
 #[derive(Parser)]
 #[command(name = "snemulator", about = "SNES Emulator")]
 pub struct SnemulatorArgs {
-    /// Path to the ROM file to load
     #[arg(long)]
     pub rom: Option<String>,
+
+    #[arg(long)]
+    pub seed: Option<u64>,
+
+    #[arg(long)]
+    pub start_paused: bool,
 
     /// Enable debug mode
     #[cfg(feature = "debug")]
@@ -34,7 +38,7 @@ fn main() -> Result<()> {
 
     env_logger::init();
 
-    info!("Snemulator launched");
+    log::info!("Snemulator launched");
 
     let args = SnemulatorArgs::parse();
 
@@ -42,7 +46,7 @@ fn main() -> Result<()> {
 
     let result = app.run();
 
-    info!("App finished with result: {:?}", result);
+    log::info!("App finished with result: {:?}", result);
 
     result
 }
