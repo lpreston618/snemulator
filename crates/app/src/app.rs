@@ -162,6 +162,12 @@ impl SnemulatorApp {
             app.try_load_rom_from_path(rom_path.into())?;
         }
 
+        #[cfg(feature = "debug")]
+        if args.debug {
+            log::trace!("Debug mode enabled from command line argument");
+            app.show_debug();
+        }
+
         Ok(app)
     }
 
@@ -171,6 +177,7 @@ impl SnemulatorApp {
 
     pub fn run(&mut self) -> Result<()> {
         let frame_duration = Duration::from_secs_f32(1.0 / FRAMES_PER_SECOND);
+        let spin_threshold = Duration::from_millis(2);
 
         'running: loop {
             let frame_start = Instant::now();
@@ -236,12 +243,21 @@ impl SnemulatorApp {
 
             // Frame timing
             self.state.frame_count += 1;
-            let elapsed = frame_start.elapsed();
-            self.update_fps(elapsed);
 
-            if elapsed < frame_duration {
-                std::thread::sleep(frame_duration - elapsed);
+            let deadline = frame_start + frame_duration;
+
+            // Sleep until we're close to the deadline, avoiding overshoot
+            let now = Instant::now();
+            if let Some(sleep_duration) = deadline.checked_duration_since(now) {
+                if sleep_duration > spin_threshold {
+                    std::thread::sleep(sleep_duration - spin_threshold);
+                }
             }
+
+            // Spin-wait the remaining time for precision
+            while Instant::now() < deadline {}
+
+            self.update_fps(frame_start.elapsed());
         }
 
         Ok(())

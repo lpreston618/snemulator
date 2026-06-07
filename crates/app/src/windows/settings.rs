@@ -43,7 +43,12 @@ impl Settings {
     pub fn load() -> Self {
         let Some(path) = Self::config_path() else { return Self::default() };
         let Ok(text) = std::fs::read_to_string(&path) else { return Self::default() };
-        toml::from_str(&text).unwrap_or_default()
+        
+        log::trace!("Loaded settings from {}: {}", path.display(), text);
+        
+        let mut settings: Self = toml::from_str(&text).unwrap_or_default();
+        settings.recent_roms.retain(|p| p.exists());
+        settings
     }
 
     pub fn save(&self) {
@@ -54,10 +59,12 @@ impl Settings {
         if let Ok(text) = toml::to_string_pretty(self) {
             let _ = std::fs::write(&path, text);
         }
+
+        log::trace!("Saved settings to {}", path.display());
     }
 
     pub fn push_recent_rom(&mut self, path: PathBuf) {
-        self.recent_roms.retain(|p| p != &path); // deduplicate
+        self.recent_roms.retain(|p| p.file_name() != path.file_name());
         self.recent_roms.insert(0, path);
         self.recent_roms.truncate(MAX_RECENT_ROMS);
     }
