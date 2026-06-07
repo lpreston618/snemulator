@@ -1,11 +1,15 @@
+use std::path::PathBuf;
+
+use serde::{Serialize, Deserialize};
 use anyhow::Result;
 
 use common::UiWindow;
 
 const SETTINGS_WINDOW_WIDTH: u32 = 600;
 const SETTINGS_WINDOW_HEIGHT: u32 = 400;
+const MAX_RECENT_ROMS: usize = 5;
 
-#[derive(Default)]
+#[derive(Default, Serialize, Deserialize)]
 pub struct Settings {
     // Video settings
     // ui_scale: f32,
@@ -26,6 +30,37 @@ pub struct Settings {
     // rewind_enabled: bool,
     pub save_state_slots: u32,
     pub pause_on_minimize: bool,
+
+    #[serde(default)]
+    pub recent_roms: Vec<PathBuf>,
+}
+
+impl Settings {
+    pub fn config_path() -> Option<PathBuf> {
+        dirs::config_dir().map(|d| d.join("snemulator").join("settings.toml"))
+    }
+
+    pub fn load() -> Self {
+        let Some(path) = Self::config_path() else { return Self::default() };
+        let Ok(text) = std::fs::read_to_string(&path) else { return Self::default() };
+        toml::from_str(&text).unwrap_or_default()
+    }
+
+    pub fn save(&self) {
+        let Some(path) = Self::config_path() else { return };
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        if let Ok(text) = toml::to_string_pretty(self) {
+            let _ = std::fs::write(&path, text);
+        }
+    }
+
+    pub fn push_recent_rom(&mut self, path: PathBuf) {
+        self.recent_roms.retain(|p| p != &path); // deduplicate
+        self.recent_roms.insert(0, path);
+        self.recent_roms.truncate(MAX_RECENT_ROMS);
+    }
 }
 
 pub struct SettingsWindow {

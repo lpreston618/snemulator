@@ -3,7 +3,6 @@ use crate::debug::window::DebugWindow;
 #[cfg(feature = "debug")]
 use crate::debug::debugger::Debugger;
 
-use crate::windows::about::AboutWindow;
 use crate::windows::game::MainWindow;
 use crate::windows::settings::{Settings, SettingsWindow};
 use anyhow::{anyhow, Result};
@@ -16,6 +15,7 @@ use sdl3::keyboard::{Keycode, Mod};
 use snemcore::controller::{ControllerPlayer, JoypadButton};
 use snemcore::sysinfo::{self, AUDIO_SAMPLE_HZ, FRAMES_PER_SECOND, SCREEN_HEIGHT, SCREEN_WIDTH};
 use snemcore::Snemulator;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 pub const FRAME_BUF_SIZE: usize = (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize;
@@ -25,21 +25,21 @@ pub const WINDOW_HEIGHT: u32 = 480;
 
 // const TARGET_FPS: u32 = 60;
 const PREV_FPS_BUFFER_LEN: usize = FRAMES_PER_SECOND as usize * 1;
-const SECS_BEFORE_HIDE_MENU: f32 = 3.0;
-const SECS_BEFORE_HIDE_MOUSE: f32 = 3.0;
-const FRAMES_BEFORE_HIDE_MENU: u64 = (SECS_BEFORE_HIDE_MENU * FRAMES_PER_SECOND) as u64;
-const FRAMES_BEFORE_HIDE_MOUSE: u64 = (SECS_BEFORE_HIDE_MOUSE * FRAMES_PER_SECOND) as u64;
+const FRAMES_BEFORE_HIDE_MENU: u64 = (3.0 * FRAMES_PER_SECOND) as u64;
+const FRAMES_BEFORE_HIDE_MOUSE: u64 = (3.0 * FRAMES_PER_SECOND) as u64;
+const FRAMES_BETWEEN_DISPLAY_FPS_UPDATE: u64 = (1.0 * FRAMES_PER_SECOND) as u64;
+const AUDIO_SAMPLES_PER_FRAME: usize = 2 * AUDIO_SAMPLE_HZ / FRAMES_PER_SECOND as usize;
 
 pub enum AppAction {
     Continue,
     TogglePause,
     ToggleFullscreen,
     LoadRom,
+    LoadRomFromPath(PathBuf),
     ResetCore,
     PowerOnCore,
     SaveState,
     LoadState,
-    OpenAbout,
     OpenSettings,
     Exit,
     
@@ -52,6 +52,7 @@ pub enum AppAction {
 pub struct AppState {
     pub frame_count: u64,
     pub last_mouse_input_frame: u64,
+    pub last_display_fps_update_frame: u64,
     pub show_menu: bool,
     pub show_mouse: bool,
     pub is_paused: bool,
@@ -59,6 +60,7 @@ pub struct AppState {
     pub is_minimized: bool,
     pub rom_loaded: bool,
     pub fps: f32,
+    pub display_fps: usize,
     
     #[cfg(feature = "debug")]
     pub debug_active: bool,
@@ -72,7 +74,6 @@ pub struct SnemulatorApp {
     event_pump: Option<sdl3::EventPump>,
 
     main_window: MainWindow,
-    about_window: Option<AboutWindow>,
     settings_window: Option<SettingsWindow>,
     state: AppState,
     settings: Settings,
@@ -96,6 +97,7 @@ impl SnemulatorApp {
         let state = AppState {
             frame_count: 0,
             last_mouse_input_frame: 0,
+            last_display_fps_update_frame: 0,
             show_menu: true,
             show_mouse: true,
             is_paused: false,
@@ -103,6 +105,7 @@ impl SnemulatorApp {
             is_minimized: false,
             rom_loaded: false,
             fps: 0.0,
+            display_fps: 0,
             
             #[cfg(feature = "debug")]
             debug_active: false,
@@ -139,7 +142,6 @@ impl SnemulatorApp {
             event_pump,
 
             main_window,
-            about_window: None,
             settings_window: None,
             state,
             settings,
@@ -157,7 +159,7 @@ impl SnemulatorApp {
     }
 
     fn try_find_settings() -> Option<Settings> {
-        None
+        Some(Settings::load())
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -186,9 +188,11 @@ impl SnemulatorApp {
             #[cfg(not(feature = "debug"))]
             self.update_emulator();
 
+            self.render_audio();
+
             let app_action = self.main_window.update_and_render(
                 &self.state,
-                &self.settings,
+                &mut self.settings,
                 &self.frame_buffer[..],
             );
 
@@ -198,10 +202,6 @@ impl SnemulatorApp {
                 _ => {
                     self.do_action(app_action);
                 }
-            }
-
-            if let Some(about_window) = &mut self.about_window {
-                about_window.update_and_render();
             }
 
             if let Some(settings_window) = &mut self.settings_window {
@@ -222,11 +222,14 @@ impl SnemulatorApp {
 
             self.sdl_context.mouse().show_cursor(self.state.show_mouse);
 
+            if (self.state.frame_count - self.state.last_display_fps_update_frame) > FRAMES_BETWEEN_DISPLAY_FPS_UPDATE {
+                self.state.last_display_fps_update_frame = self.state.frame_count;
+                self.state.display_fps = self.state.fps as usize;
+            }
+
             // Frame timing
             self.state.frame_count += 1;
-            
             let elapsed = frame_start.elapsed();
-            
             self.update_fps(elapsed);
 
             if elapsed < frame_duration {
@@ -257,15 +260,13 @@ impl SnemulatorApp {
     }
     
     #[cfg(feature = "debug")]
-    fn debug_update_emulator(&mut self) {
-        let mut temp = Vec::new();
-        
+    fn debug_update_emulator(&mut self) {        
         if let Some(debug_window) = &mut self.debug_window {
             let app_action = debug_window.update_and_render(
                 &mut self.snem_core,
                 &mut self.state,
                 &mut self.frame_buffer[..],
-                &mut temp,
+                &mut self.audio_buffer,
             );
 
             match app_action {
@@ -291,11 +292,7 @@ impl SnemulatorApp {
                 && (!self.state.is_minimized || !self.settings.pause_on_minimize)
             {
                 self.snem_core.run_frame(Some(&mut self.frame_buffer[..]), Some(&mut self.audio_buffer));
-            
-                self.render_audio();
             }
-        } else {
-            self.render_load_rom_screen();
         }
     }
 
@@ -344,15 +341,7 @@ impl SnemulatorApp {
                 _ => None,
             };
 
-            // Check if event is for about window
             if let Some(event_win_id) = event_window_id {
-                if let Some(about_window) = &mut self.about_window {
-                    if event_win_id == about_window.id() {
-                        self.handle_about_window_event(&event, &modifiers);
-                        continue;
-                    }
-                }
-
                 if let Some(settings_window) = &mut self.settings_window {
                     if event_win_id == settings_window.id() {
                         self.handle_settings_window_event(&event, &modifiers);
@@ -377,7 +366,7 @@ impl SnemulatorApp {
                 Event::Quit { .. } => {
                     log::info!("Quit event received, exiting.");
                     
-                    self.about_window = None;
+                    self.settings.save();
                     self.settings_window = None;
                     
                     #[cfg(feature = "debug")]
@@ -407,23 +396,6 @@ impl SnemulatorApp {
         self.event_pump = Some(event_pump);
 
         app_action
-    }
-
-    fn handle_about_window_event(&mut self, event: &Event, modifiers: &egui::Modifiers) {
-        match &event {
-            Event::Window {
-                win_event: sdl3::event::WindowEvent::CloseRequested,
-                ..
-            } => {
-                self.about_window = None;
-            }
-            _ => {
-                self.about_window
-                    .as_mut()
-                    .unwrap()
-                    .handle_event(event, modifiers);
-            }
-        }
     }
 
     fn handle_settings_window_event(&mut self, event: &Event, modifiers: &egui::Modifiers) {
@@ -464,11 +436,21 @@ impl SnemulatorApp {
     fn do_action(&mut self, app_action: AppAction) {
         match app_action {
             AppAction::LoadRom => self.load_rom(),
+            AppAction::LoadRomFromPath(path) => {
+                if let Err(_) = self.try_load_rom_from_path(path.clone()) {
+                    let file_name = path
+                        .to_str()
+                        .ok_or_else(|| anyhow!("Invalid file name"))
+                        .unwrap()
+                        .to_string();
+
+                    log::warn!("Failed to load ROM '{}'", file_name);
+                }
+            }
             AppAction::LoadState => self.load_state(),
             AppAction::SaveState => self.save_state(),
             AppAction::ResetCore => self.reset_emulation(false),
             AppAction::PowerOnCore => self.reset_emulation(true),
-            AppAction::OpenAbout => self.show_about(),
             AppAction::OpenSettings => self.show_settings(),
             AppAction::ToggleFullscreen => self.toggle_fullscreen(),
             AppAction::TogglePause => self.toggle_pause(),
@@ -579,37 +561,13 @@ impl SnemulatorApp {
         }
     }
 
-    fn render_load_rom_screen(&mut self) {
+    fn clear_frame_buf(&mut self) {
         self.frame_buffer.chunks_mut(4).for_each(|pixel| {
             pixel[0] = 0;
             pixel[1] = 0;
             pixel[2] = 0;
             pixel[3] = 255;
         });
-
-        self.frame_buffer
-            .chunks_mut(4)
-            .take(SCREEN_WIDTH as usize)
-            .for_each(|pixel| {
-                pixel[0] = 255;
-            });
-
-        self.frame_buffer
-            .chunks_mut(4)
-            .skip((SCREEN_HEIGHT - 1) as usize * SCREEN_WIDTH as usize)
-            .for_each(|pixel| {
-                pixel[0] = 255;
-            });
-
-        self.frame_buffer
-            .chunks_mut(4 * SCREEN_WIDTH as usize)
-            .for_each(|row| {
-                let lpixel = &mut row[0..4];
-                lpixel[0] = 255;
-
-                let rpixel = &mut row[4 * (SCREEN_WIDTH as usize - 1)..];
-                rpixel[0] = 255;
-            });
     }
 
     fn load_rom(&mut self) {
@@ -632,22 +590,27 @@ impl SnemulatorApp {
 
             log::info!("Trying to load rom '{}'", file_name);
 
-            let data = std::fs::read(&romfile)?;
-
-            self.snem_core.load_rom(data)?;
-
-            const AUDIO_SAMPLES_PER_FRAME: usize = 2 * AUDIO_SAMPLE_HZ / FRAMES_PER_SECOND as usize;
-
-            self.audio_buffer.extend([0; AUDIO_SAMPLES_PER_FRAME]);
-            self.render_audio();
-            self.audio_stream.resume()?;
-
-            log::debug!("{:?} audio samples at the start", self.audio_stream.queued_bytes());
+            self.try_load_rom_from_path(romfile)?;
 
             log::info!("Loaded rom '{file_name}'");
-
-            self.state.rom_loaded = true;
         }
+
+        Ok(())
+    }
+
+    fn try_load_rom_from_path(&mut self, path: PathBuf) -> Result<()> {
+        let data = std::fs::read(&path)?;
+
+        self.snem_core.load_rom(data)?;
+
+        self.settings.push_recent_rom(path.clone());
+        self.settings.save();
+
+        self.audio_buffer.extend([0; AUDIO_SAMPLES_PER_FRAME]);
+        self.render_audio();
+        self.audio_stream.resume()?;
+
+        self.state.rom_loaded = true;
 
         Ok(())
     }
@@ -667,6 +630,14 @@ impl SnemulatorApp {
     }
 
     fn reset_emulation(&mut self, hard_reset: bool) {
+        self.audio_buffer.clear();
+        self.audio_stream.pause().unwrap();
+        self.audio_stream.clear().unwrap();
+        self.audio_stream.put_data_i16(&[0; AUDIO_SAMPLES_PER_FRAME]).unwrap();
+        self.audio_stream.resume().unwrap();
+
+        self.clear_frame_buf();
+
         if hard_reset {
             log::info!("Reset core to power-on state");
 
@@ -696,20 +667,13 @@ impl SnemulatorApp {
         }
     }
 
-    fn show_about(&mut self) {
-        if self.about_window.is_some() {
-            return;
-        }
-
-        match AboutWindow::new(&self.video_subsystem) {
-            Ok(window) => self.about_window = Some(window),
-            Err(e) => log::error!("Failed to create about window: {}", e),
-        }
-    }
-
     fn show_settings(&mut self) {
         if self.settings_window.is_some() {
             return;
+        }
+
+        if !self.state.is_paused {
+            self.toggle_pause();
         }
 
         match SettingsWindow::new(&self.video_subsystem) {

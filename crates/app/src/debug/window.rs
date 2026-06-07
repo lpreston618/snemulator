@@ -90,7 +90,7 @@ impl DebugWindow {
         
         let frame_buffer = if core.probe.as_ref().unwrap().control.video_en { Some(frame_buffer) } else { None };
         let audio_buffer = if core.probe.as_ref().unwrap().control.audio_en { Some(audio_buffer) } else { None };
-    
+
         let mut egui_window = self.egui_window.take().unwrap();
         let mut debug_action: Option<DebugAction> = None;
 
@@ -237,7 +237,7 @@ impl DebugWindow {
                     
                     core.probe.as_mut().unwrap().control.update_textures = true;
                     
-                    core.run_frame(frame_buffer, audio_buffer);
+                    core.run_frame(frame_buffer, None);
                 } else {
                     probe.control.update_textures = true;
     

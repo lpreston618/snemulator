@@ -260,20 +260,40 @@ impl MainWindow {
         }
     }
     
-    pub fn update_and_render(&mut self, app_state: &app::AppState, app_settings: &Settings, frame_buffer: &[u8]) -> app::AppAction {
+    pub fn update_and_render(&mut self, app_state: &app::AppState, app_settings: &mut Settings, frame_buffer: &[u8]) -> app::AppAction {
         let mut app_action = app::AppAction::Continue;
         let mut game_rect = egui::Rect::NOTHING;
         let ui_scale = self.egui_window.ui_scale();
         
         let full_output = self.egui_window.update_ui(|ctx| {
             if app_state.show_menu {
-                app_action = self.menu.render(ctx, app_state);
+                app_action = self.menu.render(ctx, app_state, app_settings);
             }
             
             if app_settings.always_show_menu {
                 game_rect = ctx.available_rect();
             } else {
                 game_rect = ctx.viewport_rect();
+            }
+
+            if app_settings.show_fps {
+                egui::Area::new(egui::Id::new("fps_counter_area"))
+                    .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-20.0, 10.0))
+                    .interactable(false) 
+                    .order(egui::Order::Foreground) 
+                    .show(ctx, |ui| {
+                        let fps_text = format!("FPS: {}", app_state.display_fps); 
+                        
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(fps_text)
+                                    .color(egui::Color32::WHITE)
+                                    .background_color(egui::Color32::from_black_alpha(150))
+                                    .strong()
+                            )
+                            .wrap_mode(egui::TextWrapMode::Extend) 
+                        );
+                    });
             }
             
             game_rect = game_rect * ui_scale;
@@ -283,6 +303,10 @@ impl MainWindow {
         
         self.update_game_texture(frame_buffer);
         self.render_game_screen(game_rect);
+
+        if app_settings.show_fps {
+            // TODO: render FPS in top right or at bottom of available rect as text
+        }
         
         self.egui_window.render(full_output);
         

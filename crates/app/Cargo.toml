@@ -20,6 +20,9 @@ sdl3 = { workspace = true }
 egui_autocomplete = { workspace = true }
 mlua = { version = "0.11", optional = true, features = ["lua54", "vendored", "anyhow"] }
 bytemuck = "1.25.0"
+serde = { version = "1.0.228", features = ["derive"] }
+dirs = "6.0.0"
+toml = "1.1.2"
 
 [features]
 debug = [ "dep:mlua" ]

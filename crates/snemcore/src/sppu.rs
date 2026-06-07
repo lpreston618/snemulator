@@ -860,14 +860,14 @@ impl<P: DebugProbe> Ppu5C7x<P> {
             let pal_indices = match color_depth {
                 ColorDepth::Bpp2 => {
                     let addr = chr_base + (chr_data.chr_idx << 3) + chr_data.chr_row as u16;
-                    let bp10 = bus.vram[addr as usize];
+                    let bp10 = bus.vram[(addr & 0x7FFF) as usize];
 
                     interleave_2bpp(bp10) as u64
                 }
                 ColorDepth::Bpp4 => {
                     let addr = chr_base + (chr_data.chr_idx << 4) + chr_data.chr_row as u16;
-                    let bp10 = bus.vram[addr as usize];
-                    let bp32 = bus.vram[(addr + 8) as usize];
+                    let bp10 = bus.vram[(addr & 0x7FFF) as usize];
+                    let bp32 = bus.vram[((addr + 8) & 0x7FFF) as usize];
 
                     interleave_4bpp(bp10, bp32) as u64
                 }
@@ -877,10 +877,10 @@ impl<P: DebugProbe> Ppu5C7x<P> {
                         // Store only the row base addr; vram must be read per dot
                         addr as u64
                     } else {
-                        let bp10 = bus.vram[addr as usize];
-                        let bp32 = bus.vram[(addr + 8) as usize];
-                        let bp54 = bus.vram[(addr + 16) as usize];
-                        let bp76 = bus.vram[(addr + 24) as usize];
+                        let bp10 = bus.vram[(addr & 0x7FFF) as usize];
+                        let bp32 = bus.vram[((addr + 8) & 0x7FFF) as usize];
+                        let bp54 = bus.vram[((addr + 16) & 0x7FFF) as usize];
+                        let bp76 = bus.vram[((addr + 24) & 0x7FFF) as usize];
 
                         interleave_8bpp(bp10, bp32, bp54, bp76)
                     }
@@ -1005,7 +1005,7 @@ impl<P: DebugProbe> Ppu5C7x<P> {
     }
 
     fn fetch_chr_data(&self, regs: &PpuRegs, vram: &[u16], tile_data: TileData) -> ChrData {
-        let tile_word = vram[tile_data.tile_addr as usize];
+        let tile_word = vram[(tile_data.tile_addr & 0x7FFF) as usize];
 
         let in_true_hi_res_mode = matches!(regs.bg_mode, BgMode::Mode5 | BgMode::Mode6);
 
@@ -1095,7 +1095,7 @@ impl<P: DebugProbe> Ppu5C7x<P> {
 
             // let row_base = t.bp_words[0];
             let row_base = t.pal_indices as u16;
-            let rgb_data = vram[(row_base + chr_col as u16) as usize] as u8;
+            let rgb_data = vram[((row_base + chr_col as u16) & 0x7FFF) as usize] as u8;
 
             let r = ((rgb_data & 0x07) << 2) | r_ext;
             let g = ((rgb_data & 0x38) >> 1) | g_ext;
