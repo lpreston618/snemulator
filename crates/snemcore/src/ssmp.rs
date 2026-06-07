@@ -144,4 +144,8 @@ impl Ssmp {
             self.timer2.clock();
         }
     }
+
+    pub fn aram_slice(&self) -> &[u8] {
+        &self.aram[..]
+    }
 }

@@ -239,7 +239,7 @@ impl<'a> SpcBus<'a> {
         let addr = self.spc_regs.sdsp_addr;
         
         // Mirrors of sdsp regs are read-only
-        if addr > 0x80 {
+        if addr >= 0x80 {
             return;
         }
         
@@ -254,7 +254,7 @@ impl<'a> SpcBus<'a> {
                     0 => { voice.lchannel_volume = value; },
                     1 => { voice.rchannel_volume = value; },
                     2 => { set_byte_n!(voice.pitch, value as u16, 0); },
-                    3 => { set_byte_n!(voice.pitch, value as u16, 1); },
+                    3 => { set_byte_n!(voice.pitch, (value & 0x3F) as u16, 1); },
                     4 => { voice.sample_source = value; },
                     5 => {
                         voice.adsr_en = get_bit_n!(value, 7);
@@ -304,14 +304,19 @@ impl<'a> SpcBus<'a> {
                                 voice.envelope = 0;
 
                                 let start_addr_ptr = (self.sdsp_regs.sample_directory_page as u16) << 8;
-                                let start_addr_ptr = start_addr_ptr | ((voice.sample_source as u16) << 2);
+                                let start_addr_ptr = start_addr_ptr + ((voice.sample_source as u16) << 2);
 
-                                let loop_addr = u16::from_le_bytes([
+                                let start_addr = u16::from_le_bytes([
                                     self.aram[start_addr_ptr as usize + 0],
                                     self.aram[start_addr_ptr as usize + 1],
                                 ]);
 
-                                voice.brr_group_addr = loop_addr;
+                                if voice_idx == 6 {
+                                    log::debug!("Voice 6 KeyOn w/ start addr: ${:04X}", start_addr);
+                                }
+
+                                voice.brr_group_addr = start_addr;
+                                voice.brr_group_step = 0;
                             }
                         }
                     }, // TODO: The internal KON bits are cleared 63 clocks after the bit is polled. 
@@ -319,7 +324,6 @@ impl<'a> SpcBus<'a> {
                         self.sdsp_regs.key_off = value;
                     },
                     6 => {
-                        
                         self.sdsp_regs.soft_reset = get_bit_n!(value, 7);
                         self.sdsp_regs.mute_all = get_bit_n!(value, 6);
                         self.sdsp_regs.echo_en = get_bit_n!(value, 5);

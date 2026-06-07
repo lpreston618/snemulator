@@ -9,8 +9,9 @@ use crate::debug::{debugger::Debugger, texture::Texture};
 enum MemViewRegion {
     Wram,
     Sram,
-    Rom,
     Vram,
+    Aram,
+    Rom,
     Oam,
     Cgram,
 }
@@ -20,8 +21,9 @@ impl MemViewRegion {
         match self {
             MemViewRegion::Wram => "WRAM",
             MemViewRegion::Sram => "SRAM",
-            MemViewRegion::Rom => "ROM",
             MemViewRegion::Vram => "VRAM",
+            MemViewRegion::Aram => "ARAM",
+            MemViewRegion::Rom => "ROM",
             MemViewRegion::Oam => "OAM",
             MemViewRegion::Cgram => "CGRAM",
         }
@@ -138,8 +140,9 @@ impl MemoryTab {
                     for region in [
                         MemViewRegion::Wram,
                         MemViewRegion::Sram,
-                        MemViewRegion::Rom,
                         MemViewRegion::Vram,
+                        MemViewRegion::Aram,
+                        MemViewRegion::Rom,
                         MemViewRegion::Oam,
                         MemViewRegion::Cgram,
                     ] {
@@ -180,6 +183,7 @@ impl MemoryTab {
                 let data: &[u8] = match self.region {
                     MemViewRegion::Wram => &snem_core.wram[..],
                     MemViewRegion::Sram => &snem_core.sram_slice(),
+                    MemViewRegion::Aram => &snem_core.ssmp.aram_slice(),
                     MemViewRegion::Rom => &snem_core.rom_slice(),
                     MemViewRegion::Oam => &snem_core.oam[..],
                     _ => unreachable!(),
