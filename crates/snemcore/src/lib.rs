@@ -19,6 +19,7 @@ use crate::controller::ControllerData;
 use crate::probe::{DebugProbe, NullProbe};
 use crate::sppu::VBLANK_START_SCANLINE;
 use crate::sysinfo::CLOCKS_BETWEEN_AUTOREAD_STEPS;
+use crate::utils::RandomExt;
 
 pub mod cartridge;
 pub mod controller;

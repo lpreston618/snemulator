@@ -43,9 +43,6 @@ pub struct Ppu5C7x<P: DebugProbe> {
 
     bg_tile_cache: [TileRowCache<TILE_CACHE_SIZE>; 4],
 
-    pub bg_tile_cache_hits: usize,
-    pub bg_tile_cache_accesses: usize,
-
     /// Number of master clocks until the next dot
     pub clocks: usize,
 
@@ -65,8 +62,6 @@ impl<P: DebugProbe> Ppu5C7x<P> {
             scanline_sprites: Vec::new(),
             scanline_spr_cnt: 0,
             bg_tile_cache: std::array::repeat(TileRowCache::new()),
-            bg_tile_cache_hits: 0,
-            bg_tile_cache_accesses: 0,
             clocks: 0,
             _phantom_probe: PhantomData {},
         };
@@ -846,14 +841,9 @@ impl<P: DebugProbe> Ppu5C7x<P> {
 
         let cache_hit = self.bg_tile_cache[bg_idx].get_entry_idx(&tile_data);
 
-        self.bg_tile_cache_accesses += 1;
-        self.bg_tile_cache_hits += 1;
-
         let cache_idx = if let Some(idx) = cache_hit {
             idx
         } else {
-            self.bg_tile_cache_hits -= 1;
-
             let chr_data = self.fetch_chr_data(bus.ppu_regs, bus.vram, tile_data.clone());
             let chr_base = bg_data.chr_base_addr;
 
@@ -942,7 +932,7 @@ impl<P: DebugProbe> Ppu5C7x<P> {
 
         let tile_idx = match bg_data.chr_size {
             TileSize::Size8x8 => ((y >> 3) << 5) | (x >> 3),
-            TileSize::Size16x16 => (y & 0xF0) | (x >> 4),
+            TileSize::Size16x16 => ((y >> 4) << 5) | (x >> 4),
         };
 
         let (tile_col, tile_row) = match bg_data.chr_size {
@@ -978,14 +968,14 @@ impl<P: DebugProbe> Ppu5C7x<P> {
             if cnt_x == TilemapCount::One {
                 return 0;
             }
-            return ((x & 0x100) << 2) | ((y as u16 & 0x100) << 3);
+            return ((x & 0x100) << 2) | ((y & 0x100) << 3);
         }
 
         if cnt_y == TilemapCount::One {
             return (x & 0x100) << 2;
         }
 
-        (y as u16 & 0x100) << 2
+        (y & 0x100) << 2
     }
 
     /// For modes 5-6
@@ -1032,7 +1022,7 @@ impl<P: DebugProbe> Ppu5C7x<P> {
         };
 
         let (tile_chr_idx, tile_row) = if tile_row > 7 {
-            (tile_chr_idx + 32, tile_row - 8)
+            (tile_chr_idx + 16, tile_row - 8) // TODO: Verify +16 or +32?
         } else {
             (tile_chr_idx, tile_row)
         };
@@ -1056,8 +1046,8 @@ impl<P: DebugProbe> Ppu5C7x<P> {
 
     fn extract_2bpp(t: &TileRowCacheEntry, chr_col: u8, cgram: &[Color], bg_cgram_base_addr: u8) -> ColorData {
         let pal_idx = ((t.pal_indices >> (2 * (7 - chr_col))) & 3) as u8;
-
         let cgram_addr = bg_cgram_base_addr | (t.chr_data.chr_pal << 2) | pal_idx;
+
         ColorData {
             color: if pal_idx == 0 { cgram[0] } else { cgram[cgram_addr as usize] },
             priority: t.chr_data.chr_priority,
@@ -1066,10 +1056,9 @@ impl<P: DebugProbe> Ppu5C7x<P> {
     }
 
     fn extract_4bpp(t: &TileRowCacheEntry, chr_col: u8, cgram: &[Color], bg_cgram_base_addr: u8) -> ColorData {
-
         let pal_idx = ((t.pal_indices >> (4 * (7 - chr_col))) & 15) as u8;
-
         let cgram_addr = bg_cgram_base_addr | (t.chr_data.chr_pal << 4) | pal_idx;
+        
         ColorData {
             color: if pal_idx == 0 { cgram[0] } else { cgram[cgram_addr as usize] },
             priority: t.chr_data.chr_priority,
@@ -1102,6 +1091,7 @@ impl<P: DebugProbe> Ppu5C7x<P> {
             let b = ((rgb_data & 0xC0) >> 3) | b_ext;
 
             let color = Color::new(r, g, b);
+
             ColorData {
                 color,
                 priority: t.chr_data.chr_priority,

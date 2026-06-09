@@ -117,8 +117,8 @@ macro_rules! op_case_br {
 
 macro_rules! op_case_src_dst {
     ($cpu:ident, $bus:ident, $instr:ident) => {{
-        let src_addr = $cpu.source($bus);
         let dst_addr = $cpu.destination($bus);
+        let src_addr = $cpu.source($bus);
         $cpu.$instr($bus, src_addr, dst_addr);
     }};
 }
@@ -473,7 +473,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
             0xF9 => op_case_flagm!(self, bus, absolute_y, sbc, inc_addr),
             0xFA => self.plx(bus),
             0xFB => self.xce(),
-            0xFC => op_case!(self, bus, absolute_x_indirect, jsr),
+            0xFC => op_case!(self, bus, absolute_x_indirect, jsr_no_wrap),
             0xFD => op_case_flagm!(self, bus, absolute_x, sbc, inc_addr),
             0xFE => op_case_flagm!(self, bus, absolute_x, inc_mem, inc_addr),
             0xFF => op_case_flagm!(self, bus, long_x, sbc, inc_addr),
@@ -561,20 +561,20 @@ impl<P: DebugProbe> Cpu65c816<P> {
         let ll = self.read_prg(bus);
         let hh = self.read_prg(bus);
 
-        let ptr_lo = u16::from_le_bytes([ll, hh]);
+        let ptr_lo = u16::from_le_bytes([ll, hh]) + self.x;
         let ptr_hi = ptr_lo + 1;
 
         let lo = self.read(
             bus,
             Address {
-                bank: self.db,
+                bank: self.pb,
                 offset: ptr_lo,
             },
         );
         let hi = self.read(
             bus,
             Address {
-                bank: self.db,
+                bank: self.pb,
                 offset: ptr_hi,
             },
         );
@@ -686,14 +686,14 @@ impl<P: DebugProbe> Cpu65c816<P> {
         let data = self.read_prg(bus);
 
         let ptr_lo = if self.e && (self.dp & 0xFF) == 0 {
-            self.dp | (data + self.x as u8) as u16
+            self.dp + (data + self.x as u8) as u16
         } else {
             self.dp + (data as u16) + self.x
         };
-        let ptr_hi = if self.e && (self.dp & 0xFF) == 0 {
-            self.dp | (data + self.x as u8 + 1) as u16
+        let ptr_hi = if self.e {
+            ptr_lo & 0xFF00 | ((ptr_lo + 1) & 0x00FF)
         } else {
-            self.dp + (data as u16) + self.x + 1
+            ptr_lo + 1
         };
 
         let lo = self.read(
@@ -711,10 +711,12 @@ impl<P: DebugProbe> Cpu65c816<P> {
             },
         );
 
-        Address {
+        let addr = Address {
             bank: self.db,
             offset: u16::from_le_bytes([lo, hi]),
-        }
+        };
+
+        addr
     }
 
     fn direct_indirect_y(&mut self, bus: &mut CpuBus<P>) -> Address {
@@ -1239,9 +1241,23 @@ impl<P: DebugProbe> Cpu65c816<P> {
         self.pc = addr.offset;
     }
 
+    fn jsr_no_wrap(&mut self, bus: &mut CpuBus<P>, addr: Address) {
+        self.push_word_no_wrap(bus, self.pc - 1);
+
+        if self.e {
+            self.sp = 0x100 | (self.sp & 0xFF);
+        }
+
+        self.pc = addr.offset;
+    }
+
     fn jsl(&mut self, bus: &mut CpuBus<P>, addr: Address) {
-        self.push(bus, self.pb);
-        self.push_word(bus, self.pc - 1);
+        self.push_no_wrap(bus, self.pb);
+        self.push_word_no_wrap(bus, self.pc - 1);
+
+        if self.e {
+            self.sp = 0x100 | (self.sp & 0xFF);
+        }
 
         self.pb = addr.bank;
         self.pc = addr.offset;
@@ -1384,12 +1400,21 @@ impl<P: DebugProbe> Cpu65c816<P> {
 
     fn pex(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         let data = self.read_word(bus, addr_lo, addr_hi);
-        self.push_word(bus, data);
+
+        self.push_word_no_wrap(bus, data);
+
+        if self.e {
+            self.sp = 0x100 | (self.sp & 0xFF);
+        }
     }
 
     fn per(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
         let offset = self.read_word(bus, addr_lo, addr_hi);
-        self.push_word(bus, self.pc + offset);
+        self.push_word_no_wrap(bus, self.pc + offset);
+
+        if self.e {
+            self.sp = 0x100 | (self.sp & 0xFF);
+        }
     }
 
     fn pha(&mut self, bus: &mut CpuBus<P>) {
@@ -1405,7 +1430,11 @@ impl<P: DebugProbe> Cpu65c816<P> {
     }
 
     fn phd(&mut self, bus: &mut CpuBus<P>) {
-        self.push_word(bus, self.dp);
+        self.push_word_no_wrap(bus, self.dp);
+
+        if self.e {
+            self.sp = 0x100 | (self.sp & 0xFF);
+        }
     }
 
     fn phk(&mut self, bus: &mut CpuBus<P>) {
@@ -1443,12 +1472,24 @@ impl<P: DebugProbe> Cpu65c816<P> {
     }
 
     fn plb(&mut self, bus: &mut CpuBus<P>) {
-        self.db = self.pop(bus);
+        // PLB has a bug where it doesn't wrap the stack pointer in emulation
+        // mode until after reading, so we manually implement that here.
+        self.db = self.pop_no_wrap(bus);
+
+        if self.e {
+            self.sp = 0x100 | (self.sp & 0xFF);
+        }
+
         set_nz8!(self, self.db);
     }
 
     fn pld(&mut self, bus: &mut CpuBus<P>) {
-        self.dp = self.pop_word(bus);
+        self.dp = self.pop_word_no_wrap(bus);
+
+        if self.e {
+            self.sp = 0x100 | (self.sp & 0xFF);
+        }
+
         set_nz16!(self, self.dp);
     }
 
@@ -1594,8 +1635,12 @@ impl<P: DebugProbe> Cpu65c816<P> {
     }
 
     fn rtl(&mut self, bus: &mut CpuBus<P>) {
-        self.pc = self.pop_word(bus) + 1;
-        self.pb = self.pop(bus);
+        self.pc = self.pop_word_no_wrap(bus) + 1;
+        self.pb = self.pop_no_wrap(bus);
+
+        if self.e {
+            self.sp = 0x100 | (self.sp & 0xFF);
+        }
     }
 
     fn rts(&mut self, bus: &mut CpuBus<P>) {
@@ -1603,85 +1648,110 @@ impl<P: DebugProbe> Cpu65c816<P> {
     }
 
     fn sbc_m8(&mut self, bus: &mut CpuBus<P>, addr: Address) {
-        let data = self.read(bus, addr);
-        let comp = !data;
-        let mut result: u16;
-        let a = self.a & 0xFF;
-        let d = comp as u16;
-        let c = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
+        let operand = (!self.read(bus, addr)) as u32;
+        let carry = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
+        let a = (self.a & 0xFF) as u32;
 
-        if self.is_flag_set(Flag::FlagD) {
-            result = (a & 0x0F) + (d & 0x0F) + c;
+        self.p &= !(Flag::FlagN as u8 | Flag::FlagV as u8 | Flag::FlagZ as u8 | Flag::FlagC as u8);
+
+        let mut result;
+
+        if !self.is_flag_set(Flag::FlagD) {
+            result = a + operand + carry;
+        } else {
+            result = (a & 0x0F) + (operand & 0x0F) + carry;
 
             if result <= 0x0F {
                 result -= 0x06;
             }
 
-            let c = if result >= 0x10 { 0x10 } else { 0 };
-            result = (a & 0xF0) + (d & 0xF0) + c + (result & 0xF);
-        } else {
-            result = a + d + c;
+            let carry = if result > 0x0F { 0x10 } else { 0 };
+
+            result = (a & 0xF0) + (operand & 0xF0) + (result & 0x0F) + carry;
         }
 
-        self.set_flag_to_bool(Flag::FlagV, get_bit_n!(!(a ^ d) & (d ^ result), 7));
-
+        if (a & 0x80) == (operand & 0x80) && (a & 0x80) != (result & 0x80) {
+            self.set_flag_to_bool(Flag::FlagV, true);
+        }
+        
         if self.is_flag_set(Flag::FlagD) && result <= 0xFF {
             result -= 0x60;
         }
+        
+        if result > 0xFF {
+            self.set_flag_to_bool(Flag::FlagC, true);
+        }
+        
+        if result & 0x80 != 0 {
+            self.set_flag_to_bool(Flag::FlagN, true);
+        }
 
-        self.set_flag_to_bool(Flag::FlagC, result > 0xFF);
+        if result & 0xFF == 0 {
+            self.set_flag_to_bool(Flag::FlagZ, true);
+        }
 
-        set_byte_n!(self.a, result, 0);
-
-        set_nz8!(self, self.a);
+        set_byte_n!(self.a, result as u16, 0);
     }
 
     fn sbc_m16(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) {
-        let data = self.read_word(bus, addr_lo, addr_hi);
-        let comp = !data;
-        let mut result: u32;
-        let a = self.a as u32;
-        let d = comp as u32;
-        let c = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
+        let operand = (!self.read_word(bus, addr_lo, addr_hi)) as u32;
+        let carry = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
 
-        if self.is_flag_set(Flag::FlagD) {
-            result = (a & 0x000F) + (d & 0x000F) + c;
+        self.p &= !(Flag::FlagN as u8 | Flag::FlagV as u8 | Flag::FlagZ as u8 | Flag::FlagC as u8);
 
-            if result <= 0xF {
-                result -= 6;
-            }
+        let mut result;
 
-            let c = if result >= 0x10 { 0x10 } else { 0 };
-            result = (a & 0x00F0) + (d & 0x00F0) + c + (result & 0xF);
-
-            if result <= 0xFF {
-                result -= 0x60;
-            }
-
-            let c = if result >= 0x100 { 0x100 } else { 0 };
-            result = (a & 0x0F00) + (d & 0x0F00) + c + (result & 0xFF);
-
-            if result <= 0xFFF {
-                result -= 0x600;
-            }
-
-            let c = if result >= 0x1000 { 0x1000 } else { 0 };
-            result = (a & 0xF000) + (d & 0xF000) + c + (result & 0xFFF);
+        if !self.is_flag_set(Flag::FlagD) {
+            result = self.a as u32 + operand + carry;
         } else {
-            result = a + d + c;
+            result = (self.a as u32 & 0x000F) + (operand & 0x000F) + carry;
+
+            if result <= 0x000F {
+                result -= 0x0006;
+            }
+
+            let carry = if result > 0x000F { 0x0010 } else { 0 };
+
+            result = (self.a as u32 & 0x00F0) + (operand & 0x00F0) + (result & 0x000F) + carry;
+
+            if result <= 0x00FF {
+                result -= 0x0060;
+            }
+
+            let carry = if result > 0x00FF { 0x0100 } else { 0 };
+
+            result = (self.a as u32 & 0x0F00) + (operand & 0x0F00) + (result & 0x00FF) + carry;
+
+            if result <= 0x0FFF {
+                result -= 0x0600;
+            }
+
+            let carry = if result > 0x0FFF { 0x1000 } else { 0 };
+
+            result = (self.a as u32 & 0xF000) + (operand & 0xF000) + (result & 0x0FFF) + carry;
         }
 
-        self.set_flag_to_bool(Flag::FlagV, get_bit_n!(!(a ^ d) & (d ^ result), 15));
+        if self.a & 0x8000 == (operand as u16 & 0x8000) && self.a & 0x8000 != (result as u16 & 0x8000) {
+            self.set_flag_to_bool(Flag::FlagV, true);
+        }
 
         if self.is_flag_set(Flag::FlagD) && result <= 0xFFFF {
             result -= 0x6000;
         }
 
-        self.set_flag_to_bool(Flag::FlagC, result > 0xFFFF);
+        if result > 0xFFFF {
+            self.set_flag_to_bool(Flag::FlagC, true);
+        }
 
+        if result & 0x8000 != 0 {
+            self.set_flag_to_bool(Flag::FlagN, true);
+        }
+
+        if result & 0xFFFF == 0 {
+            self.set_flag_to_bool(Flag::FlagZ, true);
+        }
+        
         self.a = result as u16;
-
-        set_nz16!(self, self.a);
     }
 
     fn sec(&mut self) {
@@ -1855,6 +1925,8 @@ impl<P: DebugProbe> Cpu65c816<P> {
         self.e = new_e;
 
         if self.e {
+            self.set_flag_to_bool(Flag::FlagX, self.e);
+            self.set_flag_to_bool(Flag::FlagM, self.e);
             self.x &= 0xFF;
             self.y &= 0xFF;
             self.sp = 0x100 | (self.sp & 0xFF);

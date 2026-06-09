@@ -6,7 +6,7 @@ use crate::utils::RandomExt;
 use crate::get_bit_n;
 
 /// Contains all of the shared data (registers, memory, etc.) between the S-CPU and S-PPU.
-#[derive(Default, Debug)]
+#[derive(Default)]
 pub struct PpuRegs {
     pub h_counter: u16,
     pub v_counter: u16,
@@ -316,8 +316,6 @@ impl PpuRegs {
         self.multiply_result = 0x000001;
         self.h_counter_latch = 0x01FF;
         self.v_counter_latch = 0x01FF;
-
-        log::debug!("PpuRegs powered on with random values: {:#?}", self);
     }
 
     pub fn reset(&mut self) {

@@ -176,6 +176,8 @@ impl SnemulatorApp {
 
         if args.no_audio {
             self.settings.audio_enabled = false;
+        } else {
+            self.settings.audio_enabled = true;
         }
 
         #[cfg(feature = "debug")]

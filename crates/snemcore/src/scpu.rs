@@ -244,6 +244,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
         self.write(bus, addr_hi, (value >> 8) as u8);
     }
 
+    // Pop a byte from the stack, wrapping the stack pointer in emulation mode if necessary.
     fn pop(&mut self, bus: &mut CpuBus<P>) -> u8 {
         self.sp += 1;
 
@@ -260,6 +261,30 @@ impl<P: DebugProbe> Cpu65c816<P> {
         )
     }
 
+    // Pop a byte from the stack without wrapping the stack pointer in emulation mode.
+    fn pop_no_wrap(&mut self, bus: &mut CpuBus<P>) -> u8 {
+        self.sp += 1;
+
+        self.read(
+            bus,
+            Address {
+                bank: 0,
+                offset: self.sp,
+            },
+        )
+    }
+
+    // Pop a word from the stack, wrapping the stack pointer in emulation mode if necessary.
+    fn pop_word(&mut self, bus: &mut CpuBus<P>) -> u16 {
+        u16::from_le_bytes([self.pop(bus), self.pop(bus)])
+    }
+
+    // Pop a word from the stack without wrapping the stack pointer in emulation mode.
+    fn pop_word_no_wrap(&mut self, bus: &mut CpuBus<P>) -> u16 {
+        u16::from_le_bytes([self.pop_no_wrap(bus), self.pop_no_wrap(bus)])
+    }
+
+    // Push a byte onto the stack, wrapping the stack pointer in emulation mode if necessary.
     fn push(&mut self, bus: &mut CpuBus<P>, value: u8) {
         self.write(
             bus,
@@ -277,13 +302,30 @@ impl<P: DebugProbe> Cpu65c816<P> {
         }
     }
 
-    fn pop_word(&mut self, bus: &mut CpuBus<P>) -> u16 {
-        u16::from_le_bytes([self.pop(bus), self.pop(bus)])
+    /// Push a byte onto the stack without wrapping the stack pointer in emulation mode.
+    fn push_no_wrap(&mut self, bus: &mut CpuBus<P>, value: u8) {
+        self.write(
+            bus,
+            Address {
+                bank: 0,
+                offset: self.sp,
+            },
+            value,
+        );
+
+        self.sp -= 1;
     }
 
+    // Push a word onto the stack, wrapping the stack pointer in emulation mode if necessary.
     fn push_word(&mut self, bus: &mut CpuBus<P>, value: u16) {
         self.push(bus, (value >> 8) as u8);
         self.push(bus, value as u8);
+    }
+
+    /// Push a word onto the stack without wrapping the stack pointer in emulation mode.
+    fn push_word_no_wrap(&mut self, bus: &mut CpuBus<P>, value: u16) {
+        self.push_no_wrap(bus, (value >> 8) as u8);
+        self.push_no_wrap(bus, value as u8);
     }
 
     pub fn is_flag_set(&self, flag: Flag) -> bool {

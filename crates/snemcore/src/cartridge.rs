@@ -428,7 +428,7 @@ fn find_header(cart_rom: &Vec<u8>) -> Result<usize, String> {
             0 => "LoROM",
             1 => "HiROM",
             5 => "ExHiROM",
-            _ => unreachable!(),
+            _ => &format!("UNKNOWN MAPPING MODE {}", rom_mapping_mode_self_ident),
         };
 
         let err_msg = format!(

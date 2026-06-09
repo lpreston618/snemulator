@@ -2,7 +2,7 @@ import subprocess
 import os
 
 # The base directory to start searching from
-root_folder = "roms/"
+root_folder = "testroms/"
 roms_type = "hirom"
 
 for dirpath, _, filenames in os.walk(root_folder):
@@ -18,5 +18,5 @@ for dirpath, _, filenames in os.walk(root_folder):
 
         if f.endswith(".smc") or f.endswith(".sfc"):
             print(f"Processing: {fpath}")
-            subprocess.run(["python3", "src/tools/fixchecksum.py", fpath, roms_type])
+            subprocess.run(["uv", "run", "./tools/fixchecksum.py", fpath, roms_type])
             print()

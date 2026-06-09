@@ -7,7 +7,8 @@ pub struct Color {
 
 impl Color {
     pub const BLACK: Self = Color { r: 0, g: 0, b: 0 };
-    
+    pub const RED: Self = Color { r: 255, g: 0, b: 0 };
+
     pub fn new(r: u8, g: u8, b: u8) -> Self {
         Color {
             r,
