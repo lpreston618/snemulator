@@ -277,7 +277,11 @@ impl SuperDSP {
         let right_echo_final = right_sample;
 
         let echo_buffer_start = (bus.sdsp_regs.echo_page as usize) << 8;
-        let echo_delay_length = (bus.sdsp_regs.echo_delay_time as usize) << 11;
+        let echo_delay_length = if bus.sdsp_regs.echo_delay_time != 0 {
+            (bus.sdsp_regs.echo_delay_time as usize) << 11
+        } else {
+            4
+        };
 
         // Write four bytes to the echo buffer. Handle nasty wrapping logic.
         if bus.sdsp_regs.echo_en {
@@ -360,12 +364,18 @@ impl SuperDSP {
         (left_echo, right_echo)
     }
 
+    // The same calculation is done for adjusting both echo feedback and echo output volumes,
+    // but with different volume registers. This fujnction carries out that calculation
+    fn echo_volume_adjust(&mut self, sample: i16, volume: i8) -> i16 {
+        (sample * volume as i16) >> 7
+    }
+
     pub fn generate_sample(&mut self, audio_buffer: &mut Vec<i16>, bus: &mut SdspBus) {
         let mut left_sample: i16 = 0;
         let mut right_sample: i16 = 0;
 
-        let mut left_echo: i16 = 0;
-        let mut right_echo: i16 = 0;
+        let mut left_echo_feedback: i16 = 0;
+        let mut right_echo_feedback: i16 = 0;
 
         for voice_idx in 0..8 {
             let (voice_left, voice_right) = self.generate_voice_sample(bus, voice_idx);
@@ -374,8 +384,9 @@ impl SuperDSP {
             right_sample = right_sample.saturating_add(voice_right);
 
             if bus.voice_regs[voice_idx].echo_en {
-                left_echo = left_sample.saturating_add(voice_left);
-                right_echo = right_sample.saturating_add(voice_right);
+                // These are the values that will be fed IN to the echo buffer from this sample
+                left_echo_feedback = left_sample.saturating_add(voice_left);
+                right_echo_feedback = right_sample.saturating_add(voice_right);
             }
         }
 
@@ -385,6 +396,20 @@ impl SuperDSP {
         left_sample = (((left_sample as i32) * l_volume) >> 7) as i16;
         right_sample = (((right_sample as i32) * r_volume) >> 7) as i16;
 
+        let (left_echo_out, right_echo_out) = self.generate_echo_samples(bus);
+
+        // Feed echo back into itself
+        left_echo_feedback = left_echo_feedback.saturating_add(
+            self.echo_volume_adjust(left_echo_out, bus.sdsp_regs.echo_feedback as i8),
+        );
+        right_echo_feedback = right_echo_feedback.saturating_add(
+            self.echo_volume_adjust(right_echo_out, bus.sdsp_regs.echo_feedback as i8),
+        );
+
+        // Add echo to output
+        left_sample = left_sample.saturating_add(left_echo_out);
+        right_sample = right_sample.saturating_add(right_echo_out);
+
         left_sample *= 2;
         right_sample *= 2;
 
@@ -393,7 +418,7 @@ impl SuperDSP {
             right_sample = 0;
         }
 
-        self.push_echo_samples(left_echo, right_echo, bus);
+        self.push_echo_samples(left_echo_feedback, right_echo_feedback, bus);
 
         audio_buffer.push(left_sample);
         audio_buffer.push(right_sample);
