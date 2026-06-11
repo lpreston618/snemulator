@@ -1071,7 +1071,7 @@ impl<P: DebugProbe> Ppu5C7x<P> {
             let cgram_addr = (t.pal_indices >> (8 * (7 - chr_col))) as u8;
 
             ColorData {
-                color: if cgram_addr == 0 { cgram[0] } else { cgram[cgram_addr as usize] },
+                color: cgram[cgram_addr as usize],
                 priority: t.chr_data.chr_priority,
                 transparent: cgram_addr == 0,
             }
@@ -1101,7 +1101,7 @@ impl<P: DebugProbe> Ppu5C7x<P> {
     }
 
     fn apply_cmath(&self, bus: &PpuBus, main_col: Color, sub_col: Color) -> Color {
-        let col_win_en = Self::win_active_signal(self.in_w1, self.in_w1, &bus.ppu_regs.col_settings.window);
+        let col_win_en = Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.col_settings.window);
 
         let main_col = match bus.ppu_regs.col_win_main_region {
             WindowColorRegion::Nowhere => main_col,

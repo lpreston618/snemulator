@@ -204,12 +204,8 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             }
 
             0x2137 => {
-                // When counter_latch transitions from 0 to 1
-                // https://snes.nesdev.org/wiki/PPU_registers#OPVCT
-                if !ppu_regs.counter_toggle {
-                    ppu_regs.h_counter_latch = ppu_regs.h_counter;
-                    ppu_regs.v_counter_latch = ppu_regs.v_counter;
-                }
+                ppu_regs.h_counter_latch = ppu_regs.h_counter;
+                ppu_regs.v_counter_latch = ppu_regs.v_counter;
 
                 ppu_regs.counter_toggle = true;
 
@@ -217,10 +213,12 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             }
 
             0x2138 => {
+                let data = self.oam[ppu_regs.internal_oam_addr as usize];
+                
                 ppu_regs.internal_oam_addr += 1;
                 ppu_regs.internal_oam_addr %= OAM_SIZE as u16;
 
-                self.oam[ppu_regs.internal_oam_addr as usize]
+                data
             }
 
             0x2139 => {
@@ -262,25 +260,30 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             }
 
             0x213B => {
-                let data = self.cgram[ppu_regs.cgram_addr as usize].to_bgr555();
+                let data_word = self.cgram[ppu_regs.cgram_addr as usize].to_bgr555();
 
-                ppu_regs.cgram_toggle = !ppu_regs.cgram_toggle;
-
-                if ppu_regs.cgram_toggle {
-                    get_byte_n!(data, 0)
+                let data = if ppu_regs.cgram_toggle {
+                    get_byte_n!(data_word, 0)
                 } else {
-                    get_byte_n!(data, 1)
-                }
+                    ppu_regs.cgram_addr += 1;
+                    get_byte_n!(data_word, 1)
+                };
+                
+                ppu_regs.cgram_toggle = !ppu_regs.cgram_toggle;
+            
+                data
             }
 
             0x213C => {
-                ppu_regs.h_counter_toggle = !ppu_regs.h_counter_toggle;
-
-                if ppu_regs.h_counter_toggle {
+                let data = if ppu_regs.h_counter_toggle {
                     get_byte_n!(ppu_regs.h_counter_latch, 0)
                 } else {
                     get_byte_n!(ppu_regs.h_counter_latch, 1) // HIGH 7 BITS ARE PPU2 OPEN BUS
-                }
+                };
+                
+                ppu_regs.h_counter_toggle = !ppu_regs.h_counter_toggle;
+            
+                data
             }
 
             0x213D => {
@@ -438,31 +441,23 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
 
             0x2118 => {
                 if ppu_regs.in_fblank || self.cpu_regs.vblank_flag {
-                    set_byte_n!(
-                        self.vram[ppu_regs.get_vram_addr() as usize],
-                        value as u16,
-                        0
-                    );
+                    set_byte_n!(self.vram[ppu_regs.get_vram_addr() as usize], value as u16, 0);
+                    ppu_regs.vram_latch = self.vram[ppu_regs.get_vram_addr() as usize];
                 }
-
-                match ppu_regs.vram_addr_inc_mode {
-                    VramIncMode::LowByte => ppu_regs.inc_vram_addr(),
-                    _ => {}
+                
+                if matches!(ppu_regs.vram_addr_inc_mode, VramIncMode::LowByte) {
+                    ppu_regs.inc_vram_addr();
                 }
             }
 
             0x2119 => {
                 if ppu_regs.in_fblank || self.cpu_regs.vblank_flag {
-                    set_byte_n!(
-                        self.vram[ppu_regs.get_vram_addr() as usize],
-                        value as u16,
-                        1
-                    );
+                    set_byte_n!(self.vram[ppu_regs.get_vram_addr() as usize], value as u16, 1);
+                    ppu_regs.vram_latch = self.vram[ppu_regs.get_vram_addr() as usize];
                 }
-
-                match ppu_regs.vram_addr_inc_mode {
-                    VramIncMode::HighByte => ppu_regs.inc_vram_addr(),
-                    _ => {}
+                
+                if matches!(ppu_regs.vram_addr_inc_mode, VramIncMode::HighByte) {
+                    ppu_regs.inc_vram_addr();
                 }
             }
 
@@ -492,10 +487,6 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             }
 
             0x2122 => {
-                if !self.cpu_regs.vblank_flag && !self.cpu_regs.hblank_flag && !ppu_regs.in_fblank {
-                    return;
-                }
-
                 if !ppu_regs.cgram_toggle {
                     ppu_regs.cgram_latch = value;
                 } else {

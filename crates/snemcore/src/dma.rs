@@ -152,17 +152,7 @@ impl DmaController {
                 self.hdma_active_ch = (self.hdma_active_ch + 1..8)
                     .find(|&ch| self.regs[ch].hdma_en)
                     .unwrap_or(8);
-
-                if self.hdma_active_ch == 8 {
-                    self.hdma_en = false;
-                    self.hdma_pending = false;
-                    *cpu_stopped = false;
-                }
             }
-
-            self.hdma_en = false;
-            *cpu_stopped = false;
-            return;
         }
 
         // No active HDMA channel found
