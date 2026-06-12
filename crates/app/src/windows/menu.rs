@@ -18,36 +18,23 @@ impl MainMenuBar {
                 ui.menu_button("File", |ui| {
                     ui.set_width(120.0);
                     
-                    let ui_en;
-                    
-                    #[cfg(feature = "debug")]
-                    {
-                        ui_en = !app_state.debug_active;
+                    if ui.button("Load Rom").clicked() {
+                        app_action = AppAction::LoadRom;
+                        ui.close();
                     }
-                    #[cfg(not(feature = "debug"))]
-                    {
-                        ui_en = true;
-                    }
-                    
-                    ui.add_enabled_ui(ui_en, |ui| {
-                        if ui.button("Load Rom").clicked() {
-                            app_action = AppAction::LoadRom;
-                            ui.close();
+                    ui.menu_button("Recent ROMs", |ui| {
+                        for path in &app_settings.recent_roms {
+                            let label = path.file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("Unknown");
+                            if ui.button(label).clicked() {
+                                app_action = AppAction::LoadRomFromPath(path.clone());
+                                ui.close();
+                            }
                         }
-                        ui.menu_button("Recent ROMs", |ui| {
-                            for path in &app_settings.recent_roms {
-                                let label = path.file_name()
-                                    .and_then(|n| n.to_str())
-                                    .unwrap_or("Unknown");
-                                if ui.button(label).clicked() {
-                                    app_action = AppAction::LoadRomFromPath(path.clone());
-                                    ui.close();
-                                }
-                            }
-                            if app_settings.recent_roms.is_empty() {
-                                ui.label("No recent ROMs");
-                            }
-                        });
+                        if app_settings.recent_roms.is_empty() {
+                            ui.label("No recent ROMs");
+                        }
                     });
                     
                     ui.separator();
@@ -70,59 +57,29 @@ impl MainMenuBar {
                 ui.menu_button("Emulation", |ui| {
                     ui.set_width(100.0);
                     
-                    let ui_en;
-                    
-                    #[cfg(feature = "debug")]
-                    {
-                        ui_en = !app_state.debug_active;
+                    let pause_text = if app_state.is_paused { "Resume" } else { "Pause" };
+                    if ui.button(pause_text).clicked() {
+                        app_action = AppAction::TogglePause;
+                        ui.close();
                     }
-                    #[cfg(not(feature = "debug"))]
-                    {
-                        ui_en = true;
+                    if ui.button("Reset").clicked() {
+                        app_action = AppAction::ResetCore;
+                        ui.close();
+                    }
+                    if ui.button("Hard Reset").clicked() {
+                        app_action = AppAction::PowerOnCore;
+                        ui.close();
                     }
                     
-                    ui.add_enabled_ui(ui_en, |ui| {
-                        let pause_text = if app_state.is_paused { "Resume" } else { "Pause" };
-                        if ui.button(pause_text).clicked() {
-                            app_action = AppAction::TogglePause;
-                            ui.close();
-                        }
-                        if ui.button("Reset").clicked() {
-                            app_action = AppAction::ResetCore;
-                            ui.close();
-                        }
-                        if ui.button("Hard Reset").clicked() {
-                            app_action = AppAction::PowerOnCore;
-                            ui.close();
-                        }
-                        
-                        ui.separator();
-                        
-                        if ui.button("Save State").clicked() {
-                            app_action = AppAction::SaveState;
-                            ui.close();
-                        }
-                        if ui.button("Load State").clicked() {
-                            app_action = AppAction::LoadState;
-                            ui.close();
-                        }
-                    });
+                    ui.separator();
                     
-                    #[cfg(feature = "debug")]
-                    {
-                        ui.separator();
-                        
-                        if app_state.debug_active {
-                            if ui.button("Stop Debug").clicked() {
-                                app_action = AppAction::CloseDebug;
-                                ui.close();
-                            }
-                        } else {
-                            if ui.button("Debug").clicked() {
-                                app_action = AppAction::OpenDebug;
-                                ui.close();
-                            }
-                        }
+                    if ui.button("Save State").clicked() {
+                        app_action = AppAction::SaveState;
+                        ui.close();
+                    }
+                    if ui.button("Load State").clicked() {
+                        app_action = AppAction::LoadState;
+                        ui.close();
                     }
                 });
                 

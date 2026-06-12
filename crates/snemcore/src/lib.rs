@@ -109,6 +109,8 @@ pub struct Snemulator {
     pub total_cycles: u64,
     pub frame: u64,
 
+    clocks_last_frame: u64,
+
     random_seed: u64,
     rng: StdRng,
 }
@@ -143,6 +145,8 @@ impl Snemulator {
             cart: None,
             total_cycles: 0u64,
             frame: 0u64,
+
+            clocks_last_frame: 0,
 
             random_seed,
             rng: StdRng::seed_from_u64(random_seed),
@@ -233,9 +237,13 @@ impl Snemulator {
     ) {
         self.frame_ready = false;
 
+        self.clocks_last_frame = self.total_cycles;
+
         while !self.frame_ready {
             self.cycle(frame_buffer, audio_buffer);
         }
+
+        log::debug!("Clocks this frame: {}", self.total_cycles - self.clocks_last_frame);
 
         self.frame += 1;
     }

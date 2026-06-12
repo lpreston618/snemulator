@@ -16,7 +16,7 @@ mod types;
 mod utils;
 
 pub const VBLANK_START_SCANLINE: usize = 225;
-const VBLANK_END_SCANLINE_NTSC: usize = 261;
+const VBLANK_END_SCANLINE_NTSC: usize = 262;
 const VISIBLE_SCANLINE_START_DOT: usize = 22;
 pub const HBLANK_START_DOT: usize = 278;
 const SCANLINE_END_DOT: usize = 340;
@@ -1276,7 +1276,7 @@ impl Ppu5C7x {
             self.scanline += 1;
             self.y = self.screen_y();
 
-            if self.scanline > VBLANK_END_SCANLINE_NTSC {
+            if self.scanline == VBLANK_END_SCANLINE_NTSC {
                 self.scanline = 0;
             }
         }
