@@ -472,14 +472,14 @@ impl PpuRegs {
 
     #[allow(non_snake_case)]
     pub fn write_210B(&mut self, value: u8) {
-        self.bg_settings[0].chr_base_addr = ((value as u16) & 0x07) << 12;
-        self.bg_settings[1].chr_base_addr = ((value as u16) & 0x70) << 8;
+        self.bg_settings[0].chr_base_addr = ((value as u16) & 0x0F) << 12;
+        self.bg_settings[1].chr_base_addr = ((value as u16) & 0xF0) << 8;
     }
 
     #[allow(non_snake_case)]
     pub fn write_210C(&mut self, value: u8) {
-        self.bg_settings[2].chr_base_addr = ((value as u16) & 0x07) << 12;
-        self.bg_settings[3].chr_base_addr = ((value as u16) & 0x70) << 8;
+        self.bg_settings[2].chr_base_addr = ((value as u16) & 0x0F) << 12;
+        self.bg_settings[3].chr_base_addr = ((value as u16) & 0xF0) << 8;
     }
 
     #[allow(non_snake_case)]

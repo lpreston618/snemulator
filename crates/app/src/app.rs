@@ -1,8 +1,4 @@
 use crate::SnemulatorArgs;
-#[cfg(feature = "debug")]
-use crate::debug::window::DebugWindow;
-#[cfg(feature = "debug")]
-use crate::debug::debugger::Debugger;
 
 use crate::windows::game::MainWindow;
 use crate::windows::settings::{Settings, SettingsWindow};
@@ -43,11 +39,6 @@ pub enum AppAction {
     LoadState,
     OpenSettings,
     Exit,
-    
-    #[cfg(feature = "debug")]
-    OpenDebug,
-    #[cfg(feature = "debug")]
-    CloseDebug,
 }
 
 pub struct AppState {
@@ -62,9 +53,6 @@ pub struct AppState {
     pub rom_loaded: bool,
     pub fps: f32,
     pub display_fps: usize,
-    
-    #[cfg(feature = "debug")]
-    pub debug_active: bool,
 }
 
 pub struct SnemulatorApp {
@@ -82,13 +70,7 @@ pub struct SnemulatorApp {
     frame_buffer: Box<[u8; FRAME_BUF_SIZE]>,
     audio_buffer: Vec<i16>,
 
-    #[cfg(not(feature = "debug"))]
     snem_core: Snemulator,
-    
-    #[cfg(feature = "debug")]
-    snem_core: Snemulator<Debugger>,
-    #[cfg(feature = "debug")]
-    debug_window: Option<DebugWindow>,
 }
 
 impl SnemulatorApp {
@@ -105,9 +87,6 @@ impl SnemulatorApp {
             rom_loaded: false,
             fps: 0.0,
             display_fps: 0,
-            
-            #[cfg(feature = "debug")]
-            debug_active: false,
         };
 
         let sdl_context = sdl3::init()?;
@@ -126,10 +105,7 @@ impl SnemulatorApp {
         };
         let audio_device = audio_subsystem.open_playback_device(&audio_spec)?;
         let audio_stream = audio_device.open_device_stream(Some(&audio_spec))?;
-        
-        #[cfg(feature = "debug")]
-        let snem_core = Snemulator::with_probe(Debugger::new()?);
-        #[cfg(not(feature = "debug"))]
+
         let snem_core = Snemulator::new();
 
         let mut app = Self {
@@ -148,9 +124,6 @@ impl SnemulatorApp {
             snem_core,
             frame_buffer,
             audio_buffer,
-
-            #[cfg(feature = "debug")]
-            debug_window: None,
         };
 
         app.handle_args(args)?;
@@ -180,12 +153,6 @@ impl SnemulatorApp {
             self.settings.audio_enabled = true;
         }
 
-        #[cfg(feature = "debug")]
-        if args.debug {
-            log::trace!("Debug mode enabled from command line argument");
-            self.show_debug();
-        }
-
         Ok(())
     }
 
@@ -200,11 +167,6 @@ impl SnemulatorApp {
         'running: loop {
             let frame_start = Instant::now();
 
-            #[cfg(feature = "debug")]
-            {
-                self.state.debug_active = self.debug_window.is_some();
-            }
-
             let app_action = self.handle_input();
 
             match app_action {
@@ -214,10 +176,7 @@ impl SnemulatorApp {
                     self.do_action(app_action);
                 }
             }
-            
-            #[cfg(feature = "debug")]
-            self.debug_update_emulator();
-            #[cfg(not(feature = "debug"))]
+
             self.update_emulator();
 
             self.render_audio();
@@ -300,40 +259,13 @@ impl SnemulatorApp {
         }
     }
     
-    #[cfg(feature = "debug")]
-    fn debug_update_emulator(&mut self) {        
-        if let Some(debug_window) = &mut self.debug_window {
-            let app_action = debug_window.update_and_render(
-                &mut self.snem_core,
-                &mut self.state,
-                &mut self.frame_buffer[..],
-                &mut self.audio_buffer,
-            );
-
-            match app_action {
-                AppAction::TogglePause => {
-                    self.toggle_pause();
-                }
-                AppAction::ResetCore => {
-                    self.reset_emulation(false);
-                }
-                AppAction::PowerOnCore => {
-                    self.reset_emulation(true);
-                }
-                _ => {}
-            }
-        } else {
-            self.update_emulator();
-        }
-    }
-    
     fn update_emulator(&mut self) {
         if self.state.rom_loaded && !self.state.is_paused
             && (!self.state.is_minimized || !self.settings.pause_on_minimize)
         {
-            let audio_buf = if self.settings.audio_enabled { Some(&mut self.audio_buffer) } else { None };
+            // let audio_buf = if self.settings.audio_enabled { Some(&mut self.audio_buffer) } else { None };
 
-            self.snem_core.run_frame(Some(&mut self.frame_buffer[..]), audio_buf);
+            self.snem_core.run_frame(&mut self.frame_buffer[..], &mut self.audio_buffer);
         }
     }
 
@@ -389,14 +321,6 @@ impl SnemulatorApp {
                         continue;
                     }
                 }
-
-                #[cfg(feature = "debug")]
-                if let Some(debug_window) = &mut self.debug_window {
-                    if event_win_id == debug_window.id() {
-                        self.handle_debug_window_event(&event, &modifiers);
-                        continue;
-                    }
-                }
             }
 
             // Event is for main window
@@ -409,11 +333,6 @@ impl SnemulatorApp {
                     
                     self.settings.save();
                     self.settings_window = None;
-                    
-                    #[cfg(feature = "debug")]
-                    {
-                        self.debug_window = None;
-                    }
 
                     app_action = AppAction::Exit;
                 }
@@ -456,24 +375,6 @@ impl SnemulatorApp {
         }
     }
 
-    #[cfg(feature = "debug")]
-    fn handle_debug_window_event(&mut self, event: &Event, modifiers: &egui::Modifiers) {
-        match &event {
-            Event::Window {
-                win_event: sdl3::event::WindowEvent::CloseRequested,
-                ..
-            } => {
-                self.debug_window = None;
-            }
-            _ => {
-                self.debug_window
-                    .as_mut()
-                    .unwrap()
-                    .handle_event(event, modifiers);
-            }
-        }
-    }
-
     fn do_action(&mut self, app_action: AppAction) {
         match app_action {
             AppAction::LoadRom => self.load_rom(),
@@ -495,11 +396,6 @@ impl SnemulatorApp {
             AppAction::OpenSettings => self.show_settings(),
             AppAction::ToggleFullscreen => self.toggle_fullscreen(),
             AppAction::TogglePause => self.toggle_pause(),
-            
-            #[cfg(feature = "debug")]
-            AppAction::OpenDebug => self.show_debug(),
-            #[cfg(feature = "debug")]
-            AppAction::CloseDebug => self.debug_window = None,
             
             _ => {}
         }
@@ -718,37 +614,6 @@ impl SnemulatorApp {
         match SettingsWindow::new(&self.video_subsystem) {
             Ok(window) => self.settings_window = Some(window),
             Err(e) => log::error!("Failed to create settings window: {}", e),
-        }
-    }
-
-    #[cfg(feature = "debug")]
-    fn show_debug(&mut self) {
-        if self.debug_window.is_some() {
-            return;
-        }
-
-        if self.snem_core.cart.is_none() {
-            if let Err(e) = self.try_load_rom() {
-                log::error!("Cannot debug without ROM loaded: {}", e);
-                return;
-            }
-        }
-
-        // File dialog closed without selecting a ROM
-        if self.snem_core.cart.is_none() {
-            return;
-        }
-
-        let mapping_mode = self.snem_core.cart.as_ref().unwrap().mapping_mode();
-
-        match DebugWindow::new(&self.video_subsystem, mapping_mode) {
-            Ok(window) => self.debug_window = Some(window),
-            Err(e) => log::error!("Failed to create debug window: {}", e),
-        }
-
-        if self.debug_window.is_some() {
-            self.state.is_paused = true;
-            self.snem_core.init_probe();
         }
     }
 }

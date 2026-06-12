@@ -1,9 +1,6 @@
-use std::marker::PhantomData;
-
-use crate::{probe::DebugProbe, scpu::bus::CpuBus};
+use crate::scpu::bus::CpuBus;
 
 pub mod bus;
-pub mod disassembler;
 mod instructions;
 pub mod ioregs;
 pub mod mult;
@@ -32,7 +29,7 @@ pub enum CpuInterrupt {
     Abort,
 }
 
-pub struct Cpu65c816<P: DebugProbe> {
+pub struct Cpu65c816 {
     // Internal Registers
     pub a: u16,  // Accumulator
     pub x: u16,  // X index
@@ -57,12 +54,10 @@ pub struct Cpu65c816<P: DebugProbe> {
 
     pub branch_taken: bool,
     pub page_crossed: bool,
-
-    _phantom_probe: PhantomData<P>,
 }
 
 // SNES System Functionality
-impl<P: DebugProbe> Cpu65c816<P> {
+impl Cpu65c816 {
     /// Number of system clocks in a single slow cpu cycle (e.g. a typical bus read/write)
     const SLOW_CYCLE_CLOCKS: usize = 8;
     /// Number of system clocks in a single cpu cycle
@@ -94,13 +89,11 @@ impl<P: DebugProbe> Cpu65c816<P> {
             branch_taken: false,
             page_crossed: false,
             stopped: false,
-
-            _phantom_probe: PhantomData {},
         }
     }
 
     /// Sets the CPU to its proper initial state.
-    pub fn power_on(&mut self, bus: &mut CpuBus<P>) {
+    pub fn power_on(&mut self, bus: &mut CpuBus) {
         self.x = 0;
         self.y = 0;
         self.db = 0;
@@ -117,7 +110,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
         self.handle_interrupt(bus, CpuInterrupt::Reset); // TODO: Check this?
     }
 
-    pub fn reset(&mut self, bus: &mut CpuBus<P>) {
+    pub fn reset(&mut self, bus: &mut CpuBus) {
         self.stopped = false;
         self.irq_pending = false;
         self.nmi_pending = false;
@@ -126,7 +119,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
     }
 
     /// Cycles the cpu for a given number of clocks. If the number of clocks is 0 after cycling, the next instructions is executed.
-    pub fn cycle(&mut self, bus: &mut CpuBus<P>) {
+    pub fn cycle(&mut self, bus: &mut CpuBus) {
         if self.nmi_pending {
             self.handle_interrupt(bus, CpuInterrupt::NMI);
             self.nmi_pending = false;
@@ -148,9 +141,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
         self.execute(bus);
     }
 
-    pub fn handle_interrupt(&mut self, bus: &mut CpuBus<P>, interrupt: CpuInterrupt) {
-        bus.probe.on_interrupt(interrupt);
-
+    pub fn handle_interrupt(&mut self, bus: &mut CpuBus, interrupt: CpuInterrupt) {
         match interrupt {
             CpuInterrupt::Reset => {
                 self.e = true;
@@ -209,23 +200,30 @@ impl<P: DebugProbe> Cpu65c816<P> {
 }
 
 // Bus/flag access
-impl<P: DebugProbe> Cpu65c816<P> {
+impl Cpu65c816 {
     /// Read a byte from the bus at a given address. Adds to cpu clocks.
-    fn read(&mut self, bus: &mut CpuBus<P>, addr: Address) -> u8 {
+    fn read(&mut self, bus: &mut CpuBus, addr: Address) -> u8 {
         self.clocks += Self::SLOW_CYCLE_CLOCKS;
         let value = bus.read(addr);
-        bus.probe.on_memory_read(addr.to_u32(), value);
         value
     }
 
     /// Write a byte to the bus at a given address. Adds to cpu clocks.
-    fn write(&mut self, bus: &mut CpuBus<P>, addr: Address, value: u8) {
+    fn write(&mut self, bus: &mut CpuBus, addr: Address, value: u8) {
         self.clocks += Self::SLOW_CYCLE_CLOCKS;
-        bus.probe.on_memory_write(addr.to_u32(), value);
+
+        if addr.offset == 0x2116 {
+            log::debug!("Write to 2116 w/ 0x{:02X} at full PC = ${:02X}{:04X}", value, self.pb, self.pc);
+        }
+
+        if addr.offset == 0x2117 {
+            log::debug!("Write to 2117 w/ 0x{:02X} at full PC = ${:02X}{:04X}", value, self.pb, self.pc);
+        }
+
         bus.write(addr, value);
     }
 
-    fn read_prg(&mut self, bus: &mut CpuBus<P>) -> u8 {
+    fn read_prg(&mut self, bus: &mut CpuBus) -> u8 {
         let pc = self.pc;
         self.pc += 1;
         self.clocks += Self::SLOW_CYCLE_CLOCKS;
@@ -235,17 +233,17 @@ impl<P: DebugProbe> Cpu65c816<P> {
         })
     }
 
-    fn read_word(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address) -> u16 {
+    fn read_word(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) -> u16 {
         u16::from_le_bytes([self.read(bus, addr_lo), self.read(bus, addr_hi)])
     }
 
-    fn write_word(&mut self, bus: &mut CpuBus<P>, addr_lo: Address, addr_hi: Address, value: u16) {
+    fn write_word(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address, value: u16) {
         self.write(bus, addr_lo, value as u8);
         self.write(bus, addr_hi, (value >> 8) as u8);
     }
 
     // Pop a byte from the stack, wrapping the stack pointer in emulation mode if necessary.
-    fn pop(&mut self, bus: &mut CpuBus<P>) -> u8 {
+    fn pop(&mut self, bus: &mut CpuBus) -> u8 {
         self.sp += 1;
 
         if self.e {
@@ -262,7 +260,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
     }
 
     // Pop a byte from the stack without wrapping the stack pointer in emulation mode.
-    fn pop_no_wrap(&mut self, bus: &mut CpuBus<P>) -> u8 {
+    fn pop_no_wrap(&mut self, bus: &mut CpuBus) -> u8 {
         self.sp += 1;
 
         self.read(
@@ -275,17 +273,17 @@ impl<P: DebugProbe> Cpu65c816<P> {
     }
 
     // Pop a word from the stack, wrapping the stack pointer in emulation mode if necessary.
-    fn pop_word(&mut self, bus: &mut CpuBus<P>) -> u16 {
+    fn pop_word(&mut self, bus: &mut CpuBus) -> u16 {
         u16::from_le_bytes([self.pop(bus), self.pop(bus)])
     }
 
     // Pop a word from the stack without wrapping the stack pointer in emulation mode.
-    fn pop_word_no_wrap(&mut self, bus: &mut CpuBus<P>) -> u16 {
+    fn pop_word_no_wrap(&mut self, bus: &mut CpuBus) -> u16 {
         u16::from_le_bytes([self.pop_no_wrap(bus), self.pop_no_wrap(bus)])
     }
 
     // Push a byte onto the stack, wrapping the stack pointer in emulation mode if necessary.
-    fn push(&mut self, bus: &mut CpuBus<P>, value: u8) {
+    fn push(&mut self, bus: &mut CpuBus, value: u8) {
         self.write(
             bus,
             Address {
@@ -303,7 +301,7 @@ impl<P: DebugProbe> Cpu65c816<P> {
     }
 
     /// Push a byte onto the stack without wrapping the stack pointer in emulation mode.
-    fn push_no_wrap(&mut self, bus: &mut CpuBus<P>, value: u8) {
+    fn push_no_wrap(&mut self, bus: &mut CpuBus, value: u8) {
         self.write(
             bus,
             Address {
@@ -317,13 +315,13 @@ impl<P: DebugProbe> Cpu65c816<P> {
     }
 
     // Push a word onto the stack, wrapping the stack pointer in emulation mode if necessary.
-    fn push_word(&mut self, bus: &mut CpuBus<P>, value: u16) {
+    fn push_word(&mut self, bus: &mut CpuBus, value: u16) {
         self.push(bus, (value >> 8) as u8);
         self.push(bus, value as u8);
     }
 
     /// Push a word onto the stack without wrapping the stack pointer in emulation mode.
-    fn push_word_no_wrap(&mut self, bus: &mut CpuBus<P>, value: u16) {
+    fn push_word_no_wrap(&mut self, bus: &mut CpuBus, value: u16) {
         self.push_no_wrap(bus, (value >> 8) as u8);
         self.push_no_wrap(bus, value as u8);
     }

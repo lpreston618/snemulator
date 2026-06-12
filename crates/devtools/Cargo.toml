@@ -7,10 +7,6 @@ edition = "2024"
 name = "speedtest"
 path = "speedtest/main.rs"
 
-[[bin]]
-name = "hyperspeedtest"
-path = "hyperspeedtest/main.rs"
-
 [dependencies]
 indicatif = "0.18.4"
 clap = { version = "4.5", features = ["derive"] }

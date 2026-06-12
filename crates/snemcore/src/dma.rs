@@ -1,5 +1,4 @@
 use crate::get_bit_n;
-use crate::probe::DebugProbe;
 use crate::scpu::Address;
 use crate::scpu::bus::CpuBus;
 
@@ -56,19 +55,28 @@ impl DmaController {
     }
 
     #[allow(non_snake_case)]
-    pub fn write_420B<P: DebugProbe>(&mut self, value: u8, probe: &mut P) {
+    pub fn write_420B(&mut self, value: u8) {
         self.dma_en = value != 0;
         self.dma_active_ch = value.trailing_zeros() as usize;
-                
-        if self.dma_active_ch < 8 {
-            probe.on_dma_start(self.dma_active_ch);
-        }
         
         for i in 0..8 {
             self.regs[i].dma_en = get_bit_n!(value, i);
 
             if self.regs[i].dma_en {
                 self.regs[i].transfer_pattern_step = 0;
+
+                if i == 1 && self.regs[1].hdma_indirect_table_addr.offset == 4 {
+                    log::debug!("DMA started on ch. 1:\n\tDMA En. = {}\n\tHDMA En. = {}\n\tDMA Len. = {}\n\tDir. = {:?}\n\tA-Bus Inc. Mode = {:?}\n\tTransfer Pattern = {}\n\tA-Bus Addr. = ${:06X}\n\tB-Bus Addr. = $0021{:02X}",
+                        self.regs[1].dma_en,
+                        self.regs[1].hdma_en,
+                        self.regs[1].hdma_indirect_table_addr.offset,
+                        self.regs[1].direction,
+                        self.regs[1].inc_mode,
+                        self.regs[1].transfer_pattern as usize,
+                        self.regs[1].a_bus_addr.to_u32(),
+                        self.regs[1].b_bus_addr,
+                    );
+                }
             }
         }
     }
@@ -82,7 +90,7 @@ impl DmaController {
         self.hdma_needs_init = true;
     }
 
-    pub fn do_dma<P: DebugProbe>(&mut self, bus: &mut CpuBus<'_, P>, cpu_stopped: &mut bool) {
+    pub fn do_dma(&mut self, bus: &mut CpuBus, cpu_stopped: &mut bool) {
         let mut dma_ch_regs = &mut self.regs[self.dma_active_ch];
 
         // HDMA indirect table register is same as DMA byte count register
@@ -90,8 +98,6 @@ impl DmaController {
 
         // Channel's DMA transfer complete
         if byte_count == 0 {
-            bus.probe.on_dma_end(self.dma_active_ch);
-            
             dma_ch_regs.dma_en = false;
             self.dma_active_ch += 1;
 
@@ -103,7 +109,6 @@ impl DmaController {
                 if dma_ch_regs.dma_en {
                     // Active channel found
                     if byte_count != 0 {
-                        bus.probe.on_dma_start(self.dma_active_ch);
                         break 'seek_active_channel;
                     }
 
@@ -137,16 +142,17 @@ impl DmaController {
         dma_ch_regs.inc_a_bus_addr();
 
         let value = bus.read(src_addr);
-        bus.write(dst_addr, value);
         
-        bus.probe.on_dma_transfer(self.dma_active_ch, src_addr.to_u32(), dst_addr.to_u32(), value);
+        if dst_addr.offset == 0x2118 && bus.ppu_regs.get_vram_addr() == 0x3D9A {
+            log::debug!("Set VRAM[$3D9A] = {0:02X} via DMA to VDATAL ($2118)", value);
+        }
+
+        bus.write(dst_addr, value);
     }
 
-    pub fn do_hdma<P: DebugProbe>(&mut self, bus: &mut CpuBus<'_, P>, cpu_stopped: &mut bool) {
+    pub fn do_hdma(&mut self, bus: &mut CpuBus, cpu_stopped: &mut bool) {
         // Table entry finished
         if self.regs[self.hdma_active_ch].scanlines_left == 0 {
-            bus.probe.on_hdma_end(self.hdma_active_ch);
-            
             if !self.hdma_load_entry(self.hdma_active_ch, bus) {
                 // Channel exhausted, find next active channel
                 self.hdma_active_ch = (self.hdma_active_ch + 1..8)
@@ -231,14 +237,13 @@ impl DmaController {
         if hdma_ch_regs.hdma_do_transfer {
             let value = bus.read(src_addr);
             bus.write(dst_addr, value);
-            bus.probe.on_hdma_transfer(self.hdma_active_ch, src_addr.to_u32(), dst_addr.to_u32(), value);        
         }
     }
 
     /// Called once per frame before the first hblank of active display.
     /// Resets table pointers and loads the first entry for every HDMA-enabled channel.
     /// Channels whose first entry has scanline_count == 0 are disabled immediately.
-    pub fn hdma_init_channels<P: DebugProbe>(&mut self, bus: &mut CpuBus<'_, P>) {
+    pub fn hdma_init_channels(&mut self, bus: &mut CpuBus) {
         for ch in 0..8 {
             if !self.regs[ch].hdma_en {
                 continue;
@@ -252,8 +257,6 @@ impl DmaController {
                 // Channel had an empty table; already disabled inside hdma_load_entry
                 continue;
             }
-
-            bus.probe.on_hdma_start(ch);
         }
 
         // Set hdma_active_ch to first still-enabled channel
@@ -268,7 +271,7 @@ impl DmaController {
     /// Advances hdma_table_offset past the consumed bytes.
     /// For indirect mode, also reads and stores hdma_indirect_table_addr.
     /// Returns false if scanline_count == 0 (end of table), disabling the channel.
-    pub fn hdma_load_entry<P: DebugProbe>(&mut self, ch: usize, bus: &mut CpuBus<'_, P>) -> bool {
+    pub fn hdma_load_entry(&mut self, ch: usize, bus: &mut CpuBus) -> bool {
         let table_addr = Address {
             bank: self.regs[ch].a_bus_addr.bank,
             offset: self.regs[ch].hdma_table_offset,

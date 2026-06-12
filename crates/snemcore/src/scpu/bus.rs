@@ -2,7 +2,6 @@ use crate::cartridge::Cartridge;
 use crate::controller::{ControllerData, JoypadCmd};
 use crate::dma::DmaController;
 use crate::dma::{AddressIncMode, Direction, TransferPattern};
-use crate::probe::DebugProbe;
 use crate::scpu::ioregs::CpuIoRegs;
 use crate::sppu::color::Color;
 use crate::sppu::regs::PpuRegs;
@@ -29,7 +28,7 @@ impl Address {
     }
 }
 
-pub struct CpuBus<'a, P: DebugProbe> {
+pub struct CpuBus<'a> {
     pub wram: &'a mut [u8; WRAM_SIZE],
     pub vram: &'a mut [u16; VRAM_SIZE],
     pub cgram: &'a mut [Color; CGRAM_SIZE],
@@ -43,11 +42,9 @@ pub struct CpuBus<'a, P: DebugProbe> {
     pub dma: Option<&'a mut DmaController>,
 
     pub controller_data: &'a mut ControllerData,
-
-    pub probe: &'a mut P,
 }
 
-impl<'a, P: DebugProbe> CpuBus<'a, P> {
+impl<'a> CpuBus<'a> {
     pub fn read(&mut self, addr: Address) -> u8 {
         let value = match addr.bank {
             // Banks $00-$3F: LoROM mapping
@@ -224,17 +221,9 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             0x2139 => {
                 let val = get_byte_n!(ppu_regs.vram_latch, 0);
 
-                match ppu_regs.vram_addr_inc_mode {
-                    VramIncMode::LowByte => {
-                        ppu_regs.vram_latch = if ppu_regs.in_fblank || self.cpu_regs.vblank_flag {
-                            self.vram[ppu_regs.get_vram_addr() as usize]
-                        } else {
-                            0
-                        };
-                        ppu_regs.inc_vram_addr();
-                    }
-
-                    _ => {}
+                if matches!(ppu_regs.vram_addr_inc_mode, VramIncMode::LowByte) {
+                    ppu_regs.vram_latch = self.vram[ppu_regs.get_vram_addr() as usize];
+                    ppu_regs.inc_vram_addr();
                 }
 
                 val
@@ -243,17 +232,9 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
             0x213A => {
                 let val = get_byte_n!(ppu_regs.vram_latch, 1);
 
-                match ppu_regs.vram_addr_inc_mode {
-                    VramIncMode::HighByte => {
-                        ppu_regs.vram_latch = if ppu_regs.in_fblank || self.cpu_regs.vblank_flag {
-                            self.vram[ppu_regs.get_vram_addr() as usize]
-                        } else {
-                            0
-                        };
-                        ppu_regs.inc_vram_addr();
-                    }
-
-                    _ => {}
+                if matches!(ppu_regs.vram_addr_inc_mode, VramIncMode::HighByte) {
+                    ppu_regs.vram_latch = self.vram[ppu_regs.get_vram_addr() as usize];
+                    ppu_regs.inc_vram_addr();
                 }
 
                 val
@@ -686,7 +667,7 @@ impl<'a, P: DebugProbe> CpuBus<'a, P> {
 
             0x420B => {
                 if let Some(ref mut dma) = self.dma {
-                    dma.write_420B(value, self.probe);
+                    dma.write_420B(value);
                 }
             }
 

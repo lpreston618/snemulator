@@ -6,7 +6,7 @@ use crate::dma::{
 use crate::scpu::Address;
 
 /// A single DMA/H-DMA channel
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Debug)]
 pub struct DmaRegs {
     // $420B
     pub dma_en: bool,

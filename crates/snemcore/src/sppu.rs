@@ -1,6 +1,3 @@
-use std::marker::PhantomData;
-
-use crate::probe::DebugProbe;
 use crate::scpu::ioregs::HVTimerIRQ;
 use crate::scpu::CpuInterrupt;
 use crate::sppu::bus::PpuBus;
@@ -26,7 +23,7 @@ const SCANLINE_END_DOT: usize = 340;
 
 const TILE_CACHE_SIZE: usize = 1;
 
-pub struct Ppu5C7x<P: DebugProbe> {
+pub struct Ppu5C7x {
     pub dot: usize,
     pub scanline: usize,
     /// x position of the current dot on the screen
@@ -45,11 +42,9 @@ pub struct Ppu5C7x<P: DebugProbe> {
 
     /// Number of master clocks until the next dot
     pub clocks: usize,
-
-    _phantom_probe: PhantomData<P>,
 }
 
-impl<P: DebugProbe> Ppu5C7x<P> {
+impl Ppu5C7x {
     pub fn new() -> Self {
         let mut ppu = Self {
             dot: 0,
@@ -63,7 +58,6 @@ impl<P: DebugProbe> Ppu5C7x<P> {
             scanline_spr_cnt: 0,
             bg_tile_cache: std::array::repeat(TileRowCache::new()),
             clocks: 0,
-            _phantom_probe: PhantomData {},
         };
 
         ppu.x = ppu.screen_x();
@@ -190,8 +184,8 @@ impl<P: DebugProbe> Ppu5C7x<P> {
             let main_pixel_idx = 4 * ((2 * self.y + p) * 512 + (2 * self.x + 0));
             let sub_pixel_idx = 4 * ((2 * self.y + p) * 512 + (2 * self.x + 1));
 
-            Ppu5C7x::<P>::set_pixel(bus.frame_buffer, main_pixel_idx, main_col);
-            Ppu5C7x::<P>::set_pixel(bus.frame_buffer, sub_pixel_idx, sub_col);
+            Ppu5C7x::set_pixel(bus.frame_buffer, main_pixel_idx, main_col);
+            Ppu5C7x::set_pixel(bus.frame_buffer, sub_pixel_idx, sub_col);
         } else if regs.screen_interlace_en {
             let dot_col = if cmath_en {
                 self.apply_cmath(bus, main_col, sub_col)
@@ -203,8 +197,8 @@ impl<P: DebugProbe> Ppu5C7x<P> {
             let left_pixel_idx = 4 * ((2 * self.y + p) * 512 + (2 * self.x + 0));
             let right_pixel_idx = 4 * ((2 * self.y + p) * 512 + (2 * self.x + 1));
 
-            Ppu5C7x::<P>::set_pixel(bus.frame_buffer, left_pixel_idx, dot_col);
-            Ppu5C7x::<P>::set_pixel(bus.frame_buffer, right_pixel_idx, dot_col);
+            Ppu5C7x::set_pixel(bus.frame_buffer, left_pixel_idx, dot_col);
+            Ppu5C7x::set_pixel(bus.frame_buffer, right_pixel_idx, dot_col);
         } else if regs.hi_res_en {
             let main_col = if cmath_en {
                 self.apply_cmath(bus, main_col, regs.fixed_color)
@@ -222,8 +216,8 @@ impl<P: DebugProbe> Ppu5C7x<P> {
             let main_pixel_idx = 4 * ((2 * self.y + p) * 512 + (2 * self.x + 0));
             let sub_pixel_idx = 4 * ((2 * self.y + p) * 512 + (2 * self.x + 1));
 
-            Ppu5C7x::<P>::set_pixel(bus.frame_buffer, main_pixel_idx, main_col);
-            Ppu5C7x::<P>::set_pixel(bus.frame_buffer, sub_pixel_idx, sub_col);
+            Ppu5C7x::set_pixel(bus.frame_buffer, main_pixel_idx, main_col);
+            Ppu5C7x::set_pixel(bus.frame_buffer, sub_pixel_idx, sub_col);
         } else {
             let dot_col = if cmath_en {
                 self.apply_cmath(bus, main_col, sub_col)
@@ -237,10 +231,10 @@ impl<P: DebugProbe> Ppu5C7x<P> {
             let bottom_left_pixel_idx = 4 * ((2 * self.y + 1) * 512 + (2 * self.x + 0));
             let bottom_right_pixel_idx = 4 * ((2 * self.y + 1) * 512 + (2 * self.x + 1));
 
-            Ppu5C7x::<P>::set_pixel(bus.frame_buffer, top_left_pixel_idx, dot_col);
-            Ppu5C7x::<P>::set_pixel(bus.frame_buffer, top_right_pixel_idx, dot_col);
-            Ppu5C7x::<P>::set_pixel(bus.frame_buffer, bottom_left_pixel_idx, dot_col);
-            Ppu5C7x::<P>::set_pixel(bus.frame_buffer, bottom_right_pixel_idx, dot_col);
+            Ppu5C7x::set_pixel(bus.frame_buffer, top_left_pixel_idx, dot_col);
+            Ppu5C7x::set_pixel(bus.frame_buffer, top_right_pixel_idx, dot_col);
+            Ppu5C7x::set_pixel(bus.frame_buffer, bottom_left_pixel_idx, dot_col);
+            Ppu5C7x::set_pixel(bus.frame_buffer, bottom_right_pixel_idx, dot_col);
         }
     }
 
@@ -845,6 +839,7 @@ impl<P: DebugProbe> Ppu5C7x<P> {
             idx
         } else {
             let chr_data = self.fetch_chr_data(bus.ppu_regs, bus.vram, tile_data.clone());
+
             let chr_base = bg_data.chr_base_addr;
 
             let pal_indices = match color_depth {
@@ -1444,98 +1439,5 @@ impl<P: DebugProbe> Ppu5C7x<P> {
 
     fn screen_y(&self) -> usize {
         self.scanline - 1
-    }
-}
-
-impl<P: DebugProbe> Ppu5C7x<P> {
-    pub fn draw_debug_layers(
-        &mut self,
-        bus: &mut PpuBus,
-        bg1_buffer: &mut [u8],
-        bg2_buffer: &mut [u8],
-        bg3_buffer: &mut [u8],
-        bg4_buffer: &mut [u8],
-        obj_buffer: &mut [u8],
-    ) {
-        let (bg1_col_depth, bg2_col_depth, bg3_col_depth, bg4_col_depth) =
-            match bus.ppu_regs.bg_mode {
-                BgMode::Mode0 => (Some(ColorDepth::Bpp2), Some(ColorDepth::Bpp2), Some(ColorDepth::Bpp2), Some(ColorDepth::Bpp2)),
-                BgMode::Mode1 => (Some(ColorDepth::Bpp4), Some(ColorDepth::Bpp4), Some(ColorDepth::Bpp2), None),
-                BgMode::Mode2 => (Some(ColorDepth::Bpp4), Some(ColorDepth::Bpp4), None, None),
-                BgMode::Mode3 |
-                BgMode::Mode4 => (Some(ColorDepth::Bpp8), Some(ColorDepth::Bpp4), None, None),
-                _ => (None, None, None, None),
-            };
-        let (bg1_cgram_addr, bg2_cgram_addr, bg3_cgram_addr, bg4_cgram_addr) =
-            match bus.ppu_regs.bg_mode {
-                BgMode::Mode0 => (Some(0x00), Some(0x20), Some(0x40), Some(0x60)),
-                BgMode::Mode1 => (Some(0x00), Some(0x00), Some(0x00), None),
-                BgMode::Mode2 => (Some(0x00), Some(0x00), None, None),
-                BgMode::Mode3 |
-                BgMode::Mode4 => (Some(0x00), Some(0x00), None, None),
-                _ => (None, None, None, None),
-            };
-
-        let bg1_col = if let (Some(color_depth), Some(bg_cgram_base_addr)) = (bg1_col_depth, bg1_cgram_addr) {
-            self.bg_col(bus, ColorLayer::Bg1, color_depth, bg_cgram_base_addr)
-        } else {
-            self.transparent_color_data(bus)
-        };
-        let bg2_col = if let (Some(color_depth), Some(bg_cgram_base_addr)) = (bg2_col_depth, bg2_cgram_addr) {
-            self.bg_col(bus, ColorLayer::Bg2, color_depth, bg_cgram_base_addr)
-        } else {
-            self.transparent_color_data(bus)
-        };
-        let bg3_col = if let (Some(color_depth), Some(bg_cgram_base_addr)) = (bg3_col_depth, bg3_cgram_addr) {
-            self.bg_col(bus, ColorLayer::Bg3, color_depth, bg_cgram_base_addr)
-        } else {
-            self.transparent_color_data(bus)
-        };
-        let bg4_col = if let (Some(color_depth), Some(bg_cgram_base_addr)) = (bg4_col_depth, bg4_cgram_addr) {
-            self.bg_col(bus, ColorLayer::Bg4, color_depth, bg_cgram_base_addr)
-        } else {
-            self.transparent_color_data(bus)
-        };
-        let obj_col = self.sprite_col(bus);
-
-        let checker_col = if (self.x / 2 + self.y / 2) % 2 == 0 {
-            [0x50, 0x50, 0x50, 255]
-        } else {
-            [0x30, 0x30, 0x30, 255]
-        };
-
-        let bg1_col = if bg1_col.transparent {
-            checker_col
-        } else {
-            [bg1_col.color.r, bg1_col.color.g, bg1_col.color.b, 255]
-        };
-        let bg2_col = if bg2_col.transparent {
-            checker_col
-        } else {
-            [bg2_col.color.r, bg2_col.color.g, bg2_col.color.b, 255]
-        };
-        let bg3_col = if bg3_col.transparent {
-            checker_col
-        } else {
-            [bg3_col.color.r, bg3_col.color.g, bg3_col.color.b, 255]
-        };
-        let bg4_col = if bg4_col.transparent {
-            checker_col
-        } else {
-            [bg4_col.color.r, bg4_col.color.g, bg4_col.color.b, 255]
-        };
-        let obj_col = if obj_col.transparent {
-            checker_col
-        } else {
-            [obj_col.color.r, obj_col.color.g, obj_col.color.b, 255]
-        };
-
-        let pixel_idx = (self.y * 256 + self.x) * 4;
-
-        bg1_buffer[pixel_idx..pixel_idx+4].copy_from_slice(&bg1_col);
-        bg2_buffer[pixel_idx..pixel_idx+4].copy_from_slice(&bg2_col);
-        bg3_buffer[pixel_idx..pixel_idx+4].copy_from_slice(&bg3_col);
-        bg4_buffer[pixel_idx..pixel_idx+4].copy_from_slice(&bg4_col);
-        obj_buffer[pixel_idx..pixel_idx+4].copy_from_slice(&obj_col);
     }
 }

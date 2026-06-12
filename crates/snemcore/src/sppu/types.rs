@@ -170,7 +170,7 @@ pub struct TileData {
     pub tile_size: TileSize,
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Debug)]
 pub struct ChrData {
     pub chr_idx: u16,
     pub chr_row: u8,
