@@ -204,22 +204,12 @@ impl Cpu65c816 {
     /// Read a byte from the bus at a given address. Adds to cpu clocks.
     fn read(&mut self, bus: &mut CpuBus, addr: Address) -> u8 {
         self.clocks += Self::SLOW_CYCLE_CLOCKS;
-        let value = bus.read(addr);
-        value
+        bus.read(addr)
     }
 
     /// Write a byte to the bus at a given address. Adds to cpu clocks.
     fn write(&mut self, bus: &mut CpuBus, addr: Address, value: u8) {
         self.clocks += Self::SLOW_CYCLE_CLOCKS;
-
-        if addr.offset == 0x2116 {
-            log::debug!("Write to 2116 w/ 0x{:02X} at full PC = ${:02X}{:04X}", value, self.pb, self.pc);
-        }
-
-        if addr.offset == 0x2117 {
-            log::debug!("Write to 2117 w/ 0x{:02X} at full PC = ${:02X}{:04X}", value, self.pb, self.pc);
-        }
-
         bus.write(addr, value);
     }
 

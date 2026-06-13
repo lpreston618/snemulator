@@ -1584,7 +1584,7 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagC, get_bit_n!(self.a, 0));
 
         if self.is_flag_set(Flag::FlagM) {
-            set_byte_n!(self.a, (self.a >> 1) | (c << 7), 0);
+            set_byte_n!(self.a, (0x7F & (self.a >> 1)) | (c << 7), 0);
             set_nz8!(self, self.a);
         } else {
             self.a = (self.a >> 1) | (c << 15);

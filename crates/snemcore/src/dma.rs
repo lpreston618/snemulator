@@ -64,19 +64,6 @@ impl DmaController {
 
             if self.regs[i].dma_en {
                 self.regs[i].transfer_pattern_step = 0;
-
-                if i == 1 && self.regs[1].hdma_indirect_table_addr.offset == 4 {
-                    log::debug!("DMA started on ch. 1:\n\tDMA En. = {}\n\tHDMA En. = {}\n\tDMA Len. = {}\n\tDir. = {:?}\n\tA-Bus Inc. Mode = {:?}\n\tTransfer Pattern = {}\n\tA-Bus Addr. = ${:06X}\n\tB-Bus Addr. = $0021{:02X}",
-                        self.regs[1].dma_en,
-                        self.regs[1].hdma_en,
-                        self.regs[1].hdma_indirect_table_addr.offset,
-                        self.regs[1].direction,
-                        self.regs[1].inc_mode,
-                        self.regs[1].transfer_pattern as usize,
-                        self.regs[1].a_bus_addr.to_u32(),
-                        self.regs[1].b_bus_addr,
-                    );
-                }
             }
         }
     }
@@ -142,11 +129,6 @@ impl DmaController {
         dma_ch_regs.inc_a_bus_addr();
 
         let value = bus.read(src_addr);
-        
-        if dst_addr.offset == 0x2118 && bus.ppu_regs.get_vram_addr() == 0x3D9A {
-            log::debug!("Set VRAM[$3D9A] = {0:02X} via DMA to VDATAL ($2118)", value);
-        }
-
         bus.write(dst_addr, value);
     }
 

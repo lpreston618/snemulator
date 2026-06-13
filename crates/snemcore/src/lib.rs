@@ -243,8 +243,6 @@ impl Snemulator {
             self.cycle(frame_buffer, audio_buffer);
         }
 
-        log::debug!("Clocks this frame: {}", self.total_cycles - self.clocks_last_frame);
-
         self.frame += 1;
     }
 
