@@ -1,7 +1,8 @@
 use crate::scpu::bus::CpuBus;
 
-pub mod bus;
 mod instructions;
+mod tests;
+pub mod bus;
 pub mod ioregs;
 pub mod mult;
 
@@ -148,6 +149,8 @@ impl Cpu65c816 {
                 self.set_flag_to_bool(Flag::FlagM, true);
                 self.set_flag_to_bool(Flag::FlagX, true);
                 self.sp = 0x100 | (self.sp & 0xFF);
+                self.db = 0;
+                self.dp = 0;
             }
             CpuInterrupt::BRK => {
                 // panic!("BRK");

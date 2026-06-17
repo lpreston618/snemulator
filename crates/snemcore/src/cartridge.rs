@@ -53,6 +53,44 @@ impl Cartridge {
         self.mapping_mode
     }
 
+    pub fn test_blank(title_str: &str, mapping_mode: MappingMode, reset_vec: u16) -> Self {
+        const ROM_SIZE: usize = 0x10000;
+
+        let title_str = title_str[..title_str.len().min(0x15)].to_string();
+
+        let mut title = [0; 0x15];
+        title[..title_str.len()].copy_from_slice(title_str.as_bytes());
+
+        let mut cart = Self {
+            rom: vec![0; ROM_SIZE],
+            ram: Vec::new(),
+
+            title,
+
+            fast_rom: false,
+            mapping_mode,
+
+            extra_ram: false,
+            battery: false,
+            coprocessor: false,
+            coprocessor_id: 0,
+
+            rom_size_shift: (ROM_SIZE / 1024).trailing_zeros() as u8,
+            ram_size_shift: 0,
+
+            ram_size: 0,
+
+            is_ntsc: true,
+
+            interrupt_vectors: [0; 32],
+        };
+
+        cart.force_write(Address::from_u32(0x00FFFC), reset_vec as u8);
+        cart.force_write(Address::from_u32(0x00FFFD), (reset_vec >> 8) as u8);
+
+        cart
+    }
+
     /// Read in a cartridge from the given spc or sfc rom
     pub fn from_rom(mut cart_rom: Vec<u8>) -> Result<Cartridge, String> {
         // Ignore optional 512 byte header
