@@ -246,7 +246,8 @@ pub struct PpuRegs {
 
 impl PpuRegs {
     pub fn power_on(&mut self, rng: &mut StdRng) {
-        self.write_2100(0x80 | rng.rand_byte() & 0x0F);
+        self.screen_brightness = rng.rand_byte() & 0x0F;
+        self.in_fblank = true;
         self.write_2101(rng.rand_byte());
         self.write_2102(rng.rand_byte());
         self.write_2103(rng.rand_byte());
@@ -319,15 +320,8 @@ impl PpuRegs {
     }
 
     pub fn reset(&mut self) {
-        let byte_2100 = self.screen_brightness;
-
-        self.write_2100(0x80 | byte_2100);
+        self.in_fblank = true;
         self.write_2133(0);
-    }
-
-    pub fn write_2100(&mut self, value: u8) {
-        self.in_fblank = get_bit_n!(value, 7);
-        self.screen_brightness = value & 0x0F;
     }
 
     pub fn write_2101(&mut self, value: u8) {

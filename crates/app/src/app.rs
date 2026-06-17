@@ -1,5 +1,10 @@
 use crate::SnemulatorArgs;
 
+#[cfg(feature = "debug")]
+use crate::debug::harness::MainDebugHarness;
+#[cfg(not(feature="debug"))]
+use snemcore::debug::NullHarness;
+
 use crate::windows::game::MainWindow;
 use crate::windows::settings::{Settings, SettingsWindow};
 use anyhow::{anyhow, Result};
@@ -20,12 +25,21 @@ pub const FRAME_BUF_SIZE: usize = (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize;
 pub const WINDOW_WIDTH: u32 = 640;
 pub const WINDOW_HEIGHT: u32 = 480;
 
-// const TARGET_FPS: u32 = 60;
 const PREV_FPS_BUFFER_LEN: usize = FRAMES_PER_SECOND as usize * 1;
 const FRAMES_BEFORE_HIDE_MENU: u64 = (3.0 * FRAMES_PER_SECOND) as u64;
 const FRAMES_BEFORE_HIDE_MOUSE: u64 = (3.0 * FRAMES_PER_SECOND) as u64;
 const FRAMES_BETWEEN_DISPLAY_FPS_UPDATE: u64 = (1.0 * FRAMES_PER_SECOND) as u64;
 const AUDIO_SAMPLES_PER_FRAME: usize = 2 * AUDIO_SAMPLE_HZ / FRAMES_PER_SECOND as usize;
+
+#[cfg(feature = "debug")]
+fn create_harness() -> MainDebugHarness {
+    MainDebugHarness::new()
+}
+
+#[cfg(not(feature = "debug"))]
+fn create_harness() -> NullHarness {
+    NullHarness
+}
 
 pub enum AppAction {
     Continue,
@@ -71,6 +85,11 @@ pub struct SnemulatorApp {
     audio_buffer: Vec<i16>,
 
     snem_core: Snemulator,
+
+    #[cfg(feature = "debug")]
+    debug_harness: MainDebugHarness,
+    #[cfg(not(feature = "debug"))]
+    debug_harness: NullHarness,
 }
 
 impl SnemulatorApp {
@@ -107,6 +126,7 @@ impl SnemulatorApp {
         let audio_stream = audio_device.open_device_stream(Some(&audio_spec))?;
 
         let snem_core = Snemulator::new();
+        let debug_harness = create_harness();
 
         let mut app = Self {
             sdl_context,
@@ -124,6 +144,8 @@ impl SnemulatorApp {
             snem_core,
             frame_buffer,
             audio_buffer,
+
+            debug_harness,
         };
 
         app.handle_args(args)?;
@@ -140,7 +162,7 @@ impl SnemulatorApp {
 
         if let Some(rom_path) = args.rom {
             log::trace!("Loading ROM from command line argument: '{}'", rom_path);
-            self.try_load_rom_from_path(rom_path.into())?;
+            self.try_load_rom_from_path(&rom_path.into())?;
         }
 
         if args.start_paused && !self.state.is_paused {
@@ -260,12 +282,12 @@ impl SnemulatorApp {
     }
     
     fn update_emulator(&mut self) {
-        if self.state.rom_loaded && !self.state.is_paused
+        if self.state.rom_loaded && !self.state.is_paused && self.settings_window.is_none()
             && (!self.state.is_minimized || !self.settings.pause_on_minimize)
         {
             // let audio_buf = if self.settings.audio_enabled { Some(&mut self.audio_buffer) } else { None };
 
-            self.snem_core.run_frame(&mut self.frame_buffer[..], &mut self.audio_buffer);
+            self.snem_core.run_frame(&mut self.frame_buffer[..], &mut self.audio_buffer, &mut self.debug_harness);
         }
     }
 
@@ -302,19 +324,7 @@ impl SnemulatorApp {
 
         for event in event_pump.poll_iter() {
             // Route events to windows
-            let event_window_id = match &event {
-                Event::Window { window_id, .. } => Some(*window_id),
-                Event::MouseMotion { window_id, .. } => Some(*window_id),
-                Event::MouseWheel { window_id, .. } => Some(*window_id),
-                Event::MouseButtonDown { window_id, .. } => Some(*window_id),
-                Event::MouseButtonUp { window_id, .. } => Some(*window_id),
-                Event::KeyDown { window_id, .. } => Some(*window_id),
-                Event::KeyUp { window_id, .. } => Some(*window_id),
-                Event::TextInput { window_id, .. } => Some(*window_id),
-                _ => None,
-            };
-
-            if let Some(event_win_id) = event_window_id {
+            if let Some(event_win_id) = event.get_window_id() {
                 if let Some(settings_window) = &mut self.settings_window {
                     if event_win_id == settings_window.id() {
                         self.handle_settings_window_event(&event, &modifiers);
@@ -379,7 +389,9 @@ impl SnemulatorApp {
         match app_action {
             AppAction::LoadRom => self.load_rom(),
             AppAction::LoadRomFromPath(path) => {
-                if let Err(_) = self.try_load_rom_from_path(path.clone()) {
+                if let Err(_) = self.try_load_rom_from_path(&path) {
+                    self.settings.remove_recent_rom(&path);
+                    
                     let file_name = path
                         .to_str()
                         .ok_or_else(|| anyhow!("Invalid file name"))
@@ -449,7 +461,7 @@ impl SnemulatorApp {
                 self.snem_core
                     .set_button(ControllerPlayer::Player1, JoypadButton::Start, true)
             }
-            Keycode::Backspace => {
+            Keycode::RShift => {
                 self.snem_core
                     .set_button(ControllerPlayer::Player1, JoypadButton::Select, true)
             }
@@ -490,7 +502,7 @@ impl SnemulatorApp {
                 self.snem_core
                     .set_button(ControllerPlayer::Player1, JoypadButton::Start, false)
             }
-            Keycode::Backspace => {
+            Keycode::RShift => {
                 self.snem_core
                     .set_button(ControllerPlayer::Player1, JoypadButton::Select, false)
             }
@@ -527,7 +539,7 @@ impl SnemulatorApp {
 
             log::info!("Trying to load rom '{}'", file_name);
 
-            self.try_load_rom_from_path(romfile)?;
+            self.try_load_rom_from_path(&romfile)?;
 
             log::info!("Loaded rom '{file_name}'");
         }
@@ -535,12 +547,12 @@ impl SnemulatorApp {
         Ok(())
     }
 
-    fn try_load_rom_from_path(&mut self, path: PathBuf) -> Result<()> {
+    fn try_load_rom_from_path(&mut self, path: &PathBuf) -> Result<()> {
         let data = std::fs::read(&path)?;
 
-        self.snem_core.load_rom(data)?;
+        self.snem_core.load_rom(data, &mut self.debug_harness)?;
 
-        self.settings.push_recent_rom(path.clone());
+        self.settings.push_recent_rom(path);
         self.settings.save();
 
         self.audio_buffer.extend([0; AUDIO_SAMPLES_PER_FRAME]);
@@ -576,11 +588,11 @@ impl SnemulatorApp {
         if hard_reset {
             log::info!("Reset core to power-on state");
 
-            self.snem_core.power_on();
+            self.snem_core.power_on(&mut self.debug_harness);
         } else {
             log::info!("Soft reset core");
 
-            self.snem_core.reset();
+            self.snem_core.reset(&mut self.debug_harness);
         }
     }
 

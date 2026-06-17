@@ -1,3 +1,4 @@
+use crate::debug::DebugHarness;
 use crate::ssmp::ioports::ApuIoPorts;
 use crate::ssmp::sdsp::regs::SdspRegs;
 use crate::ssmp::sdsp::voices::VoiceRegs;
@@ -8,7 +9,7 @@ use crate::ssmp::{FAST_TIMER_CLOCK_PERIOD, SLOW_TIMER_CLOCK_PERIOD};
 use crate::sysinfo::ARAM_SIZE;
 use crate::{get_bit_n, get_byte_n, set_byte_n};
 
-pub struct SpcBus<'a> {
+pub struct SpcBus<'a, H: DebugHarness> {
     pub aram: &'a mut [u8; ARAM_SIZE],
     pub spc_regs: &'a mut SpcIoRegs,
     pub sdsp_regs: &'a mut SdspRegs,
@@ -17,9 +18,11 @@ pub struct SpcBus<'a> {
     pub timer2: &'a mut Timer<FAST_TIMER_CLOCK_PERIOD>,
     pub voice_regs: &'a mut [VoiceRegs; 8],
     pub apuio_regs: &'a mut ApuIoPorts,
+
+    pub harness: &'a mut H,
 }
 
-impl<'a> SpcBus<'a> {
+impl<'a, H: DebugHarness> SpcBus<'a, H> {
     pub fn read(&mut self, addr: u16) -> u8 {
         match addr {
             0x00F0..=0x00FF => self.read_spcio_regs(addr as u8),

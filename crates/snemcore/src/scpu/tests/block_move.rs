@@ -13,7 +13,9 @@
 //!   - Input state
 //!   - Expected output
 
-use crate::scpu::*;
+#![allow(unused_imports)]
+
+use crate::{debug::NullHarness, scpu::*};
 use super::common::*;
 
 /// Test 37: MVN — Block move (source/destination bank addressing)
@@ -39,9 +41,10 @@ use super::common::*;
 ///                  PC=0x8003, MEM[7E:2000]=0xA5
 #[test]
 fn test_mvn_block_move_single_byte() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x54, 0x7E, 0x7F]);
         write_ram(&mut cpu, &mut bus, addr(0x7F, 0x1000), &[0xA5]);
@@ -54,7 +57,7 @@ fn test_mvn_block_move_single_byte() {
     cpu.db = 0x00;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a, 0xFFFF, "A must wrap to 0xFFFF after final byte");
@@ -62,7 +65,7 @@ fn test_mvn_block_move_single_byte() {
     assert_eq!(cpu.y, 0x2001, "Y must be incremented");
     assert_eq!(cpu.db, 0x7E, "DBR must be set to destination bank");
     assert_eq!(cpu.pc, 0x8003, "PC advances past MVN once A wraps");
-    let mut bus = backing.bus();
+    let mut bus = backing.bus(&mut harness);
     assert_eq!(
         cpu.read(&mut bus, addr(0x7E, 0x2000)),
         0xA5,
@@ -87,9 +90,10 @@ fn test_mvn_block_move_single_byte() {
 ///        After call 3: PC=0x8003 (advanced)
 #[test]
 fn test_mvn_block_move_multi_byte_steps() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x54, 0x7E, 0x7F]);
         write_ram(&mut cpu, &mut bus, addr(0x7F, 0x1000), &[0x11, 0x22, 0x33]);
@@ -104,7 +108,7 @@ fn test_mvn_block_move_multi_byte_steps() {
 
     // Step 1
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.pc, 0x8000, "After step 1 PC should remain on MVN opcode");
@@ -114,7 +118,7 @@ fn test_mvn_block_move_multi_byte_steps() {
 
     // Step 2
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.pc, 0x8000, "After step 2 PC should remain on MVN opcode");
@@ -124,7 +128,7 @@ fn test_mvn_block_move_multi_byte_steps() {
 
     // Step 3 (final — A wraps to 0xFFFF, PC advances)
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.pc, 0x8003, "After final step PC must advance past MVN");
@@ -133,7 +137,7 @@ fn test_mvn_block_move_multi_byte_steps() {
     assert_eq!(cpu.y, 0x2003);
     assert_eq!(cpu.db, 0x7E);
 
-    let mut bus = backing.bus();
+    let mut bus = backing.bus(&mut harness);
     assert_eq!(cpu.read(&mut bus, addr(0x7E, 0x2000)), 0x11);
     assert_eq!(cpu.read(&mut bus, addr(0x7E, 0x2001)), 0x22);
     assert_eq!(cpu.read(&mut bus, addr(0x7E, 0x2002)), 0x33);

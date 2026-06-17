@@ -1,10 +1,15 @@
+#![allow(dead_code, static_mut_refs)]
+
 // ---------------------------------------------------------------------------
 // Test harness helpers
 // ---------------------------------------------------------------------------
 
-use crate::{cartridge::{Cartridge, MappingMode}, controller::ControllerData, scpu::ioregs::CpuIoRegs, sppu::{Color, regs::PpuRegs}, ssmp::ioports::ApuIoPorts, sysinfo::{CGRAM_SIZE, OAM_SIZE, VRAM_SIZE, WRAM_SIZE}};
+use crate::{cartridge::{Cartridge, MappingMode}, controller::ControllerData, debug::NullHarness, scpu::ioregs::CpuIoRegs, sppu::{Color, regs::PpuRegs}, ssmp::ioports::ApuIoPorts, sysinfo::{CGRAM_SIZE, OAM_SIZE, VRAM_SIZE, WRAM_SIZE}};
 
 use crate::scpu::*;
+
+static mut _FAKE_FBLANK_START_FLAG: bool = false;
+static mut _FAKE_FBLANK_END_FLAG: bool = false;
 
 /// Build a fresh CPU and a backing-store struct containing all the buffers
 /// needed to construct a `CpuBus`. The reset vector is baked into the
@@ -41,7 +46,7 @@ impl TestBacking {
         }
     }
 
-    pub(super) fn bus(&mut self) -> CpuBus<'_> {
+    pub(super) fn bus<'a>(&'a mut self, harness: &'a mut NullHarness) -> CpuBus<'a, NullHarness> {
         CpuBus {
             wram: &mut self.wram,
             vram: &mut self.vram,
@@ -53,13 +58,17 @@ impl TestBacking {
             cart: &mut self.cart,
             dma: None,
             controller_data: &mut self.controller_data,
+            harness,
+            // SAFETY: Values are never read or accessed by NullProbe
+            fblank_start: unsafe { &mut _FAKE_FBLANK_START_FLAG },
+            fblank_end: unsafe { &mut _FAKE_FBLANK_END_FLAG },
         }
     }
 }
 
 /// Write a sequence of bytes into cartridge ROM using the force_write helper.
 /// Used for opcode/operand setup since `read_prg` fetches from cartridge.
-pub(super) fn write_rom(bus: &mut CpuBus, mut addr: Address, bytes: &[u8]) {
+pub(super) fn write_rom(bus: &mut CpuBus<NullHarness>, mut addr: Address, bytes: &[u8]) {
     for &b in bytes {
         bus.cart.force_write(addr, b);
         addr.offset = addr.offset.wrapping_add(1);
@@ -69,7 +78,7 @@ pub(super) fn write_rom(bus: &mut CpuBus, mut addr: Address, bytes: &[u8]) {
 /// Write a sequence of bytes into RAM/MMIO via the CPU's bus path.
 /// Used for data targets (WRAM, MMIO regions). Resets clocks afterward
 /// so per-test timing assertions start from a clean baseline.
-pub(super) fn write_ram(cpu: &mut Cpu65c816, bus: &mut CpuBus, mut addr: Address, bytes: &[u8]) {
+pub(super) fn write_ram<H: DebugHarness>(cpu: &mut Cpu65c816, bus: &mut CpuBus<H>, mut addr: Address, bytes: &[u8]) {
     for &b in bytes {
         cpu.write(bus, addr, b);
         addr.offset = addr.offset.wrapping_add(1);

@@ -1,3 +1,4 @@
+use crate::debug::DebugHarness;
 use crate::scpu::bus::{Address, CpuBus};
 use crate::scpu::{Cpu65c816, CpuInterrupt, Flag};
 use crate::{get_bit_n, set_byte_n};
@@ -201,20 +202,27 @@ impl Cpu65c816 {
     /// Some instructions take extra cycles beyond what is spent reading/writing memory.
     /// This is a lookup for the extra cycles needed for each opcode.
     const EXTRA_CYCLES_LOOKUP: [u8; 256] = [
-        1, 2, 0, 1, 2, 1, 2, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 2, 1, 2, 2, 2, 3, 1, 1, 1, 1, 1, 1, 1,
-        2, 0, 1, 2, 2, 1, 1, 1, 2, 1, 2, 0, 1, 2, 0, 0, 1, 1, 0, 2, 1, 2, 2, 2, 3, 1, 1, 1, 1, 1,
-        1, 1, 2, 0, 2, 2, 0, 1, 2, 1, 2, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0, 2, 1, 2, 2, 2, 3, 1, 1, 1,
-        1, 1, 1, 1, 2, 0, 4, 2, 1, 1, 1, 1, 2, 1, 2, 0, 1, 3, 0, 0, 1, 1, 0, 2, 1, 2, 2, 2, 3, 1,
-        1, 1, 2, 1, 1, 1, 2, 0, 0, 2, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 2, 1, 2, 2, 2,
-        2, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 2, 0, 1, 1, 1, 1, 1, 1, 0, 1, 2, 0, 0, 0, 1, 0, 2, 1, 2,
-        2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 2, 1, 1, 1, 1, 2, 1, 1, 0, 1, 2, 0, 0, 1, 1, 0, 2,
-        1, 2, 1, 2, 3, 1, 1, 1, 1, 2, 0, 1, 2, 0, 0, 2, 1, 1, 1, 1, 2, 1, 1, 0, 1, 2, 0, 0, 1, 1,
+        1, 2, 0, 1, 2, 1, 2, 1, 1, 0, 1, 1, 1, 0, 1, 1,
+        0, 2, 1, 2, 2, 2, 3, 1, 1, 1, 1, 1, 1, 1, 2, 0,
+        1, 2, 2, 1, 1, 1, 2, 1, 2, 0, 1, 2, 0, 0, 1, 1,
+        0, 2, 1, 2, 2, 2, 3, 1, 1, 1, 1, 1, 1, 1, 2, 0,
+        2, 2, 0, 1, 2, 1, 2, 1, 1, 0, 1, 1, 0, 0, 1, 1,
+        0, 2, 1, 2, 2, 2, 3, 1, 1, 1, 1, 1, 1, 1, 2, 0,
+        4, 2, 1, 1, 1, 1, 2, 1, 2, 0, 1, 3, 0, 0, 1, 1,
+        0, 2, 1, 2, 2, 2, 3, 1, 1, 1, 2, 1, 1, 1, 2, 0,
+        0, 2, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 1,
+        0, 2, 1, 2, 2, 2, 2, 1, 1, 1, 1, 1, 0, 1, 1, 0,
+        0, 2, 0, 1, 1, 1, 1, 1, 1, 0, 1, 2, 0, 0, 0, 1,
+        0, 2, 1, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 0,
+        0, 2, 1, 1, 1, 1, 2, 1, 1, 0, 1, 2, 0, 0, 1, 1,
+        0, 2, 1, 2, 1, 2, 3, 1, 1, 1, 1, 2, 0, 1, 2, 0,
+        0, 2, 1, 1, 1, 1, 2, 1, 1, 0, 1, 2, 0, 0, 1, 1,
         0, 2, 1, 2, 0, 2, 3, 1, 1, 1, 2, 1, 1, 1, 2, 0,
     ];
 
     /// Fetch, decode, and execute a single instruction. The number of system clocks taken
     /// to complete the instruction is added to the CPU's internal clock counter.
-    pub fn execute(&mut self, bus: &mut CpuBus) {
+    pub fn execute<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         let opcode = self.read_prg(bus);
 
         self.branch_taken = false;
@@ -504,7 +512,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn absolute(&mut self, bus: &mut CpuBus) -> Address {
+    fn absolute<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         let lo = self.read_prg(bus);
         let hi = self.read_prg(bus);
 
@@ -514,21 +522,21 @@ impl Cpu65c816 {
         }
     }
 
-    fn absolute_x(&mut self, bus: &mut CpuBus) -> Address {
+    fn absolute_x<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         let lo = self.read_prg(bus);
         let hi = self.read_prg(bus);
 
         Address::from_u32(u32::from_le_bytes([lo, hi, self.db, 0]) + self.x as u32)
     }
 
-    fn absolute_y(&mut self, bus: &mut CpuBus) -> Address {
+    fn absolute_y<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         let lo = self.read_prg(bus);
         let hi = self.read_prg(bus);
 
         Address::from_u32(u32::from_le_bytes([lo, hi, self.db, 0]) + self.y as u32)
     }
 
-    fn absolute_indirect(&mut self, bus: &mut CpuBus) -> Address {
+    fn absolute_indirect<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         let ll = self.read_prg(bus);
         let hh = self.read_prg(bus);
 
@@ -556,7 +564,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn absolute_x_indirect(&mut self, bus: &mut CpuBus) -> Address {
+    fn absolute_x_indirect<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         let ll = self.read_prg(bus);
         let hh = self.read_prg(bus);
 
@@ -584,14 +592,14 @@ impl Cpu65c816 {
         }
     }
 
-    fn direct(&mut self, bus: &mut CpuBus) -> Address {
+    fn direct<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         Address {
             bank: 0,
             offset: self.dp + self.read_prg(bus) as u16,
         }
     }
 
-    fn direct_x(&mut self, bus: &mut CpuBus) -> Address {
+    fn direct_x<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         let data = self.read_prg(bus);
 
         let offset = if self.e && (self.dp & 0xFF) == 0 {
@@ -603,7 +611,7 @@ impl Cpu65c816 {
         Address { bank: 0, offset }
     }
 
-    fn direct_y(&mut self, bus: &mut CpuBus) -> Address {
+    fn direct_y<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         let data = self.read_prg(bus);
 
         let offset = if self.e && (self.dp & 0xFF) == 0 {
@@ -615,7 +623,7 @@ impl Cpu65c816 {
         Address { bank: 0, offset }
     }
 
-    fn direct_indirect(&mut self, bus: &mut CpuBus) -> Address {
+    fn direct_indirect<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         let data = self.read_prg(bus);
 
         let ptr_lo = self.dp + data as u16;
@@ -646,7 +654,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn direct_indirect_long(&mut self, bus: &mut CpuBus) -> Address {
+    fn direct_indirect_long<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         let data = self.read_prg(bus);
 
         let ptr_lo = self.dp + data as u16;
@@ -681,7 +689,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn direct_x_indirect(&mut self, bus: &mut CpuBus) -> Address {
+    fn direct_x_indirect<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         let data = self.read_prg(bus);
 
         let ptr_lo = if self.e && (self.dp & 0xFF) == 0 {
@@ -718,15 +726,15 @@ impl Cpu65c816 {
         addr
     }
 
-    fn direct_indirect_y(&mut self, bus: &mut CpuBus) -> Address {
+    fn direct_indirect_y<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         Address::from_u32(self.direct_indirect(bus).to_u32() + self.y as u32)
     }
 
-    fn direct_indirect_long_y(&mut self, bus: &mut CpuBus) -> Address {
+    fn direct_indirect_long_y<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         Address::from_u32(self.direct_indirect_long(bus).to_u32() + self.y as u32)
     }
 
-    fn long(&mut self, bus: &mut CpuBus) -> Address {
+    fn long<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         let lo = self.read_prg(bus);
         let mi = self.read_prg(bus);
         let hi = self.read_prg(bus);
@@ -737,11 +745,11 @@ impl Cpu65c816 {
         }
     }
 
-    fn long_x(&mut self, bus: &mut CpuBus) -> Address {
+    fn long_x<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         Address::from_u32(self.long(bus).to_u32() + self.x as u32)
     }
 
-    fn long_indirect(&mut self, bus: &mut CpuBus) -> Address {
+    fn long_indirect<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         let ll = self.read_prg(bus);
         let hh = self.read_prg(bus);
 
@@ -777,7 +785,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn relative(&mut self, bus: &mut CpuBus) -> Address {
+    fn relative<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         let rel_offset = ((self.read_prg(bus) as i8) as i16) as u16; // sign extend u8 to u16
         let offset = self.pc + rel_offset;
 
@@ -787,7 +795,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn relative_long(&mut self, bus: &mut CpuBus) -> Address {
+    fn relative_long<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         let lo = self.read_prg(bus);
         let hi = self.read_prg(bus);
         let rel_offset = u16::from_le_bytes([lo, hi]);
@@ -799,28 +807,28 @@ impl Cpu65c816 {
         }
     }
 
-    fn source(&mut self, bus: &mut CpuBus) -> Address {
+    fn source<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         Address {
             bank: self.read_prg(bus),
             offset: self.x,
         }
     }
 
-    fn destination(&mut self, bus: &mut CpuBus) -> Address {
+    fn destination<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         Address {
             bank: self.read_prg(bus),
             offset: self.y,
         }
     }
 
-    fn stack_relative(&mut self, bus: &mut CpuBus) -> Address {
+    fn stack_relative<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         Address {
             bank: 0,
             offset: self.sp + self.read_prg(bus) as u16,
         }
     }
 
-    fn stack_relative_indirect_y(&mut self, bus: &mut CpuBus) -> Address {
+    fn stack_relative_indirect_y<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
         let ptr_lo = self.sp + self.read_prg(bus) as u16;
         let ptr_hi = ptr_lo + 1;
 
@@ -845,7 +853,7 @@ impl Cpu65c816 {
 
 // Instructions
 impl Cpu65c816 {
-    fn adc_m8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn adc_m8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         let operand = self.read(bus, addr);
         let mut carry = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
 
@@ -888,7 +896,7 @@ impl Cpu65c816 {
         set_byte_n!(self.a, result & 0xFF, 0);
     }
 
-    fn adc_m16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn adc_m16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         let operand = self.read_word(bus, addr_lo, addr_hi) as u32;
         let carry = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
 
@@ -957,12 +965,12 @@ impl Cpu65c816 {
         self.a = result as u16;
     }
 
-    fn and_m8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn and_m8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         set_byte_n!(self.a, self.a & self.read(bus, addr) as u16, 0);
         set_nz8!(self, self.a);
     }
 
-    fn and_m16(&mut self, bus: &mut CpuBus, addr1: Address, addr2: Address) {
+    fn and_m16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr1: Address, addr2: Address) {
         self.a &= self.read_word(bus, addr1, addr2);
         set_nz16!(self, self.a);
     }
@@ -979,7 +987,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn asl_mem_m8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn asl_mem_m8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         let data = self.read(bus, addr);
         let result = data << 1;
 
@@ -990,7 +998,7 @@ impl Cpu65c816 {
         set_nz8!(self, result);
     }
 
-    fn asl_mem_m16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn asl_mem_m16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         let data = self.read_word(bus, addr_lo, addr_hi);
         let result = data << 1;
 
@@ -1022,7 +1030,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn bit_m8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn bit_m8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         let data = self.read(bus, addr);
         let result = (self.a as u8) & data;
 
@@ -1031,7 +1039,7 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
-    fn bit_m16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn bit_m16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         let data = self.read_word(bus, addr_lo, addr_hi);
         let result = self.a & data;
 
@@ -1040,14 +1048,14 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
-    fn bit_imm_m8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn bit_imm_m8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         let data = self.read(bus, addr);
         let result = (self.a as u8) & data;
 
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
-    fn bit_imm_m16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn bit_imm_m16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         let data = self.read_word(bus, addr_lo, addr_hi);
         let result = self.a & data;
 
@@ -1080,7 +1088,7 @@ impl Cpu65c816 {
         self.branch_taken = true;
     }
 
-    fn brk(&mut self, bus: &mut CpuBus) {
+    fn brk<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         self.pc += 1; // Push address of next instruction
 
         self.handle_interrupt(bus, CpuInterrupt::BRK);
@@ -1116,33 +1124,33 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagV, false);
     }
 
-    fn cmp_m8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn cmp_m8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         cmp_reg8!(self, self.a, bus, addr);
     }
 
-    fn cmp_m16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn cmp_m16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         cmp_reg16!(self, self.a, bus, addr_lo, addr_hi);
     }
 
-    fn cop(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn cop<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         let _ = self.read(bus, addr); // read is discarded here
 
         self.handle_interrupt(bus, CpuInterrupt::COP);
     }
 
-    fn cpx_x8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn cpx_x8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         cmp_reg8!(self, self.x, bus, addr);
     }
 
-    fn cpx_x16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn cpx_x16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         cmp_reg16!(self, self.x, bus, addr_lo, addr_hi);
     }
 
-    fn cpy_x8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn cpy_x8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         cmp_reg8!(self, self.y, bus, addr);
     }
 
-    fn cpy_x16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn cpy_x16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         cmp_reg16!(self, self.y, bus, addr_lo, addr_hi);
     }
 
@@ -1156,7 +1164,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn dec_mem_m8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn dec_mem_m8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         let result = self.read(bus, addr) - 1;
 
         self.write(bus, addr, result);
@@ -1164,7 +1172,7 @@ impl Cpu65c816 {
         set_nz8!(self, result);
     }
 
-    fn dec_mem_m16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn dec_mem_m16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         let result = self.read_word(bus, addr_lo, addr_hi) - 1;
 
         self.write_word(bus, addr_lo, addr_hi, result);
@@ -1180,13 +1188,13 @@ impl Cpu65c816 {
         dec_idx!(self, self.y);
     }
 
-    fn eor_m8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn eor_m8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         self.a ^= self.read(bus, addr) as u16;
 
         set_nz8!(self, self.a);
     }
 
-    fn eor_m16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn eor_m16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         self.a ^= self.read_word(bus, addr_lo, addr_hi);
 
         set_nz16!(self, self.a);
@@ -1202,7 +1210,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn inc_mem_m8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn inc_mem_m8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         let result = self.read(bus, addr) + 1;
 
         self.write(bus, addr, result);
@@ -1210,7 +1218,7 @@ impl Cpu65c816 {
         set_nz8!(self, result);
     }
 
-    fn inc_mem_m16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn inc_mem_m16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         let result = self.read_word(bus, addr_lo, addr_hi) + 1;
 
         self.write_word(bus, addr_lo, addr_hi, result);
@@ -1235,12 +1243,12 @@ impl Cpu65c816 {
         self.pc = addr.offset;
     }
 
-    fn jsr(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn jsr<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         self.push_word(bus, self.pc - 1);
         self.pc = addr.offset;
     }
 
-    fn jsr_no_wrap(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn jsr_no_wrap<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         self.push_word_no_wrap(bus, self.pc - 1);
 
         if self.e {
@@ -1250,7 +1258,7 @@ impl Cpu65c816 {
         self.pc = addr.offset;
     }
 
-    fn jsl(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn jsl<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         self.push_no_wrap(bus, self.pb);
         self.push_word_no_wrap(bus, self.pc - 1);
 
@@ -1262,32 +1270,32 @@ impl Cpu65c816 {
         self.pc = addr.offset;
     }
 
-    fn lda_m8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn lda_m8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         set_byte_n!(self.a, self.read(bus, addr) as u16, 0);
         set_nz8!(self, self.a);
     }
 
-    fn lda_m16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn lda_m16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         self.a = self.read_word(bus, addr_lo, addr_hi);
         set_nz16!(self, self.a);
     }
 
-    fn ldx_x8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn ldx_x8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         self.x = self.read(bus, addr) as u16;
         set_nz8!(self, self.x);
     }
 
-    fn ldx_x16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn ldx_x16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         self.x = self.read_word(bus, addr_lo, addr_hi);
         set_nz16!(self, self.x);
     }
 
-    fn ldy_x8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn ldy_x8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         self.y = self.read(bus, addr) as u16;
         set_nz8!(self, self.y);
     }
 
-    fn ldy_x16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn ldy_x16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         self.y = self.read_word(bus, addr_lo, addr_hi);
         set_nz16!(self, self.y);
     }
@@ -1307,7 +1315,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn lsr_mem_m8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn lsr_mem_m8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         let data = self.read(bus, addr);
         let result = data >> 1;
 
@@ -1318,7 +1326,7 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
-    fn lsr_mem_m16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn lsr_mem_m16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         let data = self.read_word(bus, addr_lo, addr_hi);
         let result = data >> 1;
 
@@ -1329,7 +1337,7 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
-    fn mvn(&mut self, bus: &mut CpuBus, src_addr: Address, dst_addr: Address) {
+    fn mvn<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, src_addr: Address, dst_addr: Address) {
         // Idx registers incremented in block move negative (it's backwards, I know)
         // "Negative" actually refers to where the destination address is relative
         // to the source address.
@@ -1357,7 +1365,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn mvp(&mut self, bus: &mut CpuBus, src_addr: Address, dst_addr: Address) {
+    fn mvp<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, src_addr: Address, dst_addr: Address) {
         // Idx registers decremented in block move positive (it's backwards, I know)
         // "Positive" actually refers to where the destination address is relative
         // to the source address.
@@ -1387,17 +1395,17 @@ impl Cpu65c816 {
 
     fn nop(&mut self) {}
 
-    fn ora_m8(&mut self, bus: &mut CpuBus, address: Address) {
+    fn ora_m8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, address: Address) {
         self.a |= self.read(bus, address) as u16;
         set_nz8!(self, self.a);
     }
 
-    fn ora_m16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn ora_m16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         self.a |= self.read_word(bus, addr_lo, addr_hi) as u16;
         set_nz16!(self, self.a);
     }
 
-    fn pex(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn pex<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         let data = self.read_word(bus, addr_lo, addr_hi);
 
         self.push_word_no_wrap(bus, data);
@@ -1407,7 +1415,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn per(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn per<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         let offset = self.read_word(bus, addr_lo, addr_hi);
         self.push_word_no_wrap(bus, self.pc + offset);
 
@@ -1416,7 +1424,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn pha(&mut self, bus: &mut CpuBus) {
+    fn pha<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         if self.is_flag_set(Flag::FlagM) {
             self.push(bus, self.a as u8);
         } else {
@@ -1424,11 +1432,11 @@ impl Cpu65c816 {
         }
     }
 
-    fn phb(&mut self, bus: &mut CpuBus) {
+    fn phb<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         self.push(bus, self.db);
     }
 
-    fn phd(&mut self, bus: &mut CpuBus) {
+    fn phd<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         self.push_word_no_wrap(bus, self.dp);
 
         if self.e {
@@ -1436,15 +1444,15 @@ impl Cpu65c816 {
         }
     }
 
-    fn phk(&mut self, bus: &mut CpuBus) {
+    fn phk<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         self.push(bus, self.pb);
     }
 
-    fn php(&mut self, bus: &mut CpuBus) {
+    fn php<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         self.push(bus, self.p);
     }
 
-    fn phx(&mut self, bus: &mut CpuBus) {
+    fn phx<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         if self.is_flag_set(Flag::FlagX) {
             self.push(bus, self.x as u8);
         } else {
@@ -1452,7 +1460,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn phy(&mut self, bus: &mut CpuBus) {
+    fn phy<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         if self.is_flag_set(Flag::FlagX) {
             self.push(bus, self.y as u8);
         } else {
@@ -1460,7 +1468,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn pla(&mut self, bus: &mut CpuBus) {
+    fn pla<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         if self.is_flag_set(Flag::FlagM) {
             set_byte_n!(self.a, self.pop(bus) as u16, 0);
             set_nz8!(self, self.a);
@@ -1470,7 +1478,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn plb(&mut self, bus: &mut CpuBus) {
+    fn plb<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         // PLB has a bug where it doesn't wrap the stack pointer in emulation
         // mode until after reading, so we manually implement that here.
         self.db = self.pop_no_wrap(bus);
@@ -1482,7 +1490,7 @@ impl Cpu65c816 {
         set_nz8!(self, self.db);
     }
 
-    fn pld(&mut self, bus: &mut CpuBus) {
+    fn pld<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         self.dp = self.pop_word_no_wrap(bus);
 
         if self.e {
@@ -1492,7 +1500,7 @@ impl Cpu65c816 {
         set_nz16!(self, self.dp);
     }
 
-    fn plp(&mut self, bus: &mut CpuBus) {
+    fn plp<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         self.p = self.pop(bus);
 
         if self.e {
@@ -1506,7 +1514,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn plx(&mut self, bus: &mut CpuBus) {
+    fn plx<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         if self.is_flag_set(Flag::FlagX) {
             self.x = self.pop(bus) as u16;
             set_nz8!(self, self.x);
@@ -1516,7 +1524,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn ply(&mut self, bus: &mut CpuBus) {
+    fn ply<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         if self.is_flag_set(Flag::FlagX) {
             self.y = self.pop(bus) as u16;
             set_nz8!(self, self.y);
@@ -1526,7 +1534,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn rep(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn rep<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         self.p &= !self.read(bus, addr);
 
         if self.e {
@@ -1555,7 +1563,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn rol_mem_m8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn rol_mem_m8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         let c = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
         let data = self.read(bus, addr);
         let result = (data << 1) | c;
@@ -1567,7 +1575,7 @@ impl Cpu65c816 {
         set_nz8!(self, result);
     }
 
-    fn rol_mem_m16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn rol_mem_m16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         let c = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
         let data = self.read_word(bus, addr_lo, addr_hi);
         let result = (data << 1) | c;
@@ -1592,7 +1600,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn ror_mem_m8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn ror_mem_m8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         let c = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
         let data = self.read(bus, addr);
         let result = (data >> 1) | (c << 7);
@@ -1604,7 +1612,7 @@ impl Cpu65c816 {
         set_nz8!(self, result);
     }
 
-    fn ror_mem_m16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn ror_mem_m16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         let c = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
         let data = self.read_word(bus, addr_lo, addr_hi);
         let result = (data >> 1) | (c << 15);
@@ -1616,7 +1624,7 @@ impl Cpu65c816 {
         set_nz16!(self, result);
     }
 
-    fn rti(&mut self, bus: &mut CpuBus) {
+    fn rti<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         self.p = self.pop(bus);
         self.pc = self.pop_word(bus);
 
@@ -1633,7 +1641,7 @@ impl Cpu65c816 {
         }
     }
 
-    fn rtl(&mut self, bus: &mut CpuBus) {
+    fn rtl<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         self.pc = self.pop_word_no_wrap(bus) + 1;
         self.pb = self.pop_no_wrap(bus);
 
@@ -1642,11 +1650,11 @@ impl Cpu65c816 {
         }
     }
 
-    fn rts(&mut self, bus: &mut CpuBus) {
+    fn rts<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         self.pc = self.pop_word(bus) + 1;
     }
 
-    fn sbc_m8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn sbc_m8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         let operand = (!self.read(bus, addr)) as u32;
         let carry = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
         let a = (self.a & 0xFF) as u32;
@@ -1692,7 +1700,7 @@ impl Cpu65c816 {
         set_byte_n!(self.a, result as u16, 0);
     }
 
-    fn sbc_m16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn sbc_m16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         let operand = (!self.read_word(bus, addr_lo, addr_hi)) as u32;
         let carry = if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
 
@@ -1765,7 +1773,7 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagI, true);
     }
 
-    fn sep(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn sep<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         self.p |= self.read(bus, addr);
 
         if self.is_flag_set(Flag::FlagX) {
@@ -1774,11 +1782,11 @@ impl Cpu65c816 {
         }
     }
 
-    fn sta_m8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn sta_m8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         self.write(bus, addr, self.a as u8);
     }
 
-    fn sta_m16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn sta_m16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         self.write_word(bus, addr_lo, addr_hi, self.a)
     }
 
@@ -1786,27 +1794,27 @@ impl Cpu65c816 {
         self.stopped = true;
     }
 
-    fn stx_x8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn stx_x8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         self.write(bus, addr, self.x as u8);
     }
 
-    fn stx_x16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn stx_x16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         self.write_word(bus, addr_lo, addr_hi, self.x)
     }
 
-    fn sty_x8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn sty_x8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         self.write(bus, addr, self.y as u8);
     }
 
-    fn sty_x16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn sty_x16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         self.write_word(bus, addr_lo, addr_hi, self.y)
     }
 
-    fn stz_m8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn stz_m8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         self.write(bus, addr, 0);
     }
 
-    fn stz_m16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn stz_m16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         self.write_word(bus, addr_lo, addr_hi, 0)
     }
 
@@ -1836,7 +1844,7 @@ impl Cpu65c816 {
         set_nz16!(self, self.a);
     }
 
-    fn trb_m8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn trb_m8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         let data = self.read(bus, addr);
         let result = data & (self.a as u8);
 
@@ -1845,7 +1853,7 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
-    fn trb_m16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn trb_m16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         let data = self.read_word(bus, addr_lo, addr_hi);
         let result = data & self.a;
 
@@ -1854,7 +1862,7 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
-    fn tsb_m8(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn tsb_m8<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         let data = self.read(bus, addr);
         let result = data & (self.a as u8);
 
@@ -1863,7 +1871,7 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
-    fn tsb_m16(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) {
+    fn tsb_m16<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) {
         let data = self.read_word(bus, addr_lo, addr_hi);
         let result = data & self.a;
 
@@ -1909,7 +1917,7 @@ impl Cpu65c816 {
         self.waiting_for_interrupt = true;
     }
 
-    fn wdm(&mut self, bus: &mut CpuBus, addr: Address) {
+    fn wdm<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) {
         let _ = self.read(bus, addr);
     }
 

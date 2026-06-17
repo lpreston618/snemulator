@@ -10,7 +10,9 @@
 //!   - Input state
 //!   - Expected output
 
-use crate::scpu::*;
+#![allow(unused_imports)]
+
+use crate::{debug::NullHarness, scpu::*};
 use super::common::*;
 
 /// Test 39: BRA — Relative 8-bit addressing (forward)
@@ -24,15 +26,16 @@ use super::common::*;
 /// Expected Output: PB=0x00, PC=0x8012, branch_taken=true
 #[test]
 fn test_bra_relative_forward() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x80, 0x10]);
     }
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.pb, 0x00);
@@ -48,15 +51,16 @@ fn test_bra_relative_forward() {
 /// Expected Output: PB=0x00, PC=0x8000, branch_taken=true
 #[test]
 fn test_bra_relative_backward() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x80, 0xFE]);
     }
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.pb, 0x00);
@@ -73,15 +77,16 @@ fn test_bra_relative_backward() {
 /// Expected Output: PB=0x00, PC=0x9003, branch_taken=true
 #[test]
 fn test_brl_relative_long_forward() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x82, 0x00, 0x10]);
     }
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.pb, 0x00);
@@ -98,15 +103,16 @@ fn test_brl_relative_long_forward() {
 /// Expected Output: PB=0x00, PC=0x8000, branch_taken=true
 #[test]
 fn test_brl_relative_long_backward() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x82, 0xFD, 0xFF]);
     }
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.pb, 0x00);
@@ -123,15 +129,16 @@ fn test_brl_relative_long_backward() {
 /// Expected Output: PB=0x00, PC=0xFFFF, branch_taken=true
 #[test]
 fn test_brl_relative_long_max_forward() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x82, 0xFC, 0x7F]);
     }
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.pb, 0x00);

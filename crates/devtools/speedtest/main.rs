@@ -1,7 +1,7 @@
 use std::{fmt::Write, path::PathBuf};
 
 use rfd::FileDialog;
-use snemcore::Snemulator;
+use snemcore::{Snemulator, debug::NullHarness};
 
 fn main() {
     let mut iters = 1;
@@ -23,6 +23,7 @@ fn main() {
     }
     
     let mut snem_core = Snemulator::new();
+    let mut harness = NullHarness {};
     
     let data = if let Some(rom_path) = rom_path {
         std::fs::read(&rom_path).unwrap()
@@ -35,13 +36,13 @@ fn main() {
         .unwrap()
     };
     
-    snem_core.load_rom(data).unwrap();
-    snem_core.power_on();
+    snem_core.load_rom(data, &mut harness).unwrap();
+    snem_core.power_on(&mut harness);
     
     let mut speedups: Vec<f32> = Vec::new();
     
     for _ in 0..iters {        
-        let speedup = speed_test(emulated_seconds, &mut snem_core);
+        let speedup = speed_test(emulated_seconds, &mut snem_core, &mut harness);
         
         speedups.push(speedup);
     }
@@ -49,7 +50,7 @@ fn main() {
     println!("Avg Speedup: {:.4}x", speedups.iter().sum::<f32>() / (speedups.len() as f32));
 }
 
-pub fn speed_test(emulated_seconds: u64, snem_core: &mut snemcore::Snemulator) -> f32 {
+pub fn speed_test(emulated_seconds: u64, snem_core: &mut snemcore::Snemulator, harness: &mut NullHarness) -> f32 {
     let mut frame_buffer = vec![0u8; 512 * 448 * 4];
     let mut audio_buffer = Vec::new();
     
@@ -61,7 +62,7 @@ pub fn speed_test(emulated_seconds: u64, snem_core: &mut snemcore::Snemulator) -
     
     for _ in 0..emulated_seconds {
         for _ in 0..60 {
-            snem_core.run_frame(&mut frame_buffer, &mut audio_buffer);
+            snem_core.run_frame(&mut frame_buffer, &mut audio_buffer, harness);
         }
         
         pb.inc(1);

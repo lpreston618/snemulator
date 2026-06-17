@@ -63,10 +63,14 @@ impl Settings {
         log::trace!("Saved settings to {}", path.display());
     }
 
-    pub fn push_recent_rom(&mut self, path: PathBuf) {
+    pub fn push_recent_rom(&mut self, path: &PathBuf) {
         self.recent_roms.retain(|p| p.file_name() != path.file_name());
-        self.recent_roms.insert(0, path);
+        self.recent_roms.insert(0, path.clone());
         self.recent_roms.truncate(MAX_RECENT_ROMS);
+    }
+
+    pub fn remove_recent_rom(&mut self, path: &PathBuf) {
+        self.recent_roms.retain(|p| p.file_name() != path.file_name());
     }
 }
 

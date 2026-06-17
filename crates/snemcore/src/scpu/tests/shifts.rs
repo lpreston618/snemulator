@@ -15,7 +15,9 @@
 //!   - Input state
 //!   - Expected output
 
-use crate::scpu::*;
+#![allow(unused_imports)]
+
+use crate::{debug::NullHarness, scpu::*};
 use super::common::*;
 
 // ===========================================================================
@@ -32,9 +34,10 @@ use super::common::*;
 /// Expected Output: A=0xAB01, P.C=1, P.N=0, P.Z=0
 #[test]
 fn test_rol_accumulator_m8_carry_through() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x2A]);
     }
@@ -44,7 +47,7 @@ fn test_rol_accumulator_m8_carry_through() {
     cpu.a = 0xAB80;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a, 0xAB01);
@@ -62,9 +65,10 @@ fn test_rol_accumulator_m8_carry_through() {
 /// Expected Output: MEM[00:1040]=0x82, P.C=0, P.N=1, P.Z=0
 #[test]
 fn test_rol_direct_page_m8() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x26, 0x40]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x1040), &[0x41]);
@@ -75,10 +79,10 @@ fn test_rol_direct_page_m8() {
     cpu.dp = 0x1000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
-    let mut bus = backing.bus();
+    let mut bus = backing.bus(&mut harness);
     assert_eq!(cpu.read(&mut bus, addr(0x00, 0x1040)), 0x82);
     assert!(!cpu.is_flag_set(Flag::FlagC));
     assert!(cpu.is_flag_set(Flag::FlagN));
@@ -93,9 +97,10 @@ fn test_rol_direct_page_m8() {
 /// Expected Output: A=0x0002, P.C=1, P.N=0, P.Z=0
 #[test]
 fn test_rol_accumulator_m16() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x2A]);
     }
@@ -105,7 +110,7 @@ fn test_rol_accumulator_m16() {
     cpu.a = 0x8001;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a, 0x0002);
@@ -122,9 +127,10 @@ fn test_rol_accumulator_m16() {
 /// Expected Output: A=0xCD80, P.C=1, P.N=1, P.Z=0
 #[test]
 fn test_ror_accumulator_m8_carry_through() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x6A]);
     }
@@ -134,7 +140,7 @@ fn test_ror_accumulator_m8_carry_through() {
     cpu.a = 0xCD01;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a, 0xCD80);
@@ -151,9 +157,10 @@ fn test_ror_accumulator_m8_carry_through() {
 /// Expected Output: MEM[00:1040]=0x00, P.C=1, P.Z=1, P.N=0
 #[test]
 fn test_ror_direct_page_m8_zero_result() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x66, 0x40]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x1040), &[0x01]);
@@ -164,10 +171,10 @@ fn test_ror_direct_page_m8_zero_result() {
     cpu.dp = 0x1000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
-    let mut bus = backing.bus();
+    let mut bus = backing.bus(&mut harness);
     assert_eq!(cpu.read(&mut bus, addr(0x00, 0x1040)), 0x00);
     assert!(cpu.is_flag_set(Flag::FlagC));
     assert!(cpu.is_flag_set(Flag::FlagZ));
@@ -182,9 +189,10 @@ fn test_ror_direct_page_m8_zero_result() {
 /// Expected Output: A=0x8000, P.C=1, P.N=1
 #[test]
 fn test_ror_accumulator_m16() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x6A]);
     }
@@ -194,7 +202,7 @@ fn test_ror_accumulator_m16() {
     cpu.a = 0x0001;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a, 0x8000);
@@ -211,9 +219,10 @@ fn test_ror_accumulator_m16() {
 /// Expected Output: A=0xBEDE, P.C=1 (old bit 7 of 0xEF is 1)
 #[test]
 fn test_rol_accumulator_emulation_mode() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x2A]);
     }
@@ -221,7 +230,7 @@ fn test_rol_accumulator_emulation_mode() {
     cpu.a = 0xBEEF;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a, 0xBEDE, "0xEF (1110_1111) << 1 with carry-in 0 = 0xDE; high byte preserved");
@@ -241,9 +250,10 @@ fn test_rol_accumulator_emulation_mode() {
 /// Expected Output: MEM[00:1040]=0x00, P.C=1, P.Z=1, P.N=0
 #[test]
 fn test_asl_direct_page_m8_carry_and_zero() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x06, 0x40]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x1040), &[0x80]);
@@ -253,10 +263,10 @@ fn test_asl_direct_page_m8_carry_and_zero() {
     cpu.dp = 0x1000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
-    let mut bus = backing.bus();
+    let mut bus = backing.bus(&mut harness);
     assert_eq!(cpu.read(&mut bus, addr(0x00, 0x1040)), 0x00);
     assert!(cpu.is_flag_set(Flag::FlagC));
     assert!(cpu.is_flag_set(Flag::FlagZ));
@@ -271,9 +281,10 @@ fn test_asl_direct_page_m8_carry_and_zero() {
 /// Expected Output: MEM[00:1040..1042]=[0x02, 0x00], P.C=1, P.N=0, P.Z=0
 #[test]
 fn test_asl_direct_page_m16() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x06, 0x40]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x1040), &[0x01, 0x80]);
@@ -283,10 +294,10 @@ fn test_asl_direct_page_m16() {
     cpu.dp = 0x1000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
-    let mut bus = backing.bus();
+    let mut bus = backing.bus(&mut harness);
     assert_eq!(cpu.read(&mut bus, addr(0x00, 0x1040)), 0x02);
     assert_eq!(cpu.read(&mut bus, addr(0x00, 0x1041)), 0x00);
     assert!(cpu.is_flag_set(Flag::FlagC));
@@ -302,9 +313,10 @@ fn test_asl_direct_page_m16() {
 /// Expected Output: MEM[00:1040]=0x82, P.C=0, P.N=1
 #[test]
 fn test_asl_direct_page_emulation_mode() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x06, 0x40]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x1040), &[0x41]);
@@ -312,10 +324,10 @@ fn test_asl_direct_page_emulation_mode() {
     cpu.dp = 0x1000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
-    let mut bus = backing.bus();
+    let mut bus = backing.bus(&mut harness);
     assert_eq!(cpu.read(&mut bus, addr(0x00, 0x1040)), 0x82);
     assert!(!cpu.is_flag_set(Flag::FlagC));
     assert!(cpu.is_flag_set(Flag::FlagN));
@@ -329,9 +341,10 @@ fn test_asl_direct_page_emulation_mode() {
 /// Expected Output: A=0xAB00, P.C=1, P.Z=1, P.N=0
 #[test]
 fn test_lsr_accumulator_m8_carry_and_zero() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x4A]);
     }
@@ -340,7 +353,7 @@ fn test_lsr_accumulator_m8_carry_and_zero() {
     cpu.a = 0xAB01;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a, 0xAB00);
@@ -357,9 +370,10 @@ fn test_lsr_accumulator_m8_carry_and_zero() {
 /// Expected Output: MEM[00:1040..1042]=[0x01, 0x00], P.C=1, P.Z=0, P.N=0
 #[test]
 fn test_lsr_direct_page_m16() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x46, 0x40]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x1040), &[0x03, 0x00]);
@@ -369,10 +383,10 @@ fn test_lsr_direct_page_m16() {
     cpu.dp = 0x1000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
-    let mut bus = backing.bus();
+    let mut bus = backing.bus(&mut harness);
     assert_eq!(cpu.read(&mut bus, addr(0x00, 0x1040)), 0x01);
     assert_eq!(cpu.read(&mut bus, addr(0x00, 0x1041)), 0x00);
     assert!(cpu.is_flag_set(Flag::FlagC));

@@ -1,3 +1,4 @@
+use crate::debug::DebugHarness;
 use crate::ssmp::ioports::ApuIoPorts;
 use crate::ssmp::sdsp::{SuperDSP, bus::SdspBus, regs::SdspRegs, voices::VoiceRegs};
 use crate::ssmp::spc::{Spc700, bus::SpcBus, ioregs::SpcIoRegs};
@@ -9,8 +10,8 @@ use crate::sysinfo::{
 };
 
 pub mod ioports;
-mod sdsp;
-mod spc;
+pub mod sdsp;
+pub mod spc;
 mod timers;
 
 /// The sound processor chip of the S-NES. Contains the SPC700 and S-DSP.
@@ -91,7 +92,7 @@ impl Ssmp {
 
     /// Clocks the sound processor, checking if it is time to generate a new
     /// sample and/or clock the S-DSP and SPC700 processors.
-    pub fn cycle(&mut self, clocks: usize, audio_buffer: &mut Vec<i16>, apu_regs: &mut ApuIoPorts) {
+    pub fn cycle<H: DebugHarness>(&mut self, clocks: usize, audio_buffer: &mut Vec<i16>, apu_regs: &mut ApuIoPorts, harness: &mut H) {
         self.sample_cycle_accumulator += clocks * AUDIO_SAMPLE_HZ;
         self.spc_cycle_accumulator += clocks * SPC_CLOCK_HZ;
 
@@ -120,48 +121,49 @@ impl Ssmp {
                 timer2: &mut self.timer2,
                 voice_regs: &mut self.voice_regs,
                 apuio_regs: apu_regs,
+                harness,
             };
 
             self.spc.clock(&mut spc_bus);
-
+            
             self.timer0.clock();
             self.timer1.clock();
             self.timer2.clock();
         }
     }
 
-    pub fn cycle_no_output(&mut self, clocks: usize, apu_regs: &mut ApuIoPorts) {
-        self.sample_cycle_accumulator += clocks * AUDIO_SAMPLE_HZ;
-        self.spc_cycle_accumulator += clocks * SPC_CLOCK_HZ;
+    // pub fn cycle_no_output(&mut self, clocks: usize, apu_regs: &mut ApuIoPorts) {
+    //     self.sample_cycle_accumulator += clocks * AUDIO_SAMPLE_HZ;
+    //     self.spc_cycle_accumulator += clocks * SPC_CLOCK_HZ;
 
-        if self.sample_cycle_accumulator >= MASTER_CLOCK_HZ {
-            self.sample_cycle_accumulator -= MASTER_CLOCK_HZ;
+    //     if self.sample_cycle_accumulator >= MASTER_CLOCK_HZ {
+    //         self.sample_cycle_accumulator -= MASTER_CLOCK_HZ;
 
-            // self.sdsp.clock_envelopes();
-            // self.sdsp.generate_sample(audio_buffer);
-        }
+    //         // self.sdsp.clock_envelopes();
+    //         // self.sdsp.generate_sample(audio_buffer);
+    //     }
 
-        if self.spc_cycle_accumulator >= MASTER_CLOCK_HZ {
-            self.spc_cycle_accumulator -= MASTER_CLOCK_HZ;
+    //     if self.spc_cycle_accumulator >= MASTER_CLOCK_HZ {
+    //         self.spc_cycle_accumulator -= MASTER_CLOCK_HZ;
 
-            let mut bus = SpcBus {
-                aram: &mut self.aram,
-                spc_regs: &mut self.spc_regs,
-                sdsp_regs: &mut self.sdsp_regs,
-                timer0: &mut self.timer0,
-                timer1: &mut self.timer1,
-                timer2: &mut self.timer2,
-                voice_regs: &mut self.voice_regs,
-                apuio_regs: apu_regs,
-            };
+    //         let mut bus = SpcBus {
+    //             aram: &mut self.aram,
+    //             spc_regs: &mut self.spc_regs,
+    //             sdsp_regs: &mut self.sdsp_regs,
+    //             timer0: &mut self.timer0,
+    //             timer1: &mut self.timer1,
+    //             timer2: &mut self.timer2,
+    //             voice_regs: &mut self.voice_regs,
+    //             apuio_regs: apu_regs,
+    //         };
 
-            self.spc.clock(&mut bus);
+    //         self.spc.clock(&mut bus);
 
-            self.timer0.clock();
-            self.timer1.clock();
-            self.timer2.clock();
-        }
-    }
+    //         self.timer0.clock();
+    //         self.timer1.clock();
+    //         self.timer2.clock();
+    //     }
+    // }
 
     pub fn aram_slice(&self) -> &[u8] {
         &self.aram[..]

@@ -1,4 +1,4 @@
-use crate::scpu::bus::CpuBus;
+use crate::{debug::DebugHarness, scpu::bus::CpuBus};
 
 mod instructions;
 mod tests;
@@ -55,6 +55,8 @@ pub struct Cpu65c816 {
 
     pub branch_taken: bool,
     pub page_crossed: bool,
+
+    pub prg_bytes: Vec<u8>,
 }
 
 // SNES System Functionality
@@ -90,11 +92,13 @@ impl Cpu65c816 {
             branch_taken: false,
             page_crossed: false,
             stopped: false,
+
+            prg_bytes: Vec::with_capacity(4),
         }
     }
 
     /// Sets the CPU to its proper initial state.
-    pub fn power_on(&mut self, bus: &mut CpuBus) {
+    pub fn power_on<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         self.x = 0;
         self.y = 0;
         self.db = 0;
@@ -108,10 +112,10 @@ impl Cpu65c816 {
         self.irq_pending = false;
         self.nmi_pending = false;
         self.stopped = false;
-        self.handle_interrupt(bus, CpuInterrupt::Reset); // TODO: Check this?
+        self.handle_interrupt(bus, CpuInterrupt::Reset);
     }
 
-    pub fn reset(&mut self, bus: &mut CpuBus) {
+    pub fn reset<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         self.stopped = false;
         self.irq_pending = false;
         self.nmi_pending = false;
@@ -120,7 +124,11 @@ impl Cpu65c816 {
     }
 
     /// Cycles the cpu for a given number of clocks. If the number of clocks is 0 after cycling, the next instructions is executed.
-    pub fn cycle(&mut self, bus: &mut CpuBus) {
+    pub fn cycle<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
+        if H::IS_DEBUGGING_HARNESS {
+            self.prg_bytes.clear();
+        }
+
         if self.nmi_pending {
             self.handle_interrupt(bus, CpuInterrupt::NMI);
             self.nmi_pending = false;
@@ -140,9 +148,13 @@ impl Cpu65c816 {
         }
 
         self.execute(bus);
+
+        if H::IS_DEBUGGING_HARNESS && H::TRACK_CPU_INSTRUCTIONS {
+            bus.harness.on_instruction(self, &self.prg_bytes.clone());
+        }
     }
 
-    pub fn handle_interrupt(&mut self, bus: &mut CpuBus, interrupt: CpuInterrupt) {
+    pub fn handle_interrupt<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, interrupt: CpuInterrupt) {
         match interrupt {
             CpuInterrupt::Reset => {
                 self.e = true;
@@ -199,13 +211,17 @@ impl Cpu65c816 {
 
         self.pb = 0;
         self.pc = self.read_word(bus, vector_lo, vector_hi);
+
+        if H::IS_DEBUGGING_HARNESS && H::TRACK_CPU_INTERRUPTS {
+            bus.harness.on_interrupt(self, interrupt);
+        }
     }
 }
 
 // Bus/flag access
 impl Cpu65c816 {
     /// Read a byte from the bus at a given address. Adds to cpu clocks.
-    fn read(&mut self, bus: &mut CpuBus, addr: Address) -> u8 {
+    fn read<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) -> u8 {
         let cycles_taken = if bus.cpu_regs.fast_rom_en {
             if addr.bank >= 0xC0 || (addr.bank >= 0x80 && addr.offset >= 0x8000) {
                 Self::CYCLE_CLOCKS
@@ -217,11 +233,17 @@ impl Cpu65c816 {
         };
 
         self.clocks += cycles_taken;
-        bus.read(addr)
+        let value = bus.read(addr);
+
+        if H::IS_DEBUGGING_HARNESS && H::TRACK_MEMORY {
+            bus.harness.on_memory_read(self, addr, value);
+        }
+
+        value
     }
 
     /// Write a byte to the bus at a given address. Adds to cpu clocks.
-    fn write(&mut self, bus: &mut CpuBus, addr: Address, value: u8) {
+    fn write<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address, value: u8) {
         let cycles_taken = if bus.cpu_regs.fast_rom_en {
             if addr.bank >= 0xC0 || (addr.bank >= 0x80 && addr.offset >= 0x8000) {
                 Self::CYCLE_CLOCKS
@@ -234,29 +256,39 @@ impl Cpu65c816 {
 
         self.clocks += cycles_taken;
         bus.write(addr, value);
+
+        if H::IS_DEBUGGING_HARNESS && H::TRACK_MEMORY {
+            bus.harness.on_memory_write(self, addr, value);
+        }
     }
 
-    fn read_prg(&mut self, bus: &mut CpuBus) -> u8 {
+    fn read_prg<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> u8 {
         let pc = self.pc;
         self.pc += 1;
         self.clocks += Self::SLOW_CYCLE_CLOCKS;
-        bus.read(Address {
+        let value = bus.read(Address {
             bank: self.pb,
             offset: pc,
-        })
+        });
+
+        if H::IS_DEBUGGING_HARNESS {
+            self.prg_bytes.push(value);
+        }
+
+        value
     }
 
-    fn read_word(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address) -> u16 {
+    fn read_word<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address) -> u16 {
         u16::from_le_bytes([self.read(bus, addr_lo), self.read(bus, addr_hi)])
     }
 
-    fn write_word(&mut self, bus: &mut CpuBus, addr_lo: Address, addr_hi: Address, value: u16) {
+    fn write_word<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr_lo: Address, addr_hi: Address, value: u16) {
         self.write(bus, addr_lo, value as u8);
         self.write(bus, addr_hi, (value >> 8) as u8);
     }
 
     // Pop a byte from the stack, wrapping the stack pointer in emulation mode if necessary.
-    fn pop(&mut self, bus: &mut CpuBus) -> u8 {
+    fn pop<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> u8 {
         self.sp += 1;
 
         if self.e {
@@ -273,7 +305,7 @@ impl Cpu65c816 {
     }
 
     // Pop a byte from the stack without wrapping the stack pointer in emulation mode.
-    fn pop_no_wrap(&mut self, bus: &mut CpuBus) -> u8 {
+    fn pop_no_wrap<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> u8 {
         self.sp += 1;
 
         self.read(
@@ -286,17 +318,17 @@ impl Cpu65c816 {
     }
 
     // Pop a word from the stack, wrapping the stack pointer in emulation mode if necessary.
-    fn pop_word(&mut self, bus: &mut CpuBus) -> u16 {
+    fn pop_word<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> u16 {
         u16::from_le_bytes([self.pop(bus), self.pop(bus)])
     }
 
     // Pop a word from the stack without wrapping the stack pointer in emulation mode.
-    fn pop_word_no_wrap(&mut self, bus: &mut CpuBus) -> u16 {
+    fn pop_word_no_wrap<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> u16 {
         u16::from_le_bytes([self.pop_no_wrap(bus), self.pop_no_wrap(bus)])
     }
 
     // Push a byte onto the stack, wrapping the stack pointer in emulation mode if necessary.
-    fn push(&mut self, bus: &mut CpuBus, value: u8) {
+    fn push<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, value: u8) {
         self.write(
             bus,
             Address {
@@ -314,7 +346,7 @@ impl Cpu65c816 {
     }
 
     /// Push a byte onto the stack without wrapping the stack pointer in emulation mode.
-    fn push_no_wrap(&mut self, bus: &mut CpuBus, value: u8) {
+    fn push_no_wrap<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, value: u8) {
         self.write(
             bus,
             Address {
@@ -328,13 +360,13 @@ impl Cpu65c816 {
     }
 
     // Push a word onto the stack, wrapping the stack pointer in emulation mode if necessary.
-    fn push_word(&mut self, bus: &mut CpuBus, value: u16) {
+    fn push_word<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, value: u16) {
         self.push(bus, (value >> 8) as u8);
         self.push(bus, value as u8);
     }
 
     /// Push a word onto the stack without wrapping the stack pointer in emulation mode.
-    fn push_word_no_wrap(&mut self, bus: &mut CpuBus, value: u16) {
+    fn push_word_no_wrap<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, value: u16) {
         self.push_no_wrap(bus, (value >> 8) as u8);
         self.push_no_wrap(bus, value as u8);
     }

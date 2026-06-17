@@ -9,7 +9,9 @@
 //!   - Input state
 //!   - Expected output
 
-use crate::scpu::*;
+#![allow(unused_imports)]
+
+use crate::{debug::NullHarness, scpu::*};
 use super::common::*;
 
 // ===========================================================================
@@ -26,9 +28,10 @@ use super::common::*;
 ///   PC = 0x1234, PB = 0x00
 #[test]
 fn test_reset_vector_fetch() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x1234);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
     }
     assert_eq!(cpu.pc, 0x1234, "PC should be loaded from reset vector");
@@ -41,10 +44,11 @@ fn test_reset_vector_fetch() {
 /// Expected Output: e = true
 #[test]
 fn test_reset_emulation_flag() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     cpu.e = false;
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
     }
     assert!(cpu.e, "Reset must put CPU in emulation mode");
@@ -56,10 +60,11 @@ fn test_reset_emulation_flag() {
 /// Expected Output: P bits — M=1, X=1, I=1, D=0
 #[test]
 fn test_reset_status_flags() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     cpu.p = 0x00;
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
     }
     assert!(cpu.is_flag_set(Flag::FlagM), "M must be 1 after reset");
@@ -74,12 +79,13 @@ fn test_reset_status_flags() {
 /// Expected Output: db=0, pb=0, dp=0
 #[test]
 fn test_reset_bank_and_dp_cleared() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     cpu.db = 0xAB;
     cpu.pb = 0xCD;
     cpu.dp = 0xBEEF;
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
     }
     assert_eq!(cpu.db, 0x00);
@@ -93,10 +99,11 @@ fn test_reset_bank_and_dp_cleared() {
 /// Expected Output: sp high byte = 0x01
 #[test]
 fn test_reset_sp_high_byte() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     cpu.sp = 0xBEEF;
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
     }
     assert_eq!(cpu.sp & 0xFF00, 0x0100, "SP high byte must be 0x01 after reset");
@@ -109,13 +116,14 @@ fn test_reset_sp_high_byte() {
 /// Expected Output: all four flags = false
 #[test]
 fn test_reset_clears_internal_flags() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     cpu.stopped = true;
     cpu.irq_pending = true;
     cpu.nmi_pending = true;
     cpu.waiting_for_interrupt = true;
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
     }
     assert!(!cpu.stopped);
@@ -132,9 +140,10 @@ fn test_reset_clears_internal_flags() {
 /// Expected Output: PC = 0xABCD (low=0xCD, high=0xAB)
 #[test]
 fn test_reset_vector_byte_order() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0xABCD);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
     }
     assert_eq!(cpu.pc, 0xABCD);
@@ -150,11 +159,12 @@ fn test_reset_vector_byte_order() {
 ///                   for full halt recovery)
 #[test]
 fn test_reset_clears_stopped_resumes_pc() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     cpu.halted = true;
     cpu.stopped = true;
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
     }
     assert!(!cpu.stopped, "Reset must clear stopped");
@@ -168,9 +178,10 @@ fn test_reset_clears_stopped_resumes_pc() {
 /// Expected Output: e=true, M=1, X=1, I=1, D=0, PC=0x9000, sp_hi=0x01
 #[test]
 fn test_reset_idempotent() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x9000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         cpu.reset(&mut bus);
     }

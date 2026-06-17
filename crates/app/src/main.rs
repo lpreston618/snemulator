@@ -4,6 +4,8 @@ use crate::app::SnemulatorApp;
 
 mod app;
 mod windows;
+#[cfg(feature = "debug")]
+pub mod debug;
 
 #[derive(Parser)]
 #[command(name = "snemulator", about = "SNES Emulator")]

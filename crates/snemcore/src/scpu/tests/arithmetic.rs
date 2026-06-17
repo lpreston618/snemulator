@@ -20,7 +20,9 @@
 //!   - Input state
 //!   - Expected output
 
-use crate::scpu::*;
+#![allow(unused_imports)]
+
+use crate::{debug::NullHarness, scpu::*};
 use super::common::*;
 
 // ===========================================================================
@@ -35,9 +37,10 @@ use super::common::*;
 /// Expected Output: A low=0x30, P.C=0, P.V=0, P.N=0, P.Z=0
 #[test]
 fn test_adc_immediate_m8_no_carry() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x69, 0x20]);
     }
@@ -48,7 +51,7 @@ fn test_adc_immediate_m8_no_carry() {
     cpu.a = 0x0010;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0030);
@@ -65,9 +68,10 @@ fn test_adc_immediate_m8_no_carry() {
 /// Expected Output: A low=0x31, P.C=0
 #[test]
 fn test_adc_immediate_m8_carry_in() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x69, 0x20]);
     }
@@ -78,7 +82,7 @@ fn test_adc_immediate_m8_carry_in() {
     cpu.a = 0x0010;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0031);
@@ -92,9 +96,10 @@ fn test_adc_immediate_m8_carry_in() {
 /// Expected Output: A low=0x01, P.C=1, P.Z=0, P.N=0
 #[test]
 fn test_adc_immediate_m8_carry_out() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x69, 0x02]);
     }
@@ -105,7 +110,7 @@ fn test_adc_immediate_m8_carry_out() {
     cpu.a = 0x00FF;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0001);
@@ -122,9 +127,10 @@ fn test_adc_immediate_m8_carry_out() {
 /// Expected Output: A low=0x80, P.V=1, P.N=1, P.C=0, P.Z=0
 #[test]
 fn test_adc_immediate_m8_signed_overflow() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x69, 0x01]);
     }
@@ -135,7 +141,7 @@ fn test_adc_immediate_m8_signed_overflow() {
     cpu.a = 0x007F;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0080);
@@ -152,9 +158,10 @@ fn test_adc_immediate_m8_signed_overflow() {
 /// Expected Output: A low=0x00, P.C=1, P.Z=1, P.N=0
 #[test]
 fn test_adc_immediate_m8_zero_result() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x69, 0x01]);
     }
@@ -165,7 +172,7 @@ fn test_adc_immediate_m8_zero_result() {
     cpu.a = 0x00FF;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0000);
@@ -181,9 +188,10 @@ fn test_adc_immediate_m8_zero_result() {
 /// Expected Output: A=0x0001, P.C=1, P.Z=0, P.N=0
 #[test]
 fn test_adc_immediate_m16_carry_out() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x69, 0x02, 0x00]);
     }
@@ -194,7 +202,7 @@ fn test_adc_immediate_m16_carry_out() {
     cpu.a = 0xFFFF;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a, 0x0001);
@@ -210,9 +218,10 @@ fn test_adc_immediate_m16_carry_out() {
 /// Expected Output: A=0x8000, P.V=1, P.N=1, P.C=0
 #[test]
 fn test_adc_immediate_m16_signed_overflow() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x69, 0x01, 0x00]);
     }
@@ -223,7 +232,7 @@ fn test_adc_immediate_m16_signed_overflow() {
     cpu.a = 0x7FFF;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a, 0x8000);
@@ -241,9 +250,10 @@ fn test_adc_immediate_m16_signed_overflow() {
 /// Expected Output: A=0xAB15, PC=0x8002, P.C=0
 #[test]
 fn test_adc_immediate_emulation_mode() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x69, 0x05]);
     }
@@ -251,7 +261,7 @@ fn test_adc_immediate_emulation_mode() {
     cpu.a = 0xAB10;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a, 0xAB15, "Emulation mode ADC must preserve A high byte and only add to low byte");
@@ -267,9 +277,10 @@ fn test_adc_immediate_emulation_mode() {
 /// Expected Output: A low=0x46, P.C=0
 #[test]
 fn test_adc_immediate_decimal_m8_no_fixup() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x69, 0x34]);
     }
@@ -280,7 +291,7 @@ fn test_adc_immediate_decimal_m8_no_fixup() {
     cpu.a = 0x0012;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0046, "BCD 0x12 + 0x34 = 0x46");
@@ -296,9 +307,10 @@ fn test_adc_immediate_decimal_m8_no_fixup() {
 /// Expected Output: A low=0x20, P.C=0
 #[test]
 fn test_adc_immediate_decimal_m8_low_nibble_fixup() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x69, 0x01]);
     }
@@ -309,7 +321,7 @@ fn test_adc_immediate_decimal_m8_low_nibble_fixup() {
     cpu.a = 0x0019;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0020, "BCD 0x19 + 0x01 = 0x20 (low-nibble fixup)");
@@ -325,9 +337,10 @@ fn test_adc_immediate_decimal_m8_low_nibble_fixup() {
 /// Expected Output: A low=0x00, P.C=1, P.Z=1
 #[test]
 fn test_adc_immediate_decimal_m8_carry_out() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x69, 0x01]);
     }
@@ -338,7 +351,7 @@ fn test_adc_immediate_decimal_m8_carry_out() {
     cpu.a = 0x0099;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0000, "BCD 0x99 + 0x01 = 0x00 with carry out");
@@ -356,9 +369,10 @@ fn test_adc_immediate_decimal_m8_carry_out() {
 ///                  bytes, not out of the full 16-bit value)
 #[test]
 fn test_adc_immediate_decimal_m16_byte_carry() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x69, 0x01, 0x00]);
     }
@@ -369,7 +383,7 @@ fn test_adc_immediate_decimal_m16_byte_carry() {
     cpu.a = 0x0099;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a, 0x0100, "16-bit BCD 0099 + 0001 = 0100");
@@ -387,9 +401,10 @@ fn test_adc_immediate_decimal_m16_byte_carry() {
 /// Expected Output: A low=0x20, P.C=1 (no borrow out), P.Z=0, P.N=0
 #[test]
 fn test_sbc_immediate_m8_no_borrow() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xE9, 0x10]);
     }
@@ -400,7 +415,7 @@ fn test_sbc_immediate_m8_no_borrow() {
     cpu.a = 0x0030;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0020);
@@ -416,9 +431,10 @@ fn test_sbc_immediate_m8_no_borrow() {
 /// Expected Output: A low=0x1F, P.C=1
 #[test]
 fn test_sbc_immediate_m8_borrow_in() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xE9, 0x10]);
     }
@@ -429,7 +445,7 @@ fn test_sbc_immediate_m8_borrow_in() {
     cpu.a = 0x0030;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x001F);
@@ -444,9 +460,10 @@ fn test_sbc_immediate_m8_borrow_in() {
 /// Expected Output: A low=0xF0, P.C=0, P.N=1
 #[test]
 fn test_sbc_immediate_m8_borrow_out() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xE9, 0x20]);
     }
@@ -457,7 +474,7 @@ fn test_sbc_immediate_m8_borrow_out() {
     cpu.a = 0x0010;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x00F0);
@@ -474,9 +491,10 @@ fn test_sbc_immediate_m8_borrow_out() {
 /// Expected Output: A low=0x7F, P.V=1, P.N=0, P.C=1
 #[test]
 fn test_sbc_immediate_m8_signed_overflow() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xE9, 0x01]);
     }
@@ -487,7 +505,7 @@ fn test_sbc_immediate_m8_signed_overflow() {
     cpu.a = 0x0080;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x007F);
@@ -504,9 +522,10 @@ fn test_sbc_immediate_m8_signed_overflow() {
 /// Expected Output: A=0xFFFF, P.C=0, P.N=1
 #[test]
 fn test_sbc_immediate_m16_borrow_out() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xE9, 0x01, 0x00]);
     }
@@ -517,7 +536,7 @@ fn test_sbc_immediate_m16_borrow_out() {
     cpu.a = 0x0000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a, 0xFFFF);
@@ -533,9 +552,10 @@ fn test_sbc_immediate_m16_borrow_out() {
 /// Expected Output: A=0xCD20, PC=0x8002, P.C=1
 #[test]
 fn test_sbc_immediate_emulation_mode() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xE9, 0x10]);
     }
@@ -543,7 +563,7 @@ fn test_sbc_immediate_emulation_mode() {
     cpu.a = 0xCD30;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a, 0xCD20, "Emulation mode SBC must preserve A high byte");
@@ -559,9 +579,10 @@ fn test_sbc_immediate_emulation_mode() {
 /// Expected Output: A low=0x34, P.C=1
 #[test]
 fn test_sbc_immediate_decimal_m8_no_fixup() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xE9, 0x12]);
     }
@@ -572,7 +593,7 @@ fn test_sbc_immediate_decimal_m8_no_fixup() {
     cpu.a = 0x0046;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0034, "BCD 0x46 - 0x12 = 0x34");
@@ -589,9 +610,10 @@ fn test_sbc_immediate_decimal_m8_no_fixup() {
 /// Expected Output: A low=0x19, P.C=1
 #[test]
 fn test_sbc_immediate_decimal_m8_low_nibble_fixup() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xE9, 0x01]);
     }
@@ -602,7 +624,7 @@ fn test_sbc_immediate_decimal_m8_low_nibble_fixup() {
     cpu.a = 0x0020;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0019, "BCD 0x20 - 0x01 = 0x19 (low-nibble fixup)");
@@ -617,9 +639,10 @@ fn test_sbc_immediate_decimal_m8_low_nibble_fixup() {
 /// Expected Output: A low=0x99, P.C=0
 #[test]
 fn test_sbc_immediate_decimal_m8_borrow_out() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xE9, 0x01]);
     }
@@ -630,7 +653,7 @@ fn test_sbc_immediate_decimal_m8_borrow_out() {
     cpu.a = 0x0000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0099, "BCD 0x00 - 0x01 = 0x99 with borrow out");
@@ -649,9 +672,10 @@ fn test_sbc_immediate_decimal_m8_borrow_out() {
 /// Expected Output: A unchanged=0x0040, P.Z=1, P.C=1, P.N=0
 #[test]
 fn test_cmp_immediate_m8_equal() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xC9, 0x40]);
     }
@@ -660,7 +684,7 @@ fn test_cmp_immediate_m8_equal() {
     cpu.a = 0x0040;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a, 0x0040, "CMP must not modify A");
@@ -677,9 +701,10 @@ fn test_cmp_immediate_m8_equal() {
 /// Expected Output: P.C=1, P.Z=0, P.N=0
 #[test]
 fn test_cmp_immediate_m8_greater() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xC9, 0x10]);
     }
@@ -688,7 +713,7 @@ fn test_cmp_immediate_m8_greater() {
     cpu.a = 0x0050;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert!(cpu.is_flag_set(Flag::FlagC));
@@ -704,9 +729,10 @@ fn test_cmp_immediate_m8_greater() {
 /// Expected Output: P.C=0, P.Z=0, P.N=1
 #[test]
 fn test_cmp_immediate_m8_less_than() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xC9, 0x50]);
     }
@@ -715,7 +741,7 @@ fn test_cmp_immediate_m8_less_than() {
     cpu.a = 0x0010;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert!(!cpu.is_flag_set(Flag::FlagC), "A < operand -> borrow -> C=0");
@@ -730,9 +756,10 @@ fn test_cmp_immediate_m8_less_than() {
 /// Expected Output: P.Z=1, P.C=1, P.N=0
 #[test]
 fn test_cmp_immediate_m16_equal() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xC9, 0x34, 0x12]);
     }
@@ -741,7 +768,7 @@ fn test_cmp_immediate_m16_equal() {
     cpu.a = 0x1234;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert!(cpu.is_flag_set(Flag::FlagZ));
@@ -757,16 +784,17 @@ fn test_cmp_immediate_m16_equal() {
 /// Expected Output: PC=0x8002, P.Z=1, P.C=1
 #[test]
 fn test_cmp_immediate_emulation_mode() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xC9, 0x40]);
     }
     cpu.a = 0xFF40;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.pc, 0x8002);
@@ -782,9 +810,10 @@ fn test_cmp_immediate_emulation_mode() {
 /// Expected Output: PC=0x8002, P.Z=1, P.C=1
 #[test]
 fn test_cpx_immediate_x8_equal() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xE0, 0x30]);
     }
@@ -793,7 +822,7 @@ fn test_cpx_immediate_x8_equal() {
     cpu.x = 0x0030;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.pc, 0x8002, "8-bit CPX must consume exactly 1 operand byte");
@@ -809,9 +838,10 @@ fn test_cpx_immediate_x8_equal() {
 /// Expected Output: PC=0x8003, P.C=0, P.N=1, P.Z=0
 #[test]
 fn test_cpy_immediate_x16_less_than() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xC0, 0x50, 0x00]);
     }
@@ -820,7 +850,7 @@ fn test_cpy_immediate_x16_less_than() {
     cpu.y = 0x0010;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.pc, 0x8003, "16-bit CPY must consume exactly 2 operand bytes");
@@ -840,9 +870,10 @@ fn test_cpy_immediate_x16_less_than() {
 /// Expected Output: A low=0x00, P.Z=1, P.N=0
 #[test]
 fn test_and_immediate_m8_zero_result() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x29, 0x0F]);
     }
@@ -851,7 +882,7 @@ fn test_and_immediate_m8_zero_result() {
     cpu.a = 0x00F0;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0000);
@@ -866,9 +897,10 @@ fn test_and_immediate_m8_zero_result() {
 /// Expected Output: A=0x8F00, P.N=1, P.Z=0
 #[test]
 fn test_and_immediate_m16_negative_result() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x29, 0x00, 0x8F]);
     }
@@ -877,7 +909,7 @@ fn test_and_immediate_m16_negative_result() {
     cpu.a = 0xFF00;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a, 0x8F00);
@@ -892,16 +924,17 @@ fn test_and_immediate_m16_negative_result() {
 /// Expected Output: A=0x1280, PC=0x8002, P.N=1, P.Z=0
 #[test]
 fn test_ora_immediate_emulation_mode() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x09, 0x80]);
     }
     cpu.a = 0x1200;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a, 0x1280);
@@ -917,9 +950,10 @@ fn test_ora_immediate_emulation_mode() {
 /// Expected Output: A low=0x00, P.Z=1, P.N=0
 #[test]
 fn test_eor_immediate_m8_self_xor_zero() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x49, 0x5A]);
     }
@@ -928,7 +962,7 @@ fn test_eor_immediate_m8_self_xor_zero() {
     cpu.a = 0x005A;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0000);
@@ -952,9 +986,10 @@ fn test_eor_immediate_m8_self_xor_zero() {
 /// Expected Output: A unchanged=0x000F, P.N=1, P.V=1, P.Z=1
 #[test]
 fn test_bit_direct_page_m8_n_v_from_operand() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x24, 0x40]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x1040), &[0xC0]);
@@ -965,7 +1000,7 @@ fn test_bit_direct_page_m8_n_v_from_operand() {
     cpu.a = 0x000F;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a, 0x000F, "BIT must not modify A");
@@ -982,9 +1017,10 @@ fn test_bit_direct_page_m8_n_v_from_operand() {
 /// Expected Output: P.N=0, P.V=1, P.Z=0
 #[test]
 fn test_bit_direct_page_m8_nonzero_and() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x24, 0x40]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x1040), &[0x40]);
@@ -995,7 +1031,7 @@ fn test_bit_direct_page_m8_nonzero_and() {
     cpu.a = 0x00FF;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert!(!cpu.is_flag_set(Flag::FlagN));
@@ -1017,9 +1053,10 @@ fn test_bit_direct_page_m8_nonzero_and() {
 ///                  P.N=1 (unchanged), P.V=1 (unchanged)
 #[test]
 fn test_bit_immediate_m8_only_z_affected() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x89, 0xF0]);
     }
@@ -1030,7 +1067,7 @@ fn test_bit_immediate_m8_only_z_affected() {
     cpu.a = 0x000F;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a, 0x000F);

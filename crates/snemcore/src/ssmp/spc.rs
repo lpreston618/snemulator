@@ -1,4 +1,4 @@
-use crate::ssmp::spc::bus::SpcBus;
+use crate::{debug::DebugHarness, ssmp::spc::bus::SpcBus};
 
 pub mod bus;
 pub mod ioregs;
@@ -19,18 +19,20 @@ pub enum Flag {
 
 #[derive(Default)]
 pub struct Spc700 {
-    pc: u16,
-    sp: u8,
-    a: u8,
-    x: u8,
-    y: u8,
-    status: u8,
-    dir_page: u16,
-    stopped: bool,
+    pub pc: u16,
+    pub sp: u8,
+    pub a: u8,
+    pub x: u8,
+    pub y: u8,
+    pub status: u8,
+    pub dir_page: u16,
+    pub stopped: bool,
 
     branch_taken: bool,
 
     clocks: usize,
+
+    prg_bytes: Vec<u8>,
 }
 
 impl Spc700 {
@@ -69,9 +71,13 @@ impl Spc700 {
         self.clocks = 0;
     }
 
-    pub fn clock(&mut self, bus: &mut SpcBus) {
+    pub fn clock<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) {
         if self.clocks == 0 {            
             self.exec_instr(bus);
+
+            if H::IS_DEBUGGING_HARNESS && H::TRACK_SPC_INSTRUCTIONS {
+                bus.harness.on_spc_instruction(self, &self.prg_bytes.clone());
+            }
         }
 
         self.clocks -= 1;

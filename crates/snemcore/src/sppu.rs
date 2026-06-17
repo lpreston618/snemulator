@@ -1,3 +1,4 @@
+use crate::debug::DebugHarness;
 use crate::scpu::ioregs::HVTimerIRQ;
 use crate::scpu::CpuInterrupt;
 use crate::sppu::bus::PpuBus;
@@ -90,7 +91,7 @@ impl Ppu5C7x {
     }
 
     /// Cycles the PPU for a certain number of master clocks
-    pub fn cycle(&mut self, bus: &mut PpuBus) {
+    pub fn cycle<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
         if self.x < 256 && self.y < 224 {
             self.draw_dot(bus);
         }
@@ -105,18 +106,7 @@ impl Ppu5C7x {
         }
     }
 
-    pub fn cycle_no_output(&mut self, bus: &mut PpuBus) {
-        self.update_dot_and_scanline(bus);
-        self.update_hv_timers(bus);
-
-        self.clocks += 4;
-
-        if self.dot >= SCANLINE_END_DOT - 4 {
-            self.clocks += 1;
-        }
-    }
-
-    fn draw_dot(&mut self, bus: &mut PpuBus) {
+    fn draw_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
         match bus.ppu_regs.bg_mode {
             BgMode::Mode0 | BgMode::Mode1 | BgMode::Mode2 | BgMode::Mode3 | BgMode::Mode4 => {
                 self.draw_dot_modes_0to4(bus)
@@ -136,17 +126,15 @@ impl Ppu5C7x {
         frame_buffer[pixel_idx + 3] = 255;
     }
 
-    fn draw_dot_modes_0to4(&mut self, bus: &mut PpuBus) {
-        let regs = &bus.ppu_regs;
-
-        let dot_col_data = if regs.in_fblank {
+    fn draw_dot_modes_0to4<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
+        let dot_col_data = if bus.ppu_regs.in_fblank {
             DotColorData {
                 main_col: Color::BLACK,
                 sub_col: Color::BLACK,
                 cmath_en: false,
             }
         } else {
-            match regs.bg_mode {
+            match bus.ppu_regs.bg_mode {
                 BgMode::Mode0 => self.bg_mode0_dot(bus),
                 BgMode::Mode1 => self.bg_mode1_dot(bus),
                 BgMode::Mode2 => self.bg_mode2_dot(bus),
@@ -159,6 +147,8 @@ impl Ppu5C7x {
                 },
             }
         };
+
+        let regs = &bus.ppu_regs;
 
         let main_col = dot_col_data.main_col;
         let sub_col = dot_col_data.sub_col;
@@ -238,7 +228,7 @@ impl Ppu5C7x {
         }
     }
 
-    fn draw_dot_modes_5to6(&mut self, bus: &mut PpuBus) {
+    fn draw_dot_modes_5to6<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
         todo!();
     }
 
@@ -258,7 +248,7 @@ impl Ppu5C7x {
     }
 
     /// Gets the color of the first visible sprite on the screen.
-    fn sprite_col(&self, bus: &PpuBus) -> ColorData {
+    fn sprite_col<H: DebugHarness>(&self, bus: &mut PpuBus<H>) -> ColorData {
         let regs = &bus.ppu_regs;
 
         let mut scanline_spr_cnt = self.scanline_spr_cnt;
@@ -359,7 +349,7 @@ impl Ppu5C7x {
         }
     }
 
-    fn bg_mode0_dot(&mut self, bus: &PpuBus) -> DotColorData {
+    fn bg_mode0_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
         const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
         const BG2_CGRAM_BASE_ADDR: u8 = 0x20;
         const BG3_CGRAM_BASE_ADDR: u8 = 0x40;
@@ -467,7 +457,7 @@ impl Ppu5C7x {
         }
     }
 
-    fn bg_mode1_dot(&mut self, bus: &PpuBus) -> DotColorData {
+    fn bg_mode1_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
         const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
         const BG2_CGRAM_BASE_ADDR: u8 = 0x00;
         const BG3_CGRAM_BASE_ADDR: u8 = 0x00;
@@ -571,7 +561,7 @@ impl Ppu5C7x {
         }
     }
 
-    fn bg_mode2_dot(&mut self, bus: &PpuBus) -> DotColorData {
+    fn bg_mode2_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
         const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
         const BG2_CGRAM_BASE_ADDR: u8 = 0x00;
         const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
@@ -646,7 +636,7 @@ impl Ppu5C7x {
         }
     }
 
-    fn bg_mode3_dot(&mut self, bus: &PpuBus) -> DotColorData {
+    fn bg_mode3_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
         const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
         const BG2_CGRAM_BASE_ADDR: u8 = 0x00;
         const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp8;
@@ -721,7 +711,7 @@ impl Ppu5C7x {
         }
     }
 
-    fn bg_mode4_dot(&mut self, bus: &PpuBus) -> DotColorData {
+    fn bg_mode4_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
         const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
         const BG2_CGRAM_BASE_ADDR: u8 = 0x00;
         const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp8;
@@ -796,21 +786,21 @@ impl Ppu5C7x {
         }
     }
 
-    fn bg_mode5_dot(&mut self, bus: &PpuBus) -> DotColorData {
+    fn bg_mode5_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
         todo!()
     }
 
-    fn bg_mode6_dot(&mut self, bus: &PpuBus) -> DotColorData {
+    fn bg_mode6_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
         todo!()
     }
 
-    fn bg_mode7_dot(&mut self, bus: &PpuBus) -> DotColorData {
+    fn bg_mode7_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
         todo!()
     }
 
-    fn bg_col(
+    fn bg_col<H: DebugHarness>(
         &mut self,
-        bus: &PpuBus,
+        bus: &mut PpuBus<H>,
         bg_layer: ColorLayer,
         color_depth: ColorDepth,
         bg_cgram_base_addr: u8,
@@ -974,7 +964,7 @@ impl Ppu5C7x {
     }
 
     /// For modes 5-6
-    fn hi_res_bg_tile_idx(&self, bus: &PpuBus, bg_data: &BgSettings) -> TileData {
+    fn hi_res_bg_tile_idx<H: DebugHarness>(&self, bus: &mut PpuBus<H>, bg_data: &BgSettings) -> TileData {
         todo!()
     }
 
@@ -1095,7 +1085,7 @@ impl Ppu5C7x {
         }
     }
 
-    fn apply_cmath(&self, bus: &PpuBus, main_col: Color, sub_col: Color) -> Color {
+    fn apply_cmath<H: DebugHarness>(&self, bus: &PpuBus<H>, main_col: Color, sub_col: Color) -> Color {
         let col_win_en = Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.col_settings.window);
 
         let main_col = match bus.ppu_regs.col_win_main_region {
@@ -1189,7 +1179,7 @@ impl Ppu5C7x {
         win_en
     }
 
-    fn bg_layer_colors(&mut self, bus: &PpuBus, col_depth: ColorDepth, cgram_base_addr: u8, bg_layer: ColorLayer) -> (ColorData, ColorData) {
+    fn bg_layer_colors<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>, col_depth: ColorDepth, cgram_base_addr: u8, bg_layer: ColorLayer) -> (ColorData, ColorData) {
         let bg_data = Self::fetch_bg_data(bus.ppu_regs, bg_layer);
 
         let win_en = Self::win_active_signal(self.in_w1, self.in_w2, &bg_data.window);
@@ -1207,6 +1197,8 @@ impl Ppu5C7x {
                 cgram_base_addr
             ));
         }
+
+        let bg_data = Self::fetch_bg_data(bus.ppu_regs, bg_layer);
 
         if bg_data.sub_en && !win_sub {
             bg_sub_col = Some(match bg_main_col {
@@ -1231,7 +1223,7 @@ impl Ppu5C7x {
         (bg_main_col, bg_sub_col)
     }
 
-    fn obj_layer_colors(&mut self, bus: &PpuBus) -> (ColorData, ColorData) {
+    fn obj_layer_colors<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> (ColorData, ColorData) {
         let win_en = Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.obj_settings.window);
 
         let obj_win_main = bus.ppu_regs.obj_settings.window.main_en && win_en;
@@ -1254,7 +1246,7 @@ impl Ppu5C7x {
         (obj_main_col, obj_sub_col)
     }
 
-    fn transparent_color_data(&self, bus: &PpuBus) -> ColorData {
+    fn transparent_color_data<H: DebugHarness>(&self, bus: &mut PpuBus<H>) -> ColorData {
         ColorData {
             color: bus.cgram[0],
             priority: 0,
@@ -1262,7 +1254,7 @@ impl Ppu5C7x {
         }
     }
 
-    fn update_dot_and_scanline(&mut self, bus: &mut PpuBus) {
+    fn update_dot_and_scanline<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
         let cpu_regs = &mut bus.cpu_regs;
 
         self.dot += 1;
@@ -1285,11 +1277,13 @@ impl Ppu5C7x {
         if self.dot == 0 && self.scanline == 0 {
             cpu_regs.vblank_flag = false;
             cpu_regs.vblank_nmi_flag = false;
+            *bus.vblank_end = true;
         }
 
         // End of h-blank
         if self.dot == VISIBLE_SCANLINE_START_DOT {
             cpu_regs.hblank_flag = false;
+            *bus.hblank_end = true;
 
             // Start of visible scanline
             if 0 < self.scanline && self.scanline < VBLANK_START_SCANLINE {
@@ -1302,11 +1296,13 @@ impl Ppu5C7x {
         // Start of h-blank
         if self.dot == HBLANK_START_DOT && self.scanline < VBLANK_START_SCANLINE {
             cpu_regs.hblank_flag = true;
+            *bus.hblank_start = true;
         }
 
         // Start of v-blank
         if self.dot == 0 && self.scanline == VBLANK_START_SCANLINE {
             cpu_regs.vblank_flag = true;
+            *bus.vblank_start = true;
 
             if cpu_regs.vblank_nmi_en {
                 cpu_regs.vblank_nmi_flag = true;
@@ -1318,7 +1314,7 @@ impl Ppu5C7x {
         }
     }
 
-    fn update_hv_timers(&self, bus: &mut PpuBus) {
+    fn update_hv_timers<H: DebugHarness>(&self, bus: &mut PpuBus<H>) {
         let ppu_regs = &mut bus.ppu_regs;
         let cpu_regs = &mut bus.cpu_regs;
 
@@ -1345,7 +1341,7 @@ impl Ppu5C7x {
 
     /// Finds all possible sprites that could be rendered on the current scanline
     /// based on the y-positions of the sprites
-    fn find_scanline_sprites(&mut self, bus: &mut PpuBus) {
+    fn find_scanline_sprites<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
         let regs = &mut bus.ppu_regs;
 
         self.scanline_sprites.clear();

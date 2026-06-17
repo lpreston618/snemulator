@@ -1,3 +1,4 @@
+use crate::debug::DebugHarness;
 use crate::ssmp::spc::Flag;
 use crate::ssmp::spc::Spc700;
 use crate::ssmp::spc::bus::SpcBus;
@@ -5,7 +6,11 @@ use crate::{get_bit_n, get_byte_n};
 
 // Flag functions
 impl Spc700 {
-    pub fn exec_instr(&mut self, bus: &mut SpcBus) {
+    pub fn exec_instr<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) {
+        if H::IS_DEBUGGING_HARNESS && H::TRACK_SPC_INSTRUCTIONS {
+            self.prg_bytes.clear();
+        }
+
         let clocks: usize;
         let opcode = self.read_prg(bus);
         self.branch_taken = false;
@@ -1242,21 +1247,26 @@ impl Spc700 {
     }
     
     /// Reads the next byte of the program and increments PC
-    fn read_prg(&mut self, bus: &mut SpcBus) -> u8 {
+    fn read_prg<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) -> u8 {
         let value = self.read(bus, self.pc);
         self.pc += 1;
+
+        if H::IS_DEBUGGING_HARNESS && H::TRACK_SPC_INSTRUCTIONS {
+            self.prg_bytes.push(value);
+        }
+
         value
     }
 
-    fn read(&mut self, bus: &mut SpcBus, addr: u16) -> u8 {
+    fn read<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, addr: u16) -> u8 {
         bus.read(addr)
     }
 
-    fn write(&mut self, bus: &mut SpcBus, addr: u16, value: u8) {
+    fn write<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, addr: u16, value: u8) {
         bus.write(addr, value);
     }
 
-    fn read_word_dp(&mut self, bus: &mut SpcBus, addr: u16) -> u16 {
+    fn read_word_dp<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, addr: u16) -> u16 {
         let addr2 = (addr & 0xFF00) | ((addr + 1) & 0xFF);
         
         u16::from_le_bytes([
@@ -1265,38 +1275,38 @@ impl Spc700 {
         ])
     }
 
-    fn read_word(&mut self, bus: &mut SpcBus, addr: u16) -> u16 {
+    fn read_word<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, addr: u16) -> u16 {
         u16::from_le_bytes([
             self.read(bus, addr),
             self.read(bus, addr + 1),
         ])
     }
 
-    fn write_word(&mut self, bus: &mut SpcBus, addr: u16, value: u16) {
+    fn write_word<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, addr: u16, value: u16) {
         let addr2 = (addr & 0xFF00) | ((addr + 1) & 0xFF);
         
         self.write(bus, addr, get_byte_n!(value, 0));
         self.write(bus, addr2, get_byte_n!(value, 1));
     }
 
-    fn pop(&mut self, bus: &mut SpcBus) -> u8 {
+    fn pop<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) -> u8 {
         self.sp += 1;
         self.read(bus, 0x100 | self.sp as u16)
     }
 
-    fn push(&mut self, bus: &mut SpcBus, value: u8) {
+    fn push<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, value: u8) {
         self.write(bus, 0x100 | self.sp as u16, value);
         self.sp -= 1;
     }
 
-    fn pop_word(&mut self, bus: &mut SpcBus) -> u16 {
+    fn pop_word<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) -> u16 {
         u16::from_le_bytes([
             self.pop(bus),
             self.pop(bus)
         ])
     }
 
-    fn push_word(&mut self, bus: &mut SpcBus, value: u16) {
+    fn push_word<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, value: u16) {
         self.push(bus, get_byte_n!(value, 1));
         self.push(bus, get_byte_n!(value, 0));
     }
@@ -1327,103 +1337,103 @@ impl Spc700 {
         addr
     }
 
-    fn direct(&mut self, bus: &mut SpcBus) -> u16 {
+    fn direct<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) -> u16 {
         (self.read_prg(bus) as u16) | self.dir_page
     }
 
-    fn x_direct(&mut self, bus: &mut SpcBus) -> u16 {
+    fn x_direct<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) -> u16 {
         ((self.read_prg(bus) + self.x) as u16) | self.dir_page
     }
 
-    fn y_direct(&mut self, bus: &mut SpcBus) -> u16 {
+    fn y_direct<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) -> u16 {
         ((self.read_prg(bus) + self.y) as u16) | self.dir_page
     }
 
-    fn indirect(&mut self, _bus: &mut SpcBus) -> u16 {
+    fn indirect<H: DebugHarness>(&mut self, _bus: &mut SpcBus<H>) -> u16 {
         (self.x as u16) | self.dir_page
     }
 
-    fn indirect_inc(&mut self, bus: &mut SpcBus) -> u16 {
+    fn indirect_inc<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) -> u16 {
         let addr = self.indirect(bus);
         self.x += 1;
         addr
     }
 
-    fn direct_to_direct(&mut self, bus: &mut SpcBus) -> (u16, u16) {
+    fn direct_to_direct<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) -> (u16, u16) {
         let src_addr = self.direct(bus);
         let dst_addr = self.direct(bus);
 
         (src_addr, dst_addr)
     }
 
-    fn indirect_to_indirect(&mut self, _bus: &mut SpcBus) -> (u16, u16) {
+    fn indirect_to_indirect<H: DebugHarness>(&mut self, _bus: &mut SpcBus<H>) -> (u16, u16) {
         let arg1_addr = (self.x as u16) | self.dir_page;
         let arg2_addr = (self.y as u16) | self.dir_page;
 
         (arg2_addr, arg1_addr)
     }
 
-    fn immediate_to_direct(&mut self, bus: &mut SpcBus) -> (u16, u16) {
+    fn immediate_to_direct<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) -> (u16, u16) {
         let src_addr = self.immediate();
         let dst_addr = self.direct(bus);
 
         (src_addr, dst_addr)
     }
 
-    fn direct_relative(&mut self, bus: &mut SpcBus) -> (u16, u16) {
+    fn direct_relative<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) -> (u16, u16) {
         let data_addr = self.direct(bus);
         let branch_addr = self.relative(bus);
 
         (data_addr, branch_addr)
     }
 
-    fn absolute(&mut self, bus: &mut SpcBus) -> u16 {
+    fn absolute<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) -> u16 {
         u16::from_le_bytes([
             self.read_prg(bus),
             self.read_prg(bus),
         ])
     }
 
-    fn absolute_bit(&mut self, bus: &mut SpcBus) -> (u16, u8) {
+    fn absolute_bit<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) -> (u16, u8) {
         let address = self.absolute(bus);
 
         (address & 0x1FFF, (address >> 13) as u8)
     }
 
-    fn x_absolute(&mut self, bus: &mut SpcBus) -> u16 {
+    fn x_absolute<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) -> u16 {
         self.absolute(bus) + (self.x as u16)
     }
 
-    fn x_absolute_indirect(&mut self, bus: &mut SpcBus) -> u16 {
+    fn x_absolute_indirect<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) -> u16 {
         let ptr_addr = self.x_absolute(bus);
 
         self.read_word(bus, ptr_addr)
     }
 
-    fn y_absolute(&mut self, bus: &mut SpcBus) -> u16 {
+    fn y_absolute<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) -> u16 {
         self.absolute(bus) + (self.y as u16)
     }
 
-    fn x_direct_relative(&mut self, bus: &mut SpcBus) -> (u16, u16) {
+    fn x_direct_relative<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) -> (u16, u16) {
         let data_addr = self.x_direct(bus);
         let branch_addr = self.relative(bus);
 
         (data_addr, branch_addr)
     }
 
-    fn x_indirect(&mut self, bus: &mut SpcBus) -> u16 {
+    fn x_indirect<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) -> u16 {
         let ptr_addr = self.x_direct(bus);
 
         self.read_word(bus, ptr_addr)
     }
 
-    fn indirect_y(&mut self, bus: &mut SpcBus) -> u16 {
+    fn indirect_y<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) -> u16 {
         let ptr_addr = self.direct(bus);
 
         self.read_word(bus, ptr_addr) + self.y as u16
     }
 
-    fn relative(&mut self, bus: &mut SpcBus) -> u16 {
+    fn relative<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) -> u16 {
         let offset = ((self.read_prg(bus) as i8) as i16) as u16;
 
         self.pc + offset
@@ -1468,12 +1478,12 @@ impl Spc700 {
         result as u8
     }
 
-    fn adc_acc(&mut self, bus: &mut SpcBus, address: u16) {
+    fn adc_acc<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         let data = self.read(bus, address);
         self.a = self.adc_base(self.a, data, self.is_flag_set(Flag::FlagC));
     }
 
-    fn adc_mem(&mut self, bus: &mut SpcBus, addr1: u16, addr2: u16) {
+    fn adc_mem<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, addr1: u16, addr2: u16) {
         let arg1 = self.read(bus, addr1);
         let arg2 = self.read(bus, addr2);
 
@@ -1482,7 +1492,7 @@ impl Spc700 {
         self.write(bus, addr2, result);
     }
 
-    fn addw(&mut self, bus: &mut SpcBus, address: u16) {
+    fn addw<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         let data = self.read_word_dp(bus, address);
         let ya = ((self.y as u16) << 8) | (self.a as u16);
         let result = self.add_16_base(ya, data);
@@ -1492,14 +1502,14 @@ impl Spc700 {
     }
 
     // AND - AND Memory with Accumulator
-    fn and_acc(&mut self, bus: &mut SpcBus, address: u16) {
+    fn and_acc<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         self.a &= self.read(bus, address);
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!(self.a, 7));
         self.set_flag_to_bool(Flag::FlagZ, self.a == 0);
     }
 
-    fn and_mem(&mut self, bus: &mut SpcBus, addr1: u16, addr2: u16) {
+    fn and_mem<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, addr1: u16, addr2: u16) {
         let arg1 = self.read(bus, addr1);
         let arg2 = self.read(bus, addr2);
         let result = arg1 & arg2;
@@ -1510,13 +1520,13 @@ impl Spc700 {
         self.write(bus, addr2, result);
     }
 
-    fn and1(&mut self, bus: &mut SpcBus, address: u16, bit: u8) {
+    fn and1<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16, bit: u8) {
         let data = self.read(bus, address);
 
         self.set_flag_to_bool(Flag::FlagC, self.is_flag_set(Flag::FlagC) && get_bit_n!(data, bit));
     }
 
-    fn and1_inv(&mut self, bus: &mut SpcBus, address: u16, bit: u8) {
+    fn and1_inv<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16, bit: u8) {
         let data = self.read(bus, address);
 
         self.set_flag_to_bool(Flag::FlagC, self.is_flag_set(Flag::FlagC) && get_bit_n!(!data, bit));
@@ -1534,7 +1544,7 @@ impl Spc700 {
     }
 
     // ASL - Shift Left One Bit (Memory version)
-    fn asl_mem(&mut self, bus: &mut SpcBus, address: u16) {
+    fn asl_mem<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         let data = self.read(bus, address);
         let result = data << 1;
 
@@ -1546,7 +1556,7 @@ impl Spc700 {
     }
 
     // BBC - Branch if Bit Clear
-    fn bbc(&mut self, bus: &mut SpcBus, data_addr: u16, branch_addr: u16, bit: u8) {
+    fn bbc<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, data_addr: u16, branch_addr: u16, bit: u8) {
         let data = self.read(bus, data_addr);
 
         if get_bit_n!(!data, bit) {
@@ -1556,7 +1566,7 @@ impl Spc700 {
     }
 
     // BBS - Branch if Bit Set
-    fn bbs(&mut self, bus: &mut SpcBus, data_addr: u16, branch_addr: u16, bit: u8) {
+    fn bbs<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, data_addr: u16, branch_addr: u16, bit: u8) {
         let data = self.read(bus, data_addr);
 
         if get_bit_n!(data, bit) {
@@ -1621,7 +1631,7 @@ impl Spc700 {
 
     // BRK - Break
     // TODO: make sure it actually works this way
-    fn brk(&mut self, bus: &mut SpcBus) {
+    fn brk<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) {
         const BRK_VECTOR: u16 = 0xFFDE;
 
         self.push_word(bus, self.pc);
@@ -1650,13 +1660,13 @@ impl Spc700 {
     }
 
     // CALL - call a subroutine
-    fn call(&mut self, bus: &mut SpcBus, new_addr: u16) {
+    fn call<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, new_addr: u16) {
         self.push_word(bus, self.pc);
         self.pc = new_addr;
     }
 
     // CBNE - Compare and Branch if Not Equal
-    fn cbne(&mut self, bus: &mut SpcBus, address: u16, branch_addr: u16) {
+    fn cbne<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16, branch_addr: u16) {
         let data = self.read(bus, address);
 
         if self.a != data {
@@ -1666,7 +1676,7 @@ impl Spc700 {
     }
 
     // CMP - Compare Memory with Accumulator
-    fn cmp_acc(&mut self, bus: &mut SpcBus, address: u16) {
+    fn cmp_acc<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         let data = self.read(bus, address);
         let result = self.a - data;
 
@@ -1675,7 +1685,7 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagC, self.a >= data);
     }
 
-    fn cmp_mem(&mut self, bus: &mut SpcBus, addr1: u16, addr2: u16) {
+    fn cmp_mem<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, addr1: u16, addr2: u16) {
         let arg1 = self.read(bus, addr1);
         let arg2 = self.read(bus, addr2);
         let result = arg2 - arg1;
@@ -1691,7 +1701,7 @@ impl Spc700 {
     }
 
     // CLR1 - clears a single bit in the direct page
-    fn clr1(&mut self, bus: &mut SpcBus, address: u16, bit: u8) {
+    fn clr1<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16, bit: u8) {
         let data = self.read(bus, address);
         let b = 1 << bit;
 
@@ -1716,7 +1726,7 @@ impl Spc700 {
     }
 
     // CMPW - Compare Word with YA
-    fn cmpw(&mut self, bus: &mut SpcBus, address: u16) {
+    fn cmpw<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         let data = self.read_word_dp(bus, address);
         let ya = ((self.y as u16) << 8) | (self.a as u16);
         let result = ya - data;
@@ -1727,7 +1737,7 @@ impl Spc700 {
     }
 
     // CMX - Compare Memory with X
-    fn cmx(&mut self, bus: &mut SpcBus, address: u16) {
+    fn cmx<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         let data = self.read(bus, address);
         let result = self.x - data;
 
@@ -1737,7 +1747,7 @@ impl Spc700 {
     }
 
     // CMY - Compare Memory with Y
-    fn cmy(&mut self, bus: &mut SpcBus, address: u16) {
+    fn cmy<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         let data = self.read(bus, address);
         let result = self.y - data;
 
@@ -1785,7 +1795,7 @@ impl Spc700 {
     }
 
     // DBNZ - Decrement and Branch if Not Zero (memory)
-    fn dbnz_mem(&mut self, bus: &mut SpcBus, address: u16, branch_addr: u16) {
+    fn dbnz_mem<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16, branch_addr: u16) {
         let result = self.read(bus, address) - 1;
         self.write(bus, address, result);
 
@@ -1804,7 +1814,7 @@ impl Spc700 {
     }
 
     // DEC - decrement (memory)
-    fn dec_mem(&mut self, bus: &mut SpcBus, address: u16) {
+    fn dec_mem<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         let data = self.read(bus, address) - 1;
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!(data, 7));
@@ -1813,7 +1823,7 @@ impl Spc700 {
         self.write(bus, address, data);
     }
     
-    fn decw(&mut self, bus: &mut SpcBus, address: u16) {
+    fn decw<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         let result = self.read_word_dp(bus, address) - 1;
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!(result, 15));
@@ -1857,14 +1867,14 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagZ, self.a == 0);
     }
 
-    fn eor_acc(&mut self, bus: &mut SpcBus, address: u16) {
+    fn eor_acc<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         self.a ^= self.read(bus, address);
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!(self.a, 7));
         self.set_flag_to_bool(Flag::FlagZ, self.a == 0);
     }
 
-    fn eor_mem(&mut self, bus: &mut SpcBus, addr1: u16, addr2: u16) {
+    fn eor_mem<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, addr1: u16, addr2: u16) {
         let arg1 = self.read(bus, addr1);
         let arg2 = self.read(bus, addr2);
         let result = arg1 ^ arg2;
@@ -1875,7 +1885,7 @@ impl Spc700 {
         self.write(bus, addr2, result);
     }
 
-    fn eor1(&mut self, bus: &mut SpcBus, address: u16, bit: u8) {
+    fn eor1<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16, bit: u8) {
         let data = self.read(bus, address);
         let result = self.is_flag_set(Flag::FlagC) ^ get_bit_n!(data, bit);
 
@@ -1889,7 +1899,7 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagZ, self.a == 0);
     }
 
-    fn inc_mem(&mut self, bus: &mut SpcBus, address: u16) {
+    fn inc_mem<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         let result = self.read(bus, address) + 1;
 
         self.write(bus, address, result);
@@ -1898,7 +1908,7 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
-    fn incw(&mut self, bus: &mut SpcBus, address: u16) {
+    fn incw<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         let result = self.read_word_dp(bus, address) + 1;
 
         self.write_word(bus, address, result);
@@ -1925,34 +1935,34 @@ impl Spc700 {
         self.pc = address;
     }
 
-    fn lda(&mut self, bus: &mut SpcBus, address: u16) {
+    fn lda<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         self.a = self.read(bus, address);
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!(self.a, 7));
         self.set_flag_to_bool(Flag::FlagZ, self.a == 0);
     }
 
-    fn ldc(&mut self, bus: &mut SpcBus, address: u16, bit: u8) {
+    fn ldc<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16, bit: u8) {
         let data = self.read(bus, address);
 
         self.set_flag_to_bool(Flag::FlagC, get_bit_n!(data, bit));
     }
 
-    fn ldx(&mut self, bus: &mut SpcBus, address: u16) {
+    fn ldx<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         self.x = self.read(bus, address);
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!(self.x, 7));
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
     }
 
-    fn ldy(&mut self, bus: &mut SpcBus, address: u16) {
+    fn ldy<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         self.y = self.read(bus, address);
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!(self.y, 7));
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
     }
 
-    fn ldya(&mut self, bus: &mut SpcBus, address: u16) {
+    fn ldya<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         let data = self.read_word_dp(bus, address);
 
         self.y = (data >> 8) as u8;
@@ -1971,7 +1981,7 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagZ, self.a == 0);
     }
 
-    fn lsr_mem(&mut self, bus: &mut SpcBus, address: u16) {
+    fn lsr_mem<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         let data = self.read(bus, address);
         let result = data >> 1;
 
@@ -1982,7 +1992,7 @@ impl Spc700 {
         self.write(bus, address, result);
     }
 
-    fn mov(&mut self, bus: &mut SpcBus, src_addr: u16, dst_addr: u16) {
+    fn mov<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, src_addr: u16, dst_addr: u16) {
         let data = self.read(bus, src_addr);
 
         self.write(bus, dst_addr, data);
@@ -2000,7 +2010,7 @@ impl Spc700 {
 
     fn nop(&self) {}
 
-    fn not1(&mut self, bus: &mut SpcBus, address: u16, bit: u8) {
+    fn not1<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16, bit: u8) {
         let data = self.read(bus, address);
         let b = 1 << bit;
         let result = data ^ b;
@@ -2012,28 +2022,28 @@ impl Spc700 {
         self.status ^= Flag::FlagC as u8;
     }
 
-    fn or1(&mut self, bus: &mut SpcBus, address: u16, bit: u8) {
+    fn or1<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16, bit: u8) {
         let data = self.read(bus, address);
         let result = self.is_flag_set(Flag::FlagC) || get_bit_n!(data, bit);
 
         self.set_flag_to_bool(Flag::FlagC, result);
     }
 
-    fn or1_inv(&mut self, bus: &mut SpcBus, address: u16, bit: u8) {
+    fn or1_inv<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16, bit: u8) {
         let data = self.read(bus, address);
         let result = self.is_flag_set(Flag::FlagC) || get_bit_n!(!data, bit);
 
         self.set_flag_to_bool(Flag::FlagC, result);
     }
 
-    fn or_acc(&mut self, bus: &mut SpcBus, address: u16) {
+    fn or_acc<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         self.a |= self.read(bus, address);
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!(self.a, 7));
         self.set_flag_to_bool(Flag::FlagZ, self.a == 0);
     }
 
-    fn or_mem(&mut self, bus: &mut SpcBus, addr1: u16, addr2: u16) {
+    fn or_mem<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, addr1: u16, addr2: u16) {
         let arg1 = self.read(bus, addr1);
         let arg2 = self.read(bus, addr2);
         let result = arg1 | arg2;
@@ -2044,25 +2054,25 @@ impl Spc700 {
         self.write(bus, addr2, result);
     }
 
-    fn pcall(&mut self, bus: &mut SpcBus, address: u16) {
+    fn pcall<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         let call_addr = 0xFF00 | self.read(bus, address) as u16;
 
         self.call(bus, call_addr);
     }
 
-    fn pop_acc(&mut self, bus: &mut SpcBus) {
+    fn pop_acc<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) {
         self.a = self.pop(bus);
     }
 
-    fn pop_x(&mut self, bus: &mut SpcBus) {
+    fn pop_x<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) {
         self.x = self.pop(bus);
     }
 
-    fn pop_y(&mut self, bus: &mut SpcBus) {
+    fn pop_y<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) {
         self.y = self.pop(bus);
     }
 
-    fn pop_psw(&mut self, bus: &mut SpcBus) {
+    fn pop_psw<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) {
         self.status = self.pop(bus);
 
         if self.is_flag_set(Flag::FlagP) {
@@ -2072,27 +2082,27 @@ impl Spc700 {
         }
     }
 
-    fn push_acc(&mut self, bus: &mut SpcBus) {
+    fn push_acc<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) {
         self.push(bus, self.a);
     }
 
-    fn push_x(&mut self, bus: &mut SpcBus) {
+    fn push_x<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) {
         self.push(bus, self.x);
     }
 
-    fn push_y(&mut self, bus: &mut SpcBus) {
+    fn push_y<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) {
         self.push(bus, self.y);
     }
 
-    fn push_psw(&mut self, bus: &mut SpcBus) {
+    fn push_psw<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) {
         self.push(bus, self.status);
     }
 
-    fn ret(&mut self, bus: &mut SpcBus) {
+    fn ret<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) {
         self.pc = self.pop_word(bus);
     }
 
-    fn ret1(&mut self, bus: &mut SpcBus) {
+    fn ret1<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) {
         self.status = self.pop(bus);
         self.pc = self.pop_word(bus);
 
@@ -2114,7 +2124,7 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagC, new_c);
     }
 
-    fn rol_mem(&mut self, bus: &mut SpcBus, address: u16) {
+    fn rol_mem<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         let data = self.read(bus, address);
         let result = (data << 1) | if self.is_flag_set(Flag::FlagC) { 1 } else { 0 };
 
@@ -2140,7 +2150,7 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagC, new_c);
     }
 
-    fn ror_mem(&mut self, bus: &mut SpcBus, address: u16) {
+    fn ror_mem<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         let data = self.read(bus, address);
         let result = (if self.is_flag_set(Flag::FlagC) {
             0x80
@@ -2155,14 +2165,14 @@ impl Spc700 {
         self.write(bus, address, result);
     }
 
-    fn sbc_acc(&mut self, bus: &mut SpcBus, address: u16) {
+    fn sbc_acc<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         let data = self.read(bus, address);
         let comp = !data;
 
         self.a = self.adc_base(self.a, comp, self.is_flag_set(Flag::FlagC));
     }
 
-    fn sbc_mem(&mut self, bus: &mut SpcBus, addr1: u16, addr2: u16) {
+    fn sbc_mem<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, addr1: u16, addr2: u16) {
         let arg1 = self.read(bus, addr1);
         let arg2 = self.read(bus, addr2);
         let comp1 = !arg1;
@@ -2176,7 +2186,7 @@ impl Spc700 {
         self.set_flag(Flag::FlagI)
     }
 
-    fn set1(&mut self, bus: &mut SpcBus, address: u16, bit: u8) {
+    fn set1<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16, bit: u8) {
         let data = self.read(bus, address);
         let b = 1 << bit;
 
@@ -2194,12 +2204,12 @@ impl Spc700 {
 
     fn sleep(&self) {}
 
-    fn sta(&mut self, bus: &mut SpcBus, address: u16) {
+    fn sta<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         self.write(bus, address, self.a);
     }
 
     // MOV1 alias
-    fn stc(&mut self, bus: &mut SpcBus, address: u16, bit: u8) {
+    fn stc<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16, bit: u8) {
         if self.is_flag_set(Flag::FlagC) {
             self.set1(bus, address, bit);
         } else {
@@ -2209,21 +2219,21 @@ impl Spc700 {
 
     fn stop(&mut self) { self.stopped = true; }
 
-    fn stx(&mut self, bus: &mut SpcBus, address: u16) {
+    fn stx<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         self.write(bus, address, self.x);
     }
 
-    fn sty(&mut self, bus: &mut SpcBus, address: u16) {
+    fn sty<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         self.write(bus, address, self.y);
     }
 
-    fn stya(&mut self, bus: &mut SpcBus, address: u16) {
+    fn stya<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         let addr2 = (address & 0xFF00) | ((address + 1) & 0xFF);
         self.write(bus, address, self.a);
         self.write(bus, addr2, self.y);
     }
 
-    fn subw(&mut self, bus: &mut SpcBus, address: u16) {
+    fn subw<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         let data = self.read_word_dp(bus, address);
         let comp = !data + 1;
         let ya = ((self.y as u16) << 8) | (self.a as u16);
@@ -2247,12 +2257,12 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
     }
 
-    fn tcall(&mut self, bus: &mut SpcBus, address: u16) {
+    fn tcall<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         self.push_word(bus, self.pc);
         self.pc = self.read_word(bus, address);
     }
 
-    fn tclr1(&mut self, bus: &mut SpcBus, address: u16) {
+    fn tclr1<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         let data = self.read(bus, address);
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!((self.a - data), 7));
@@ -2261,7 +2271,7 @@ impl Spc700 {
         self.write(bus, address, data & !self.a);
     }
 
-    fn tset1(&mut self, bus: &mut SpcBus, address: u16) {
+    fn tset1<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         let data = self.read(bus, address);
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!((self.a - data), 7));

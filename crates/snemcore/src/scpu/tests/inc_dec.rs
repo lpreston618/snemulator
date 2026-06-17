@@ -12,7 +12,9 @@
 //!   - Input state
 //!   - Expected output
 
-use crate::scpu::*;
+#![allow(unused_imports)]
+
+use crate::{debug::NullHarness, scpu::*};
 use super::common::*;
 
 // ===========================================================================
@@ -27,9 +29,10 @@ use super::common::*;
 /// Expected Output: MEM[00:1040]=0x00, P.Z=1, P.N=0
 #[test]
 fn test_inc_direct_page_m8_wraps_to_zero() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xE6, 0x40]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x1040), &[0xFF]);
@@ -39,10 +42,10 @@ fn test_inc_direct_page_m8_wraps_to_zero() {
     cpu.dp = 0x1000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
-    let mut bus = backing.bus();
+    let mut bus = backing.bus(&mut harness);
     assert_eq!(cpu.read(&mut bus, addr(0x00, 0x1040)), 0x00);
     assert!(cpu.is_flag_set(Flag::FlagZ));
     assert!(!cpu.is_flag_set(Flag::FlagN));
@@ -55,9 +58,10 @@ fn test_inc_direct_page_m8_wraps_to_zero() {
 /// Expected Output: MEM[00:1040..1042]=[0x00, 0x00], P.Z=1, P.N=0
 #[test]
 fn test_inc_direct_page_m16_wraps_to_zero() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xE6, 0x40]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x1040), &[0xFF, 0xFF]);
@@ -67,10 +71,10 @@ fn test_inc_direct_page_m16_wraps_to_zero() {
     cpu.dp = 0x1000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
-    let mut bus = backing.bus();
+    let mut bus = backing.bus(&mut harness);
     assert_eq!(cpu.read(&mut bus, addr(0x00, 0x1040)), 0x00);
     assert_eq!(cpu.read(&mut bus, addr(0x00, 0x1041)), 0x00);
     assert!(cpu.is_flag_set(Flag::FlagZ));
@@ -84,9 +88,10 @@ fn test_inc_direct_page_m16_wraps_to_zero() {
 /// Expected Output: MEM[00:1040]=0xFF, P.N=1, P.Z=0
 #[test]
 fn test_dec_direct_page_m8_wraps_to_ff() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xC6, 0x40]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x1040), &[0x00]);
@@ -96,10 +101,10 @@ fn test_dec_direct_page_m8_wraps_to_ff() {
     cpu.dp = 0x1000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
-    let mut bus = backing.bus();
+    let mut bus = backing.bus(&mut harness);
     assert_eq!(cpu.read(&mut bus, addr(0x00, 0x1040)), 0xFF);
     assert!(cpu.is_flag_set(Flag::FlagN));
     assert!(!cpu.is_flag_set(Flag::FlagZ));
@@ -113,9 +118,10 @@ fn test_dec_direct_page_m8_wraps_to_ff() {
 /// Expected Output: MEM[00:1040]=0xFF, P.N=1, P.Z=0
 #[test]
 fn test_dec_direct_page_emulation_mode() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xC6, 0x40]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x1040), &[0x00]);
@@ -123,10 +129,10 @@ fn test_dec_direct_page_emulation_mode() {
     cpu.dp = 0x1000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
-    let mut bus = backing.bus();
+    let mut bus = backing.bus(&mut harness);
     assert_eq!(cpu.read(&mut bus, addr(0x00, 0x1040)), 0xFF);
     assert!(cpu.is_flag_set(Flag::FlagN));
     assert!(!cpu.is_flag_set(Flag::FlagZ));

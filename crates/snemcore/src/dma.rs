@@ -1,3 +1,4 @@
+use crate::debug::DebugHarness;
 use crate::get_bit_n;
 use crate::scpu::Address;
 use crate::scpu::bus::CpuBus;
@@ -55,7 +56,7 @@ impl DmaController {
     }
 
     #[allow(non_snake_case)]
-    pub fn write_420B(&mut self, value: u8) {
+    pub fn write_420B<H: DebugHarness>(&mut self, value: u8, harness: &mut H) {        
         self.dma_en = value != 0;
         self.dma_active_ch = value.trailing_zeros() as usize;
         
@@ -65,6 +66,10 @@ impl DmaController {
             if self.regs[i].dma_en {
                 self.regs[i].transfer_pattern_step = 0;
             }
+        }
+
+        if H::IS_DEBUGGING_HARNESS && H::TRACK_DMA && self.dma_active_ch < 8 {
+            harness.on_dma_start(self, self.dma_active_ch);
         }
     }
 
@@ -77,25 +82,31 @@ impl DmaController {
         self.hdma_needs_init = true;
     }
 
-    pub fn do_dma(&mut self, bus: &mut CpuBus, cpu_stopped: &mut bool) {
-        let mut dma_ch_regs = &mut self.regs[self.dma_active_ch];
-
+    pub fn do_dma<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, cpu_stopped: &mut bool) {
         // HDMA indirect table register is same as DMA byte count register
-        let byte_count = dma_ch_regs.hdma_indirect_table_addr.offset;
+        let byte_count = self.regs[self.dma_active_ch].hdma_indirect_table_addr.offset;
 
         // Channel's DMA transfer complete
         if byte_count == 0 {
-            dma_ch_regs.dma_en = false;
+            if H::IS_DEBUGGING_HARNESS && H::TRACK_DMA {
+                bus.harness.on_dma_end(self, self.dma_active_ch);
+            }
+
+            self.regs[self.dma_active_ch].dma_en = false;
             self.dma_active_ch += 1;
 
             'seek_active_channel: while self.dma_active_ch < 8 {
-                dma_ch_regs = &mut self.regs[self.dma_active_ch];
+                let dma_ch_regs = &mut self.regs[self.dma_active_ch];
 
                 let byte_count = dma_ch_regs.hdma_indirect_table_addr.offset;
 
                 if dma_ch_regs.dma_en {
                     // Active channel found
                     if byte_count != 0 {
+                        if H::IS_DEBUGGING_HARNESS && H::TRACK_DMA {
+                            bus.harness.on_dma_start(self, self.dma_active_ch);
+                        }
+
                         break 'seek_active_channel;
                     }
 
@@ -130,9 +141,13 @@ impl DmaController {
 
         let value = bus.read(src_addr);
         bus.write(dst_addr, value);
+
+        if H::IS_DEBUGGING_HARNESS && H::TRACK_DMA {
+            bus.harness.on_dma_transfer(self, self.dma_active_ch, src_addr, dst_addr, value);
+        }
     }
 
-    pub fn do_hdma(&mut self, bus: &mut CpuBus, cpu_stopped: &mut bool) {
+    pub fn do_hdma<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, cpu_stopped: &mut bool) {
         // Table entry finished
         if self.regs[self.hdma_active_ch].scanlines_left == 0 {
             if !self.hdma_load_entry(self.hdma_active_ch, bus) {
@@ -225,7 +240,7 @@ impl DmaController {
     /// Called once per frame before the first hblank of active display.
     /// Resets table pointers and loads the first entry for every HDMA-enabled channel.
     /// Channels whose first entry has scanline_count == 0 are disabled immediately.
-    pub fn hdma_init_channels(&mut self, bus: &mut CpuBus) {
+    pub fn hdma_init_channels<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         for ch in 0..8 {
             if !self.regs[ch].hdma_en {
                 continue;
@@ -253,7 +268,7 @@ impl DmaController {
     /// Advances hdma_table_offset past the consumed bytes.
     /// For indirect mode, also reads and stores hdma_indirect_table_addr.
     /// Returns false if scanline_count == 0 (end of table), disabling the channel.
-    pub fn hdma_load_entry(&mut self, ch: usize, bus: &mut CpuBus) -> bool {
+    pub fn hdma_load_entry<H: DebugHarness>(&mut self, ch: usize, bus: &mut CpuBus<H>) -> bool {
         let table_addr = Address {
             bank: self.regs[ch].a_bus_addr.bank,
             offset: self.regs[ch].hdma_table_offset,

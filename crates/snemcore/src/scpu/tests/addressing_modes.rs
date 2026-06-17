@@ -10,7 +10,9 @@
 //!   - Input state
 //!   - Expected output
 
-use crate::scpu::*;
+#![allow(unused_imports)]
+
+use crate::{debug::NullHarness, scpu::*};
 use super::common::*;
 
 // ===========================================================================
@@ -30,9 +32,10 @@ use super::common::*;
 /// Expected Output: A=0xAB42, PC=0x8002, P.N=0, P.Z=0
 #[test]
 fn test_lda_immediate_m8() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xA9, 0x42]);
     }
@@ -41,7 +44,7 @@ fn test_lda_immediate_m8() {
     cpu.a = 0xAB00;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a, 0xAB42);
@@ -58,9 +61,10 @@ fn test_lda_immediate_m8() {
 /// Expected Output: A=0x1234, PC=0x8003, P.N=0, P.Z=0
 #[test]
 fn test_lda_immediate_m16() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xA9, 0x34, 0x12]);
     }
@@ -69,7 +73,7 @@ fn test_lda_immediate_m16() {
     cpu.a = 0x0000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a, 0x1234);
@@ -86,9 +90,10 @@ fn test_lda_immediate_m16() {
 /// Expected Output: A=0x0099, PC=0x8002, P.N=1, P.Z=0
 #[test]
 fn test_lda_direct_page() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xA5, 0x40]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x1040), &[0x99]);
@@ -100,7 +105,7 @@ fn test_lda_direct_page() {
     cpu.a = 0x0000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0099);
@@ -116,9 +121,10 @@ fn test_lda_direct_page() {
 /// Expected Output: A low=0x55, PC=0x8002
 #[test]
 fn test_lda_direct_page_indexed_x() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xB5, 0x40]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x1045), &[0x55]);
@@ -131,7 +137,7 @@ fn test_lda_direct_page_indexed_x() {
     cpu.a = 0x0000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0055);
@@ -148,9 +154,10 @@ fn test_lda_direct_page_indexed_x() {
 /// Expected Output: A low=0x33, PC=0x8002
 #[test]
 fn test_lda_direct_page_indirect() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xB2, 0x10]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x1010), &[0x00, 0x20]);
@@ -163,7 +170,7 @@ fn test_lda_direct_page_indirect() {
     cpu.a = 0x0000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0033);
@@ -180,9 +187,10 @@ fn test_lda_direct_page_indirect() {
 /// Expected Output: A low=0x44, PC=0x8002
 #[test]
 fn test_lda_direct_page_indexed_indirect_x() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xA1, 0x10]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x1014), &[0x00, 0x30]);
@@ -197,7 +205,7 @@ fn test_lda_direct_page_indexed_indirect_x() {
     cpu.a = 0x0000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0044);
@@ -214,9 +222,10 @@ fn test_lda_direct_page_indexed_indirect_x() {
 /// Expected Output: A low=0x55, PC=0x8002
 #[test]
 fn test_lda_direct_page_indirect_indexed_y() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xB1, 0x10]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x1010), &[0x00, 0x20]);
@@ -231,7 +240,7 @@ fn test_lda_direct_page_indirect_indexed_y() {
     cpu.a = 0x0000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0055);
@@ -248,9 +257,10 @@ fn test_lda_direct_page_indirect_indexed_y() {
 /// Expected Output: A low=0x66, PC=0x8002
 #[test]
 fn test_lda_direct_page_indirect_long() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xA7, 0x10]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x1010), &[0x00, 0x40, 0x7E]);
@@ -263,7 +273,7 @@ fn test_lda_direct_page_indirect_long() {
     cpu.a = 0x0000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0066);
@@ -280,9 +290,10 @@ fn test_lda_direct_page_indirect_long() {
 /// Expected Output: A low=0x77, PC=0x8002
 #[test]
 fn test_lda_direct_page_indirect_long_indexed_y() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xB7, 0x10]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x1010), &[0x00, 0x40, 0x7E]);
@@ -296,7 +307,7 @@ fn test_lda_direct_page_indirect_long_indexed_y() {
     cpu.a = 0x0000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0077);
@@ -312,9 +323,10 @@ fn test_lda_direct_page_indirect_long_indexed_y() {
 /// Expected Output: A low=0x88, PC=0x8003
 #[test]
 fn test_lda_absolute() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xAD, 0x00, 0x30]);
         write_ram(&mut cpu, &mut bus, addr(0x7E, 0x3000), &[0x88]);
@@ -325,7 +337,7 @@ fn test_lda_absolute() {
     cpu.a = 0x0000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0088);
@@ -341,9 +353,10 @@ fn test_lda_absolute() {
 /// Expected Output: A low=0x99, PC=0x8003
 #[test]
 fn test_lda_absolute_indexed_x() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xBD, 0x00, 0x30]);
         write_ram(&mut cpu, &mut bus, addr(0x7E, 0x3010), &[0x99]);
@@ -356,7 +369,7 @@ fn test_lda_absolute_indexed_x() {
     cpu.a = 0x0000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x0099);
@@ -371,9 +384,10 @@ fn test_lda_absolute_indexed_x() {
 /// Expected Output: A low=0xAA, PC=0x8003, P.N=1
 #[test]
 fn test_lda_absolute_indexed_y() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xB9, 0x00, 0x30]);
         write_ram(&mut cpu, &mut bus, addr(0x7E, 0x3008), &[0xAA]);
@@ -386,7 +400,7 @@ fn test_lda_absolute_indexed_y() {
     cpu.a = 0x0000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x00AA);
@@ -402,9 +416,10 @@ fn test_lda_absolute_indexed_y() {
 /// Expected Output: A low=0xBB, PC=0x8004
 #[test]
 fn test_lda_absolute_long() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xAF, 0x00, 0x50, 0x7E]);
         write_ram(&mut cpu, &mut bus, addr(0x7E, 0x5000), &[0xBB]);
@@ -415,7 +430,7 @@ fn test_lda_absolute_long() {
     cpu.a = 0x0000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x00BB);
@@ -430,9 +445,10 @@ fn test_lda_absolute_long() {
 /// Expected Output: A low=0xCC, PC=0x8004
 #[test]
 fn test_lda_absolute_long_indexed_x() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xBF, 0x00, 0x50, 0x7E]);
         write_ram(&mut cpu, &mut bus, addr(0x7E, 0x5005), &[0xCC]);
@@ -444,7 +460,7 @@ fn test_lda_absolute_long_indexed_x() {
     cpu.a = 0x0000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x00CC);
@@ -459,9 +475,10 @@ fn test_lda_absolute_long_indexed_x() {
 /// Expected Output: A low=0xDD, PC=0x8002
 #[test]
 fn test_lda_stack_relative() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xA3, 0x04]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x1F04), &[0xDD]);
@@ -472,7 +489,7 @@ fn test_lda_stack_relative() {
     cpu.a = 0x0000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x00DD);
@@ -489,9 +506,10 @@ fn test_lda_stack_relative() {
 /// Expected Output: A low=0xEE, PC=0x8002
 #[test]
 fn test_lda_stack_relative_indirect_indexed_y() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xB3, 0x04]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x1F04), &[0x00, 0x60]);
@@ -506,7 +524,7 @@ fn test_lda_stack_relative_indirect_indexed_y() {
     cpu.a = 0x0000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a & 0x00FF, 0x00EE);
@@ -522,9 +540,10 @@ fn test_lda_stack_relative_indirect_indexed_y() {
 /// Expected Output: X=0x1234, PC=0x8003, P.N=0, P.Z=0
 #[test]
 fn test_ldx_absolute_x16() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xAE, 0x00, 0x40]);
         write_ram(&mut cpu, &mut bus, addr(0x7E, 0x4000), &[0x34, 0x12]);
@@ -535,7 +554,7 @@ fn test_ldx_absolute_x16() {
     cpu.x = 0x0000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.x, 0x1234);
@@ -553,16 +572,17 @@ fn test_ldx_absolute_x16() {
 /// Expected Output: PB=0x00, PC=0xC000
 #[test]
 fn test_jmp_absolute_indirect() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x6C, 0x50, 0x90]);
         write_rom(&mut bus, addr(0x00, 0x9050), &[0x00, 0xC0]);
     }
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.pb, 0x00);
@@ -579,9 +599,10 @@ fn test_jmp_absolute_indirect() {
 /// Expected Output: PB=0x00, PC=0xD000
 #[test]
 fn test_jmp_absolute_indexed_indirect_x() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x7C, 0x50, 0x90]);
         write_rom(&mut bus, addr(0x00, 0x9054), &[0x00, 0xD0]);
@@ -591,7 +612,7 @@ fn test_jmp_absolute_indexed_indirect_x() {
     cpu.x = 0x0004;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.pb, 0x00);
@@ -606,15 +627,16 @@ fn test_jmp_absolute_indexed_indirect_x() {
 /// Expected Output: PB=0x7E, PC=0x1234
 #[test]
 fn test_jmp_long() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x5C, 0x34, 0x12, 0x7E]);
     }
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.pb, 0x7E);
@@ -631,9 +653,10 @@ fn test_jmp_long() {
 /// Expected Output: PB=0x7E, PC=0xA000
 #[test]
 fn test_jmp_absolute_indirect_long() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xDC, 0x50, 0x90]);
         // Pointer lives in bank 0 (could be RAM or ROM); use ROM via write_rom.
@@ -641,7 +664,7 @@ fn test_jmp_absolute_indirect_long() {
     }
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.pb, 0x7E);
@@ -657,9 +680,10 @@ fn test_jmp_absolute_indirect_long() {
 /// Expected Output: X=0x0011, PC=0x8001, P.N=0, P.Z=0
 #[test]
 fn test_inx_implied() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0xE8]);
     }
@@ -668,7 +692,7 @@ fn test_inx_implied() {
     cpu.x = 0x0010;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.x, 0x0011);
@@ -687,9 +711,10 @@ fn test_inx_implied() {
 /// Expected Output: A=0xAB82, PC=0x8001, P.C=0, P.N=1, P.Z=0
 #[test]
 fn test_asl_accumulator_m8() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x0A]);
     }
@@ -699,7 +724,7 @@ fn test_asl_accumulator_m8() {
     cpu.a = 0xAB41;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.a, 0xAB82, "ASL A in 8-bit mode must preserve A high byte");

@@ -16,6 +16,7 @@ use rand::SeedableRng;
 use rand::rngs::StdRng;
 
 use crate::controller::ControllerData;
+use crate::debug::DebugHarness;
 use crate::sppu::VBLANK_START_SCANLINE;
 use crate::sysinfo::CLOCKS_BETWEEN_AUTOREAD_STEPS;
 
@@ -26,10 +27,11 @@ pub mod scpu;
 pub mod sppu;
 pub mod ssmp;
 pub mod sysinfo;
+pub mod debug;
 mod utils;
 
 macro_rules! cpu_bus {
-    ($core:ident) => {
+    ($core:ident, $harness:ident, $fblank_start:ident, $fblank_end:ident) => {
         CpuBus {
             wram: &mut $core.wram,
             vram: &mut $core.vram,
@@ -43,12 +45,16 @@ macro_rules! cpu_bus {
 
             controller_data: &mut $core.controller_data,
             cart: $core.cart.as_mut().unwrap(),
+
+            harness: $harness,
+            fblank_start: &mut $fblank_start,
+            fblank_end: &mut $fblank_end,
         }
     };
 }
 
 macro_rules! dma_bus {
-    ($core:ident) => {
+    ($core:ident, $harness:ident, $fblank_start:ident, $fblank_end:ident) => {
         CpuBus {
             wram: &mut $core.wram,
             vram: &mut $core.vram,
@@ -62,12 +68,16 @@ macro_rules! dma_bus {
 
             controller_data: &mut $core.controller_data,
             cart: $core.cart.as_mut().unwrap(),
+
+            harness: $harness,
+            fblank_start: &mut $fblank_start,
+            fblank_end: &mut $fblank_end,
         }
     };
 }
 
 macro_rules! ppu_bus {
-    ($core:ident, $frame_buffer:ident) => {
+    ($core:ident, $frame_buffer:ident, $harness:ident, $vblank_start:ident, $vblank_end:ident, $hblank_start:ident, $hblank_end:ident) => {
         PpuBus {
             vram: &mut $core.vram,
             cgram: &mut $core.cgram,
@@ -77,6 +87,12 @@ macro_rules! ppu_bus {
             $frame_buffer,
             frame_ready: &mut $core.frame_ready,
             interrupt: &mut $core.cpu_interrupt,
+
+            harness: $harness,
+            vblank_start: &mut $vblank_start,
+            vblank_end: &mut $vblank_end,
+            hblank_start: &mut $hblank_start,
+            hblank_end: &mut $hblank_end,
         }
     };
 }
@@ -162,7 +178,7 @@ impl Snemulator {
         self.random_seed
     }
 
-    pub fn power_on(&mut self) {
+    pub fn power_on<H: DebugHarness>(&mut self, harness: &mut H) {
         if self.cart.is_none() {
             return;
         }
@@ -180,14 +196,22 @@ impl Snemulator {
 
         self.dma.power_on();
 
-        let mut bus = cpu_bus!(self);
+        let mut bus = cpu_bus!(self, harness, false, false);
         self.cpu.power_on(&mut bus);
 
         self.ssmp.power_on();
         self.ppu.power_on();
+
+        if H::IS_DEBUGGING_HARNESS && H::TRACK_RESETS {
+            harness.on_power(self);
+        }
+
+        if H::IS_DEBUGGING_HARNESS && H::TRACK_FBLANK {
+            harness.on_fblank_start(self);
+        }
     }
 
-    pub fn reset(&mut self) {
+    pub fn reset<H: DebugHarness>(&mut self, harness: &mut H) {
         if self.cart.is_none() {
             return;
         }
@@ -200,11 +224,15 @@ impl Snemulator {
 
         self.dma.reset();
 
-        let mut bus = cpu_bus!(self);
+        let mut bus = cpu_bus!(self, harness, false, false);
         self.cpu.reset(&mut bus);
 
         self.ssmp.reset();
         self.ppu.reset();
+
+        if H::IS_DEBUGGING_HARNESS && H::TRACK_RESETS {
+            harness.on_reset(self);
+        }
     }
 
     fn clear_regs(&mut self) {
@@ -223,10 +251,10 @@ impl Snemulator {
         self.total_cycles = 0;
     }
 
-    pub fn load_rom(&mut self, data: Vec<u8>) -> Result<()> {
+    pub fn load_rom<H: DebugHarness>(&mut self, data: Vec<u8>, harness: &mut H) -> Result<()> {
         self.cart = Some(Cartridge::from_rom(data).map_err(|e| anyhow!(e))?);
 
-        self.power_on();
+        self.power_on(harness);
 
         Ok(())
     }
@@ -238,23 +266,24 @@ impl Snemulator {
         }
     }
 
-    pub fn run_frame(
+    pub fn run_frame<H: DebugHarness>(
         &mut self,
         frame_buffer: &mut [u8],
         audio_buffer: &mut Vec<i16>,
+        harness: &mut H,
     ) {
         self.frame_ready = false;
 
         self.clocks_last_frame = self.total_cycles;
 
         while !self.frame_ready {
-            self.cycle(frame_buffer, audio_buffer);
+            self.cycle(frame_buffer, audio_buffer, harness);
         }
 
         self.frame += 1;
     }
 
-    fn cycle(&mut self, frame_buffer: &mut [u8], audio_buffer: &mut Vec<i16>) {
+    fn cycle<H: DebugHarness>(&mut self, frame_buffer: &mut [u8], audio_buffer: &mut Vec<i16>, harness: &mut H) {
         let clocks = self.cpu.clocks.min(self.ppu.clocks);
 
         self.cpu.clocks -= clocks;
@@ -262,14 +291,14 @@ impl Snemulator {
         self.total_cycles += clocks as u64;
 
         if self.cpu.clocks == 0 {
-            self.cycle_cpu();
+            self.cycle_cpu(harness);
         }
 
         if self.ppu.clocks == 0 {
-            self.cycle_ppu(frame_buffer);
+            self.cycle_ppu(frame_buffer, harness);
         }
 
-        self.ssmp.cycle(clocks, audio_buffer, &mut self.apu_ports);
+        self.ssmp.cycle(clocks, audio_buffer, &mut self.apu_ports, harness);
 
         if self.cpu_regs.joypad_autoread_flag {
             if clocks >= self.controller_data.cycles_until_autoread {
@@ -281,32 +310,47 @@ impl Snemulator {
                 self.controller_data.cycles_until_autoread -= clocks;
             }
         }
+
+        if H::IS_DEBUGGING_HARNESS {
+            harness.on_emulation_step(self);
+        }
     }
 
-    fn cycle_cpu(&mut self) {
+    fn cycle_cpu<H: DebugHarness>(&mut self, harness: &mut H) {
         self.cpu.stopped = false;
         self.controller_data.joypad_cmd = None;
 
+        let mut fblank_start_flag = false;
+        let mut fblank_end_flag = false;
+
         if self.dma.hdma_needs_init && self.ppu.scanline == 0 {
             self.dma.hdma_needs_init = false;
-            let mut bus = dma_bus!(self);
+            let mut bus = dma_bus!(self, harness, fblank_start_flag, fblank_end_flag);
             self.dma.hdma_init_channels(&mut bus);
         }
 
         if self.dma.hdma_en {
             self.cpu.stopped = true;
-            let mut bus = dma_bus!(self);
+            let mut bus = dma_bus!(self, harness, fblank_start_flag, fblank_end_flag);
             self.dma.do_hdma(&mut bus, &mut self.cpu.stopped);
         }
 
         if !self.dma.hdma_en && self.dma.dma_en {
             self.cpu.stopped = true;
-            let mut bus = dma_bus!(self);
+            let mut bus = dma_bus!(self, harness, fblank_start_flag, fblank_end_flag);
             self.dma.do_dma(&mut bus, &mut self.cpu.stopped);
         }
 
-        let mut bus = cpu_bus!(self);
+        let mut bus = cpu_bus!(self, harness, fblank_start_flag, fblank_end_flag);
         self.cpu.cycle(&mut bus);
+
+        if H::IS_DEBUGGING_HARNESS && H::TRACK_FBLANK {
+            if fblank_start_flag {
+                harness.on_fblank_start(self);
+            } else if fblank_end_flag {
+                harness.on_fblank_end(self);
+            }
+        }
 
         match self.controller_data.joypad_cmd {
             Some(JoypadCmd::ClockJoy1) => self.controller_data.joy1_latch >>= 1,
@@ -328,11 +372,44 @@ impl Snemulator {
         }
     }
 
-    fn cycle_ppu(&mut self, frame_buffer: &mut [u8]) {
+    fn cycle_ppu<H: DebugHarness>(&mut self, frame_buffer: &mut [u8], harness: &mut H) {
         self.cpu_interrupt = None;
 
-        let mut bus = ppu_bus!(self, frame_buffer);
+        let mut vblank_start_flag = false;
+        let mut vblank_end_flag = false;
+        let mut hblank_start_flag = false;
+        let mut hblank_end_flag = false;
+
+        let mut bus = ppu_bus!(
+            self, 
+            frame_buffer, 
+            harness, 
+            vblank_start_flag, 
+            vblank_end_flag, 
+            hblank_start_flag, 
+            hblank_end_flag
+        );
         self.ppu.cycle(&mut bus);
+
+        if H::IS_DEBUGGING_HARNESS && H::TRACK_PPU_STEP {
+            harness.on_ppu_step(self);
+        }
+
+        if H::IS_DEBUGGING_HARNESS && H::TRACK_VBLANK {
+            if vblank_start_flag {
+                harness.on_vblank_start(self);
+            } else if vblank_end_flag {
+                harness.on_vblank_end(self);
+            }
+        }
+
+        if H::IS_DEBUGGING_HARNESS && H::TRACK_HBLANK {
+            if hblank_start_flag {
+                harness.on_hblank_start(self);
+            } else if hblank_end_flag {
+                harness.on_hblank_end(self);
+            }
+        }
 
         match self.cpu_interrupt {
             Some(CpuInterrupt::IRQ) => self.cpu.irq_pending = true,

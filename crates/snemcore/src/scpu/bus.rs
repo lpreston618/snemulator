@@ -2,6 +2,7 @@ use crate::cartridge::Cartridge;
 use crate::controller::{ControllerData, JoypadCmd};
 use crate::dma::DmaController;
 use crate::dma::{AddressIncMode, Direction, TransferPattern};
+use crate::debug::DebugHarness;
 use crate::scpu::ioregs::CpuIoRegs;
 use crate::sppu::color::Color;
 use crate::sppu::regs::PpuRegs;
@@ -28,7 +29,7 @@ impl Address {
     }
 }
 
-pub struct CpuBus<'a> {
+pub struct CpuBus<'a, H: DebugHarness> {
     pub wram: &'a mut [u8; WRAM_SIZE],
     pub vram: &'a mut [u16; VRAM_SIZE],
     pub cgram: &'a mut [Color; CGRAM_SIZE],
@@ -42,9 +43,13 @@ pub struct CpuBus<'a> {
     pub dma: Option<&'a mut DmaController>,
 
     pub controller_data: &'a mut ControllerData,
+
+    pub harness: &'a mut H,
+    pub fblank_start: &'a mut bool,
+    pub fblank_end: &'a mut bool,
 }
 
-impl<'a> CpuBus<'a> {
+impl<'a, H: DebugHarness> CpuBus<'a, H> {
     pub fn read(&mut self, addr: Address) -> u8 {
         let value = match addr.bank {
             // Banks $00-$3F: LoROM mapping
@@ -314,7 +319,19 @@ impl<'a> CpuBus<'a> {
 
         match offset {
             0x2100 => {
-                ppu_regs.write_2100(value);
+                let old_fblank = self.ppu_regs.in_fblank;
+                self.ppu_regs.in_fblank = get_bit_n!(value, 7);
+                self.ppu_regs.screen_brightness = value & 0x0F;
+
+                if H::IS_DEBUGGING_HARNESS && H::TRACK_FBLANK {
+                    if !old_fblank && self.ppu_regs.in_fblank {
+                        *self.fblank_start = true;
+                    }
+
+                    if old_fblank && !self.ppu_regs.in_fblank {
+                        *self.fblank_end = true;
+                    }
+                }
             }
             0x2101 => {
                 ppu_regs.write_2101(value);
@@ -657,7 +674,7 @@ impl<'a> CpuBus<'a> {
 
             0x420B => {
                 if let Some(ref mut dma) = self.dma {
-                    dma.write_420B(value);
+                    dma.write_420B(value, self.harness);
                 }
             }
 

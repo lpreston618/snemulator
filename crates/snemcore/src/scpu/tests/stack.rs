@@ -10,7 +10,9 @@
 //!   - Input state
 //!   - Expected output
 
-use crate::scpu::*;
+#![allow(unused_imports)]
+
+use crate::{debug::NullHarness, scpu::*};
 use super::common::*;
 
 // ===========================================================================
@@ -29,9 +31,10 @@ use super::common::*;
 /// Expected Output: SP=0x01FF, MEM[00:0100]=0xAB
 #[test]
 fn test_pha_emulation_stack_wrap() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x48]);
     }
@@ -39,11 +42,11 @@ fn test_pha_emulation_stack_wrap() {
     cpu.sp = 0x0100;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.sp, 0x01FF, "SP must wrap to 0x01FF after push at 0x0100");
-    let mut bus = backing.bus();
+    let mut bus = backing.bus(&mut harness);
     let pushed = cpu.read(&mut bus, addr(0x00, 0x0100));
     assert_eq!(pushed, 0xAB, "Byte should land at 0x0100 (the pre-decrement slot)");
 }
@@ -55,9 +58,10 @@ fn test_pha_emulation_stack_wrap() {
 /// Expected Output: SP=0x0100, A low byte=0x77
 #[test]
 fn test_pla_emulation_stack_wrap() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x68]);
         write_ram(&mut cpu, &mut bus, addr(0x00, 0x0100), &[0x77]);
@@ -66,7 +70,7 @@ fn test_pla_emulation_stack_wrap() {
     cpu.a = 0x0000;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.sp, 0x0100, "SP must wrap to 0x0100 after pull at 0x01FF");
@@ -81,9 +85,10 @@ fn test_pla_emulation_stack_wrap() {
 /// Expected Output: SP=0x1FFE, MEM[00:1FFF]=0xCD
 #[test]
 fn test_pha_native_no_page1_forcing() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x48]);
     }
@@ -93,11 +98,11 @@ fn test_pha_native_no_page1_forcing() {
     cpu.sp = 0x1FFF;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.sp, 0x1FFE);
-    let mut bus = backing.bus();
+    let mut bus = backing.bus(&mut harness);
     assert_eq!(cpu.read(&mut bus, addr(0x00, 0x1FFF)), 0xCD);
 }
 
@@ -112,9 +117,10 @@ fn test_pha_native_no_page1_forcing() {
 /// Expected Output: SP=0x00FE, MEM[00:0100]=0xBE, MEM[00:00FF]=0xEF
 #[test]
 fn test_phd_emulation_no_wrap() {
+    let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
         write_rom(&mut bus, addr(0x00, 0x8000), &[0x0B]);
     }
@@ -122,11 +128,11 @@ fn test_phd_emulation_no_wrap() {
     cpu.sp = 0x0100;
     set_pc(&mut cpu, 0x00, 0x8000);
     {
-        let mut bus = backing.bus();
+        let mut bus = backing.bus(&mut harness);
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.sp, 0x01FE, "SP must be wrapped after instruction in emulation mode");
-    let mut bus = backing.bus();
+    let mut bus = backing.bus(&mut harness);
     assert_eq!(cpu.read(&mut bus, addr(0x00, 0x0100)), 0xBE);
     assert_eq!(cpu.read(&mut bus, addr(0x00, 0x00FF)), 0xEF, "PHD must not wrap SP during instruction in emulation mode");
 }
