@@ -56,7 +56,7 @@ impl<'a> CpuBus<'a> {
                 0x2100..=0x213F => self.read_ppu_regs(addr.offset),
 
                 // APU ports
-                0x2140..=0x217F => match addr.offset & 0x3 {
+                0x2140..=0x217F => match addr.offset & 3 {
                     0 => self.apu_ports.apuio0,
                     1 => self.apu_ports.apuio1,
                     2 => self.apu_ports.apuio2,
@@ -144,46 +144,36 @@ impl<'a> CpuBus<'a> {
         }
     }
 
-    fn read_wram_port(&mut self, _offset: u16) -> u8 {
-        log::warn!("Attempting to read from WRAM port");
-        // match offset {
-        //     0x2180 => {
-        //         let addr = self.cpu_regs.wram_addr as usize;
-        //         let value = self.wram[addr & 0x1FFFF];
-        //         self.cpu_regs.wram_addr = self.cpu_regs.wram_addr.wrapping_add(1) & 0x1FFFF;
-        //         value
-        //     }
-        //     _ => 0,
-        // }
-        0
+    fn read_wram_port(&mut self, offset: u16) -> u8 {
+        match offset {
+            0x2180 => {
+                let value = self.wram[self.cpu_regs.wram_address & 0x1FFFF];
+                self.cpu_regs.wram_address += 1;
+                self.cpu_regs.wram_address &= 0x1FFFF;
+                value
+            }
+            _ => 0,
+        }
     }
 
     fn write_wram_port(&mut self, offset: u16, value: u8) {
-        log::warn!(
-            "Attempting to write to WRAM ports: {:02X} to ${:04X}",
-            value,
-            offset
-        );
-        // uncomment and pray it works
-        // match offset {
-        //     0x2180 => {
-        //         let addr = self.cpu_regs.wram_addr as usize;
-        //         self.wram[addr & 0x1FFFF] = value;
-        //         self.cpu_regs.wram_addr = self.cpu_regs.wram_addr.wrapping_add(1) & 0x1FFFF;
-        //     }
-        //     0x2181 => {
-        //         self.cpu_regs.wram_addr = (self.cpu_regs.wram_addr & 0x1FF00) | (value as u32);
-        //     }
-        //     0x2182 => {
-        //         self.cpu_regs.wram_addr =
-        //             (self.cpu_regs.wram_addr & 0x100FF) | ((value as u32) << 8);
-        //     }
-        //     0x2183 => {
-        //         self.cpu_regs.wram_addr =
-        //             (self.cpu_regs.wram_addr & 0x0FFFF) | (((value & 1) as u32) << 16);
-        //     }
-        //     _ => {}
-        // }
+        match offset {
+            0x2180 => {
+                self.wram[self.cpu_regs.wram_address & 0x1FFFF] = value;
+                self.cpu_regs.wram_address += 1;
+                self.cpu_regs.wram_address &= 0x1FFFF;
+            }
+            0x2181 => {
+                set_byte_n!(self.cpu_regs.wram_address, value as usize, 0);
+            }
+            0x2182 => {
+                set_byte_n!(self.cpu_regs.wram_address, value as usize, 1);
+            }
+            0x2183 => {
+                set_byte_n!(self.cpu_regs.wram_address, (value & 1) as usize, 2);
+            }
+            _ => {}
+        }
     }
 
     fn read_ppu_regs(&mut self, offset: u16) -> u8 {
@@ -675,6 +665,10 @@ impl<'a> CpuBus<'a> {
                 if let Some(ref mut dma) = self.dma {
                     dma.write_420C(value);
                 }
+            }
+
+            0x420D => {
+                cpu_regs.write_420D(value);
             }
 
             0x4210..=0x42FF => {} // Read-only regs

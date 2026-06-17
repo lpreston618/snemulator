@@ -41,6 +41,9 @@ pub struct CpuIoRegs {
     // $4209-$420A
     pub v_counter_target: u16,
 
+    // $420D
+    pub fast_rom_en: bool,
+
     // $4210
     pub vblank_nmi_flag: bool,
 
@@ -77,6 +80,7 @@ impl CpuIoRegs {
         self.write_4208(1);
         self.write_4209(0xFF);
         self.write_420A(1);
+        self.write_420D(0);
 
         self.vblank_flag = false;
         self.hblank_flag = true;
@@ -172,5 +176,10 @@ impl CpuIoRegs {
     #[allow(non_snake_case)]
     pub fn write_420A(&mut self, value: u8) {
         set_byte_n!(self.v_counter_target, (value & 1) as u16, 1);
+    }
+
+    #[allow(non_snake_case)]
+    pub fn write_420D(&mut self, value: u8) {
+        self.fast_rom_en = get_bit_n!(value, 0);
     }
 }
