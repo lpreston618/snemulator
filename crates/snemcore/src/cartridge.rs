@@ -4,6 +4,17 @@ use log::trace;
 
 use crate::scpu::bus::Address;
 
+// Positions of the start of the header for different memory mappings
+const LOROM_POS: usize = 0x007FC0;
+const HIROM_POS: usize = 0x00FFC0;
+const EXHIROM_POS: usize = 0x40FFC0;
+// Positions of key data in the ROM header
+const CHECKSUM_OFFSET: usize = 0x1E;
+const COMPLEMENT_OFFSET: usize = 0x1C;
+const RESET_VEC_OFFSET: usize = 0x3C;
+const MAPPING_MODE_OFFSET: usize = 0x15;
+const LAST_TITLE_CHAR_OFFSET: usize = 0x14;
+
 #[derive(Debug, Clone, Copy, Default)]
 pub enum MappingMode {
     #[default]
@@ -337,109 +348,102 @@ fn pad_rom(rom: Vec<u8>) -> Result<Vec<u8>, String> {
     }
 }
 
-/// Returns the address of the header in cartridge ROM
-fn find_header(cart_rom: &Vec<u8>) -> Result<usize, String> {
-    // Positions of the start of the header for different memory mappings
-    const LOROM_POS: usize = 0x007FC0;
-    const HIROM_POS: usize = 0x00FFC0;
-    const EXHIROM_POS: usize = 0x40FFC0;
+/// Evaluate the likelihood of a ROM header being located at the given position
+fn score_header(cart_rom: &Vec<u8>, map: MappingMode, checksum: u16, complement: u16) -> i32 {
+    let mut score = 0;
 
-    const CHECKSUM_OFFSET: usize = 0x1E;
-    const COMPLEMENT_OFFSET: usize = 0x1C;
-
-    let mut rom_mapping_mode: Option<MappingMode> = None;
-
-    let checksum = compute_checksum(cart_rom);
-    let complement = !checksum;
-
-    let rom_mirror = cart_rom.len() - 1;
-
-    let read_rom = |addr: usize| cart_rom[addr & rom_mirror];
-
-    let maybe_checksum = u16::from_le_bytes([
-        read_rom(LOROM_POS + CHECKSUM_OFFSET + 0),
-        read_rom(LOROM_POS + CHECKSUM_OFFSET + 1),
-    ]);
-    let maybe_complement = u16::from_le_bytes([
-        read_rom(LOROM_POS + COMPLEMENT_OFFSET + 0),
-        read_rom(LOROM_POS + COMPLEMENT_OFFSET + 1),
-    ]);
-    if (checksum == maybe_checksum) && (complement == maybe_complement) {
-        rom_mapping_mode = Some(MappingMode::LoROM);
-    }
-
-    let maybe_checksum = u16::from_le_bytes([
-        read_rom(HIROM_POS + CHECKSUM_OFFSET + 0),
-        read_rom(HIROM_POS + CHECKSUM_OFFSET + 1),
-    ]);
-    let maybe_complement = u16::from_le_bytes([
-        read_rom(HIROM_POS + COMPLEMENT_OFFSET + 0),
-        read_rom(HIROM_POS + COMPLEMENT_OFFSET + 1),
-    ]);
-    if (checksum == maybe_checksum)
-        && (complement == maybe_complement)
-        && rom_mapping_mode.is_none()
-    {
-        rom_mapping_mode = Some(MappingMode::HiROM);
-    }
-
-    let maybe_checksum = u16::from_le_bytes([
-        read_rom(EXHIROM_POS + CHECKSUM_OFFSET + 0),
-        read_rom(EXHIROM_POS + CHECKSUM_OFFSET + 1),
-    ]);
-    let maybe_complement = u16::from_le_bytes([
-        read_rom(EXHIROM_POS + COMPLEMENT_OFFSET + 0),
-        read_rom(EXHIROM_POS + COMPLEMENT_OFFSET + 1),
-    ]);
-    if (checksum == maybe_checksum)
-        && (complement == maybe_complement)
-        && rom_mapping_mode.is_none()
-    {
-        rom_mapping_mode = Some(MappingMode::ExHiROM);
-    }
-
-    if rom_mapping_mode.is_none() {
-        return Err(String::from("ROM header not found"));
-    }
-
-    let rom_mapping_mode = rom_mapping_mode.unwrap();
-
-    let header_pos = match rom_mapping_mode {
+    let addr = match map {
         MappingMode::LoROM => LOROM_POS,
         MappingMode::HiROM => HIROM_POS,
         MappingMode::ExHiROM => EXHIROM_POS,
     };
-    let expected_self_ident = match rom_mapping_mode {
-        MappingMode::LoROM => 0,
-        MappingMode::HiROM => 1,
-        MappingMode::ExHiROM => 5,
-    };
 
-    let rom_mapping_mode_self_ident = read_rom(header_pos + 0x15) & 0xF;
+    let rom_mirror = cart_rom.len() - 1;
+    let read_rom = |addr: usize| cart_rom[addr & rom_mirror];
 
-    if rom_mapping_mode_self_ident != expected_self_ident {
-        let map_mode_str = match rom_mapping_mode {
-            MappingMode::LoROM => "LoROM",
-            MappingMode::HiROM => "HiROM",
-            MappingMode::ExHiROM => "ExHiROM",
-        };
+    let maybe_checksum = u16::from_le_bytes([
+        read_rom(addr + CHECKSUM_OFFSET + 0),
+        read_rom(addr + CHECKSUM_OFFSET + 1),
+    ]);
+    let maybe_complement = u16::from_le_bytes([
+        read_rom(addr + COMPLEMENT_OFFSET + 0),
+        read_rom(addr + COMPLEMENT_OFFSET + 1),
+    ]);
+    let maybe_reset_vec = u16::from_le_bytes([
+        read_rom(addr + RESET_VEC_OFFSET + 0),
+        read_rom(addr + RESET_VEC_OFFSET + 1),
+    ]);
 
-        let expected_map_mode_str = match rom_mapping_mode_self_ident {
-            0 => "LoROM",
-            1 => "HiROM",
-            5 => "ExHiROM",
-            _ => &format!("UNKNOWN MAPPING MODE {}", rom_mapping_mode_self_ident),
-        };
-
-        let err_msg = format!(
-            "found header in {} pos, but header wants {}",
-            map_mode_str, expected_map_mode_str
-        );
-
-        return Err(err_msg);
+    if maybe_reset_vec < 0x8000 {
+        return 0; // Reset should always be in ROM, so if the vector points outside of ROM, this ain't it.
     }
 
-    Ok(header_pos)
+    if (checksum == maybe_checksum) && (complement == maybe_complement) {
+        score += 4;
+    }
+
+    if (maybe_checksum + maybe_complement) == 0xFFFF {
+        score += 4;
+    }
+
+    if read_rom(addr + LAST_TITLE_CHAR_OFFSET) == 0x20 {
+        score += 2; // The last character of the title is often a space because the title is space-padded.
+    }
+
+    let opcode = read_rom(maybe_reset_vec as usize);
+
+    match opcode {
+        0x78 | 0x18 | 0x38 | 0x9C | 0x4C | 0x5C => {
+            // Matches instructions likely to begin an interrupt vector:
+            // sei, clc, sec, stz, jmp, jml
+            score += 8;
+        }
+        _ => {}
+    }
+
+    let maybe_map = read_rom(addr + MAPPING_MODE_OFFSET) & 0x0F;
+
+    if maybe_map == 0 && matches!(map, MappingMode::LoROM)
+        || maybe_map == 1 && matches!(map, MappingMode::HiROM)
+        || maybe_map == 5 && matches!(map, MappingMode::ExHiROM)
+    {
+        score += 8;
+    }
+
+    score
+}
+
+/// Returns the address of the header in cartridge ROM
+fn find_header(cart_rom: &Vec<u8>) -> Result<usize, String> {
+    let checksum = compute_checksum(cart_rom);
+    let complement = !checksum;
+
+    let lorom_score = score_header(cart_rom, MappingMode::LoROM, checksum, complement);
+    let hirom_score = score_header(cart_rom, MappingMode::HiROM, checksum, complement);
+    let exhirom_score = score_header(cart_rom, MappingMode::ExHiROM, checksum, complement);
+
+    log::trace!(
+        "Header search: lo {}, hi {}, exhi {}",
+        lorom_score,
+        hirom_score,
+        exhirom_score
+    );
+
+    if lorom_score == 0 && hirom_score == 0 && exhirom_score == 0 {
+        return Err(String::from("No valid header found"));
+    }
+
+    if lorom_score > hirom_score {
+        if lorom_score > exhirom_score {
+            Ok(LOROM_POS)
+        } else {
+            Ok(EXHIROM_POS)
+        }
+    } else if hirom_score > exhirom_score {
+        Ok(HIROM_POS)
+    } else {
+        Ok(EXHIROM_POS)
+    }
 }
 
 // Compute the checksum of the cartridge using the proper mirroring
