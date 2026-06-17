@@ -163,6 +163,10 @@ impl Snemulator {
     }
 
     pub fn power_on(&mut self) {
+        if self.cart.is_none() {
+            return;
+        }
+
         self.clear_regs();
 
         self.wram.fill(0);
@@ -184,6 +188,10 @@ impl Snemulator {
     }
 
     pub fn reset(&mut self) {
+        if self.cart.is_none() {
+            return;
+        }
+        
         self.clear_regs();
 
         self.ppu_regs.reset();
