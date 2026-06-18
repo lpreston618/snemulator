@@ -17,12 +17,15 @@ const DEFAULT_FF_SPEED: f32 = 2.0;
 #[derive(Clone, Copy, PartialEq)]
 enum DebugTab {
     Cpu,
+    // Memory,
+    Ppu,
 }
 
 impl DebugTab {
     fn label(self) -> &'static str {
         match self {
-            DebugTab::Cpu => "cpu"
+            DebugTab::Cpu => "CPU",
+            DebugTab::Ppu => "PPU",
         }
     }
 }
@@ -39,7 +42,7 @@ pub struct DebugWindow {
     egui_window: Option<Box<UiWindow>>,
     cpu_tab: Box<tabs::cpu::CpuTab>,
     // mem_tab: Box<tabs::MemoryTab>,
-    // ppu_tab: Box<tabs::PpuTab>,
+    ppu_tab: Box<tabs::ppu::PpuTab>,
     // wp_tab: Box<tabs::WatchpointsTab>,
     selected_tab: DebugTab,
     // jump_to_bps_on_hit: bool,
@@ -76,7 +79,7 @@ impl DebugWindow {
             egui_window: None,
             cpu_tab: Box::new(tabs::cpu::CpuTab::new()),
             // mem_tab,
-            // ppu_tab,
+            ppu_tab: Box::new(tabs::ppu::PpuTab::new()),
             // wp_tab: Box::new(tabs::WatchpointsTab::new()),
             selected_tab: DebugTab::Cpu,
             // jump_to_bps_on_hit: true,
@@ -108,7 +111,7 @@ impl DebugWindow {
                     for tab in [
                         DebugTab::Cpu,
                         // tabs::DebugTab::Memory,
-                        // tabs::DebugTab::Ppu,
+                        DebugTab::Ppu,
                         // tabs::DebugTab::Watchpoints,
                     ] {
                         ui.selectable_value(&mut self.selected_tab, tab, tab.label());
@@ -124,7 +127,7 @@ impl DebugWindow {
                         self.cpu_tab.render(ui, core, harness)
                     }
                     // tabs::DebugTab::Memory => self.mem_tab.render(ui, core),
-                    // tabs::DebugTab::Ppu => self.ppu_tab.render(ui, core),
+                    DebugTab::Ppu => self.ppu_tab.render(ui, core, harness),
                     // tabs::DebugTab::Watchpoints => {
                     //     self.wp_tab.render(ui, core, app_state)
                     // }
@@ -312,6 +315,7 @@ impl DebugWindow {
                     (icons::STEP_OVER, "Step Over", StopCondition::StepOverSubroutine { depth: 0 }),
                     (icons::STEP_INTO, "Step Into", StopCondition::Instruction),
                     (icons::STEP_OUT, "Step Out", StopCondition::StepOverSubroutine { depth: 1 }),
+                    (icons::RUN_FRAME, "Run Frame", StopCondition::Frame),
                     (icons::RUN_UNTIL_INTERRUPT, "Run Until Interrupt", StopCondition::Interrupt),
                 ] {
                     if ui.add_enabled(app_state.is_paused,

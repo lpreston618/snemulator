@@ -14,7 +14,7 @@ pub mod regs;
 mod types;
 
 #[macro_use]
-mod utils;
+pub mod utils;
 
 pub const VBLANK_START_SCANLINE: usize = 225;
 const VBLANK_END_SCANLINE_NTSC: usize = 262;
