@@ -16,13 +16,13 @@ pub struct BgDebugView<const BG_LAYER: usize> {
     zoom: f32,
     /// Whether to show the screen viewport overlay
     show_viewport: bool,
-    
-    /// Scroll position within the viewer (for panning)
-    scroll_offset: Vec2,
-
     /// How much extra tilemap to show around the screen (in screens)
     /// 1.0 = show one extra screen worth on each side
     padding_screens: f32,
+    /// The tile coordinate (tile_x, tile_y) that was last hovered over
+    hovered_tile: Option<(u32, u32)>,
+    /// The tile coordinate (tile_x, tile_y) that was last clicked
+    selected_tile: Option<(u32, u32)>,
 }
 
 /// Split a UV range that may cross the 1.0 boundary into at most two clamped segments.
@@ -52,8 +52,9 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
             rendered_size: (0, 0),
             zoom: 1.0,
             show_viewport: true,
-            scroll_offset: Vec2::ZERO,
-            padding_screens: 0.5, // Half a screen of padding on each side
+            padding_screens: 0.5,
+            hovered_tile: None,
+            selected_tile: None,
         }
     }
 
@@ -85,15 +86,6 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
         let color_depth = self.color_depth(core);
 
         if color_depth == 0 {
-            texture::draw_diagonal_stripes(
-                &mut self.pixel_buffer,
-                512,
-                16,
-                48,
-                Color::DARK_GRAY.to_rgba_bytes(),
-                Color::DARKEST_GRAY.to_rgba_bytes(),
-            );
-
             self.texture = None;
             
             return;
@@ -125,13 +117,13 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
         ui.horizontal(|ui| {
             ui.label(format!("BG{}", BG_LAYER + 1));
             ui.separator();
-            
+
             ui.label("Zoom:");
             ui.add(egui::Slider::new(&mut self.zoom, 0.25..=4.0).logarithmic(true));
-            
+
             ui.separator();
             ui.checkbox(&mut self.show_viewport, "Show viewport");
-            
+
             ui.separator();
             ui.label(format!(
                 "{}x{} | {}bpp | Tile: {:?}",
@@ -147,9 +139,17 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
         // Ensure texture is uploaded
         self.ensure_texture(ui.ctx());
 
-        // Render the scrollable background view
+        // Side panel for tile info — reserves space before the background view is laid out,
+        // so the scroll area always gets the correct remaining width.
+        egui::SidePanel::right(format!("bg{}_tile_info", BG_LAYER))
+            .resizable(true)
+            .min_width(160.0)
+            .show_inside(ui, |ui| {
+                self.render_tile_info_panel(ui, core);
+            });
+
+        // Background tilemap view fills all remaining space
         let available_size = ui.available_size();
-        
         egui::ScrollArea::both()
             .max_width(available_size.x)
             .max_height(available_size.y)
@@ -252,7 +252,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
         let display_size = Vec2::new(display_w * scale, display_h * scale);
         let effective_zoom = self.zoom * scale;
 
-        let (rect, response) = ui.allocate_exact_size(display_size, egui::Sense::hover());
+        let (rect, response) = ui.allocate_exact_size(display_size, egui::Sense::hover() | egui::Sense::click());
 
         // Draw the texture in tiled segments so UVs always stay within [0, 1].
         // When the UV range crosses 1.0 we split into two strips (left + right, or top + bottom,
@@ -285,11 +285,31 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
             self.draw_centered_viewport(ui, rect, screen_w, screen_h, effective_zoom);
         }
 
-        // Tooltip on hover
-        if response.hovered() {
-            if let Some(pos) = response.hover_pos() {
-                self.draw_tile_highlight(ui, pos, rect, uv);
-                self.show_tile_tooltip(ui, pos, rect, uv, bg_settings, core);
+        // Hover highlight and click-to-select
+        self.hovered_tile = if response.hovered() {
+            response.hover_pos().and_then(|pos| {
+                self.pos_to_tile_coords(pos, rect, uv)
+            })
+        } else {
+            None
+        };
+
+        if response.clicked() {
+            if self.hovered_tile.is_some() && self.selected_tile.is_some()
+                && self.hovered_tile.unwrap() == self.selected_tile.unwrap() {
+                self.selected_tile = None;
+            } else {
+                self.selected_tile = self.hovered_tile;
+            }
+        }
+
+        // Draw highlight for hovered tile (red) and selected tile (yellow), if distinct
+        if let Some((tx, ty)) = self.selected_tile {
+            self.draw_tile_highlight(ui, tx, ty, rect, uv, Color32::from_rgb(255, 210, 50));
+        }
+        if let Some((tx, ty)) = self.hovered_tile {
+            if self.hovered_tile != self.selected_tile {
+                self.draw_tile_highlight(ui, tx, ty, rect, uv, Color32::from_rgb(255, 80, 80));
             }
         }
     }
@@ -329,125 +349,123 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
         );
     }
 
-    fn draw_tile_highlight(
-        &self,
-        ui: &mut egui::Ui,
-        hover_pos: egui::Pos2,
-        image_rect: egui::Rect,
-        uv: egui::Rect,
-    ) {
+    /// Convert a screen position to tile coordinates (tile_x, tile_y), or None if out of bounds.
+    fn pos_to_tile_coords(&self, pos: egui::Pos2, image_rect: egui::Rect, uv: egui::Rect) -> Option<(u32, u32)> {
         let tilemap_w = self.rendered_size.0 as f32;
         let tilemap_h = self.rendered_size.1 as f32;
+        if tilemap_w == 0.0 || tilemap_h == 0.0 { return None; }
 
-        if tilemap_w == 0.0 || tilemap_h == 0.0 {
-            return;
-        }
-
-        // Convert screen position to UV coordinates
-        let relative = hover_pos - image_rect.min;
-        let norm_x = relative.x / image_rect.width();
-        let norm_y = relative.y / image_rect.height();
-
-        // Interpolate within UV rect
+        let norm_x = (pos.x - image_rect.min.x) / image_rect.width();
+        let norm_y = (pos.y - image_rect.min.y) / image_rect.height();
         let u = uv.min.x + norm_x * uv.width();
         let v = uv.min.y + norm_y * uv.height();
 
-        // Convert UV to tilemap pixel coordinates (with wrapping)
-        let pixel_x = (u * tilemap_w).rem_euclid(tilemap_w);
-        let pixel_y = (v * tilemap_h).rem_euclid(tilemap_h);
+        let pixel_x = (u * tilemap_w).rem_euclid(tilemap_w) as u32;
+        let pixel_y = (v * tilemap_h).rem_euclid(tilemap_h) as u32;
+        Some((pixel_x / 8, pixel_y / 8))
+    }
 
-        // Get tile-aligned coordinates
-        let tile_x = (pixel_x / 8.0).floor();
-        let tile_y = (pixel_y / 8.0).floor();
-        let tile_pixel_x = tile_x * 8.0;
-        let tile_pixel_y = tile_y * 8.0;
+    /// Draw a highlight outline around a specific tile coordinate.
+    fn draw_tile_highlight(
+        &self,
+        ui: &mut egui::Ui,
+        tile_x: u32,
+        tile_y: u32,
+        image_rect: egui::Rect,
+        uv: egui::Rect,
+        color: Color32,
+    ) {
+        let tilemap_w = self.rendered_size.0 as f32;
+        let tilemap_h = self.rendered_size.1 as f32;
+        if tilemap_w == 0.0 || tilemap_h == 0.0 { return; }
 
-        // Convert tile position back to UV
-        let tile_u_min = tile_pixel_x / tilemap_w;
-        let tile_v_min = tile_pixel_y / tilemap_h;
+        let tile_u_min = (tile_x * 8) as f32 / tilemap_w;
+        let tile_v_min = (tile_y * 8) as f32 / tilemap_h;
 
-        // Handle wrapping: find offset from current UV origin, clamped to the visible UV range
-        let uv_range_w = uv.width();
-        let uv_range_h = uv.height();
-        let u_offset = (tile_u_min - uv.min.x).rem_euclid(uv_range_w);
-        let v_offset = (tile_v_min - uv.min.y).rem_euclid(uv_range_h);
+        let u_offset = (tile_u_min - uv.min.x).rem_euclid(uv.width());
+        let v_offset = (tile_v_min - uv.min.y).rem_euclid(uv.height());
 
-        // Convert UV offset to screen coordinates
         let screen_x = image_rect.min.x + (u_offset / uv.width()) * image_rect.width();
         let screen_y = image_rect.min.y + (v_offset / uv.height()) * image_rect.height();
-
-        // Tile size in screen pixels
         let tile_screen_w = (8.0 / tilemap_w) * (image_rect.width() / uv.width());
         let tile_screen_h = (8.0 / tilemap_h) * (image_rect.height() / uv.height());
 
-        let highlight_rect = egui::Rect::from_min_size(
-            egui::pos2(screen_x, screen_y),
-            egui::vec2(tile_screen_w, tile_screen_h),
-        );
-
-        // Draw red outline
         let stroke_width = (1.5 * self.zoom.max(1.0)).min(3.0);
         ui.painter().rect_stroke(
-            highlight_rect,
+            egui::Rect::from_min_size(egui::pos2(screen_x, screen_y), egui::vec2(tile_screen_w, tile_screen_h)),
             0.0,
-            egui::Stroke::new(stroke_width, Color32::from_rgb(255, 80, 80)),
+            egui::Stroke::new(stroke_width, color),
             egui::StrokeKind::Outside,
         );
     }
 
-    /// Show tooltip with tile information on hover
-    fn show_tile_tooltip(
-        &self,
-        ui: &mut egui::Ui,
-        hover_pos: egui::Pos2,
-        image_rect: egui::Rect,
-        uv: egui::Rect,
-        bg_settings: &BgSettings,
-        core: &Snemulator,
-    ) {
-        let tilemap_w = self.rendered_size.0 as f32;
-        let tilemap_h = self.rendered_size.1 as f32;
+    /// Render the tile info panel shown to the right of the background view.
+    fn render_tile_info_panel(&mut self, ui: &mut egui::Ui, core: &Snemulator) {
+        let bg_settings = &core.ppu_regs.bg_settings[BG_LAYER];
 
-        if tilemap_w == 0.0 || tilemap_h == 0.0 {
+        if self.selected_tile.is_none() && self.hovered_tile.is_none() {
+            ui.label("Click a tile to inspect it.");
             return;
         }
 
-        // Convert screen position to UV coordinates
-        let relative = hover_pos - image_rect.min;
-        let norm_x = relative.x / image_rect.width();
-        let norm_y = relative.y / image_rect.height();
+        let tile_x: u32;
+        let tile_y: u32;
 
-        // Interpolate within UV rect
-        let u = uv.min.x + norm_x * uv.width();
-        let v = uv.min.y + norm_y * uv.height();
+        if self.selected_tile.is_some() {
+            (tile_x, tile_y) = self.selected_tile.unwrap();
+        } else {
+            (tile_x, tile_y) = self.hovered_tile.unwrap();
+        }
 
-        // Convert UV to tilemap pixel coordinates (with wrapping)
-        let pixel_x = ((u * tilemap_w).rem_euclid(tilemap_w)) as u32;
-        let pixel_y = ((v * tilemap_h).rem_euclid(tilemap_h)) as u32;
+        ui.label("Click selected tile to de-select it.");
 
-        let tile_x = pixel_x / 8;
-        let tile_y = pixel_y / 8;
-
-        // Read tilemap entry
         let tilemap_addr = self.renderer.calc_tilemap_addr(bg_settings, tile_x, tile_y);
         let entry = core.vram[(tilemap_addr & 0x7FFF) as usize];
 
         let tile_num = entry & 0x3FF;
-        let palette = (entry >> 10) & 0x7;
+        let palette  = (entry >> 10) & 0x7;
         let priority = (entry >> 13) & 0x1;
-        let flip_x = entry & 0x4000 != 0;
-        let flip_y = entry & 0x8000 != 0;
+        let flip_x   = entry & 0x4000 != 0;
+        let flip_y   = entry & 0x8000 != 0;
 
-        ui.label(format!("Tile: ({}, {})", tile_x, tile_y));
-        ui.label(format!("Pixel: ({}, {})", pixel_x, pixel_y));
+        // --- Magnified tile preview (re-rendered every frame to reflect live VRAM changes) ---
+        let preview_size = 128.0;
+        {
+            let color_depth = self.color_depth(core);
+            let color_depth = if color_depth == 0 { 4 } else { color_depth };
+
+            let mut buf = vec![0u8; 4 * 8 * 8];
+            BgRenderer::fill_checkerboard(&mut buf, 8, 8);
+            let chr_addr = self.renderer.calc_chr_addr(bg_settings, tile_num, 0, 0, color_depth);
+            self.renderer.render_8x8_tile(
+                &mut buf, &core.vram, &core.cgram,
+                color_depth, chr_addr,
+                palette as u8, flip_x, flip_y,
+                0, 0, 8,
+                core.ppu_regs.use_direct_col,
+            );
+
+            let pixels: Vec<Color32> = buf.chunks(4)
+                .map(|p| Color32::from_rgba_unmultiplied(p[0], p[1], p[2], p[3]))
+                .collect();
+            let tex = ui.ctx().load_texture(
+                format!("bg{}_tile_preview", BG_LAYER + 1),
+                ColorImage { size: [8, 8], pixels, source_size: egui::Vec2::splat(8.0) },
+                TextureOptions::NEAREST,
+            );
+            ui.image(egui::load::SizedTexture::new(tex.id(), egui::vec2(preview_size, preview_size)));
+        }
+
+        // --- Tile metadata ---
         ui.separator();
-        ui.label(format!("Tile #: 0x{:03X} ({})", tile_num, tile_num));
-        ui.label(format!("Palette: {}", palette));
+        ui.label(format!("Tile:     ({}, {})", tile_x, tile_y));
+        ui.label(format!("Tile #:   0x{:03X}  ({})", tile_num, tile_num));
+        ui.label(format!("Palette:  {}", palette));
         ui.label(format!("Priority: {}", priority));
-        ui.label(format!("Flip: X={} Y={}", flip_x, flip_y));
+        ui.label(format!("Flip:     X={}  Y={}", flip_x, flip_y));
         ui.separator();
         ui.label(format!("Tilemap addr: 0x{:04X}", tilemap_addr));
-        ui.label(format!("Entry: 0x{:04X}", entry));
+        ui.label(format!("Entry:        0x{:04X}", entry));
     }
 }
 
@@ -499,8 +517,8 @@ impl BgRenderer {
 
     /// Fill a pixel buffer with a 8x8 checkerboard pattern for transparent background display.
     fn fill_checkerboard(pixel_buffer: &mut [u8], width_px: u32, height_px: u32) {
-        const LIGHT: [u8; 4] = Color::DARK_GRAY.to_rgba_bytes();
-        const DARK:  [u8; 4] = Color::DARKEST_GRAY.to_rgba_bytes();
+        const LIGHT: [u8; 4] = [180, 180, 180, 255];
+        const DARK:  [u8; 4] = [120, 120, 120, 255];
         for y in 0..height_px {
             for x in 0..width_px {
                 let color = if (x / 8 + y / 8) % 2 == 0 { LIGHT } else { DARK };
@@ -661,7 +679,7 @@ impl BgRenderer {
     }
 
     /// Calculate character data word address
-    fn calc_chr_addr(&self, bg: &BgSettings, tile_num: u16, sub_x: u32, sub_y: u32, color_depth: u8) -> u16 {
+    pub(super) fn calc_chr_addr(&self, bg: &BgSettings, tile_num: u16, sub_x: u32, sub_y: u32, color_depth: u8) -> u16 {
         // For 16x16 tiles, sub_x and sub_y select which 8x8 quadrant (0 or 1)
         let effective_tile = if matches!(bg.chr_size, TileSize::Size16x16) {
             // 16x16 tiles are arranged as:
@@ -687,7 +705,7 @@ impl BgRenderer {
     }
 
     /// Render a single 8x8 tile to the pixel buffer
-    fn render_8x8_tile(
+    pub(super) fn render_8x8_tile(
         &self,
         pixel_buffer: &mut [u8],
         vram: &[u16; VRAM_SIZE],
