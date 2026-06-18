@@ -7,6 +7,7 @@ edition = "2021"
 anyhow = { workspace = true }
 egui = { workspace = true }
 egui_glow = { workspace = true }
+egui_extras = { version = "0.33.3", features = ["svg"] }
 glow = { workspace = true }
 sdl3 = { workspace = true }
 egui_autocomplete = { workspace = true }

@@ -2,11 +2,13 @@ use crate::SnemulatorArgs;
 
 #[cfg(feature = "debug")]
 use crate::debug::harness::MainDebugHarness;
+#[cfg(feature = "debug")]
+use crate::debug::window::DebugWindow;
 #[cfg(not(feature="debug"))]
 use snemcore::debug::NullHarness;
 
-use crate::windows::game::MainWindow;
-use crate::windows::settings::{Settings, SettingsWindow};
+use crate::game::MainWindow;
+use crate::settings::{Settings, SettingsWindow};
 use anyhow::{anyhow, Result};
 use rfd::FileDialog;
 use ringbuf::HeapRb;
@@ -53,6 +55,11 @@ pub enum AppAction {
     LoadState,
     OpenSettings,
     Exit,
+
+    #[cfg(feature = "debug")]
+    CloseDebug,
+    #[cfg(feature = "debug")]
+    OpenDebug,
 }
 
 pub struct AppState {
@@ -67,6 +74,9 @@ pub struct AppState {
     pub rom_loaded: bool,
     pub fps: f32,
     pub display_fps: usize,
+
+    #[cfg(feature = "debug")]
+    pub debug_active: bool,
 }
 
 pub struct SnemulatorApp {
@@ -90,6 +100,9 @@ pub struct SnemulatorApp {
     debug_harness: MainDebugHarness,
     #[cfg(not(feature = "debug"))]
     debug_harness: NullHarness,
+
+    #[cfg(feature = "debug")]
+    debug_window: Option<DebugWindow>,
 }
 
 impl SnemulatorApp {
@@ -106,6 +119,9 @@ impl SnemulatorApp {
             rom_loaded: false,
             fps: 0.0,
             display_fps: 0,
+
+            #[cfg(feature = "debug")]
+            debug_active: false,
         };
 
         let sdl_context = sdl3::init()?;
@@ -146,6 +162,9 @@ impl SnemulatorApp {
             audio_buffer,
 
             debug_harness,
+
+            #[cfg(feature = "debug")]
+            debug_window: None,
         };
 
         app.handle_args(args)?;
@@ -220,6 +239,9 @@ impl SnemulatorApp {
             if let Some(settings_window) = &mut self.settings_window {
                 settings_window.update_and_render(&mut self.settings);
             }
+
+            #[cfg(feature = "debug")]
+            self.update_debug_window();
 
             self.state.show_menu = self.settings.always_show_menu
                 || (self.state.frame_count - self.state.last_mouse_input_frame
@@ -331,6 +353,14 @@ impl SnemulatorApp {
                         continue;
                     }
                 }
+
+                #[cfg(feature = "debug")]
+                if let Some(debug_window) = &mut self.debug_window {
+                    if event_win_id == debug_window.id() {
+                        self.handle_debug_window_event(&event, &modifiers);
+                        continue;
+                    }
+                }
             }
 
             // Event is for main window
@@ -408,6 +438,8 @@ impl SnemulatorApp {
             AppAction::OpenSettings => self.show_settings(),
             AppAction::ToggleFullscreen => self.toggle_fullscreen(),
             AppAction::TogglePause => self.toggle_pause(),
+            AppAction::OpenDebug => self.show_debug(),
+            AppAction::CloseDebug => { self.debug_window = None; }
             
             _ => {}
         }
@@ -568,6 +600,12 @@ impl SnemulatorApp {
         self.state.is_paused = !self.state.is_paused;
 
         if self.state.is_paused {
+            #[cfg(feature = "debug")]
+            {
+                self.debug_harness.stop_emulation = false;
+                self.debug_harness.stop_condition = None;
+            }
+
             self.audio_stream.pause().unwrap();
             log::trace!("Paused emulation");
         } else {
@@ -626,6 +664,86 @@ impl SnemulatorApp {
         match SettingsWindow::new(&self.video_subsystem) {
             Ok(window) => self.settings_window = Some(window),
             Err(e) => log::error!("Failed to create settings window: {}", e),
+        }
+    }
+}
+
+#[cfg(feature = "debug")]
+impl SnemulatorApp {
+    fn show_debug(&mut self) {
+        if self.debug_window.is_some() {
+            return;
+        }
+
+        if self.snem_core.cart.is_none() {
+            if let Err(e) = self.try_load_rom() {
+                log::error!("Cannot debug without ROM loaded: {}", e);
+                return;
+            }
+        }
+
+        // File dialog closed without selecting a ROM
+        if self.snem_core.cart.is_none() {
+            return;
+        }
+
+        match DebugWindow::new(&self.video_subsystem) {
+            Ok(window) => self.debug_window = Some(window),
+            Err(e) => log::error!("Failed to create debug window: {}", e),
+        }
+
+        if self.debug_window.is_some() {
+            self.state.is_paused = true;
+        }
+    }
+
+    fn update_debug_window(&mut self) {
+        if self.debug_window.is_none() {
+            return;
+        }
+
+        if self.debug_harness.stop_emulation && !self.state.is_paused {
+            self.toggle_pause();
+            self.debug_harness.stop_emulation = false;
+            self.debug_harness.stop_condition = None;
+        }
+
+        let debug_action = self.debug_window.as_mut().unwrap().update_and_render(
+            &mut self.snem_core,
+            &mut self.state,
+            &mut self.frame_buffer[..],
+            &mut self.audio_buffer,
+            &mut self.debug_harness,
+        );
+
+        match debug_action {
+            AppAction::TogglePause => {
+                self.toggle_pause();
+            }
+            AppAction::ResetCore => {
+                self.reset_emulation(false);
+            }
+            AppAction::PowerOnCore => {
+                self.reset_emulation(true);
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_debug_window_event(&mut self, event: &Event, modifiers: &egui::Modifiers) {
+        match &event {
+            Event::Window {
+                win_event: sdl3::event::WindowEvent::CloseRequested,
+                ..
+            } => {
+                self.debug_window = None;
+            }
+            _ => {
+                self.debug_window
+                    .as_mut()
+                    .unwrap()
+                    .handle_event(event, modifiers);
+            }
         }
     }
 }

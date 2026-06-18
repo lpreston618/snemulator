@@ -313,7 +313,7 @@ impl Cartridge {
         &mut self.rom[..]
     }
 
-    fn map_addr(&self, addr: Address) -> usize {
+    pub fn map_addr(&self, addr: Address) -> usize {
         let addr = addr.to_u32();
         let mapped_addr = match self.mapping_mode {
             MappingMode::LoROM => ((addr & 0x7F0000) >> 1) | (addr & 0x7FFF),

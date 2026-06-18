@@ -277,6 +277,10 @@ impl Snemulator {
         self.clocks_last_frame = self.total_cycles;
 
         while !self.frame_ready {
+            if H::IS_DEBUGGING_HARNESS && harness.should_stop(self) {
+                return;
+            }
+
             self.cycle(frame_buffer, audio_buffer, harness);
         }
 

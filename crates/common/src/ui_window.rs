@@ -44,6 +44,7 @@ impl UiWindow {
         let text_input = video_subsystem.text_input();
         
         let gl_context = window.gl_create_context()?;
+
         window.gl_make_current(&gl_context)?;
         
         let gl = unsafe {
@@ -57,6 +58,9 @@ impl UiWindow {
         let gl = std::sync::Arc::new(gl);
         
         let egui_ctx = egui::Context::default();
+
+        egui_extras::install_image_loaders(&egui_ctx);
+
         let egui_painter = egui_glow::Painter::new(gl.clone(), "", None, false)?;
 
         let ui_scale = window.display_scale();

@@ -15,6 +15,8 @@ pub trait DebugHarness {
     const TRACK_CPU_INTERRUPTS: bool = true;
     /// Controls whether the `on_memory_write` and `on_memory_read` callbacks will be called for debugging harnesses.
     const TRACK_MEMORY: bool = true;
+    /// Controls whether the `on_stack_push` and `on_stack_pop` callbacks will be called for debugging harnesses.
+    const TRACK_STACK: bool = true;
 
     /// Controls whether the `on_dma_start`, `on_dma_tranfer`, and `on_dma_end` callbacks will be called for debugging harnesses.
     const TRACK_DMA: bool = true;
@@ -33,6 +35,8 @@ pub trait DebugHarness {
 
     const TRACK_SPC_INSTRUCTIONS: bool = true;
 
+    fn should_stop(&mut self, core: &mut Snemulator) -> bool { false }
+
     /// Called after each emulation step.
     fn on_emulation_step(&mut self, core: &mut Snemulator) {}
 
@@ -49,6 +53,10 @@ pub trait DebugHarness {
     fn on_memory_write(&mut self, cpu: &mut Cpu65c816, addr: Address, value: u8) {}
     /// Called after each CPU read.
     fn on_memory_read(&mut self, cpu: &mut Cpu65c816, addr: Address, value: u8) {}
+    /// Called after the CPU pushes a byte to the stack. SP is now the address of the value - 1.
+    fn on_stack_push(&mut self, cpu: &mut Cpu65c816, value: u8) {}
+    /// Called after the CPU pops a byte from the stack. SP is now the address of the value.
+    fn on_stack_pop(&mut self, cpu: &mut Cpu65c816, value: u8) {}
 
     /// Called after DMA enable is set for the given channel.
     fn on_dma_start(&mut self, dma: &mut DmaController, channel: usize) {}

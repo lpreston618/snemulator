@@ -20,7 +20,7 @@ pub enum Flag {
     FlagN = 1 << 7, // Negative
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum CpuInterrupt {
     IRQ,
     NMI,
@@ -164,18 +164,15 @@ impl Cpu65c816 {
                 self.db = 0;
                 self.dp = 0;
             }
-            CpuInterrupt::BRK => {
-                // panic!("BRK");
+            _ => {
+                if !self.e {
+                    self.push(bus, self.pb);
+                }
+
+                self.push_word(bus, self.pc);
+                self.push(bus, self.p);
             }
-            _ => {}
         }
-
-        if !self.e {
-            self.push(bus, self.pb);
-        }
-
-        self.push_word(bus, self.pc);
-        self.push(bus, self.p);
 
         self.set_flag_to_bool(Flag::FlagI, true);
         self.set_flag_to_bool(Flag::FlagD, false);
@@ -295,26 +292,38 @@ impl Cpu65c816 {
             self.sp = 0x100 | (self.sp & 0xFF);
         }
 
-        self.read(
+        let value = self.read(
             bus,
             Address {
                 bank: 0,
                 offset: self.sp,
             },
-        )
+        );
+
+        if H::IS_DEBUGGING_HARNESS && H::TRACK_STACK {
+            bus.harness.on_stack_pop(self, value);
+        }
+
+        value
     }
 
     // Pop a byte from the stack without wrapping the stack pointer in emulation mode.
     fn pop_no_wrap<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> u8 {
         self.sp += 1;
 
-        self.read(
+        let value = self.read(
             bus,
             Address {
                 bank: 0,
                 offset: self.sp,
             },
-        )
+        );
+
+        if H::IS_DEBUGGING_HARNESS && H::TRACK_STACK {
+            bus.harness.on_stack_pop(self, value);
+        }
+
+        value
     }
 
     // Pop a word from the stack, wrapping the stack pointer in emulation mode if necessary.
@@ -343,6 +352,10 @@ impl Cpu65c816 {
         if self.e {
             self.sp = 0x100 | (self.sp & 0xFF);
         }
+
+        if H::IS_DEBUGGING_HARNESS && H::TRACK_STACK {
+            bus.harness.on_stack_push(self, value);
+        }
     }
 
     /// Push a byte onto the stack without wrapping the stack pointer in emulation mode.
@@ -357,6 +370,10 @@ impl Cpu65c816 {
         );
 
         self.sp -= 1;
+
+        if H::IS_DEBUGGING_HARNESS && H::TRACK_STACK {
+            bus.harness.on_stack_push(self, value);
+        }
     }
 
     // Push a word onto the stack, wrapping the stack pointer in emulation mode if necessary.

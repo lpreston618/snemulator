@@ -4,8 +4,8 @@ use sdl3::video::GLProfile;
 
 use crate::app;
 use snemcore::sysinfo;
-use crate::windows::menu::MainMenuBar;
-use crate::windows::settings::Settings;
+use crate::menu::MainMenuBar;
+use crate::settings::Settings;
 use common::UiWindow;
 
 pub struct MainWindow {

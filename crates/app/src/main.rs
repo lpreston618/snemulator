@@ -3,7 +3,10 @@ use clap::Parser;
 use crate::app::SnemulatorApp;
 
 mod app;
-mod windows;
+mod game;
+mod menu;
+mod settings;
+
 #[cfg(feature = "debug")]
 pub mod debug;
 

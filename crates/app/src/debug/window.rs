@@ -1,16 +1,31 @@
 use anyhow::Result;
 use snemcore::cartridge::MappingMode;
 use snemcore::Snemulator;
+use snemcore::debug::DebugHarness;
 
 use crate::app::{self, AppAction};
-use crate::debug::harness::MainDebugHarness;
+use crate::debug::harness::{MainDebugHarness, StopCondition};
 // use crate::core;
-// use crate::debug::tabs;
+use crate::debug::tabs;
+use crate::debug::icons;
 use common::UiWindow;
 
 const DEBUG_WINDOW_WIDTH: u32 = 800;
 const DEBUG_WINDOW_HEIGHT: u32 = 600;
 const DEFAULT_FF_SPEED: f32 = 2.0;
+
+#[derive(Clone, Copy, PartialEq)]
+enum DebugTab {
+    Cpu,
+}
+
+impl DebugTab {
+    fn label(self) -> &'static str {
+        match self {
+            DebugTab::Cpu => "cpu"
+        }
+    }
+}
 
 pub enum DebugAction {
     SingleStep,
@@ -22,11 +37,11 @@ pub enum DebugAction {
 
 pub struct DebugWindow {
     egui_window: Option<Box<UiWindow>>,
-    // cpu_tab: Box<tabs::CpuTab>,
+    cpu_tab: Box<tabs::cpu::CpuTab>,
     // mem_tab: Box<tabs::MemoryTab>,
     // ppu_tab: Box<tabs::PpuTab>,
     // wp_tab: Box<tabs::WatchpointsTab>,
-    // selected_tab: tabs::DebugTab,
+    selected_tab: DebugTab,
     // jump_to_bps_on_hit: bool,
     // jump_to_wps_on_hit: bool,
     // ff_frames: f32,
@@ -35,7 +50,6 @@ pub struct DebugWindow {
 impl DebugWindow {
     pub fn new(
         video_subsystem: &sdl3::VideoSubsystem,
-        rom_mapping_mode: MappingMode,
     ) -> Result<Self> {
         let mut egui_window = Box::new(UiWindow::new(
             video_subsystem,
@@ -60,11 +74,11 @@ impl DebugWindow {
 
         let mut debug_window = Self {
             egui_window: None,
-            // cpu_tab: Box::new(tabs::CpuTab::new(rom_mapping_mode)),
+            cpu_tab: Box::new(tabs::cpu::CpuTab::new()),
             // mem_tab,
             // ppu_tab,
             // wp_tab: Box::new(tabs::WatchpointsTab::new()),
-            // selected_tab: tabs::DebugTab::Cpu,
+            selected_tab: DebugTab::Cpu,
             // jump_to_bps_on_hit: true,
             // jump_to_wps_on_hit: true,
             // ff_frames: 0.0,
@@ -81,11 +95,9 @@ impl DebugWindow {
         app_state: &mut app::AppState,
         frame_buffer: &mut [u8],
         audio_buffer: &mut Vec<i16>,
+        harness: &mut MainDebugHarness,
     ) -> app::AppAction {
         let mut app_action = app::AppAction::Continue;
-        
-        // let frame_buffer = if core.probe.as_ref().unwrap().control.video_en { Some(frame_buffer) } else { None };
-        // let audio_buffer = if core.probe.as_ref().unwrap().control.audio_en { Some(audio_buffer) } else { None };
 
         let mut egui_window = self.egui_window.take().unwrap();
         let mut debug_action: Option<DebugAction> = None;
@@ -94,71 +106,29 @@ impl DebugWindow {
             egui::TopBottomPanel::top("tabs").show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     for tab in [
-                        // tabs::DebugTab::Cpu,
+                        DebugTab::Cpu,
                         // tabs::DebugTab::Memory,
                         // tabs::DebugTab::Ppu,
                         // tabs::DebugTab::Watchpoints,
                     ] {
-                        // ui.selectable_value(&mut self.selected_tab, tab, tab.label());
+                        ui.selectable_value(&mut self.selected_tab, tab, tab.label());
                     }
                 });
             });
 
-            egui::TopBottomPanel::top("commands").show(ctx, |ui| {
-                ui.add_space(5.0);
-
-                ui.horizontal(|ui| {
-                    if ui.button("Step Instruction").clicked() {
-                        debug_action = Some(DebugAction::SingleStep);
-                    }
-
-                    if ui.button("Step Frame").clicked() {
-                        debug_action = Some(DebugAction::StepFrame);
-                    }
-
-                    if ui.button("Reset").clicked() {
-                        debug_action = Some(DebugAction::Reset);
-                    }
-
-                    if ui.button("Hard Reset").clicked() {
-                        debug_action = Some(DebugAction::HardReset);
-                    }
-                    
-                    let probe = core.probe.as_mut().unwrap();
-                    
-                    let hyperspeed_text = if probe.control.ff_en { "Disable Hyperspeed" } else { "Enable Hyperspeed" };
-                    ui.toggle_value(&mut probe.control.ff_en, hyperspeed_text)
-                        .on_hover_text(format!("If enabled, emulator will run at {}x speed, but with no audio and reduced video output", DEFAULT_FF_SPEED));
-
-                    if app_state.is_paused && ui.button("Resume").clicked() {
-                        debug_action = Some(DebugAction::TogglePause);
-                    }
-
-                    if !app_state.is_paused && ui.button("Pause").clicked() {
-                        debug_action = Some(DebugAction::TogglePause);
-                    }
-
-                    ui.label(format!("Frame: {}", core.frame));
-
-                    ui.label(format!("Cycles: {}", core.total_cycles));
-                    
-                    ui.label(format!("FPS: {:.0}", app_state.fps));
-                });
-
-                ui.add_space(3.0);
-            });
+            debug_action = self.show_toolbar(ctx, app_state, core, harness);
 
             egui::CentralPanel::default().show(ctx, |ui| {
                 match self.selected_tab {
-                    tabs::DebugTab::Cpu => {
-                        self.cpu_tab.render(ui, core, &mut self.jump_to_bps_on_hit)
+                    DebugTab::Cpu => {
+                        self.cpu_tab.render(ui, core, harness)
                     }
-                    tabs::DebugTab::Memory => self.mem_tab.render(ui, core),
-                    tabs::DebugTab::Ppu => self.ppu_tab.render(ui, core),
-                    tabs::DebugTab::Watchpoints => {
-                        self.wp_tab.render(ui, core, app_state)
-                    }
-                    _ => {}
+                    // tabs::DebugTab::Memory => self.mem_tab.render(ui, core),
+                    // tabs::DebugTab::Ppu => self.ppu_tab.render(ui, core),
+                    // tabs::DebugTab::Watchpoints => {
+                    //     self.wp_tab.render(ui, core, app_state)
+                    // }
+                    // _ => {}
                 };
             });
         }));
@@ -181,73 +151,72 @@ impl DebugWindow {
                 DebugAction::HardReset => {
                     app_action = app::AppAction::PowerOnCore;
                 }
-                DebugAction::SingleStep if app_state.is_paused => {                    
-                    core.probe.as_mut().unwrap().control.update_textures = true;
-                    core.cycle_instruction(frame_buffer);
+                DebugAction::SingleStep if app_state.is_paused => {
+                    // core.cycle_instruction(frame_buffer);
                     
-                    if core.probe.as_ref().unwrap().control.breakpoint_hit {
-                        core.probe.as_mut().unwrap().control.breakpoint_hit = false;
-                        self.breakpoint_hit(core);
-                    }
+                    // if core.probe.as_ref().unwrap().control.breakpoint_hit {
+                    //     core.probe.as_mut().unwrap().control.breakpoint_hit = false;
+                    //     self.breakpoint_hit(core);
+                    // }
                     
-                    if core.probe.as_ref().unwrap().control.watchpoint_hit {
-                        core.probe.as_mut().unwrap().control.watchpoint_hit = false;
-                    }
+                    // if core.probe.as_ref().unwrap().control.watchpoint_hit {
+                    //     core.probe.as_mut().unwrap().control.watchpoint_hit = false;
+                    // }
                 }
                 DebugAction::StepFrame if app_state.is_paused => {
-                    core.probe.as_mut().unwrap().control.update_textures = true;
-                    core.run_frame(frame_buffer, None);
+                    // core.probe.as_mut().unwrap().control.update_textures = true;
+                    // core.run_frame(frame_buffer, None);
                     
-                    if core.probe.as_ref().unwrap().control.breakpoint_hit {
-                        core.probe.as_mut().unwrap().control.breakpoint_hit = false;
-                        self.breakpoint_hit(core);
-                    }
+                    // if core.probe.as_ref().unwrap().control.breakpoint_hit {
+                    //     core.probe.as_mut().unwrap().control.breakpoint_hit = false;
+                    //     self.breakpoint_hit(core);
+                    // }
                     
-                    if core.probe.as_ref().unwrap().control.watchpoint_hit {
-                        core.probe.as_mut().unwrap().control.watchpoint_hit = false;
-                    }
+                    // if core.probe.as_ref().unwrap().control.watchpoint_hit {
+                    //     core.probe.as_mut().unwrap().control.watchpoint_hit = false;
+                    // }
                 }
                 
                 _ => {}
             }
         } else {
-            if !app_state.is_paused {
-                let mut probe = core.probe.take().unwrap();
+            // if !app_state.is_paused {
+            //     let mut probe = core.probe.take().unwrap();
                 
-                if probe.control.ff_en {
-                    probe.control.update_textures = false;
+            //     if probe.control.ff_en {
+            //         probe.control.update_textures = false;
                     
-                    self.ff_frames += probe.control.ff_speed;
+            //         self.ff_frames += probe.control.ff_speed;
                     
-                    let frames_to_run = self.ff_frames as usize;
+            //         let frames_to_run = self.ff_frames as usize;
                     
-                    self.ff_frames -= frames_to_run as f32;
+            //         self.ff_frames -= frames_to_run as f32;
                     
-                    let frames_to_run = frames_to_run.saturating_sub(1);
+            //         let frames_to_run = frames_to_run.saturating_sub(1);
                     
-                    core.probe = Some(probe);
+            //         core.probe = Some(probe);
                     
-                    for _ in 0..frames_to_run {
-                        core.run_frame(None, None);
-                    }
+            //         for _ in 0..frames_to_run {
+            //             core.run_frame(None, None);
+            //         }
                     
-                    core.probe.as_mut().unwrap().control.update_textures = true;
+            //         core.probe.as_mut().unwrap().control.update_textures = true;
                     
-                    core.run_frame(frame_buffer, None);
-                } else {
-                    probe.control.update_textures = true;
+            //         core.run_frame(frame_buffer, None);
+            //     } else {
+            //         probe.control.update_textures = true;
     
-                    core.probe = Some(probe);
+            //         core.probe = Some(probe);
                     
-                    core.run_frame(frame_buffer, audio_buffer);
-                }
+            //         core.run_frame(frame_buffer, audio_buffer);
+            //     }
                 
-                if core.probe.as_ref().unwrap().control.should_stop {
-                    app_state.is_paused = true;
-                }
+            //     if core.probe.as_ref().unwrap().control.should_stop {
+            //         app_state.is_paused = true;
+            //     }
                 
-                self.handle_probe_events(core);
-            }
+            //     self.handle_probe_events(core);
+            // }
         }
         
         // match debug_action {
@@ -315,32 +284,92 @@ impl DebugWindow {
 
         app_action
     }
-    
-    fn handle_probe_events(&mut self, core: &mut Snemulator<Debugger>) -> AppAction {
-        let action = core.do_with_probe(|probe, core| {
-            let mut app_action = AppAction::Continue;
-            
-            if probe.control.breakpoint_hit {
-                probe.control.breakpoint_hit = false;
-                self.breakpoint_hit(core);
-            }
-            
-            if probe.control.watchpoint_hit {
-                probe.control.watchpoint_hit = false;
-            }
-            
-            probe.resume_emulation();
-            
-            if probe.control.should_reset {
-                probe.control.should_reset = false;
-                app_action = AppAction::ResetCore;
-            }
-            
-            app_action
-        }).unwrap();
-        
-        action
+
+    fn show_toolbar(&mut self, ctx: &egui::Context, app_state: &app::AppState, core: &mut Snemulator, harness: &mut MainDebugHarness) -> Option<DebugAction> {
+        let mut debug_action = None;
+
+        egui::TopBottomPanel::top("commands").show(ctx, |ui| {
+            ui.add_space(5.0);
+
+            ui.horizontal(|ui| {
+                let icon_size = egui::vec2(20.0, 20.0);
+
+                let (pause_continue_icon, pause_continue_text) = if app_state.is_paused {
+                    (icons::CONTINUE, "Continue")
+                } else {
+                    (icons::PAUSE, "Pause")
+                };
+
+                if ui.add(
+                    egui::Button::image(
+                        egui::Image::new(pause_continue_icon).fit_to_exact_size(icon_size)
+                    )
+                ).on_hover_text(pause_continue_text).clicked() {
+                    debug_action = Some(DebugAction::TogglePause);
+                }
+
+                for (icon, text, stop_cond) in [
+                    (icons::STEP_OVER, "Step Over", StopCondition::StepOverSubroutine { depth: 0 }),
+                    (icons::STEP_INTO, "Step Into", StopCondition::Instruction),
+                    (icons::STEP_OUT, "Step Out", StopCondition::StepOverSubroutine { depth: 1 }),
+                    (icons::RUN_UNTIL_INTERRUPT, "Run Until Interrupt", StopCondition::Interrupt),
+                ] {
+                    if ui.add_enabled(app_state.is_paused,
+                        egui::Button::image(
+                            egui::Image::new(icon).fit_to_exact_size(icon_size)
+                        )
+                    ).on_hover_text(text).clicked() {
+                        debug_action = Some(DebugAction::TogglePause);
+                        harness.stop_condition = Some(stop_cond);
+                    }
+                }
+
+                if ui.button("Reset").clicked() {
+                    debug_action = Some(DebugAction::Reset);
+                }
+
+                if ui.button("Power On").clicked() {
+                    debug_action = Some(DebugAction::HardReset);
+                }
+                
+                ui.label(format!("Frame: {}", core.frame));
+
+                ui.label(format!("Cycles: {}", core.total_cycles));
+                
+                ui.label(format!("FPS: {:.0}", app_state.fps));
+            });
+
+            ui.add_space(3.0);
+        });
+
+        debug_action
     }
+    
+    // fn handle_probe_events(&mut self, core: &mut Snemulator) -> AppAction {
+    //     let action = core.do_with_probe(|probe, core| {
+    //         let mut app_action = AppAction::Continue;
+            
+    //         if probe.control.breakpoint_hit {
+    //             probe.control.breakpoint_hit = false;
+    //             self.breakpoint_hit(core);
+    //         }
+            
+    //         if probe.control.watchpoint_hit {
+    //             probe.control.watchpoint_hit = false;
+    //         }
+            
+    //         probe.resume_emulation();
+            
+    //         if probe.control.should_reset {
+    //             probe.control.should_reset = false;
+    //             app_action = AppAction::ResetCore;
+    //         }
+            
+    //         app_action
+    //     }).unwrap();
+        
+    //     action
+    // }
 
     pub fn id(&self) -> u32 {
         self.egui_window.as_ref().unwrap().window().id()
@@ -357,13 +386,13 @@ impl DebugWindow {
             .handle_sdl_keyboard_event(event);
     }
 
-    pub fn breakpoint_hit(&mut self, core: &Snemulator<Debugger>) {
-        self.cpu_tab.breakpoint_hit((core.cpu.pb as u32) << 16 | core.cpu.pc as u32);
+    // pub fn breakpoint_hit(&mut self, core: &Snemulator<Debugger>) {
+    //     self.cpu_tab.breakpoint_hit((core.cpu.pb as u32) << 16 | core.cpu.pc as u32);
         
-        if self.jump_to_bps_on_hit {
-            self.selected_tab = tabs::DebugTab::Cpu;
-        }
-    }
+    //     if self.jump_to_bps_on_hit {
+    //         self.selected_tab = tabs::DebugTab::Cpu;
+    //     }
+    // }
 
     // pub fn watchpoint_hit(&mut self, app_state: &mut app::AppState) {
     //     if self.wp_tab.watchpoints_enabled() {

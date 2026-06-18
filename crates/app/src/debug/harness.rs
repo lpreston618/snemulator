@@ -1,17 +1,44 @@
+use std::collections::HashSet;
+
 use snemcore::debug::DebugHarness;
 
-pub struct DebugControl {
-    
+use crate::debug::stack_tracker::StackTracker;
+
+const JSL_OPCODE: u8 = 0x22;
+const JSR_OPCODE: u8 = 0x20;
+const JSR_INDIRECT_OPCODE: u8 = 0xFC;
+
+// const RTI_OPCODE: u8 = 0x40;
+const RTS_OPCODE: u8 = 0x60;
+const RTL_OPCODE: u8 = 0x68;
+
+
+
+
+#[derive(Clone, Copy)]
+pub enum StopCondition {
+    Instruction,
+    Interrupt,
+    Frame,
+    StepOverSubroutine { depth: usize },
 }
 
 pub struct MainDebugHarness {
-    finished_ipl: bool,
+    pub stop_condition: Option<StopCondition>,
+    pub stop_emulation: bool,
+
+    pub breakpoints: HashSet<u32>,
+
+    pub stack_tracker: StackTracker,
 }
 
 impl MainDebugHarness {
     pub fn new() -> Self {
         Self {
-            finished_ipl: false,
+            stop_condition: None,
+            stop_emulation: false,
+            breakpoints: HashSet::new(),
+            stack_tracker: StackTracker::new(),
         }
     }
 }
@@ -19,15 +46,73 @@ impl MainDebugHarness {
 impl DebugHarness for MainDebugHarness {
     const IS_DEBUGGING_HARNESS: bool = true;
 
-    fn on_power(&mut self, _core: &mut snemcore::Snemulator) {
-        log::debug!("Core powered on");
+    fn should_stop(&mut self, _core: &mut snemcore::Snemulator) -> bool {
+        self.stop_emulation
     }
 
-    fn on_spc_instruction(&mut self, spc: &mut snemcore::ssmp::spc::Spc700, prg_bytes: &[u8]) {
-        if !self.finished_ipl && spc.pc < 0xFFC0 {
-            self.finished_ipl = true;
+    fn on_instruction(&mut self, cpu: &mut snemcore::scpu::Cpu65c816, prg_bytes: &[u8]) {
+        self.stack_tracker.on_instruction(cpu, prg_bytes);
 
-            log::debug!("Finished IPL Boot ROM.")
+        if let Some(stop_cond) = self.stop_condition {
+            match stop_cond {
+                StopCondition::Instruction => self.stop_emulation = true,
+                StopCondition::StepOverSubroutine { depth } => {
+                    let opcode = prg_bytes[0];
+
+                    if opcode == JSL_OPCODE || opcode == JSR_OPCODE || opcode == JSR_INDIRECT_OPCODE {
+                        self.stop_condition = Some(StopCondition::StepOverSubroutine { depth: depth + 1 });
+                    } else if opcode == RTL_OPCODE || opcode == RTS_OPCODE {
+                        // If step over clicked on a return instruction, depth will be 0 and instr will be return.
+                        if depth <= 1 {
+                            self.stop_emulation = true;
+                        }
+
+                        self.stop_condition = Some(StopCondition::StepOverSubroutine { depth: depth - 1 });
+                    } else {
+                        self.stop_emulation = depth == 0;
+                    }
+                }
+                _ => {}
+            }
         }
+
+        let full_pc = (cpu.pb as u32) << 16 | cpu.pc as u32;
+        if self.breakpoints.contains(&full_pc) {
+            self.stop_emulation = true;
+        }
+    }
+
+    fn on_vblank_start(&mut self, _core: &mut snemcore::Snemulator) {
+        if let Some(stop_cond) = self.stop_condition {
+            if matches!(stop_cond, StopCondition::Frame) {
+                self.stop_emulation = true;
+            }
+        }
+    }
+
+    fn on_interrupt(&mut self, cpu: &mut snemcore::scpu::Cpu65c816, kind: snemcore::scpu::CpuInterrupt) {
+        self.stack_tracker.on_interrupt(cpu, kind);
+
+        if let Some(stop_cond) = self.stop_condition {
+            if matches!(stop_cond, StopCondition::Interrupt) {
+                self.stop_emulation = true;
+            }
+        }
+    }
+
+    fn on_stack_push(&mut self, cpu: &mut snemcore::scpu::Cpu65c816, value: u8) {
+        self.stack_tracker.on_stack_push(cpu, value);
+    }
+
+    fn on_stack_pop(&mut self, cpu: &mut snemcore::scpu::Cpu65c816, value: u8) {
+        self.stack_tracker.on_stack_pop(cpu, value);
+    }
+
+    fn on_power(&mut self, _core: &mut snemcore::Snemulator) {
+        self.stack_tracker.clear();
+    }
+
+    fn on_reset(&mut self, _core: &mut snemcore::Snemulator) {
+        self.stack_tracker.clear();
     }
 }
