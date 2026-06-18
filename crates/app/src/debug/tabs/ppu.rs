@@ -38,6 +38,7 @@ pub struct PpuTab {
     bg4_viewer: layers::BgDebugView<3>,
     // obj_viewer: layers::LayerView,
     selected_tab: PpuSubTab,
+    bg_zoom: f32,
 }
 
 impl PpuTab {
@@ -51,6 +52,7 @@ impl PpuTab {
             // obj_viewer: layers::LayerView::new(painter),
             // layer_viewer: layers::LayerViewer::new(painter),
             selected_tab: PpuSubTab::Chr,
+            bg_zoom: 1.0,
         }
     }
     
@@ -78,6 +80,7 @@ impl PpuTab {
                 PpuSubTab::Bg1 => {
                     self.bg1_viewer.update(core, harness);
                     self.bg1_viewer.render(ui, core);
+                    self.sync_bg_zooms(self.bg1_viewer.zoom);
                 }
                 PpuSubTab::Bg2 => {
                     self.bg2_viewer.update(core, harness);
@@ -95,5 +98,12 @@ impl PpuTab {
                 _ => {}
             }
         });
+    }
+
+    fn sync_bg_zooms(&mut self, zoom: f32) {
+        self.bg1_viewer.zoom = zoom;
+        self.bg2_viewer.zoom = zoom;
+        self.bg3_viewer.zoom = zoom;
+        self.bg4_viewer.zoom = zoom;
     }
 }

@@ -1,6 +1,6 @@
 use snemcore::{Snemulator, sppu::{self, BgMode, BgSettings, Color, TileSize, TilemapCount}, sysinfo::VRAM_SIZE};
 
-use crate::debug::{harness::MainDebugHarness, texture::{self, Texture}};
+use crate::debug::{harness::MainDebugHarness};
 use egui::{Color32, ColorImage, TextureHandle, TextureOptions, Vec2};
 
 pub struct BgDebugView<const BG_LAYER: usize> {
@@ -13,7 +13,7 @@ pub struct BgDebugView<const BG_LAYER: usize> {
     /// Last rendered dimensions
     rendered_size: (u32, u32),
     /// Zoom level for display
-    zoom: f32,
+    pub zoom: f32,
     /// Whether to show the screen viewport overlay
     show_viewport: bool,
     /// How much extra tilemap to show around the screen (in screens)
