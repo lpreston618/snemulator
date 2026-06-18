@@ -412,12 +412,12 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
         let tile_y: u32;
 
         if self.selected_tile.is_some() {
+            ui.label("Click selected tile to de-select it.");
             (tile_x, tile_y) = self.selected_tile.unwrap();
         } else {
+            ui.label("Click a tile to inspect it.");
             (tile_x, tile_y) = self.hovered_tile.unwrap();
         }
-
-        ui.label("Click selected tile to de-select it.");
 
         let tilemap_addr = self.renderer.calc_tilemap_addr(bg_settings, tile_x, tile_y);
         let entry = core.vram[(tilemap_addr & 0x7FFF) as usize];
@@ -470,7 +470,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
 }
 
 /// Background layer renderer for debug views
-pub struct BgRenderer {    
+pub struct BgRenderer {
     /// Direct color LUT: [palette_bits][pixel_value] -> RGBA32
     direct_color_lut: [[u32; 256]; 8],
 }
