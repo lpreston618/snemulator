@@ -81,15 +81,15 @@ impl PpuTab {
                 }
                 PpuSubTab::Bg2 => {
                     self.bg2_viewer.update(core, harness);
-                    self.bg1_viewer.render(ui, core);
+                    self.bg2_viewer.render(ui, core);
                 }
                 PpuSubTab::Bg3 => {
                     self.bg3_viewer.update(core, harness);
-                    self.bg1_viewer.render(ui, core);
+                    self.bg3_viewer.render(ui, core);
                 }
                 PpuSubTab::Bg4 => {
                     self.bg4_viewer.update(core, harness);
-                    self.bg1_viewer.render(ui, core);
+                    self.bg4_viewer.render(ui, core);
                 }
                 // PpuSubTab::Obj => self.obj_viewer.render(ui, &core.probe.as_ref().unwrap().layer_buffers.obj[..]),
                 _ => {}

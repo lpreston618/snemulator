@@ -19,6 +19,28 @@ pub struct BgDebugView<const BG_LAYER: usize> {
     
     /// Scroll position within the viewer (for panning)
     scroll_offset: Vec2,
+
+    /// How much extra tilemap to show around the screen (in screens)
+    /// 1.0 = show one extra screen worth on each side
+    padding_screens: f32,
+}
+
+/// Split a UV range that may cross the 1.0 boundary into at most two clamped segments.
+/// Returns a list of `(uv_start, uv_end, rect_norm_start, rect_norm_end)` tuples,
+/// where uv_* are in [0, 1] and rect_norm_* are the proportional positions in the display rect.
+fn uv_segments(uv_start: f32, uv_end: f32) -> Vec<(f32, f32, f32, f32)> {
+    let total = uv_end - uv_start;
+    if uv_end <= 1.0 {
+        // No wrap — single segment
+        vec![(uv_start, uv_end, 0.0, 1.0)]
+    } else {
+        // Wraps past 1.0 — split at 1.0
+        let split = (1.0 - uv_start) / total; // normalised rect position of the wrap point
+        vec![
+            (uv_start, 1.0, 0.0, split),
+            (0.0, uv_end - 1.0, split, 1.0),
+        ]
+    }
 }
 
 impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
@@ -31,6 +53,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
             zoom: 1.0,
             show_viewport: true,
             scroll_offset: Vec2::ZERO,
+            padding_screens: 0.5, // Half a screen of padding on each side
         }
     }
 
@@ -131,7 +154,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
             .max_width(available_size.x)
             .max_height(available_size.y)
             .show(ui, |ui| {
-                self.render_background_image(ui, core);
+                self.render_scrolling_background(ui, core);
             });
     }
 
@@ -170,7 +193,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
     }
 
     /// Render the background image with viewport overlay
-    fn render_background_image(&mut self, ui: &mut egui::Ui, core: &Snemulator) {
+    fn render_scrolling_background(&mut self, ui: &mut egui::Ui, core: &Snemulator) {
         let Some(texture) = &self.texture else {
             ui.label("No background rendered");
             return;
@@ -178,116 +201,198 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
 
         let bg_settings = &core.ppu_regs.bg_settings[BG_LAYER];
 
-        // Calculate display size with zoom
-        let display_size = Vec2::new(
-            self.rendered_size.0 as f32 * self.zoom,
-            self.rendered_size.1 as f32 * self.zoom,
-        );
+        // Screen dimensions
+        let screen_w = 256.0;
+        let screen_h = if core.ppu_regs.overscan_en { 239.0 } else { 224.0 };
 
-        // Allocate space and get response for interaction
-        let (rect, response) = ui.allocate_exact_size(display_size, egui::Sense::click_and_drag());
+        // Tilemap dimensions
+        let tilemap_w = self.rendered_size.0 as f32;
+        let tilemap_h = self.rendered_size.1 as f32;
 
-        // Handle dragging to pan (optional)
-        if response.dragged() {
-            self.scroll_offset += response.drag_delta();
+        if tilemap_w == 0.0 || tilemap_h == 0.0 {
+            return;
         }
 
-        // Draw the background texture
-        ui.painter().image(
-            texture.id(),
-            rect,
-            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-            Color32::WHITE,
+        // Calculate display size: screen + padding on each side
+        let padding_x = screen_w * self.padding_screens;
+        let padding_y = screen_h * self.padding_screens;
+        let display_w = (screen_w + padding_x * 2.0) * self.zoom;
+        let display_h = (screen_h + padding_y * 2.0) * self.zoom;
+
+        // How many "tilemaps" worth of UV space we need to cover the display
+        let uv_width = (screen_w + padding_x * 2.0) / tilemap_w;
+        let uv_height = (screen_h + padding_y * 2.0) / tilemap_h;
+
+        // Scroll position in UV space (0.0 to 1.0 = one tilemap)
+        let scroll_u = bg_settings.scroll_x as f32 / tilemap_w;
+        let scroll_v = bg_settings.scroll_y as f32 / tilemap_h;
+
+        // UV offset: we want the scroll position to appear at the screen box location
+        // Screen box is centered, so scroll position should be at (padding / total_size) from UV start
+        let padding_u = padding_x / tilemap_w;
+        let padding_v = padding_y / tilemap_h;
+
+        // Normalise UV origin into [0, 1) so the painter never receives out-of-range UVs.
+        // egui's painter clamps rather than wraps, which would stretch edge pixels.
+        let uv_min_x = (scroll_u - padding_u).rem_euclid(1.0);
+        let uv_min_y = (scroll_v - padding_v).rem_euclid(1.0);
+        let uv_max_x = uv_min_x + uv_width;
+        let uv_max_y = uv_min_y + uv_height;
+
+        // Build a UV rect representing the (possibly >1.0) range starting from the normalised origin.
+        // We use this for hover/tooltip math only; actual painting is done per-tile below.
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(uv_min_x, uv_min_y),
+            egui::pos2(uv_max_x, uv_max_y),
         );
 
-        // Draw viewport overlay
+        // Clamp uniformly so the aspect ratio is preserved. If the desired size fits, scale = 1.0.
+        let available = ui.available_size();
+        let scale = (available.x / display_w).min(available.y / display_h).min(1.0);
+        let display_size = Vec2::new(display_w * scale, display_h * scale);
+        let effective_zoom = self.zoom * scale;
+
+        let (rect, response) = ui.allocate_exact_size(display_size, egui::Sense::hover());
+
+        // Draw the texture in tiled segments so UVs always stay within [0, 1].
+        // When the UV range crosses 1.0 we split into two strips (left + right, or top + bottom,
+        // or up to four quadrants), each clamped to [0, 1].
+        let tex_id = texture.id();
+        let painter = ui.painter();
+
+        // Collect the one or two UV segments in each axis.
+        // Each entry is (uv_start, uv_end, norm_rect_start, norm_rect_end)
+        // where norm_rect_* are in [0,1] normalised rect space.
+        let x_segs = uv_segments(uv_min_x, uv_max_x);
+        let y_segs = uv_segments(uv_min_y, uv_max_y);
+
+        for (uv_x0, uv_x1, rx0, rx1) in &x_segs {
+            for (uv_y0, uv_y1, ry0, ry1) in &y_segs {
+                let seg_rect = egui::Rect::from_min_max(
+                    egui::pos2(rect.min.x + rx0 * rect.width(), rect.min.y + ry0 * rect.height()),
+                    egui::pos2(rect.min.x + rx1 * rect.width(), rect.min.y + ry1 * rect.height()),
+                );
+                let seg_uv = egui::Rect::from_min_max(
+                    egui::pos2(*uv_x0, *uv_y0),
+                    egui::pos2(*uv_x1, *uv_y1),
+                );
+                painter.image(tex_id, seg_rect, seg_uv, Color32::WHITE);
+            }
+        }
+
+        // Draw the fixed, centered screen viewport
         if self.show_viewport {
-            self.draw_viewport_overlay(ui, rect, bg_settings, core);
+            self.draw_centered_viewport(ui, rect, screen_w, screen_h, effective_zoom);
         }
 
-        // Show tooltip with tile info on hover
-        if let Some(pos) = response.hover_pos() {
-            response.on_hover_ui_at_pointer(|ui| {
-                self.show_tile_tooltip(ui, pos, rect, bg_settings, core);
-            });
+        // Tooltip on hover
+        if response.hovered() {
+            if let Some(pos) = response.hover_pos() {
+                self.draw_tile_highlight(ui, pos, rect, uv);
+                self.show_tile_tooltip(ui, pos, rect, uv, bg_settings, core);
+            }
         }
     }
 
-    /// Draw the screen viewport rectangle overlay
-    fn draw_viewport_overlay(
+    /// Draw the screen viewport centered in the display area
+    fn draw_centered_viewport(
         &self,
         ui: &mut egui::Ui,
         image_rect: egui::Rect,
-        bg_settings: &BgSettings,
-        core: &Snemulator,
+        screen_w: f32,
+        screen_h: f32,
+        effective_zoom: f32,
     ) {
-        // SNES screen size
-        let screen_width = 256.0;
-        let screen_height = if core.ppu_regs.overscan_en { 239.0 } else { 224.0 };
+        let screen_display_w = screen_w * effective_zoom;
+        let screen_display_h = screen_h * effective_zoom;
 
-        // Get scroll position (wraps around the tilemap)
-        let scroll_x = bg_settings.scroll_x as f32;
-        let scroll_y = bg_settings.scroll_y as f32;
-
-        // Convert to display coordinates
-        let viewport_x = (scroll_x * self.zoom) + image_rect.min.x;
-        let viewport_y = (scroll_y * self.zoom) + image_rect.min.y;
-        let viewport_w = screen_width * self.zoom;
-        let viewport_h = screen_height * self.zoom;
-
-        let viewport_rect = egui::Rect::from_min_size(
-            egui::pos2(viewport_x, viewport_y),
-            egui::vec2(viewport_w, viewport_h),
+        let screen_rect = egui::Rect::from_center_size(
+            image_rect.center(),
+            egui::vec2(screen_display_w, screen_display_h),
         );
 
-        // Draw viewport rectangle
+        let stroke_width = (2.0 * effective_zoom.max(1.0)).min(4.0);
         ui.painter().rect_stroke(
-            viewport_rect,
+            screen_rect,
             0.0,
-            egui::Stroke::new(2.0 * self.zoom.max(1.0), Color32::from_rgb(80, 140, 255)),
+            egui::Stroke::new(stroke_width, Color32::from_rgb(80, 140, 255)),
             egui::StrokeKind::Outside,
         );
 
-        // Draw "Screen" label
+        let font_size = (12.0 * effective_zoom.max(1.0)).min(16.0);
         ui.painter().text(
-            viewport_rect.center_top() + egui::vec2(0.0, -4.0),
+            screen_rect.center_top() + egui::vec2(0.0, -4.0 * effective_zoom.max(1.0)),
             egui::Align2::CENTER_BOTTOM,
             "Screen",
-            egui::FontId::proportional(12.0 * self.zoom.max(1.0)),
+            egui::FontId::proportional(font_size),
             Color32::from_rgb(80, 140, 255),
         );
+    }
 
-        // If viewport wraps around, draw additional rectangles
-        let tilemap_w = self.rendered_size.0 as f32 * self.zoom;
-        let tilemap_h = self.rendered_size.1 as f32 * self.zoom;
+    fn draw_tile_highlight(
+        &self,
+        ui: &mut egui::Ui,
+        hover_pos: egui::Pos2,
+        image_rect: egui::Rect,
+        uv: egui::Rect,
+    ) {
+        let tilemap_w = self.rendered_size.0 as f32;
+        let tilemap_h = self.rendered_size.1 as f32;
 
-        // Wrap horizontally
-        if viewport_x + viewport_w > image_rect.min.x + tilemap_w {
-            let wrapped_rect = egui::Rect::from_min_size(
-                egui::pos2(image_rect.min.x, viewport_y),
-                egui::vec2((viewport_x + viewport_w) - (image_rect.min.x + tilemap_w), viewport_h),
-            );
-            ui.painter().rect_stroke(
-                wrapped_rect,
-                0.0,
-                egui::Stroke::new(2.0 * self.zoom.max(1.0), Color32::from_rgb(80, 140, 255)),
-                egui::StrokeKind::Outside,
-            );
+        if tilemap_w == 0.0 || tilemap_h == 0.0 {
+            return;
         }
 
-        // Wrap vertically
-        if viewport_y + viewport_h > image_rect.min.y + tilemap_h {
-            let wrapped_rect = egui::Rect::from_min_size(
-                egui::pos2(viewport_x, image_rect.min.y),
-                egui::vec2(viewport_w, (viewport_y + viewport_h) - (image_rect.min.y + tilemap_h)),
-            );
-            ui.painter().rect_stroke(
-                wrapped_rect,
-                0.0,
-                egui::Stroke::new(2.0 * self.zoom.max(1.0), Color32::from_rgb(80, 140, 255)),
-                egui::StrokeKind::Outside,
-            );
-        }
+        // Convert screen position to UV coordinates
+        let relative = hover_pos - image_rect.min;
+        let norm_x = relative.x / image_rect.width();
+        let norm_y = relative.y / image_rect.height();
+
+        // Interpolate within UV rect
+        let u = uv.min.x + norm_x * uv.width();
+        let v = uv.min.y + norm_y * uv.height();
+
+        // Convert UV to tilemap pixel coordinates (with wrapping)
+        let pixel_x = (u * tilemap_w).rem_euclid(tilemap_w);
+        let pixel_y = (v * tilemap_h).rem_euclid(tilemap_h);
+
+        // Get tile-aligned coordinates
+        let tile_x = (pixel_x / 8.0).floor();
+        let tile_y = (pixel_y / 8.0).floor();
+        let tile_pixel_x = tile_x * 8.0;
+        let tile_pixel_y = tile_y * 8.0;
+
+        // Convert tile position back to UV
+        let tile_u_min = tile_pixel_x / tilemap_w;
+        let tile_v_min = tile_pixel_y / tilemap_h;
+
+        // Handle wrapping: find offset from current UV origin, clamped to the visible UV range
+        let uv_range_w = uv.width();
+        let uv_range_h = uv.height();
+        let u_offset = (tile_u_min - uv.min.x).rem_euclid(uv_range_w);
+        let v_offset = (tile_v_min - uv.min.y).rem_euclid(uv_range_h);
+
+        // Convert UV offset to screen coordinates
+        let screen_x = image_rect.min.x + (u_offset / uv.width()) * image_rect.width();
+        let screen_y = image_rect.min.y + (v_offset / uv.height()) * image_rect.height();
+
+        // Tile size in screen pixels
+        let tile_screen_w = (8.0 / tilemap_w) * (image_rect.width() / uv.width());
+        let tile_screen_h = (8.0 / tilemap_h) * (image_rect.height() / uv.height());
+
+        let highlight_rect = egui::Rect::from_min_size(
+            egui::pos2(screen_x, screen_y),
+            egui::vec2(tile_screen_w, tile_screen_h),
+        );
+
+        // Draw red outline
+        let stroke_width = (1.5 * self.zoom.max(1.0)).min(3.0);
+        ui.painter().rect_stroke(
+            highlight_rect,
+            0.0,
+            egui::Stroke::new(stroke_width, Color32::from_rgb(255, 80, 80)),
+            egui::StrokeKind::Outside,
+        );
     }
 
     /// Show tooltip with tile information on hover
@@ -296,25 +401,36 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
         ui: &mut egui::Ui,
         hover_pos: egui::Pos2,
         image_rect: egui::Rect,
+        uv: egui::Rect,
         bg_settings: &BgSettings,
         core: &Snemulator,
     ) {
-        // Convert screen position to tilemap pixel coordinates
-        let relative_pos = hover_pos - image_rect.min;
-        let pixel_x = (relative_pos.x / self.zoom) as u32;
-        let pixel_y = (relative_pos.y / self.zoom) as u32;
+        let tilemap_w = self.rendered_size.0 as f32;
+        let tilemap_h = self.rendered_size.1 as f32;
 
-        // Bounds check
-        if pixel_x >= self.rendered_size.0 || pixel_y >= self.rendered_size.1 {
+        if tilemap_w == 0.0 || tilemap_h == 0.0 {
             return;
         }
+
+        // Convert screen position to UV coordinates
+        let relative = hover_pos - image_rect.min;
+        let norm_x = relative.x / image_rect.width();
+        let norm_y = relative.y / image_rect.height();
+
+        // Interpolate within UV rect
+        let u = uv.min.x + norm_x * uv.width();
+        let v = uv.min.y + norm_y * uv.height();
+
+        // Convert UV to tilemap pixel coordinates (with wrapping)
+        let pixel_x = ((u * tilemap_w).rem_euclid(tilemap_w)) as u32;
+        let pixel_y = ((v * tilemap_h).rem_euclid(tilemap_h)) as u32;
 
         let tile_x = pixel_x / 8;
         let tile_y = pixel_y / 8;
 
         // Read tilemap entry
         let tilemap_addr = self.renderer.calc_tilemap_addr(bg_settings, tile_x, tile_y);
-        let entry = core.vram[tilemap_addr as usize];
+        let entry = core.vram[(tilemap_addr & 0x7FFF) as usize];
 
         let tile_num = entry & 0x3FF;
         let palette = (entry >> 10) & 0x7;
@@ -381,6 +497,19 @@ impl BgRenderer {
         }
     }
 
+    /// Fill a pixel buffer with a 8x8 checkerboard pattern for transparent background display.
+    fn fill_checkerboard(pixel_buffer: &mut [u8], width_px: u32, height_px: u32) {
+        const LIGHT: [u8; 4] = Color::DARK_GRAY.to_rgba_bytes();
+        const DARK:  [u8; 4] = Color::DARKEST_GRAY.to_rgba_bytes();
+        for y in 0..height_px {
+            for x in 0..width_px {
+                let color = if (x / 8 + y / 8) % 2 == 0 { LIGHT } else { DARK };
+                let i = 4 * (y * width_px + x) as usize;
+                pixel_buffer[i..i + 4].copy_from_slice(&color);
+            }
+        }
+    }
+
     /// Render a full background layer to a pixel buffer
     /// 
     /// Returns (width, height) in pixels
@@ -411,8 +540,8 @@ impl BgRenderer {
         let width_px = tilemap_width_tiles * 8;
         let height_px = tilemap_height_tiles * 8;
 
-        pixel_buffer.clear();
         pixel_buffer.resize(4 * (width_px * height_px) as usize, 0);
+        Self::fill_checkerboard(pixel_buffer, width_px, height_px);
 
         // Iterate over tilemap entries
         for tilemap_y in 0..tilemap_height_tiles {
@@ -447,7 +576,6 @@ impl BgRenderer {
         color_depth: u8,
         direct_color: bool,
     ) {
-        // Calculate tilemap address
         let tilemap_addr = self.calc_tilemap_addr(bg, tilemap_x, tilemap_y);
         let entry = vram[tilemap_addr as usize];
 
@@ -459,25 +587,39 @@ impl BgRenderer {
         let output_x = tilemap_x * 8;
         let output_y = tilemap_y * 8;
 
-        // For 16x16 tiles, this tilemap entry references a 2x2 group of 8x8 chr tiles
-        // The tile_num points to the top-left, and we only render the 8x8 portion
-        // that this tilemap position represents
-        let chr_addr = self.calc_chr_addr(bg, tile_num, 0, 0, color_depth);
+        if matches!(bg.chr_size, TileSize::Size16x16) {
+            // A 16x16 tile occupies 2x2 tilemap entries. Only render the full 2x2 block
+            // when we are at the top-left entry of the group (even tile coordinates).
+            // Odd entries are covered by the previous even entry's render, so skip them.
+            if tilemap_x % 2 != 0 || tilemap_y % 2 != 0 {
+                return;
+            }
 
-        self.render_8x8_tile(
-            pixel_buffer,
-            vram,
-            cgram,
-            color_depth,
-            chr_addr,
-            palette,
-            flip_x,
-            flip_y,
-            output_x,
-            output_y,
-            stride,
-            direct_color,
-        );
+            // Render all four 8x8 quadrants
+            for sub_y in 0..2u32 {
+                for sub_x in 0..2u32 {
+                    // Flip swaps which quadrant is drawn at which position
+                    let chr_sub_x = if flip_x { 1 - sub_x } else { sub_x };
+                    let chr_sub_y = if flip_y { 1 - sub_y } else { sub_y };
+
+                    let chr_addr = self.calc_chr_addr(bg, tile_num, chr_sub_x, chr_sub_y, color_depth);
+                    self.render_8x8_tile(
+                        pixel_buffer, vram, cgram, color_depth, chr_addr,
+                        palette, flip_x, flip_y,
+                        output_x + sub_x * 8, output_y + sub_y * 8,
+                        stride, direct_color,
+                    );
+                }
+            }
+        } else {
+            let chr_addr = self.calc_chr_addr(bg, tile_num, 0, 0, color_depth);
+            self.render_8x8_tile(
+                pixel_buffer, vram, cgram, color_depth, chr_addr,
+                palette, flip_x, flip_y,
+                output_x, output_y,
+                stride, direct_color,
+            );
+        }
     }
 
     /// Calculate tilemap word address for a given tile coordinate
@@ -512,7 +654,10 @@ impl BgRenderer {
 
         let tile_offset = local_y * 32 + local_x;
 
-        bg.tilemap_base_addr + screen_offset as u16 + tile_offset as u16
+        bg.tilemap_base_addr
+            .wrapping_add(screen_offset as u16)
+            .wrapping_add(tile_offset as u16)
+            & 0x7FFF
     }
 
     /// Calculate character data word address
@@ -592,8 +737,8 @@ impl BgRenderer {
     fn decode_tile_row_2bpp(&self, vram: &[u16; VRAM_SIZE], chr_addr: u16, row: u32) -> u16 {
         // 2bpp: 16 bytes per tile, 2 bytes per row
         // Each word contains one row: low byte = bp0, high byte = bp1
-        let word_addr = chr_addr as usize + (row as u16) as usize;
-        let word = vram[word_addr & 0x7FFF];
+        let word_addr = (chr_addr as usize + row as usize) & 0x7FFF;
+        let word = vram[word_addr];
 
         let bp0 = word as u8;
         let bp1 = (word >> 8) as u8;
@@ -608,11 +753,11 @@ impl BgRenderer {
     fn decode_tile_row_4bpp(&self, vram: &[u16; VRAM_SIZE], chr_addr: u16, row: u32) -> u32 {
         // 4bpp: 32 bytes per tile
         // bp0,bp1 in first 16 bytes (8 words), bp2,bp3 in next 16 bytes
-        let word_addr_01 = chr_addr as usize + (row as u16) as usize;
-        let word_addr_23 = chr_addr as usize + (row as u16 + 8) as usize;
+        let word_addr_01 = (chr_addr as usize + row as usize) & 0x7FFF;
+        let word_addr_23 = (chr_addr as usize + row as usize + 8) & 0x7FFF;
 
-        let word_01 = vram[word_addr_01 & 0x7FFF];
-        let word_23 = vram[word_addr_23 & 0x7FFF];
+        let word_01 = vram[word_addr_01];
+        let word_23 = vram[word_addr_23];
 
         let bp0 = word_01 as u8;
         let bp1 = (word_01 >> 8) as u8;
@@ -631,15 +776,15 @@ impl BgRenderer {
     fn decode_tile_row_8bpp(&self, vram: &[u16; VRAM_SIZE], chr_addr: u16, row: u32) -> u64 {
         // 8bpp: 64 bytes per tile
         // bp0,bp1 in words 0-7, bp2,bp3 in words 8-15, bp4,bp5 in 16-23, bp6,bp7 in 24-31
-        let word_addr_01 = chr_addr as usize + (row as u16) as usize;
-        let word_addr_23 = chr_addr as usize + (row as u16 + 8) as usize;
-        let word_addr_45 = chr_addr as usize + (row as u16 + 16) as usize;
-        let word_addr_67 = chr_addr as usize + (row as u16 + 24) as usize;
+        let word_addr_01 = (chr_addr as usize + row as usize) & 0x7FFF;
+        let word_addr_23 = (chr_addr as usize + row as usize + 8) & 0x7FFF;
+        let word_addr_45 = (chr_addr as usize + row as usize + 16) & 0x7FFF;
+        let word_addr_67 = (chr_addr as usize + row as usize + 24) & 0x7FFF;
 
-        let word_01 = vram[word_addr_01 & 0x7FFF];
-        let word_23 = vram[word_addr_23 & 0x7FFF];
-        let word_45 = vram[word_addr_45 & 0x7FFF];
-        let word_67 = vram[word_addr_67 & 0x7FFF];
+        let word_01 = vram[word_addr_01];
+        let word_23 = vram[word_addr_23];
+        let word_45 = vram[word_addr_45];
+        let word_67 = vram[word_addr_67];
 
         let bp0 = word_01 as u8;
         let bp1 = (word_01 >> 8) as u8;
