@@ -15,6 +15,7 @@ pub const DEBUG_WINDOW_HEIGHT: u32 = 600;
 #[derive(Clone, Copy, PartialEq)]
 enum DebugTab {
     Cpu,
+    Dma,
     Memory,
     Ppu,
 }
@@ -23,6 +24,7 @@ impl DebugTab {
     fn label(self) -> &'static str {
         match self {
             DebugTab::Cpu => "CPU",
+            DebugTab::Dma => "DMA",
             DebugTab::Memory => "Memory",
             DebugTab::Ppu => "PPU",
         }
@@ -31,6 +33,7 @@ impl DebugTab {
     fn all() -> &'static [Self] {
         &[
             DebugTab::Cpu,
+            DebugTab::Dma,
             DebugTab::Memory,
             DebugTab::Ppu    
         ]
@@ -48,6 +51,7 @@ pub enum DebugAction {
 pub struct DebugWindow {
     egui_window: Option<Box<UiWindow>>,
     cpu_tab: Box<tabs::cpu::CpuTab>,
+    dma_tab: Box<tabs::dma::DmaTab>,
     mem_tab: Box<tabs::mem::MemoryTab>,
     ppu_tab: Box<tabs::ppu::PpuTab>,
     // wp_tab: Box<tabs::WatchpointsTab>,
@@ -66,6 +70,7 @@ impl DebugWindow {
         let mut debug_window = Self {
             egui_window: None,
             cpu_tab: Box::new(tabs::cpu::CpuTab::new()),
+            dma_tab: Box::new(tabs::dma::DmaTab::new()),
             mem_tab: Box::new(tabs::mem::MemoryTab::new()),
             ppu_tab: Box::new(tabs::ppu::PpuTab::new()),
             // wp_tab: Box::new(tabs::WatchpointsTab::new()),
@@ -109,9 +114,8 @@ impl DebugWindow {
 
             egui::CentralPanel::default().show(ctx, |ui| {
                 match self.selected_tab {
-                    DebugTab::Cpu => {
-                        self.cpu_tab.render(ui, core, harness, app_theme)
-                    }
+                    DebugTab::Cpu => self.cpu_tab.render(ui, core, harness, app_theme),
+                    DebugTab::Dma => self.dma_tab.render(ui, core, harness, app_state, app_theme, &mut debug_action),
                     DebugTab::Memory => self.mem_tab.render(ui, core, app_theme),
                     DebugTab::Ppu => self.ppu_tab.render(ui, core, harness, app_theme),
                     // DebugTab::Watchpoints => {
@@ -294,6 +298,7 @@ impl DebugWindow {
                 }
 
                 for (icon, text, stop_cond) in [
+                    (icons::SINGLE_STEP, "Single Step", StopCondition::AnyCpuCycle),
                     (icons::STEP_OVER, "Step Over", StopCondition::StepOverSubroutine { depth: 0 }),
                     (icons::STEP_INTO, "Step Into", StopCondition::Instruction),
                     (icons::STEP_OUT, "Step Out", StopCondition::StepOverSubroutine { depth: 1 }),

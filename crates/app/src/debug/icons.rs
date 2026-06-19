@@ -3,6 +3,7 @@ use egui::{Color32, Image, ImageSource, Vec2};
 use crate::theme::AppTheme;
 
 pub const CONTINUE: egui::ImageSource<'static> = egui::include_image!("../../assets/debug/continue.svg");
+pub const SINGLE_STEP: egui::ImageSource<'static> = egui::include_image!("../../assets/debug/single_step.svg");
 pub const PAUSE: egui::ImageSource<'static> = egui::include_image!("../../assets/debug/pause.svg");
 pub const RUN_FRAME: egui::ImageSource<'static> = egui::include_image!("../../assets/debug/run_frame.svg");
 pub const RUN_UNTIL_INTERRUPT: egui::ImageSource<'static> = egui::include_image!("../../assets/debug/run_until_interrupt.svg");

@@ -3,11 +3,11 @@ use crate::get_bit_n;
 use crate::scpu::Address;
 use crate::scpu::bus::CpuBus;
 
+pub mod regs;
 mod types;
-mod regs;
 
 pub use types::*;
-use regs::DmaRegs;
+pub use regs::DmaRegs;
 
 pub struct DmaController {
     pub regs: [DmaRegs; 8],
@@ -65,6 +65,7 @@ impl DmaController {
 
             if self.regs[i].dma_en {
                 self.regs[i].transfer_pattern_step = 0;
+                self.regs[i].dma_bytes_transferred = 0;
             }
         }
 
@@ -136,7 +137,9 @@ impl DmaController {
         };
 
         dma_ch_regs.hdma_indirect_table_addr.offset -= 1; // byte_count -= 1
+        dma_ch_regs.dma_bytes_transferred += 1;
         dma_ch_regs.transfer_pattern_step += 1;
+        dma_ch_regs.transfer_pattern_step %= dma_ch_regs.transfer_pattern_length();
         dma_ch_regs.inc_a_bus_addr();
 
         let value = bus.read(src_addr);
@@ -197,22 +200,8 @@ impl DmaController {
             Direction::BtoA => (b_bus_addr, a_bus_addr),
         };
 
-        let transfer_pattern_length = match hdma_ch_regs.transfer_pattern {
-            // Stop after first byte
-            TransferPattern::Pattern0 => 1,
-            // Stop after two bytes
-            TransferPattern::Pattern1
-            | TransferPattern::Pattern2
-            | TransferPattern::Pattern6 => 2,
-            // Stop after four bytes
-            TransferPattern::Pattern3
-            | TransferPattern::Pattern4
-            | TransferPattern::Pattern5
-            | TransferPattern::Pattern7 => 4,
-        };
-
         hdma_ch_regs.transfer_pattern_step += 1;
-        hdma_ch_regs.transfer_pattern_step %= transfer_pattern_length;
+        hdma_ch_regs.transfer_pattern_step %= hdma_ch_regs.transfer_pattern_length();
 
         if hdma_ch_regs.transfer_pattern_step == 0 {
             // Full pattern transferred for this scanline; stop until next hblank
