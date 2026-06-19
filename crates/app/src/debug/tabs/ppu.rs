@@ -2,6 +2,7 @@ use snemcore::Snemulator;
 
 use crate::debug::harness::MainDebugHarness;
 use crate::debug::texture::Texture;
+use crate::theme::AppTheme;
 
 // mod chr;
 mod layers;
@@ -56,7 +57,7 @@ impl PpuTab {
         }
     }
     
-    pub fn render(&mut self, ui: &mut egui::Ui, core: &Snemulator, harness: &mut MainDebugHarness) {
+    pub fn render(&mut self, ui: &mut egui::Ui, core: &Snemulator, harness: &mut MainDebugHarness, app_theme: &AppTheme) {
         ui.vertical(|ui| {
             egui::TopBottomPanel::top("tabs").show_inside(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -79,20 +80,20 @@ impl PpuTab {
                 // PpuSubTab::Chr => self.chr_viewer.render(ui, core),
                 PpuSubTab::Bg1 => {
                     self.bg1_viewer.update(core, harness);
-                    self.bg1_viewer.render(ui, core);
+                    self.bg1_viewer.render(ui, core, app_theme);
                     self.sync_bg_zooms(self.bg1_viewer.zoom);
                 }
                 PpuSubTab::Bg2 => {
                     self.bg2_viewer.update(core, harness);
-                    self.bg2_viewer.render(ui, core);
+                    self.bg2_viewer.render(ui, core, app_theme);
                 }
                 PpuSubTab::Bg3 => {
                     self.bg3_viewer.update(core, harness);
-                    self.bg3_viewer.render(ui, core);
+                    self.bg3_viewer.render(ui, core, app_theme);
                 }
                 PpuSubTab::Bg4 => {
                     self.bg4_viewer.update(core, harness);
-                    self.bg4_viewer.render(ui, core);
+                    self.bg4_viewer.render(ui, core, app_theme);
                 }
                 // PpuSubTab::Obj => self.obj_viewer.render(ui, &core.probe.as_ref().unwrap().layer_buffers.obj[..]),
                 _ => {}

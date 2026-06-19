@@ -4,6 +4,9 @@ use crate::SnemulatorArgs;
 use crate::debug::harness::MainDebugHarness;
 #[cfg(feature = "debug")]
 use crate::debug::window::DebugWindow;
+use crate::theme::{AppTheme, ThemePreset};
+use crate::ui_window::UiWindow;
+use sdl3::VideoSubsystem;
 #[cfg(not(feature="debug"))]
 use snemcore::debug::NullHarness;
 
@@ -89,6 +92,8 @@ pub struct SnemulatorApp {
     settings_window: Option<SettingsWindow>,
     state: AppState,
     settings: Settings,
+    theme: AppTheme,
+    fonts: egui::FontDefinitions,
     prev_frame_micros: HeapRb<usize>,
     total_frame_micros: usize,
     frame_buffer: Box<[u8; FRAME_BUF_SIZE]>,
@@ -128,10 +133,22 @@ impl SnemulatorApp {
         let video_subsystem = sdl_context.video()?;
         let audio_subsystem = sdl_context.audio()?;
         let event_pump = Some(sdl_context.event_pump()?);
-        let settings = SnemulatorApp::try_find_settings().unwrap_or_default();
+        let settings = Settings::load();
+        let theme = AppTheme::load_or_preset(ThemePreset::default());
+        let fonts = Self::load_fonts();
         let frame_buffer = Box::new([0u8; FRAME_BUF_SIZE]);
         let audio_buffer = Vec::new();
-        let main_window = MainWindow::new(&video_subsystem, &settings)?;
+
+        let main_egui_window = Self::create_window(
+            "Snemulator",
+            WINDOW_WIDTH,
+            WINDOW_HEIGHT,
+            &video_subsystem,
+            &fonts,
+            &theme
+        )?;
+
+        let main_window = MainWindow::new(main_egui_window, &video_subsystem, &settings)?;
 
         let audio_spec = AudioSpec {
             freq: Some(sysinfo::AUDIO_SAMPLE_HZ as i32),
@@ -154,6 +171,8 @@ impl SnemulatorApp {
             settings_window: None,
             state,
             settings,
+            theme,
+            fonts,
             prev_frame_micros: HeapRb::new(PREV_FPS_BUFFER_LEN),
             total_frame_micros: 0,
             
@@ -194,11 +213,64 @@ impl SnemulatorApp {
             self.settings.audio_enabled = true;
         }
 
+        #[cfg(feature = "debug")]
+        if args.debug {
+            log::trace!("Debug mode enabled from command line argument");
+            self.show_debug();
+        }
+
+        if let Some(theme) = args.theme {
+            let theme_preset = match theme.to_ascii_lowercase().as_str() {
+                "dark" => Some(ThemePreset::Dark),
+                "light" => Some(ThemePreset::Light),
+                "retro" => Some(ThemePreset::Retro),
+                _ => None,
+            };
+
+            if let Some(preset) = theme_preset {
+                log::trace!("Setting theme to preset '{}' from command line arg", theme);
+
+                self.theme = AppTheme::from_preset(preset);
+                self.apply_new_theme();
+            }
+        }
+
         Ok(())
     }
 
-    fn try_find_settings() -> Option<Settings> {
-        Some(Settings::load())
+    fn apply_new_theme(&mut self) {
+        self.main_window.set_theme(&self.theme);
+
+        if let Some(settings_window) = &mut self.settings_window {
+            settings_window.set_theme(&self.theme);
+        }
+
+        #[cfg(feature = "debug")]
+        if let Some(debug_window) = &mut self.debug_window {
+            debug_window.set_theme(&self.theme);
+        }
+    }
+
+    fn load_fonts() -> egui::FontDefinitions {
+        let mut fonts = egui::FontDefinitions::default();
+        
+        let mono_data = include_bytes!("../assets/fonts/JetBrainsMonoNL-Bold.ttf");
+        fonts.font_data.insert(
+            "JetBrains Mono Bold".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_static(mono_data)),
+        );
+        
+        fonts.families
+            .entry(egui::FontFamily::Monospace)
+            .or_default()
+            .insert(0, "JetBrains Mono Bold".to_owned());
+        
+        fonts.families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .insert(0, "JetBrains Mono Bold".to_owned());
+        
+        fonts
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -661,7 +733,21 @@ impl SnemulatorApp {
             self.toggle_pause();
         }
 
-        match SettingsWindow::new(&self.video_subsystem) {
+        let settings_egui_window = Self::create_window(
+            "Settings",
+            crate::settings::SETTINGS_WINDOW_WIDTH,
+            crate::settings::SETTINGS_WINDOW_HEIGHT,
+            &self.video_subsystem,
+            &self.fonts,
+            &self.theme,
+        );
+
+        if let Err(e) = settings_egui_window {
+            log::error!("Failed to create settings window: {}", e);
+            return;
+        }
+
+        match SettingsWindow::new(settings_egui_window.unwrap()) {
             Ok(window) => self.settings_window = Some(window),
             Err(e) => log::error!("Failed to create settings window: {}", e),
         }
@@ -687,7 +773,21 @@ impl SnemulatorApp {
             return;
         }
 
-        match DebugWindow::new(&self.video_subsystem) {
+        let debug_egui_window = Self::create_window(
+            "Debug",
+            crate::debug::window::DEBUG_WINDOW_WIDTH,
+            crate::debug::window::DEBUG_WINDOW_HEIGHT,
+            &self.video_subsystem,
+            &self.fonts,
+            &self.theme,
+        );
+
+        if let Err(e) = debug_egui_window {
+            log::error!("Failed to create debug window: {}", e);
+            return;
+        }
+
+        match DebugWindow::new(debug_egui_window.unwrap()) {
             Ok(window) => self.debug_window = Some(window),
             Err(e) => log::error!("Failed to create debug window: {}", e),
         }
@@ -711,8 +811,7 @@ impl SnemulatorApp {
         let debug_action = self.debug_window.as_mut().unwrap().update_and_render(
             &mut self.snem_core,
             &mut self.state,
-            &mut self.frame_buffer[..],
-            &mut self.audio_buffer,
+            &self.theme,
             &mut self.debug_harness,
         );
 
@@ -745,5 +844,73 @@ impl SnemulatorApp {
                     .handle_event(event, modifiers);
             }
         }
+    }
+}
+
+impl SnemulatorApp {
+    pub fn create_window(
+        title: &str,
+        width: u32,
+        height: u32,
+        video_subsystem: &VideoSubsystem,
+        fonts: &egui::FontDefinitions,
+        theme: &AppTheme,
+    ) -> Result<UiWindow> {
+        
+        let mut window = video_subsystem
+            .window(title, width, height)
+            .opengl()
+            .resizable()
+            .build()?;
+        
+        let win_scale = window.display_scale();
+        
+        window.set_size(
+            ((width as f32) * win_scale) as u32,
+            ((height as f32) * win_scale) as u32
+        )?;
+        window.set_position(
+            sdl3::video::WindowPos::Centered,
+            sdl3::video::WindowPos::Centered
+        );
+        let window = window; // No longer mutable
+        
+        let text_input = video_subsystem.text_input();
+        let gl_context = window.gl_create_context()?;
+
+        window.gl_make_current(&gl_context)?;
+
+        let gl = unsafe {
+            glow::Context::from_loader_function(|s| {
+                match video_subsystem.gl_get_proc_address(s) {
+                    Some(ptr) => ptr as *const _,
+                    None => std::ptr::null(),
+                }
+            })
+        };
+        
+        let gl = std::sync::Arc::new(gl);
+        let egui_ctx = egui::Context::default();
+
+        egui_extras::install_image_loaders(&egui_ctx);
+        
+        egui_ctx.set_fonts(fonts.clone());
+        theme.apply(&egui_ctx);
+
+        let egui_painter = egui_glow::Painter::new(gl.clone(), "", None, false)?;
+        let ui_scale = window.display_scale();
+        
+        egui_ctx.set_pixels_per_point(ui_scale);
+        
+        Ok(UiWindow {
+            window,
+            raw_input: None,
+            text_input,
+            egui_ctx: egui_ctx,
+            egui_painter: Some(egui_painter),
+            gl,
+            gl_context,
+            ui_scale,
+        })
     }
 }

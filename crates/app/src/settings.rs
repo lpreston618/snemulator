@@ -3,10 +3,10 @@ use std::path::PathBuf;
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
 
-use common::UiWindow;
+use crate::{theme::AppTheme, ui_window::UiWindow};
 
-const SETTINGS_WINDOW_WIDTH: u32 = 600;
-const SETTINGS_WINDOW_HEIGHT: u32 = 400;
+pub const SETTINGS_WINDOW_WIDTH: u32 = 600;
+pub const SETTINGS_WINDOW_HEIGHT: u32 = 400;
 const MAX_RECENT_ROMS: usize = 5;
 
 #[derive(Default, Serialize, Deserialize)]
@@ -79,15 +79,14 @@ pub struct SettingsWindow {
 }
 
 impl SettingsWindow {
-    pub fn new(video_subsystem: &sdl3::VideoSubsystem) -> Result<Self> {
+    pub fn new(egui_window: UiWindow) -> Result<Self> {
         Ok(Self {
-            egui_window: UiWindow::new(
-                video_subsystem,
-                "Settings",
-                SETTINGS_WINDOW_WIDTH,
-                SETTINGS_WINDOW_HEIGHT,
-            )?
+            egui_window,
         })
+    }
+
+    pub fn set_theme(&mut self, app_theme: &AppTheme) {
+        app_theme.apply(&self.egui_window.egui_ctx);
     }
     
     pub fn update_and_render(&mut self, settings: &mut Settings) {

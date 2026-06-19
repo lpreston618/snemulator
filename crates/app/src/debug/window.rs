@@ -1,18 +1,16 @@
 use anyhow::Result;
-use snemcore::cartridge::MappingMode;
 use snemcore::Snemulator;
-use snemcore::debug::DebugHarness;
 
-use crate::app::{self, AppAction};
+use crate::app;
 use crate::debug::harness::{MainDebugHarness, StopCondition};
 // use crate::core;
 use crate::debug::tabs;
-use crate::debug::icons;
-use common::UiWindow;
+use crate::debug::icons::{self, IconExt};
+use crate::theme::{AppTheme, ThemePreset};
+use crate::ui_window::UiWindow;
 
-const DEBUG_WINDOW_WIDTH: u32 = 800;
-const DEBUG_WINDOW_HEIGHT: u32 = 600;
-const DEFAULT_FF_SPEED: f32 = 2.0;
+pub const DEBUG_WINDOW_WIDTH: u32 = 800;
+pub const DEBUG_WINDOW_HEIGHT: u32 = 600;
 
 #[derive(Clone, Copy, PartialEq)]
 enum DebugTab {
@@ -52,15 +50,8 @@ pub struct DebugWindow {
 
 impl DebugWindow {
     pub fn new(
-        video_subsystem: &sdl3::VideoSubsystem,
+        egui_window: UiWindow,
     ) -> Result<Self> {
-        let mut egui_window = Box::new(UiWindow::new(
-            video_subsystem,
-            "Debug",
-            DEBUG_WINDOW_WIDTH,
-            DEBUG_WINDOW_HEIGHT,
-        )?);
-
         log::debug!("Debugging started");
 
         // let mut ppu_tab = None;
@@ -87,17 +78,20 @@ impl DebugWindow {
             // ff_frames: 0.0,
         };
 
-        debug_window.egui_window = Some(egui_window);
+        debug_window.egui_window = Some(Box::new(egui_window));
 
         Ok(debug_window)
+    }
+
+    pub fn set_theme(&mut self, app_theme: &AppTheme) {
+        app_theme.apply(&self.egui_window.as_ref().unwrap().egui_ctx);
     }
 
     pub fn update_and_render(
         &mut self,
         core: &mut Snemulator,
         app_state: &mut app::AppState,
-        frame_buffer: &mut [u8],
-        audio_buffer: &mut Vec<i16>,
+        app_theme: &AppTheme,
         harness: &mut MainDebugHarness,
     ) -> app::AppAction {
         let mut app_action = app::AppAction::Continue;
@@ -119,15 +113,15 @@ impl DebugWindow {
                 });
             });
 
-            debug_action = self.show_toolbar(ctx, app_state, core, harness);
+            debug_action = self.show_toolbar(ctx, app_state, app_theme, core, harness);
 
             egui::CentralPanel::default().show(ctx, |ui| {
                 match self.selected_tab {
                     DebugTab::Cpu => {
-                        self.cpu_tab.render(ui, core, harness)
+                        self.cpu_tab.render(ui, core, harness, app_theme)
                     }
                     // tabs::DebugTab::Memory => self.mem_tab.render(ui, core),
-                    DebugTab::Ppu => self.ppu_tab.render(ui, core, harness),
+                    DebugTab::Ppu => self.ppu_tab.render(ui, core, harness, app_theme),
                     // tabs::DebugTab::Watchpoints => {
                     //     self.wp_tab.render(ui, core, app_state)
                     // }
@@ -288,26 +282,22 @@ impl DebugWindow {
         app_action
     }
 
-    fn show_toolbar(&mut self, ctx: &egui::Context, app_state: &app::AppState, core: &mut Snemulator, harness: &mut MainDebugHarness) -> Option<DebugAction> {
+    fn show_toolbar(&mut self, ctx: &egui::Context, app_state: &app::AppState, app_theme: &AppTheme, core: &mut Snemulator, harness: &mut MainDebugHarness) -> Option<DebugAction> {
         let mut debug_action = None;
 
         egui::TopBottomPanel::top("commands").show(ctx, |ui| {
             ui.add_space(5.0);
 
             ui.horizontal(|ui| {
-                let icon_size = egui::vec2(20.0, 20.0);
-
-                let (pause_continue_icon, pause_continue_text) = if app_state.is_paused {
-                    (icons::CONTINUE, "Continue")
+                let (pause_continue_icon, pause_continue_text, pause_continue_tint) = if app_state.is_paused {
+                    (icons::CONTINUE, "Continue", app_theme.icon_secondary)
                 } else {
-                    (icons::PAUSE, "Pause")
+                    (icons::PAUSE, "Pause", app_theme.icon_tertiary)
                 };
 
-                if ui.add(
-                    egui::Button::image(
-                        egui::Image::new(pause_continue_icon).fit_to_exact_size(icon_size)
-                    )
-                ).on_hover_text(pause_continue_text).clicked() {
+                if ui.icon_button_with_tint(pause_continue_icon, pause_continue_tint)
+                    .on_hover_text(pause_continue_text)
+                    .clicked() {
                     debug_action = Some(DebugAction::TogglePause);
                 }
 
@@ -318,11 +308,11 @@ impl DebugWindow {
                     (icons::RUN_FRAME, "Run Frame", StopCondition::Frame),
                     (icons::RUN_UNTIL_INTERRUPT, "Run Until Interrupt", StopCondition::Interrupt),
                 ] {
-                    if ui.add_enabled(app_state.is_paused,
-                        egui::Button::image(
-                            egui::Image::new(icon).fit_to_exact_size(icon_size)
-                        )
-                    ).on_hover_text(text).clicked() {
+                    if ui.add_enabled_ui(app_state.is_paused, |ui| {
+                            ui.icon_button(icon, app_theme)
+                        }).inner
+                        .on_hover_text(text)
+                        .clicked() {
                         debug_action = Some(DebugAction::TogglePause);
                         harness.stop_condition = Some(stop_cond);
                     }

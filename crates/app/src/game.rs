@@ -3,10 +3,11 @@ use anyhow::Result;
 use sdl3::video::GLProfile;
 
 use crate::app;
+use crate::theme::AppTheme;
 use snemcore::sysinfo;
 use crate::menu::MainMenuBar;
 use crate::settings::Settings;
-use common::UiWindow;
+use crate::ui_window::UiWindow;
 
 pub struct MainWindow {
     egui_window: UiWindow,
@@ -19,8 +20,10 @@ pub struct MainWindow {
 
 impl MainWindow {
     pub fn new(
+        egui_window: UiWindow,
         video_subsystem: &sdl3::VideoSubsystem,
-        settings: &Settings) -> Result<Self> {
+        settings: &Settings,
+    ) -> Result<Self> {
             
         // Set OpenGL attributes
         let gl_attr = video_subsystem.gl_attr();
@@ -28,14 +31,6 @@ impl MainWindow {
         gl_attr.set_context_version(3, 3);
         gl_attr.set_context_flags().forward_compatible().set();
         gl_attr.set_double_buffer(true);
-        
-        // Create window
-        let egui_window = UiWindow::new(
-            video_subsystem, 
-            "Snemulator", 
-            app::WINDOW_WIDTH, 
-            app::WINDOW_HEIGHT
-        )?;
         
         video_subsystem.gl_set_swap_interval(
             if settings.vsync_en {
@@ -87,6 +82,10 @@ impl MainWindow {
             vbo,
             game_texture,
         })
+    }
+
+    pub fn set_theme(&mut self, app_theme: &AppTheme) {
+        app_theme.apply(&self.egui_window.egui_ctx);
     }
 
     fn create_shader_program(gl: &glow::Context) -> Result<(glow::Program, glow::VertexArray, glow::Buffer)> {

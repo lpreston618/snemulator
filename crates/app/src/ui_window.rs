@@ -1,95 +1,21 @@
 use anyhow::{Result};
 use glow::HasContext;
 
-use crate::app_utils::{sdl_to_egui_keycode, sdl_to_egui_modifiers, sdl_to_egui_mouse_button};
+use crate::{app_utils::{sdl_to_egui_keycode, sdl_to_egui_modifiers, sdl_to_egui_mouse_button}, theme::{self, AppTheme}};
 
 // Generic egui window wrapper
 pub struct UiWindow {
-    window: sdl3::video::Window,
-    raw_input: Option<egui::RawInput>,
-    text_input: sdl3::keyboard::TextInputUtil,
-    egui_ctx: egui::Context,
-    egui_painter: Option<egui_glow::Painter>,
-    gl: std::sync::Arc<glow::Context>,
-    gl_context: sdl3::video::GLContext,
-    ui_scale: f32,
+    pub window: sdl3::video::Window,
+    pub raw_input: Option<egui::RawInput>,
+    pub text_input: sdl3::keyboard::TextInputUtil,
+    pub egui_ctx: egui::Context,
+    pub egui_painter: Option<egui_glow::Painter>,
+    pub gl: std::sync::Arc<glow::Context>,
+    pub gl_context: sdl3::video::GLContext,
+    pub ui_scale: f32,
 }
 
 impl UiWindow {
-    pub fn new(
-        video_subsystem: &sdl3::VideoSubsystem,
-        title: &str,
-        width: u32,
-        height: u32,
-    ) -> Result<Self> {
-        
-        let mut window = video_subsystem
-            .window(title, width, height)
-            .opengl()
-            .resizable()
-            .build()?;
-        
-        let win_scale = window.display_scale();
-        
-        window.set_size(
-            ((width as f32) * win_scale) as u32,
-            ((height as f32) * win_scale) as u32
-        )?;
-        window.set_position(
-            sdl3::video::WindowPos::Centered,
-            sdl3::video::WindowPos::Centered
-        );
-        let window = window; // No longer mutable
-        
-        let text_input = video_subsystem.text_input();
-        
-        let gl_context = window.gl_create_context()?;
-
-        window.gl_make_current(&gl_context)?;
-        
-        let gl = unsafe {
-            glow::Context::from_loader_function(|s| {
-                match video_subsystem.gl_get_proc_address(s) {
-                    Some(ptr) => ptr as *const _,
-                    None => std::ptr::null(),
-                }
-            })
-        };
-        let gl = std::sync::Arc::new(gl);
-        
-        let egui_ctx = egui::Context::default();
-
-        egui_extras::install_image_loaders(&egui_ctx);
-
-        let egui_painter = egui_glow::Painter::new(gl.clone(), "", None, false)?;
-
-        let ui_scale = window.display_scale();
-        
-        egui_ctx.set_pixels_per_point(ui_scale);
-        
-        Ok(Self {
-            window,
-            raw_input: None,
-            text_input,
-            egui_ctx: egui_ctx,
-            egui_painter: Some(egui_painter),
-            gl,
-            gl_context,
-            ui_scale,
-        })
-    }
-    
-    pub fn with_painter<F>(&mut self, mut func: F)
-    where
-        F: FnMut(&mut Self, &mut egui_glow::Painter),
-    {
-        let mut painter = self.egui_painter.take().unwrap();
-        
-        func(self, &mut painter);
-        
-        self.egui_painter = Some(painter);
-    }
-    
     /// Updates the UI with the given function and returns the full output to be used during rendering.
     pub fn update_ui<F>(&mut self, ui_func: F) -> egui::FullOutput
     where

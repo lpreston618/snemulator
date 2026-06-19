@@ -1,6 +1,6 @@
 use snemcore::{Snemulator, sppu::{self, BgMode, BgSettings, Color, TileSize, TilemapCount}, sysinfo::VRAM_SIZE};
 
-use crate::debug::{harness::MainDebugHarness};
+use crate::{debug::harness::MainDebugHarness, theme::AppTheme};
 use egui::{Color32, ColorImage, TextureHandle, TextureOptions, Vec2};
 
 pub struct BgDebugView<const BG_LAYER: usize> {
@@ -25,22 +25,63 @@ pub struct BgDebugView<const BG_LAYER: usize> {
     selected_tile: Option<(u32, u32)>,
 }
 
-/// Split a UV range that may cross the 1.0 boundary into at most two clamped segments.
-/// Returns a list of `(uv_start, uv_end, rect_norm_start, rect_norm_end)` tuples,
-/// where uv_* are in [0, 1] and rect_norm_* are the proportional positions in the display rect.
+/// Split a UV range that may span and wrap across the texture multiple times into a list of
+/// clamped, non-wrapping segments. Returns `(uv_start, uv_end, rect_norm_start, rect_norm_end)`
+/// tuples, where uv_* are in `[0, 1)` and rect_norm_* are the proportional positions in the
+/// display rect that each segment should be painted into.
+///
+/// The display can show more than one full tilemap width/height at once (e.g. a 256px-wide
+/// tilemap with `padding_screens >= 0.5` needs a UV span of `2.0` or more just for the padding,
+/// before any scroll offset). Each additional `1.0` of UV span is one additional full pass over
+/// the texture, so this splits the input range at every integer boundary it crosses, not just
+/// the first one.
+///
+/// **Edge stretching:** egui clamps UVs to `[0, 1]` rather than wrapping, so a UV of exactly
+/// `1.0` samples the very last texel and stretches it to fill any leftover rect space. To avoid
+/// this every segment's UV end is capped to `UV_MAX`, just below `1.0`.
 fn uv_segments(uv_start: f32, uv_end: f32) -> Vec<(f32, f32, f32, f32)> {
+    /// Largest UV value we will ever pass to the painter. Staying strictly below 1.0
+    /// prevents egui from clamping to the last texel and stretching it.
+    const UV_MAX: f32 = 1.0 - f32::EPSILON;
+
     let total = uv_end - uv_start;
-    if uv_end <= 1.0 {
-        // No wrap — single segment
-        vec![(uv_start, uv_end, 0.0, 1.0)]
-    } else {
-        // Wraps past 1.0 — split at 1.0
-        let split = (1.0 - uv_start) / total; // normalised rect position of the wrap point
-        vec![
-            (uv_start, 1.0, 0.0, split),
-            (0.0, uv_end - 1.0, split, 1.0),
-        ]
+    debug_assert!(total > 0.0, "uv_segments: uv_end must be greater than uv_start");
+
+    let mut segments = Vec::new();
+    let mut cur = uv_start;
+    let mut rect_pos = 0.0_f32;
+
+    // Safety cap: the number of segments is naturally bounded by ceil(total) + 1, but we
+    // guard against float-precision edge cases (e.g. `cur` failing to advance) ever causing
+    // an infinite loop.
+    let max_segments = total.ceil() as usize + 2;
+
+    for _ in 0..max_segments {
+        if cur >= uv_end {
+            break;
+        }
+
+        // The next integer boundary above `cur` (e.g. cur=0.5 -> 1.0, cur=1.2 -> 2.0).
+        let next_boundary = cur.floor() + 1.0;
+        let seg_uv_end = next_boundary.min(uv_end);
+
+        // Fraction of the rect this segment occupies, proportional to its share of `total`.
+        let seg_rect_end = rect_pos + (seg_uv_end - cur) / total;
+
+        // Wrap the UV values into [0, 1) for sampling, and cap the end so we never hand
+        // the painter an exact 1.0 (which would stretch the last texel).
+        let wrapped_start = cur.rem_euclid(1.0);
+        let raw_wrapped_end = wrapped_start + (seg_uv_end - cur);
+        let wrapped_end = raw_wrapped_end.min(UV_MAX);
+
+        segments.push((wrapped_start, wrapped_end, rect_pos, seg_rect_end.min(1.0)));
+
+        // Guarantee forward progress even if float error makes seg_uv_end <= cur.
+        cur = seg_uv_end.max(cur + f32::EPSILON);
+        rect_pos = seg_rect_end;
     }
+
+    segments
 }
 
 impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
@@ -110,31 +151,39 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
     }
 
     /// Render the debug view UI
-    pub fn render(&mut self, ui: &mut egui::Ui, core: &Snemulator) {
+    pub fn render(&mut self, ui: &mut egui::Ui, core: &Snemulator, app_theme: &AppTheme) {
         let bg_settings = &core.ppu_regs.bg_settings[BG_LAYER];
 
         // Controls panel
         ui.horizontal(|ui| {
-            ui.label(format!("BG{}", BG_LAYER + 1));
+            ui.label(
+                egui::RichText::new(format!("BG{}", BG_LAYER + 1))
+                    .strong()
+                    .color(app_theme.accent),
+            );
             ui.separator();
 
-            ui.label("Zoom:");
+            ui.label(egui::RichText::new("Zoom:").color(app_theme.text_secondary));
             ui.add(egui::Slider::new(&mut self.zoom, 0.25..=4.0).logarithmic(true));
 
             ui.separator();
             ui.checkbox(&mut self.show_viewport, "Show viewport");
 
             ui.separator();
-            ui.label(format!(
-                "{}x{} | {}bpp | Tile: {:?}",
-                self.rendered_size.0,
-                self.rendered_size.1,
-                self.color_depth(core),
-                bg_settings.chr_size,
-            ));
+            ui.label(
+                egui::RichText::new(format!(
+                    "{}x{} | {}bpp | Tile: {:?}",
+                    self.rendered_size.0,
+                    self.rendered_size.1,
+                    self.color_depth(core),
+                    bg_settings.chr_size,
+                ))
+                .color(app_theme.text_muted)
+                .monospace(),
+            );
         });
 
-        ui.separator();
+        app_theme.debugger_separator(ui);
 
         // Ensure texture is uploaded
         self.ensure_texture(ui.ctx());
@@ -145,7 +194,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
             .resizable(true)
             .min_width(160.0)
             .show_inside(ui, |ui| {
-                self.render_tile_info_panel(ui, core);
+                self.render_tile_info_panel(ui, core, app_theme);
             });
 
         // Background tilemap view fills all remaining space
@@ -154,7 +203,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
             .max_width(available_size.x)
             .max_height(available_size.y)
             .show(ui, |ui| {
-                self.render_scrolling_background(ui, core);
+                self.render_scrolling_background(ui, core, app_theme);
             });
     }
 
@@ -193,9 +242,13 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
     }
 
     /// Render the background image with viewport overlay
-    fn render_scrolling_background(&mut self, ui: &mut egui::Ui, core: &Snemulator) {
+    fn render_scrolling_background(&mut self, ui: &mut egui::Ui, core: &Snemulator, app_theme: &AppTheme) {
         let Some(texture) = &self.texture else {
-            ui.label("No background rendered");
+            ui.label(
+                egui::RichText::new("No background rendered")
+                    .color(app_theme.text_muted)
+                    .italics(),
+            );
             return;
         };
 
@@ -282,7 +335,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
 
         // Draw the fixed, centered screen viewport
         if self.show_viewport {
-            self.draw_centered_viewport(ui, rect, screen_w, screen_h, effective_zoom);
+            self.draw_centered_viewport(ui, rect, screen_w, screen_h, effective_zoom, app_theme);
         }
 
         // Hover highlight and click-to-select
@@ -303,13 +356,13 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
             }
         }
 
-        // Draw highlight for hovered tile (red) and selected tile (yellow), if distinct
+        // Draw highlight for hovered tile and selected tile, if distinct
         if let Some((tx, ty)) = self.selected_tile {
-            self.draw_tile_highlight(ui, tx, ty, rect, uv, Color32::from_rgb(255, 210, 50));
+            self.draw_tile_highlight(ui, tx, ty, rect, uv, app_theme.modified);
         }
         if let Some((tx, ty)) = self.hovered_tile {
             if self.hovered_tile != self.selected_tile {
-                self.draw_tile_highlight(ui, tx, ty, rect, uv, Color32::from_rgb(255, 80, 80));
+                self.draw_tile_highlight(ui, tx, ty, rect, uv, app_theme.breakpoint);
             }
         }
     }
@@ -322,6 +375,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
         screen_w: f32,
         screen_h: f32,
         effective_zoom: f32,
+        app_theme: &AppTheme,
     ) {
         let screen_display_w = screen_w * effective_zoom;
         let screen_display_h = screen_h * effective_zoom;
@@ -335,7 +389,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
         ui.painter().rect_stroke(
             screen_rect,
             0.0,
-            egui::Stroke::new(stroke_width, Color32::from_rgb(80, 140, 255)),
+            egui::Stroke::new(stroke_width, app_theme.accent),
             egui::StrokeKind::Outside,
         );
 
@@ -345,7 +399,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
             egui::Align2::CENTER_BOTTOM,
             "Screen",
             egui::FontId::proportional(font_size),
-            Color32::from_rgb(80, 140, 255),
+            app_theme.accent,
         );
     }
 
@@ -360,8 +414,8 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
         let u = uv.min.x + norm_x * uv.width();
         let v = uv.min.y + norm_y * uv.height();
 
-        let pixel_x = (u * tilemap_w).rem_euclid(tilemap_w) as u32;
-        let pixel_y = (v * tilemap_h).rem_euclid(tilemap_h) as u32;
+        let pixel_x = (u * tilemap_w).rem_euclid(tilemap_w).min(tilemap_w - 1.0) as u32;
+        let pixel_y = (v * tilemap_h).rem_euclid(tilemap_h).min(tilemap_h - 1.0) as u32;
         Some((pixel_x / 8, pixel_y / 8))
     }
 
@@ -400,11 +454,15 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
     }
 
     /// Render the tile info panel shown to the right of the background view.
-    fn render_tile_info_panel(&mut self, ui: &mut egui::Ui, core: &Snemulator) {
+    fn render_tile_info_panel(&mut self, ui: &mut egui::Ui, core: &Snemulator, app_theme: &AppTheme) {
         let bg_settings = &core.ppu_regs.bg_settings[BG_LAYER];
 
         if self.selected_tile.is_none() && self.hovered_tile.is_none() {
-            ui.label("Click a tile to inspect it.");
+            ui.label(
+                egui::RichText::new("Click a tile to inspect it.")
+                    .color(app_theme.text_muted)
+                    .italics(),
+            );
             return;
         }
 
@@ -412,10 +470,18 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
         let tile_y: u32;
 
         if self.selected_tile.is_some() {
-            ui.label("Click selected tile to de-select it.");
+            ui.label(
+                egui::RichText::new("Click selected tile to de-select it.")
+                    .color(app_theme.text_secondary)
+                    .italics(),
+            );
             (tile_x, tile_y) = self.selected_tile.unwrap();
         } else {
-            ui.label("Click a tile to inspect it.");
+            ui.label(
+                egui::RichText::new("Click a tile to inspect it.")
+                    .color(app_theme.text_muted)
+                    .italics(),
+            );
             (tile_x, tile_y) = self.hovered_tile.unwrap();
         }
 
@@ -457,15 +523,32 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
         }
 
         // --- Tile metadata ---
-        ui.separator();
-        ui.label(format!("Tile:     ({}, {})", tile_x, tile_y));
-        ui.label(format!("Tile #:   0x{:03X}  ({})", tile_num, tile_num));
-        ui.label(format!("Palette:  {}", palette));
-        ui.label(format!("Priority: {}", priority));
-        ui.label(format!("Flip:     X={}  Y={}", flip_x, flip_y));
-        ui.separator();
-        ui.label(format!("Tilemap addr: 0x{:04X}", tilemap_addr));
-        ui.label(format!("Entry:        0x{:04X}", entry));
+        app_theme.debugger_separator(ui);
+
+        let mono = |s: String| egui::RichText::new(s).monospace().color(app_theme.text_primary);
+        let key  = |s: &str|   egui::RichText::new(s).monospace().color(app_theme.syntax_register);
+        let val  = |s: String| egui::RichText::new(s).monospace().color(app_theme.syntax_number);
+        let addr = |s: String| egui::RichText::new(s).monospace().color(app_theme.syntax_address);
+
+        ui.horizontal(|ui| { ui.label(key("Tile:    ")); ui.label(val(format!("({}, {})", tile_x, tile_y))); });
+        ui.horizontal(|ui| { ui.label(key("Tile #:  ")); ui.label(val(format!("0x{:03X}  ({})", tile_num, tile_num))); });
+        ui.horizontal(|ui| { ui.label(key("Palette: ")); ui.label(val(format!("{}", palette))); });
+        ui.horizontal(|ui| { ui.label(key("Priority:")); ui.label(val(format!("{}", priority))); });
+        ui.horizontal(|ui| {
+            ui.label(key("Flip:    "));
+            let fx = if flip_x { egui::RichText::new("X").monospace().color(app_theme.warning) }
+                     else       { egui::RichText::new("X").monospace().color(app_theme.text_disabled) };
+            let fy = if flip_y { egui::RichText::new("Y").monospace().color(app_theme.warning) }
+                     else       { egui::RichText::new("Y").monospace().color(app_theme.text_disabled) };
+            ui.label(fx);
+            ui.label(fy);
+        });
+
+        app_theme.debugger_separator(ui);
+        ui.horizontal(|ui| { ui.label(key("Tilemap: ")); ui.label(addr(format!("0x{:04X}", tilemap_addr))); });
+        ui.horizontal(|ui| { ui.label(key("Entry:   ")); ui.label(addr(format!("0x{:04X}", entry))); });
+
+        let _ = (mono, val); // suppress unused warnings if some branches aren't hit
     }
 }
 

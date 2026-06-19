@@ -1,5 +1,5 @@
 // use crate::debug::{breakpoints::BreakpointInfo, debugger::Debugger};
-use common::app_utils::monospace_text;
+use crate::{app_utils::monospace_text, theme::AppTheme};
 use snemcore::{Snemulator, scpu};
 
 use crate::debug::harness::MainDebugHarness;
@@ -137,7 +137,7 @@ impl CpuTab {
         self.disasm.current_addr = addr;
     }
     
-    pub fn render(&mut self, ui: &mut egui::Ui, core: &mut Snemulator, harness: &mut MainDebugHarness) {
+    pub fn render(&mut self, ui: &mut egui::Ui, core: &mut Snemulator, harness: &mut MainDebugHarness, app_theme: &AppTheme) {
         self.update_disasm(core);
         
         let pc = (core.cpu.pb as u32) << 16 | core.cpu.pc as u32;
@@ -227,6 +227,7 @@ impl CpuTab {
                 });
             });
         });
+
         ui.separator();
 
         let available_height = ui.available_height();
@@ -235,7 +236,7 @@ impl CpuTab {
         const BP_SECTION_HEIGHT: f32 = 140.0;
 
         ui.horizontal(|ui| {
-            self.disasm_section(ui, core, harness, available_height - BP_SECTION_HEIGHT);
+            self.disasm_section(ui, core, harness, app_theme, available_height - BP_SECTION_HEIGHT);
 
             ui.vertical(|ui| {
                 ui.set_width(SIDEBAR_WIDTH);
@@ -243,7 +244,7 @@ impl CpuTab {
                 egui::CollapsingHeader::new("Registers")
                     .default_open(true)
                     .show(ui, |ui| {
-                        self.cpu_state_section(ui, core);
+                        self.cpu_state_section(ui, core, app_theme);
                     });
 
                 ui.add_space(5.0);
@@ -251,7 +252,7 @@ impl CpuTab {
                 egui::CollapsingHeader::new("Stack")
                     .default_open(true)
                     .show(ui, |ui| {
-                        self.stack_section(ui, core, harness);
+                        self.stack_section(ui, core, harness, app_theme);
                     });
             });
         });
@@ -261,30 +262,39 @@ impl CpuTab {
         self.breakpoints_section(ui, core, harness);
     }
     
-    fn disasm_section(&mut self, ui: &mut egui::Ui, core: &mut Snemulator, harness: &mut MainDebugHarness, available_height: f32) {
+    fn disasm_section(
+        &mut self,
+        ui: &mut egui::Ui,
+        core: &mut Snemulator,
+        harness: &mut MainDebugHarness,
+        app_theme: &AppTheme,
+        available_height: f32
+    ) {
         ui.vertical(|ui| {
             egui::ScrollArea::vertical().id_salt("disasm_scroll").min_scrolled_height(available_height).show(ui, |ui| {
                 let lines = self.disasm.cached_lines.take();
                 
                 if let Some(lines) = lines {
-                    let line_count = lines.len();
+                    // let line_count = lines.len();
                     
-                    if let Some(re) = &mut self.rom_edit {
-                        re.just_went_down = false;
-                        re.just_went_right = false;
-                    }
+                    // if let Some(re) = &mut self.rom_edit {
+                    //     re.just_went_down = false;
+                    //     re.just_went_right = false;
+                    // }
                     
                     for (i, line) in lines.iter().enumerate() {
                         ui.horizontal(|ui| {
-                            match &self.rom_edit {
-                                Some(rom_edit) if rom_edit.lowest_idx <= i && i <= rom_edit.highest_idx => {
-                                    self.disasm_line_editable(ui, core, harness, line, i, line_count);
-                                }
-                                _ => {
-                                    self.disasm_line(ui, core, harness, line, i);
-                                }
-                            }
+                            // match &self.rom_edit {
+                            //     Some(rom_edit) if rom_edit.lowest_idx <= i && i <= rom_edit.highest_idx => {
+                            //         self.disasm_line_editable(ui, core, harness, line, i, line_count);
+                            //     }
+                            //     _ => {
+                            //         self.disasm_line(ui, core, harness, line, i);
+                            //     }
+                            // }
                             
+                            self.disasm_line(ui, core, harness, app_theme, line, i);
+
                             ui.add_space(10.0);
                         });
                     }
@@ -295,76 +305,51 @@ impl CpuTab {
         });
     }
     
-    fn disasm_line(&mut self, ui: &mut egui::Ui, core: &mut Snemulator, harness: &mut MainDebugHarness, line: &disassembler::DisasmLine, line_idx: usize) {
+    fn disasm_line(
+        &mut self,
+        ui: &mut egui::Ui,
+        core: &mut Snemulator,
+        harness: &mut MainDebugHarness,
+        app_theme: &AppTheme,
+        line: &disassembler::DisasmLine,
+        line_idx: usize
+    ) {
         let pc = (core.cpu.pb as u32) << 16 | core.cpu.pc as u32;
         
-        let is_pc  = line.addr == pc;
-        let addr   = line.addr;
-        let has_bp = harness.breakpoints.contains(&addr);
+        let addr = line.addr;
+        let is_current = addr == pc;
+        let has_breakpoint = harness.breakpoints.contains(&addr);
+        let is_modified = self.rom_changes.contains_key(&addr);
         
-        let dot = if has_bp { "🔴" } else { "⚪" };
-        if ui.small_button(dot).clicked() {
-            if has_bp {
+        // Breakpoint gutter
+        let bp_response = app_theme.draw_breakpoint_marker(ui, has_breakpoint, is_current);
+        if bp_response.clicked() {
+            if has_breakpoint {
                 harness.breakpoints.remove(&addr);
-            }
-            else {
+            } else {
                 harness.breakpoints.insert(addr);
             }
         }
         
-        ui.label(" ");
+        // Parse mnemonic and operand
+        let (mnemonic, operand) = parse_disasm_str(&line.disasm_str);
         
-        let style = egui::Style::default();
-        let mut disasm_str = egui::text::LayoutJob::default();
+        // Format with theme
+        let job = app_theme.format_disassembly_line(
+            addr,
+            &line.bytes,
+            mnemonic,
+            operand,
+            None,
+            is_current,
+            has_breakpoint,
+        );
         
-        let bg_col = if self.rom_changes.contains_key(&line.addr) {
-            egui::Color32::DARK_RED
-        } else {    
-            ui.visuals().window_fill
-        };
-        
-        let addr_text_col = if has_bp {
-            egui::Color32::RED
-        } else if is_pc {
-            egui::Color32::YELLOW
-        } else {
-            ui.visuals().text_color()
-        };
-        
-        let addr_text = egui::RichText::new(format!("{:06X} ", line.addr))
-            .monospace()
-            .background_color(bg_col)
-            .color(addr_text_col);
-        
-        let disasm_col = if has_bp && addr == self.disasm.current_addr {
-            egui::Color32::RED
-        } else if is_pc {
-            egui::Color32::YELLOW
-        } else {
-            ui.visuals().text_color()
-        };
-        
-        let bytes_str: String = line.bytes.iter().map(|b| format!("{:02X} ", b)).collect();
-        let bytes_text = egui::RichText::new(format!("{:<12}", bytes_str))
-            .monospace()
-            .background_color(bg_col)
-            .color(disasm_col)
-            .weak();
-        
-        let instr_text = egui::RichText::new(&line.disasm_str)
-            .monospace()
-            .background_color(bg_col)
-            .color(disasm_col);
-        
-        addr_text.append_to(&mut disasm_str, &style, egui::FontSelection::Default, egui::Align::Center);
-        bytes_text.append_to(&mut disasm_str, &style, egui::FontSelection::Default, egui::Align::Center);
-        instr_text.append_to(&mut disasm_str, &style, egui::FontSelection::Default, egui::Align::Center);
-        
-        ui.label(disasm_str)
-            .context_menu(|ui| self.disasm_context_menu(ui, core, line_idx, &line));
+        ui.label(job)
+            .context_menu(|ui| self.disasm_context_menu(ui, core, line_idx, line));
     }
     
-    fn disasm_line_editable(&mut self, ui: &mut egui::Ui, core: &mut Snemulator, harness: &mut MainDebugHarness, line: &disassembler::DisasmLine, line_idx: usize, total_lines: usize) {
+    fn disasm_line_editable(&mut self, ui: &mut egui::Ui, core: &mut Snemulator, harness: &mut MainDebugHarness, app_theme: &AppTheme, line: &disassembler::DisasmLine, line_idx: usize, total_lines: usize) {
         let pc = (core.cpu.pb as u32) << 16 | core.cpu.pc as u32;
         
         let is_pc  = line.addr == pc;
@@ -384,11 +369,11 @@ impl CpuTab {
         ui.label(" ");
 
         let addr_text_col = if has_bp {
-            egui::Color32::RED
+            app_theme.breakpoint
         } else if is_pc {
-            egui::Color32::YELLOW
+            app_theme.highlight_line
         } else {
-            ui.visuals().text_color()
+            app_theme.syntax_address
         };
 
         ui.label(
@@ -419,16 +404,16 @@ impl CpuTab {
             let flat_i = byte_offset + byte_i;
             let is_current = flat_i == current_byte;
 
-            // Background: bright gold for the active byte, muted blue for others.
+            // Background: theme modified/highlight for the active byte, elevated bg for others.
             let bg = if is_current {
-                egui::Color32::from_rgb(180, 140, 0)
+                app_theme.modified
             } else {
-                egui::Color32::from_rgb(30, 50, 100)
+                app_theme.bg_elevated
             };
             let fg = if is_current {
-                egui::Color32::BLACK
+                app_theme.bg_primary
             } else {
-                egui::Color32::LIGHT_GRAY
+                app_theme.syntax_number
             };
 
             // A non-empty byte string that isn't valid hex is an error.
@@ -437,7 +422,7 @@ impl CpuTab {
                 && (byte_str.len() > 2 || !byte_str.chars().all(|c| c.is_ascii_hexdigit()));
 
             let actual_bg = if byte_invalid {
-                egui::Color32::DARK_RED
+                app_theme.error
             } else {
                 bg
             };
@@ -500,7 +485,7 @@ impl CpuTab {
         }
 
         // ── Instruction mnemonic (read-only label, same as normal line) ──────
-        let disasm_col = if is_pc { egui::Color32::YELLOW } else { ui.visuals().text_color() };
+        let disasm_col = if is_pc { app_theme.modified } else { app_theme.syntax_opcode };
         ui.label(
             egui::RichText::new(&line.disasm_str)
                 .monospace()
@@ -731,73 +716,32 @@ impl CpuTab {
         }
     }
     
-    fn cpu_state_section(&mut self, ui: &mut egui::Ui, core: &Snemulator) {
-        ui.heading("CPU State");
-        
-        ui.separator();
-        
+    fn cpu_state_section(&mut self, ui: &mut egui::Ui, core: &Snemulator, app_theme: &AppTheme) {
+        app_theme.section_header(ui, "CPU State");
+
         ui.horizontal(|ui| {
-            let pb_text = egui::RichText::new(format!("PB: {:02X}", core.cpu.pb)).monospace();
-            ui.label(pb_text);
-            
-            let pc_text = egui::RichText::new(format!("PC: {:04X}", core.cpu.pc)).monospace();
-            ui.label(pc_text);
-            
-            let sp_text = egui::RichText::new(format!("SP: {:04X}", core.cpu.sp)).monospace();
-            ui.label(sp_text);
-            
-            let db_text = egui::RichText::new(format!("DB: {:02X}", core.cpu.db)).monospace();
-            ui.label(db_text);
-            
-            let dp_text = egui::RichText::new(format!("DP: {:04X}", core.cpu.dp)).monospace();
-            ui.label(dp_text);
+            ui.label(app_theme.format_register("PB", core.cpu.pb as u16, 8, false));
+            ui.label(app_theme.format_register("PC", core.cpu.pc, 16, false));
+            ui.label(app_theme.format_register("SP", core.cpu.sp, 16, false));
+            ui.label(app_theme.format_register("DB", core.cpu.db as u16, 8, false));
+            ui.label(app_theme.format_register("DP", core.cpu.dp, 16, false));
+        });
+
+        ui.horizontal(|ui| {
+            ui.label(app_theme.format_register("A", core.cpu.a, 16, false));
+            ui.label(app_theme.format_register("X", core.cpu.x, 16, false));
+            ui.label(app_theme.format_register("Y", core.cpu.y, 16, false));
+
+            ui.label(app_theme.format_status_flags(core));
         });
         
-        ui.horizontal(|ui| {
-            let a_text = egui::RichText::new(format!("A: {:04X}", core.cpu.a)).monospace();
-            ui.label(a_text);
-            
-            let x_text = egui::RichText::new(format!("X: {:04X}", core.cpu.x)).monospace();
-            ui.label(x_text);
-            
-            let y_text = egui::RichText::new(format!("Y: {:04X}", core.cpu.y)).monospace();
-            ui.label(y_text);
-            
-            let style = egui::Style::default();
-            let mut status_str = egui::text::LayoutJob::default();
-            
-            let flag_col = |flag| if core.cpu.is_flag_set(flag) { egui::Color32::GREEN } else { egui::Color32::RED };
-            
-            let p_text = egui::RichText::new("P: ").color(ui.visuals().text_color()).monospace();
-            let n_text = egui::RichText::new("N").color(flag_col(scpu::Flag::FlagN)).monospace();
-            let v_text = egui::RichText::new("V").color(flag_col(scpu::Flag::FlagV)).monospace();
-            let m_text = egui::RichText::new("M").color(flag_col(scpu::Flag::FlagM)).monospace();
-            let x_text = egui::RichText::new("X").color(flag_col(scpu::Flag::FlagX)).monospace();
-            let d_text = egui::RichText::new("D").color(flag_col(scpu::Flag::FlagD)).monospace();
-            let i_text = egui::RichText::new("I").color(flag_col(scpu::Flag::FlagI)).monospace();
-            let z_text = egui::RichText::new("Z").color(flag_col(scpu::Flag::FlagZ)).monospace();
-            let c_text = egui::RichText::new("C").color(flag_col(scpu::Flag::FlagC)).monospace();
-            
-            p_text.append_to(&mut status_str, &style, egui::FontSelection::Default, egui::Align::Center);
-            n_text.append_to(&mut status_str, &style, egui::FontSelection::Default, egui::Align::Center);
-            v_text.append_to(&mut status_str, &style, egui::FontSelection::Default, egui::Align::Center);
-            m_text.append_to(&mut status_str, &style, egui::FontSelection::Default, egui::Align::Center);
-            x_text.append_to(&mut status_str, &style, egui::FontSelection::Default, egui::Align::Center);
-            d_text.append_to(&mut status_str, &style, egui::FontSelection::Default, egui::Align::Center);
-            i_text.append_to(&mut status_str, &style, egui::FontSelection::Default, egui::Align::Center);
-            z_text.append_to(&mut status_str, &style, egui::FontSelection::Default, egui::Align::Center);
-            c_text.append_to(&mut status_str, &style, egui::FontSelection::Default, egui::Align::Center);
-            
-            ui.label(status_str);
-        });
-        
-        ui.separator();
-        
+        app_theme.debugger_separator(ui);
+
         ui.horizontal(|ui| {
             let mut halted = core.cpu.halted;
             let mut stopped = core.cpu.stopped;
             let mut waiting_for_interrupt = core.cpu.waiting_for_interrupt;
-            
+
             ui.add_enabled(false,
                 egui::Checkbox::new(&mut halted, "Halted")
             );
@@ -808,11 +752,11 @@ impl CpuTab {
                 egui::Checkbox::new(&mut waiting_for_interrupt, "Waiting for Interrupt")
             );
         });
-        
+
         ui.horizontal(|ui| {
             let mut irq_pending = core.cpu.irq_pending;
             let mut nmi_pending = core.cpu.nmi_pending;
-            
+
             ui.add_enabled(false,
                 egui::Checkbox::new(&mut irq_pending, "IRQ Pending")
             );
@@ -820,33 +764,33 @@ impl CpuTab {
                 egui::Checkbox::new(&mut nmi_pending, "NMI Pending")
             );
         });
-        
-        ui.separator();
-        
+
+        app_theme.debugger_separator(ui);
+
         ui.horizontal(|ui| {
-            ui.label(monospace_text("(APU→CPU)".to_string()));
-            ui.label(monospace_text(format!("APUIO0: {:02X}", core.apu_ports.apuio0)));
-            ui.label(monospace_text(format!("APUIO1: {:02X}", core.apu_ports.apuio1)));
-            ui.label(monospace_text(format!("APUIO2: {:02X}", core.apu_ports.apuio2)));
-            ui.label(monospace_text(format!("APUIO3: {:02X}", core.apu_ports.apuio3)));
+            ui.label(egui::RichText::new("(APU→CPU)").monospace().color(app_theme.text_muted));
+            ui.label(app_theme.format_register("APUIO0", core.apu_ports.apuio0 as u16, 8, false));
+            ui.label(app_theme.format_register("APUIO1", core.apu_ports.apuio1 as u16, 8, false));
+            ui.label(app_theme.format_register("APUIO2", core.apu_ports.apuio2 as u16, 8, false));
+            ui.label(app_theme.format_register("APUIO3", core.apu_ports.apuio3 as u16, 8, false));
         });
-        
+
         ui.horizontal(|ui| {
-            ui.label(monospace_text("(CPU→APU)".to_string()));
-            ui.label(monospace_text(format!("CPUIO0: {:02X}", core.apu_ports.cpuio0)));
-            ui.label(monospace_text(format!("CPUIO1: {:02X}", core.apu_ports.cpuio1)));
-            ui.label(monospace_text(format!("CPUIO2: {:02X}", core.apu_ports.cpuio2)));
-            ui.label(monospace_text(format!("CPUIO3: {:02X}", core.apu_ports.cpuio3)));
+            ui.label(egui::RichText::new("(CPU→APU)").monospace().color(app_theme.text_muted));
+            ui.label(app_theme.format_register("CPUIO0", core.apu_ports.cpuio0 as u16, 8, false));
+            ui.label(app_theme.format_register("CPUIO1", core.apu_ports.cpuio1 as u16, 8, false));
+            ui.label(app_theme.format_register("CPUIO2", core.apu_ports.cpuio2 as u16, 8, false));
+            ui.label(app_theme.format_register("CPUIO3", core.apu_ports.cpuio3 as u16, 8, false));
         });
     }
     
-    fn stack_section(&mut self, ui: &mut egui::Ui, core: &Snemulator, harness: &MainDebugHarness) {
+    fn stack_section(&mut self, ui: &mut egui::Ui, core: &Snemulator, harness: &MainDebugHarness, app_theme: &AppTheme) {
         const STACK_DEPTH: usize = 8;
  
         let sp = core.cpu.sp;
  
-        ui.label(egui::RichText::new(format!("S: {:04X}", sp)).monospace());
-        ui.separator();
+        ui.label(app_theme.format_register("S", sp, 16, false));
+        app_theme.debugger_separator(ui);
  
         egui::Grid::new("stack_grid").num_columns(3).striped(true).show(ui, |ui| {
             // Walk from the most-recently-pushed byte (S+1) downward through
@@ -865,21 +809,21 @@ impl CpuTab {
                 let tag = harness.stack_tracker.tag_at(addr);
  
                 let is_top = i == 0;
-                let addr_text = egui::RichText::new(format!("${:04X}", addr)).monospace();
-                let addr_text = if is_top { addr_text.color(egui::Color32::YELLOW) } else { addr_text };
+                let addr_color = if is_top { app_theme.modified } else { app_theme.syntax_address };
+                let addr_text = egui::RichText::new(format!("${:04X}", addr))
+                    .monospace()
+                    .color(addr_color);
                 ui.label(addr_text);
  
-                ui.label(egui::RichText::new(format!("{:02X}", value)).monospace());
+                let value_color = if is_top { app_theme.modified } else { app_theme.syntax_number };
+                ui.label(egui::RichText::new(format!("{:02X}", value)).monospace().color(value_color));
  
                 let label = match tag {
                     Some(t) => t.cause.byte_label(t.offset_in_group, t.group_size),
                     None => "--".to_string(),
                 };
-                let mut label_text = egui::RichText::new(label).monospace().weak();
-                if is_top {
-                    label_text = label_text.color(egui::Color32::YELLOW);
-                }
-                ui.label(label_text);
+                let label_color = if is_top { app_theme.modified } else { app_theme.text_muted };
+                ui.label(egui::RichText::new(label).monospace().color(label_color));
  
                 ui.end_row();
             }
@@ -890,7 +834,11 @@ impl CpuTab {
         let breakpoints = &mut harness.breakpoints;
         
         ui.horizontal(|ui| {
-            ui.heading("Breakpoints");
+            ui.label(
+                egui::RichText::new("Breakpoints")
+                    .strong()
+                    .size(14.0)
+            );
             
             if ui.button("Clear All").clicked() {
                 breakpoints.clear();
@@ -977,4 +925,12 @@ impl CpuTab {
 
     //     core.probe.as_mut().unwrap().breakpoints.insert(breakpoint);
     // }
+}
+
+/// Parse a combined disassembly string into mnemonic and operand
+fn parse_disasm_str(disasm_str: &str) -> (&str, &str) {
+    match disasm_str.split_once(char::is_whitespace) {
+        Some((mnemonic, operand)) => (mnemonic, operand.trim()),
+        None => (disasm_str, ""),
+    }
 }

@@ -5,7 +5,10 @@ use crate::app::SnemulatorApp;
 mod app;
 mod game;
 mod menu;
+mod theme;
 mod settings;
+mod app_utils;
+mod ui_window;
 
 #[cfg(feature = "debug")]
 pub mod debug;
@@ -24,6 +27,14 @@ pub struct SnemulatorArgs {
 
     #[arg(long)]
     pub no_audio: bool,
+
+    #[arg(long)]
+    pub theme: Option<String>,
+
+    /// Start in debug mode
+    #[cfg(feature = "debug")]
+    #[arg(long)]
+    pub debug: bool,
 }
 
 fn main() -> Result<()> {
