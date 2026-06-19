@@ -1,7 +1,6 @@
-use anyhow::{Result};
 use glow::HasContext;
 
-use crate::{app_utils::{sdl_to_egui_keycode, sdl_to_egui_modifiers, sdl_to_egui_mouse_button}, theme::{self, AppTheme}};
+use crate::{app_utils::{sdl_to_egui_keycode, sdl_to_egui_modifiers, sdl_to_egui_mouse_button}};
 
 // Generic egui window wrapper
 pub struct UiWindow {

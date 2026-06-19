@@ -1,5 +1,4 @@
 use anyhow::Result;
-use egui::IntoAtoms;
 use glow::HasContext;
 
 pub struct Texture {

@@ -134,7 +134,3 @@ pub fn sdl_to_egui_modifiers(keymod: sdl3::keyboard::Mod) -> egui::Modifiers {
         command: false,
     }
 }
-
-pub fn monospace_text(text: String) -> egui::RichText {
-    egui::RichText::new(text).monospace()
-}

@@ -6,7 +6,7 @@ use crate::debug::harness::{MainDebugHarness, StopCondition};
 // use crate::core;
 use crate::debug::tabs;
 use crate::debug::icons::{self, IconExt};
-use crate::theme::{AppTheme, ThemePreset};
+use crate::theme::AppTheme;
 use crate::ui_window::UiWindow;
 
 pub const DEBUG_WINDOW_WIDTH: u32 = 800;
@@ -15,7 +15,7 @@ pub const DEBUG_WINDOW_HEIGHT: u32 = 600;
 #[derive(Clone, Copy, PartialEq)]
 enum DebugTab {
     Cpu,
-    // Memory,
+    Memory,
     Ppu,
 }
 
@@ -23,8 +23,17 @@ impl DebugTab {
     fn label(self) -> &'static str {
         match self {
             DebugTab::Cpu => "CPU",
+            DebugTab::Memory => "Memory",
             DebugTab::Ppu => "PPU",
         }
+    }
+
+    fn all() -> &'static [Self] {
+        &[
+            DebugTab::Cpu,
+            DebugTab::Memory,
+            DebugTab::Ppu    
+        ]
     }
 }
 
@@ -39,7 +48,7 @@ pub enum DebugAction {
 pub struct DebugWindow {
     egui_window: Option<Box<UiWindow>>,
     cpu_tab: Box<tabs::cpu::CpuTab>,
-    // mem_tab: Box<tabs::MemoryTab>,
+    mem_tab: Box<tabs::mem::MemoryTab>,
     ppu_tab: Box<tabs::ppu::PpuTab>,
     // wp_tab: Box<tabs::WatchpointsTab>,
     selected_tab: DebugTab,
@@ -54,22 +63,10 @@ impl DebugWindow {
     ) -> Result<Self> {
         log::debug!("Debugging started");
 
-        // let mut ppu_tab = None;
-        // egui_window.with_painter(|_, painter| {
-        //     ppu_tab = Some(tabs::PpuTab::new(painter));
-        // });
-        // let ppu_tab = Box::new(ppu_tab.unwrap());
-
-        // let mut mem_tab = None;
-        // egui_window.with_painter(|_, painter| {
-        //     mem_tab = Some(tabs::MemoryTab::new(painter))
-        // });
-        // let mem_tab = Box::new(mem_tab.unwrap());
-
         let mut debug_window = Self {
             egui_window: None,
             cpu_tab: Box::new(tabs::cpu::CpuTab::new()),
-            // mem_tab,
+            mem_tab: Box::new(tabs::mem::MemoryTab::new()),
             ppu_tab: Box::new(tabs::ppu::PpuTab::new()),
             // wp_tab: Box::new(tabs::WatchpointsTab::new()),
             selected_tab: DebugTab::Cpu,
@@ -102,12 +99,7 @@ impl DebugWindow {
         let full_output = Some(egui_window.update_ui(|ctx| {
             egui::TopBottomPanel::top("tabs").show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    for tab in [
-                        DebugTab::Cpu,
-                        // tabs::DebugTab::Memory,
-                        DebugTab::Ppu,
-                        // tabs::DebugTab::Watchpoints,
-                    ] {
+                    for &tab in DebugTab::all() {
                         ui.selectable_value(&mut self.selected_tab, tab, tab.label());
                     }
                 });
@@ -120,9 +112,9 @@ impl DebugWindow {
                     DebugTab::Cpu => {
                         self.cpu_tab.render(ui, core, harness, app_theme)
                     }
-                    // tabs::DebugTab::Memory => self.mem_tab.render(ui, core),
+                    DebugTab::Memory => self.mem_tab.render(ui, core, app_theme),
                     DebugTab::Ppu => self.ppu_tab.render(ui, core, harness, app_theme),
-                    // tabs::DebugTab::Watchpoints => {
+                    // DebugTab::Watchpoints => {
                     //     self.wp_tab.render(ui, core, app_state)
                     // }
                     // _ => {}

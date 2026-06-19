@@ -1,5 +1,4 @@
 use crate::debug::DebugHarness;
-use crate::scpu::CpuInterrupt;
 use crate::scpu::ioregs::CpuIoRegs;
 use crate::sppu::color::Color;
 use crate::sppu::regs::PpuRegs;

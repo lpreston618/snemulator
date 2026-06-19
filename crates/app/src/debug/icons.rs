@@ -1,4 +1,4 @@
-use egui::{include_image, Color32, Context, Image, ImageSource, TextureHandle, Vec2};
+use egui::{Color32, Image, ImageSource, Vec2};
 
 use crate::theme::AppTheme;
 

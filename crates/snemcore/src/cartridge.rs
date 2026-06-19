@@ -25,27 +25,27 @@ pub enum MappingMode {
 
 #[derive(Default)]
 pub struct Cartridge {
-    rom: Vec<u8>,
-    ram: Vec<u8>,
+    pub rom: Vec<u8>,
+    pub ram: Vec<u8>,
 
-    title: [u8; 0x15],
+    pub title: [u8; 0x15],
 
-    fast_rom: bool,
-    mapping_mode: MappingMode,
+    pub fast_rom: bool,
+    pub mapping_mode: MappingMode,
 
-    extra_ram: bool,
-    battery: bool,
-    coprocessor: bool,
-    coprocessor_id: u8,
+    pub extra_ram: bool,
+    pub battery: bool,
+    pub coprocessor: bool,
+    pub coprocessor_id: u8,
 
-    rom_size_shift: u8, // ROM size is (1 << rom_size) KiB
-    ram_size_shift: u8, // RAM size is (1 << ram_size) KiB
+    pub rom_size_shift: u8, // ROM size is (1 << rom_size) KiB
+    pub ram_size_shift: u8, // RAM size is (1 << ram_size) KiB
 
-    ram_size: usize,
+    pub ram_size: usize,
 
-    is_ntsc: bool,
+    pub is_ntsc: bool,
 
-    interrupt_vectors: [u8; 32],
+    pub interrupt_vectors: [u8; 32],
 }
 
 impl Cartridge {

@@ -1,7 +1,7 @@
-use std::{collections::BTreeMap, path::PathBuf};
+use std::path::PathBuf;
 
 use egui::{
-    Color32, Context, CornerRadius, FontFamily, FontId, Stroke, Style, TextStyle, Visuals, epaint::AlphaFromCoverage, style::{Selection, TextCursorStyle, WidgetVisuals, Widgets}
+    Color32, Context, CornerRadius, FontId, Stroke, Style, Visuals, epaint::AlphaFromCoverage, style::{Selection, TextCursorStyle, WidgetVisuals, Widgets}
 };
 use serde::Deserialize;
 #[cfg(feature = "debug")]
@@ -50,6 +50,7 @@ pub struct AppTheme {
     pub breakpoint_bg: Color32,       // Breakpoint line background
     pub watchpoint: Color32,          // Memory watchpoint
     pub modified: Color32,            // Recently modified value
+    pub modified_bg: Color32,         // Modified disassembly instructions
     
     // Syntax highlighting (for disassembly/memory views)
     pub syntax_address: Color32,      // Memory addresses
@@ -144,6 +145,7 @@ impl AppTheme {
             breakpoint_bg: Color32::from_rgba_unmultiplied(230, 70, 70, 25),
             watchpoint: Color32::from_rgb(230, 180, 80),
             modified: Color32::from_rgb(255, 200, 100),
+            modified_bg: Color32::from_rgba_unmultiplied(255, 200, 100, 25),
             
             // Syntax - vibrant but not harsh
             syntax_address: Color32::from_rgb(130, 170, 200),
@@ -210,6 +212,7 @@ impl AppTheme {
             breakpoint_bg: Color32::from_rgba_unmultiplied(210, 50, 50, 20),
             watchpoint: Color32::from_rgb(200, 140, 20),
             modified: Color32::from_rgb(200, 120, 0),
+            modified_bg: Color32::from_rgba_unmultiplied(200, 120, 0, 25),
             
             // Syntax - darker/more saturated for light bg
             syntax_address: Color32::from_rgb(50, 100, 150),
@@ -276,6 +279,7 @@ impl AppTheme {
             breakpoint_bg: Color32::from_rgba_unmultiplied(255, 80, 80, 25),
             watchpoint: Color32::from_rgb(255, 200, 80),
             modified: Color32::from_rgb(255, 220, 100),
+            modified_bg: Color32::from_rgba_unmultiplied(255, 220, 100, 25),
             
             // Syntax - retro terminal feel
             syntax_address: Color32::from_rgb(120, 200, 255),
@@ -392,9 +396,9 @@ impl AppTheme {
             text_cursor: TextCursorStyle {
                 stroke: Stroke::new(2.0, self.text_primary),
                 preview: false,
-                blink: false,
-                on_duration: 0.0,
-                off_duration: 0.0
+                blink: true,
+                on_duration: 0.5,
+                off_duration: 0.5,
             },
 
             text_alpha_from_coverage: AlphaFromCoverage::Gamma(2.2),
@@ -595,6 +599,15 @@ impl AppTheme {
         }
     }
 
+    pub fn memory_word_color(&self, word: u16) -> Color32 {
+        match word {
+            0x00 => self.memory_null,
+            0x2000..=0x7E00 => self.memory_ascii,
+            0x8000..=0xFFFF => self.memory_high,
+            _ => self.text_secondary,
+        }
+    }
+
         /// Create a text format for syntax highlighting
     pub fn syntax_format(&self, kind: SyntaxKind) -> egui::text::TextFormat {
         let color = match kind {
@@ -627,104 +640,6 @@ impl AppTheme {
         } else {
             self.text_secondary
         }
-    }
-    
-    /// Create a highlighted job for disassembly view
-    pub fn format_disassembly_line(
-        &self,
-        address: u32,
-        bytes: &[u8],
-        mnemonic: &str,
-        operand: &str,
-        comment: Option<&str>,
-        is_current: bool,
-        has_breakpoint: bool,
-    ) -> egui::text::LayoutJob {
-        use egui::text::{LayoutJob, TextFormat};
-        
-        let mut job = LayoutJob::default();
-        let mono = FontId::monospace(13.0);
-        
-        // Address
-        job.append(
-            &format!("{:06X}  ", address),
-            0.0,
-            TextFormat {
-                font_id: mono.clone(),
-                color: self.syntax_address,
-                ..Default::default()
-            },
-        );
-        
-        // Raw bytes (up to 4 bytes shown)
-        let bytes_str: String = bytes
-            .iter()
-            .take(4)
-            .map(|b| format!("{:02X} ", b))
-            .collect();
-        job.append(
-            &format!("{:<12}", bytes_str),
-            0.0,
-            TextFormat {
-                font_id: mono.clone(),
-                color: self.text_muted,
-                ..Default::default()
-            },
-        );
-        
-        // Mnemonic
-        job.append(
-            &format!("{:<6}", mnemonic),
-            0.0,
-            TextFormat {
-                font_id: mono.clone(),
-                color: self.syntax_opcode,
-                ..Default::default()
-            },
-        );
-        
-        // Operand (with register/number highlighting)
-        job.append(
-            operand,
-            0.0,
-            TextFormat {
-                font_id: mono.clone(),
-                color: if operand.starts_with('$') || operand.starts_with('#') {
-                    self.syntax_number
-                } else if operand.chars().next().map(|c| c.is_alphabetic()).unwrap_or(false) {
-                    self.syntax_register
-                } else {
-                    self.text_primary
-                },
-                ..Default::default()
-            },
-        );
-        
-        // Comment
-        if let Some(comment) = comment {
-            job.append(
-                &format!("  ; {}", comment),
-                0.0,
-                TextFormat {
-                    font_id: mono.clone(),
-                    color: self.syntax_comment,
-                    ..Default::default()
-                },
-            );
-        }
-        
-        // Background highlighting for current line or breakpoint
-        if is_current || has_breakpoint {
-            job.sections.iter_mut().for_each(|section| {
-                section.format.background = if has_breakpoint {
-                    self.breakpoint_bg
-                } else {
-                    self.highlight_line
-                };
-            });
-        }
-        
-        job
     }
     
     /// Format a register display with change highlighting

@@ -1,6 +1,5 @@
 use crate::debug::DebugHarness;
 use crate::scpu::ioregs::HVTimerIRQ;
-use crate::scpu::CpuInterrupt;
 use crate::sppu::bus::PpuBus;
 use crate::sppu::regs::PpuRegs;
 use crate::sppu::utils::{interleave_2bpp, interleave_4bpp, interleave_8bpp};

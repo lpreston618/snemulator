@@ -1,4 +1,4 @@
-use snemcore::{Snemulator, cartridge, scpu};
+use snemcore::{Snemulator, scpu};
 
 #[derive(Clone, Copy)]
 enum AddressingMode {
@@ -33,39 +33,38 @@ enum AddressingMode {
 
 #[derive(Clone, Copy)]
 struct DisassembleData {
-    pub name: &'static str,
+    pub mnemonic: &'static str,
     pub addr_mode: AddressingMode,
-}
-
-#[derive(Clone, Debug)]
-pub struct MemBlock<'a> {
-    pub data: &'a [u8],
-    pub start_addr: u16,
-    pub bank: u8,
 }
 
 #[derive(Clone, Debug)]
 pub struct DisassemblyOptions {
     pub use_hw_reg_names: bool,
     pub show_rel_addr_dest: bool,
+    pub show_symbols: bool,
     pub max_instr_count: usize,
     pub forced_flag_x: Option<bool>,
     pub forced_flag_m: Option<bool>,
     pub forced_e: Option<bool>,
 }
 
+pub enum DisasmOperandKind {
+    Number,
+    Address,
+    Register,
+}
+
 pub struct DisasmLine {
     pub addr: u32,
     pub bytes: Vec<u8>,
-    pub disasm_str: String,
+    pub mnemonic: &'static str,
+    pub operand: Option<DisasmOperand>,
 }
 
-#[derive(Debug)]
-pub enum MemoryRegion {
-    Rom,
-    Ram,
-    LowRamMirror,
-    Invalid,
+pub struct DisasmOperand {
+    pub value: u32,
+    pub text: String,
+    pub kind: DisasmOperandKind,
 }
 
 /// Information about the state of the cpu that is assumed while disassembling the block.
@@ -80,283 +79,263 @@ pub struct ExecuteState {
 
 // This table would be defined elsewhere with all 256 entries
 static DISASSEMBLE_TABLE: [DisassembleData; 256] = [
-    // 0x00-0x0F
-    DisassembleData {name: "brk", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "ora", addr_mode: AddressingMode::DirectXIndirect},
-    DisassembleData {name: "cop", addr_mode: AddressingMode::Immediate8},
-    DisassembleData {name: "ora", addr_mode: AddressingMode::StackRelative},
-    DisassembleData {name: "tsb", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "ora", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "asl", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "ora", addr_mode: AddressingMode::DirectIndirectLong},
-    DisassembleData {name: "php", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "ora", addr_mode: AddressingMode::ImmediateM},
-    DisassembleData {name: "asl", addr_mode: AddressingMode::Accumulator},
-    DisassembleData {name: "phd", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "tsb", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "ora", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "asl", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "ora", addr_mode: AddressingMode::Long},
-    // 0x10-0x1F
-    DisassembleData {name: "bpl", addr_mode: AddressingMode::Relative8},
-    DisassembleData {name: "ora", addr_mode: AddressingMode::DirectIndirectY},
-    DisassembleData {name: "ora", addr_mode: AddressingMode::DirectIndirect},
-    DisassembleData {name: "ora", addr_mode: AddressingMode::StackRelativeIndirectY},
-    DisassembleData {name: "trb", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "ora", addr_mode: AddressingMode::DirectX},
-    DisassembleData {name: "asl", addr_mode: AddressingMode::DirectX},
-    DisassembleData {name: "ora", addr_mode: AddressingMode::DirectIndirectLongY},
-    DisassembleData {name: "clc", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "ora", addr_mode: AddressingMode::AbsoluteY},
-    DisassembleData {name: "inc", addr_mode: AddressingMode::Accumulator},
-    DisassembleData {name: "tcs", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "trb", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "ora", addr_mode: AddressingMode::AbsoluteX},
-    DisassembleData {name: "asl", addr_mode: AddressingMode::AbsoluteX},
-    DisassembleData {name: "ora", addr_mode: AddressingMode::LongX},
-    // 0x20-0x2F
-    DisassembleData {name: "jsr", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "and", addr_mode: AddressingMode::DirectXIndirect},
-    DisassembleData {name: "jsl", addr_mode: AddressingMode::Long},
-    DisassembleData {name: "and", addr_mode: AddressingMode::StackRelative},
-    DisassembleData {name: "bit", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "and", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "rol", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "and", addr_mode: AddressingMode::DirectIndirectLong},
-    DisassembleData {name: "plp", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "and", addr_mode: AddressingMode::ImmediateM},
-    DisassembleData {name: "rol", addr_mode: AddressingMode::Accumulator},
-    DisassembleData {name: "pld", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "bit", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "and", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "rol", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "and", addr_mode: AddressingMode::Long},
-    DisassembleData {name: "bmi", addr_mode: AddressingMode::Relative8},
-    DisassembleData {name: "and", addr_mode: AddressingMode::DirectIndirectY},
-    DisassembleData {name: "and", addr_mode: AddressingMode::DirectIndirect},
-    DisassembleData {name: "and", addr_mode: AddressingMode::StackRelativeIndirectY},
-    DisassembleData {name: "bit", addr_mode: AddressingMode::DirectX},
-    DisassembleData {name: "and", addr_mode: AddressingMode::DirectX},
-    DisassembleData {name: "rol", addr_mode: AddressingMode::DirectX},
-    DisassembleData {name: "and", addr_mode: AddressingMode::DirectIndirectLongY},
-    DisassembleData {name: "sec", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "and", addr_mode: AddressingMode::AbsoluteY},
-    DisassembleData {name: "dec", addr_mode: AddressingMode::Accumulator},
-    DisassembleData {name: "tsc", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "bit", addr_mode: AddressingMode::AbsoluteX},
-    DisassembleData {name: "and", addr_mode: AddressingMode::AbsoluteX},
-    DisassembleData {name: "rol", addr_mode: AddressingMode::AbsoluteX},
-    DisassembleData {name: "and", addr_mode: AddressingMode::LongX},
-    DisassembleData {name: "rti", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "eor", addr_mode: AddressingMode::DirectXIndirect},
-    DisassembleData {name: "wdm", addr_mode: AddressingMode::Immediate8},
-    DisassembleData {name: "eor", addr_mode: AddressingMode::StackRelative},
-    DisassembleData {name: "mvp", addr_mode: AddressingMode::SrcDst},
-    DisassembleData {name: "eor", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "lsr", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "eor", addr_mode: AddressingMode::DirectIndirectLong},
-    DisassembleData {name: "pha", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "eor", addr_mode: AddressingMode::ImmediateM},
-    DisassembleData {name: "lsr", addr_mode: AddressingMode::Accumulator},
-    DisassembleData {name: "phk", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "jmp", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "eor", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "lsr", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "eor", addr_mode: AddressingMode::Long},
-    DisassembleData {name: "bvc", addr_mode: AddressingMode::Relative8},
-    DisassembleData {name: "eor", addr_mode: AddressingMode::DirectIndirectY},
-    DisassembleData {name: "eor", addr_mode: AddressingMode::DirectIndirect},
-    DisassembleData {name: "eor", addr_mode: AddressingMode::StackRelativeIndirectY},
-    DisassembleData {name: "mvn", addr_mode: AddressingMode::SrcDst},
-    DisassembleData {name: "eor", addr_mode: AddressingMode::DirectX},
-    DisassembleData {name: "lsr", addr_mode: AddressingMode::DirectX},
-    DisassembleData {name: "eor", addr_mode: AddressingMode::DirectIndirectLongY},
-    DisassembleData {name: "cli", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "eor", addr_mode: AddressingMode::AbsoluteY},
-    DisassembleData {name: "phy", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "tcd", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "jmp", addr_mode: AddressingMode::Long},
-    DisassembleData {name: "eor", addr_mode: AddressingMode::AbsoluteX},
-    DisassembleData {name: "lsr", addr_mode: AddressingMode::AbsoluteX},
-    DisassembleData {name: "eor", addr_mode: AddressingMode::LongX},
-    DisassembleData {name: "rts", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "adc", addr_mode: AddressingMode::DirectXIndirect},
-    DisassembleData {name: "per", addr_mode: AddressingMode::Immediate8},
-    DisassembleData {name: "adc", addr_mode: AddressingMode::StackRelative},
-    DisassembleData {name: "stz", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "adc", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "ror", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "adc", addr_mode: AddressingMode::DirectIndirectLong},
-    DisassembleData {name: "pla", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "adc", addr_mode: AddressingMode::ImmediateM},
-    DisassembleData {name: "ror", addr_mode: AddressingMode::Accumulator},
-    DisassembleData {name: "rtl", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "jmp", addr_mode: AddressingMode::AbsoluteIndirect},
-    DisassembleData {name: "adc", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "ror", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "adc", addr_mode: AddressingMode::Long},
-    DisassembleData {name: "bvs", addr_mode: AddressingMode::Relative8},
-    DisassembleData {name: "adc", addr_mode: AddressingMode::DirectIndirectY},
-    DisassembleData {name: "adc", addr_mode: AddressingMode::DirectIndirect},
-    DisassembleData {name: "adc", addr_mode: AddressingMode::StackRelativeIndirectY},
-    DisassembleData {name: "stz", addr_mode: AddressingMode::DirectX},
-    DisassembleData {name: "adc", addr_mode: AddressingMode::DirectX},
-    DisassembleData {name: "ror", addr_mode: AddressingMode::DirectX},
-    DisassembleData {name: "adc", addr_mode: AddressingMode::DirectIndirectLongY},
-    DisassembleData {name: "sei", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "adc", addr_mode: AddressingMode::AbsoluteY},
-    DisassembleData {name: "ply", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "tdc", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "jmp", addr_mode: AddressingMode::AbsoluteXIndirect},
-    DisassembleData {name: "adc", addr_mode: AddressingMode::AbsoluteX},
-    DisassembleData {name: "ror", addr_mode: AddressingMode::AbsoluteX},
-    DisassembleData {name: "adc", addr_mode: AddressingMode::LongX},
-    DisassembleData {name: "bra", addr_mode: AddressingMode::Relative8},
-    DisassembleData {name: "sta", addr_mode: AddressingMode::DirectXIndirect},
-    DisassembleData {name: "brl", addr_mode: AddressingMode::Relative16},
-    DisassembleData {name: "sta", addr_mode: AddressingMode::StackRelative},
-    DisassembleData {name: "sty", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "sta", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "stx", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "sta", addr_mode: AddressingMode::DirectIndirectLong},
-    DisassembleData {name: "dey", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "bit", addr_mode: AddressingMode::Immediate8},
-    DisassembleData {name: "txa", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "phb", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "sty", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "sta", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "stx", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "sta", addr_mode: AddressingMode::Long},
-    DisassembleData {name: "bcc", addr_mode: AddressingMode::Relative8},
-    DisassembleData {name: "sta", addr_mode: AddressingMode::DirectIndirectY},
-    DisassembleData {name: "sta", addr_mode: AddressingMode::DirectIndirect},
-    DisassembleData {name: "sta", addr_mode: AddressingMode::StackRelativeIndirectY},
-    DisassembleData {name: "sty", addr_mode: AddressingMode::DirectX},
-    DisassembleData {name: "sta", addr_mode: AddressingMode::DirectX},
-    DisassembleData {name: "stx", addr_mode: AddressingMode::DirectY},
-    DisassembleData {name: "sta", addr_mode: AddressingMode::DirectIndirectLongY},
-    DisassembleData {name: "tya", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "sta", addr_mode: AddressingMode::AbsoluteY},
-    DisassembleData {name: "txs", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "txy", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "stz", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "sta", addr_mode: AddressingMode::AbsoluteX},
-    DisassembleData {name: "stz", addr_mode: AddressingMode::AbsoluteX},
-    DisassembleData {name: "sta", addr_mode: AddressingMode::LongX},
-    DisassembleData {name: "ldy", addr_mode: AddressingMode::ImmediateX},
-    DisassembleData {name: "lda", addr_mode: AddressingMode::DirectXIndirect},
-    DisassembleData {name: "ldx", addr_mode: AddressingMode::ImmediateX},
-    DisassembleData {name: "lda", addr_mode: AddressingMode::StackRelative},
-    DisassembleData {name: "ldy", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "lda", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "ldx", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "lda", addr_mode: AddressingMode::DirectIndirectLong},
-    DisassembleData {name: "tay", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "lda", addr_mode: AddressingMode::ImmediateM},
-    DisassembleData {name: "tax", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "plb", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "ldy", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "lda", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "ldx", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "lda", addr_mode: AddressingMode::Long},
-    DisassembleData {name: "bcs", addr_mode: AddressingMode::Relative8},
-    DisassembleData {name: "lda", addr_mode: AddressingMode::DirectIndirectY},
-    DisassembleData {name: "lda", addr_mode: AddressingMode::DirectIndirect},
-    DisassembleData {name: "lda", addr_mode: AddressingMode::StackRelativeIndirectY},
-    DisassembleData {name: "ldy", addr_mode: AddressingMode::DirectX},
-    DisassembleData {name: "lda", addr_mode: AddressingMode::DirectX},
-    DisassembleData {name: "ldx", addr_mode: AddressingMode::DirectY},
-    DisassembleData {name: "lda", addr_mode: AddressingMode::DirectIndirectLongY},
-    DisassembleData {name: "clv", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "lda", addr_mode: AddressingMode::AbsoluteY},
-    DisassembleData {name: "tsx", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "tyx", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "ldy", addr_mode: AddressingMode::AbsoluteX},
-    DisassembleData {name: "lda", addr_mode: AddressingMode::AbsoluteX},
-    DisassembleData {name: "ldx", addr_mode: AddressingMode::AbsoluteY},
-    DisassembleData {name: "lda", addr_mode: AddressingMode::LongX},
-    DisassembleData {name: "cpy", addr_mode: AddressingMode::ImmediateX},
-    DisassembleData {name: "cmp", addr_mode: AddressingMode::DirectXIndirect},
-    DisassembleData {name: "rep", addr_mode: AddressingMode::Immediate8},
-    DisassembleData {name: "cmp", addr_mode: AddressingMode::StackRelative},
-    DisassembleData {name: "cpy", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "cmp", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "dec", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "cmp", addr_mode: AddressingMode::DirectIndirectLong},
-    DisassembleData {name: "iny", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "cmp", addr_mode: AddressingMode::ImmediateM},
-    DisassembleData {name: "dex", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "wai", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "cpy", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "cmp", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "dec", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "cmp", addr_mode: AddressingMode::Long},
-    DisassembleData {name: "bne", addr_mode: AddressingMode::Relative8},
-    DisassembleData {name: "cmp", addr_mode: AddressingMode::DirectIndirectY},
-    DisassembleData {name: "cmp", addr_mode: AddressingMode::DirectIndirect},
-    DisassembleData {name: "cmp", addr_mode: AddressingMode::StackRelativeIndirectY},
-    DisassembleData {name: "pei", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "cmp", addr_mode: AddressingMode::DirectX},
-    DisassembleData {name: "dec", addr_mode: AddressingMode::DirectX},
-    DisassembleData {name: "cmp", addr_mode: AddressingMode::DirectIndirectLongY},
-    DisassembleData {name: "cld", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "cmp", addr_mode: AddressingMode::AbsoluteY},
-    DisassembleData {name: "phx", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "stp", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "jmp", addr_mode: AddressingMode::LongIndirect},
-    DisassembleData {name: "cmp", addr_mode: AddressingMode::AbsoluteX},
-    DisassembleData {name: "dec", addr_mode: AddressingMode::AbsoluteX},
-    DisassembleData {name: "cmp", addr_mode: AddressingMode::LongX},
-    DisassembleData {name: "cpx", addr_mode: AddressingMode::ImmediateX},
-    DisassembleData {name: "sbc", addr_mode: AddressingMode::DirectXIndirect},
-    DisassembleData {name: "sep", addr_mode: AddressingMode::Immediate8},
-    DisassembleData {name: "sbc", addr_mode: AddressingMode::StackRelative},
-    DisassembleData {name: "cpx", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "sbc", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "inc", addr_mode: AddressingMode::Direct},
-    DisassembleData {name: "sbc", addr_mode: AddressingMode::DirectIndirectLong},
-    DisassembleData {name: "inx", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "sbc", addr_mode: AddressingMode::ImmediateM},
-    DisassembleData {name: "nop", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "xba", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "cpx", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "sbc", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "inc", addr_mode: AddressingMode::Absolute},
-    DisassembleData {name: "sbc", addr_mode: AddressingMode::Long},
-    DisassembleData {name: "beq", addr_mode: AddressingMode::Relative8},
-    DisassembleData {name: "sbc", addr_mode: AddressingMode::DirectIndirectY},
-    DisassembleData {name: "sbc", addr_mode: AddressingMode::DirectIndirect},
-    DisassembleData {name: "sbc", addr_mode: AddressingMode::StackRelativeIndirectY},
-    DisassembleData {name: "pea", addr_mode: AddressingMode::Immediate16},
-    DisassembleData {name: "sbc", addr_mode: AddressingMode::DirectX},
-    DisassembleData {name: "inc", addr_mode: AddressingMode::DirectX},
-    DisassembleData {name: "sbc", addr_mode: AddressingMode::DirectIndirectLongY},
-    DisassembleData {name: "sed", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "sbc", addr_mode: AddressingMode::AbsoluteY},
-    DisassembleData {name: "plx", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "xcefc", addr_mode: AddressingMode::Implied},
-    DisassembleData {name: "jsr", addr_mode: AddressingMode::AbsoluteXIndirect},
-    DisassembleData {name: "sbc", addr_mode: AddressingMode::AbsoluteX},
-    DisassembleData {name: "inc", addr_mode: AddressingMode::AbsoluteX},
-    DisassembleData {name: "sbc", addr_mode: AddressingMode::LongX},
+    DisassembleData {mnemonic: "brk", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "ora", addr_mode: AddressingMode::DirectXIndirect},
+    DisassembleData {mnemonic: "cop", addr_mode: AddressingMode::Immediate8},
+    DisassembleData {mnemonic: "ora", addr_mode: AddressingMode::StackRelative},
+    DisassembleData {mnemonic: "tsb", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "ora", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "asl", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "ora", addr_mode: AddressingMode::DirectIndirectLong},
+    DisassembleData {mnemonic: "php", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "ora", addr_mode: AddressingMode::ImmediateM},
+    DisassembleData {mnemonic: "asl", addr_mode: AddressingMode::Accumulator},
+    DisassembleData {mnemonic: "phd", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "tsb", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "ora", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "asl", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "ora", addr_mode: AddressingMode::Long},
+    DisassembleData {mnemonic: "bpl", addr_mode: AddressingMode::Relative8},
+    DisassembleData {mnemonic: "ora", addr_mode: AddressingMode::DirectIndirectY},
+    DisassembleData {mnemonic: "ora", addr_mode: AddressingMode::DirectIndirect},
+    DisassembleData {mnemonic: "ora", addr_mode: AddressingMode::StackRelativeIndirectY},
+    DisassembleData {mnemonic: "trb", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "ora", addr_mode: AddressingMode::DirectX},
+    DisassembleData {mnemonic: "asl", addr_mode: AddressingMode::DirectX},
+    DisassembleData {mnemonic: "ora", addr_mode: AddressingMode::DirectIndirectLongY},
+    DisassembleData {mnemonic: "clc", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "ora", addr_mode: AddressingMode::AbsoluteY},
+    DisassembleData {mnemonic: "inc", addr_mode: AddressingMode::Accumulator},
+    DisassembleData {mnemonic: "tcs", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "trb", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "ora", addr_mode: AddressingMode::AbsoluteX},
+    DisassembleData {mnemonic: "asl", addr_mode: AddressingMode::AbsoluteX},
+    DisassembleData {mnemonic: "ora", addr_mode: AddressingMode::LongX},
+    DisassembleData {mnemonic: "jsr", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "and", addr_mode: AddressingMode::DirectXIndirect},
+    DisassembleData {mnemonic: "jsl", addr_mode: AddressingMode::Long},
+    DisassembleData {mnemonic: "and", addr_mode: AddressingMode::StackRelative},
+    DisassembleData {mnemonic: "bit", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "and", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "rol", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "and", addr_mode: AddressingMode::DirectIndirectLong},
+    DisassembleData {mnemonic: "plp", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "and", addr_mode: AddressingMode::ImmediateM},
+    DisassembleData {mnemonic: "rol", addr_mode: AddressingMode::Accumulator},
+    DisassembleData {mnemonic: "pld", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "bit", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "and", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "rol", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "and", addr_mode: AddressingMode::Long},
+    DisassembleData {mnemonic: "bmi", addr_mode: AddressingMode::Relative8},
+    DisassembleData {mnemonic: "and", addr_mode: AddressingMode::DirectIndirectY},
+    DisassembleData {mnemonic: "and", addr_mode: AddressingMode::DirectIndirect},
+    DisassembleData {mnemonic: "and", addr_mode: AddressingMode::StackRelativeIndirectY},
+    DisassembleData {mnemonic: "bit", addr_mode: AddressingMode::DirectX},
+    DisassembleData {mnemonic: "and", addr_mode: AddressingMode::DirectX},
+    DisassembleData {mnemonic: "rol", addr_mode: AddressingMode::DirectX},
+    DisassembleData {mnemonic: "and", addr_mode: AddressingMode::DirectIndirectLongY},
+    DisassembleData {mnemonic: "sec", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "and", addr_mode: AddressingMode::AbsoluteY},
+    DisassembleData {mnemonic: "dec", addr_mode: AddressingMode::Accumulator},
+    DisassembleData {mnemonic: "tsc", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "bit", addr_mode: AddressingMode::AbsoluteX},
+    DisassembleData {mnemonic: "and", addr_mode: AddressingMode::AbsoluteX},
+    DisassembleData {mnemonic: "rol", addr_mode: AddressingMode::AbsoluteX},
+    DisassembleData {mnemonic: "and", addr_mode: AddressingMode::LongX},
+    DisassembleData {mnemonic: "rti", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "eor", addr_mode: AddressingMode::DirectXIndirect},
+    DisassembleData {mnemonic: "wdm", addr_mode: AddressingMode::Immediate8},
+    DisassembleData {mnemonic: "eor", addr_mode: AddressingMode::StackRelative},
+    DisassembleData {mnemonic: "mvp", addr_mode: AddressingMode::SrcDst},
+    DisassembleData {mnemonic: "eor", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "lsr", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "eor", addr_mode: AddressingMode::DirectIndirectLong},
+    DisassembleData {mnemonic: "pha", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "eor", addr_mode: AddressingMode::ImmediateM},
+    DisassembleData {mnemonic: "lsr", addr_mode: AddressingMode::Accumulator},
+    DisassembleData {mnemonic: "phk", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "jmp", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "eor", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "lsr", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "eor", addr_mode: AddressingMode::Long},
+    DisassembleData {mnemonic: "bvc", addr_mode: AddressingMode::Relative8},
+    DisassembleData {mnemonic: "eor", addr_mode: AddressingMode::DirectIndirectY},
+    DisassembleData {mnemonic: "eor", addr_mode: AddressingMode::DirectIndirect},
+    DisassembleData {mnemonic: "eor", addr_mode: AddressingMode::StackRelativeIndirectY},
+    DisassembleData {mnemonic: "mvn", addr_mode: AddressingMode::SrcDst},
+    DisassembleData {mnemonic: "eor", addr_mode: AddressingMode::DirectX},
+    DisassembleData {mnemonic: "lsr", addr_mode: AddressingMode::DirectX},
+    DisassembleData {mnemonic: "eor", addr_mode: AddressingMode::DirectIndirectLongY},
+    DisassembleData {mnemonic: "cli", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "eor", addr_mode: AddressingMode::AbsoluteY},
+    DisassembleData {mnemonic: "phy", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "tcd", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "jmp", addr_mode: AddressingMode::Long},
+    DisassembleData {mnemonic: "eor", addr_mode: AddressingMode::AbsoluteX},
+    DisassembleData {mnemonic: "lsr", addr_mode: AddressingMode::AbsoluteX},
+    DisassembleData {mnemonic: "eor", addr_mode: AddressingMode::LongX},
+    DisassembleData {mnemonic: "rts", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "adc", addr_mode: AddressingMode::DirectXIndirect},
+    DisassembleData {mnemonic: "per", addr_mode: AddressingMode::Immediate8},
+    DisassembleData {mnemonic: "adc", addr_mode: AddressingMode::StackRelative},
+    DisassembleData {mnemonic: "stz", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "adc", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "ror", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "adc", addr_mode: AddressingMode::DirectIndirectLong},
+    DisassembleData {mnemonic: "pla", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "adc", addr_mode: AddressingMode::ImmediateM},
+    DisassembleData {mnemonic: "ror", addr_mode: AddressingMode::Accumulator},
+    DisassembleData {mnemonic: "rtl", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "jmp", addr_mode: AddressingMode::AbsoluteIndirect},
+    DisassembleData {mnemonic: "adc", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "ror", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "adc", addr_mode: AddressingMode::Long},
+    DisassembleData {mnemonic: "bvs", addr_mode: AddressingMode::Relative8},
+    DisassembleData {mnemonic: "adc", addr_mode: AddressingMode::DirectIndirectY},
+    DisassembleData {mnemonic: "adc", addr_mode: AddressingMode::DirectIndirect},
+    DisassembleData {mnemonic: "adc", addr_mode: AddressingMode::StackRelativeIndirectY},
+    DisassembleData {mnemonic: "stz", addr_mode: AddressingMode::DirectX},
+    DisassembleData {mnemonic: "adc", addr_mode: AddressingMode::DirectX},
+    DisassembleData {mnemonic: "ror", addr_mode: AddressingMode::DirectX},
+    DisassembleData {mnemonic: "adc", addr_mode: AddressingMode::DirectIndirectLongY},
+    DisassembleData {mnemonic: "sei", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "adc", addr_mode: AddressingMode::AbsoluteY},
+    DisassembleData {mnemonic: "ply", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "tdc", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "jmp", addr_mode: AddressingMode::AbsoluteXIndirect},
+    DisassembleData {mnemonic: "adc", addr_mode: AddressingMode::AbsoluteX},
+    DisassembleData {mnemonic: "ror", addr_mode: AddressingMode::AbsoluteX},
+    DisassembleData {mnemonic: "adc", addr_mode: AddressingMode::LongX},
+    DisassembleData {mnemonic: "bra", addr_mode: AddressingMode::Relative8},
+    DisassembleData {mnemonic: "sta", addr_mode: AddressingMode::DirectXIndirect},
+    DisassembleData {mnemonic: "brl", addr_mode: AddressingMode::Relative16},
+    DisassembleData {mnemonic: "sta", addr_mode: AddressingMode::StackRelative},
+    DisassembleData {mnemonic: "sty", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "sta", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "stx", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "sta", addr_mode: AddressingMode::DirectIndirectLong},
+    DisassembleData {mnemonic: "dey", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "bit", addr_mode: AddressingMode::Immediate8},
+    DisassembleData {mnemonic: "txa", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "phb", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "sty", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "sta", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "stx", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "sta", addr_mode: AddressingMode::Long},
+    DisassembleData {mnemonic: "bcc", addr_mode: AddressingMode::Relative8},
+    DisassembleData {mnemonic: "sta", addr_mode: AddressingMode::DirectIndirectY},
+    DisassembleData {mnemonic: "sta", addr_mode: AddressingMode::DirectIndirect},
+    DisassembleData {mnemonic: "sta", addr_mode: AddressingMode::StackRelativeIndirectY},
+    DisassembleData {mnemonic: "sty", addr_mode: AddressingMode::DirectX},
+    DisassembleData {mnemonic: "sta", addr_mode: AddressingMode::DirectX},
+    DisassembleData {mnemonic: "stx", addr_mode: AddressingMode::DirectY},
+    DisassembleData {mnemonic: "sta", addr_mode: AddressingMode::DirectIndirectLongY},
+    DisassembleData {mnemonic: "tya", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "sta", addr_mode: AddressingMode::AbsoluteY},
+    DisassembleData {mnemonic: "txs", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "txy", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "stz", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "sta", addr_mode: AddressingMode::AbsoluteX},
+    DisassembleData {mnemonic: "stz", addr_mode: AddressingMode::AbsoluteX},
+    DisassembleData {mnemonic: "sta", addr_mode: AddressingMode::LongX},
+    DisassembleData {mnemonic: "ldy", addr_mode: AddressingMode::ImmediateX},
+    DisassembleData {mnemonic: "lda", addr_mode: AddressingMode::DirectXIndirect},
+    DisassembleData {mnemonic: "ldx", addr_mode: AddressingMode::ImmediateX},
+    DisassembleData {mnemonic: "lda", addr_mode: AddressingMode::StackRelative},
+    DisassembleData {mnemonic: "ldy", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "lda", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "ldx", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "lda", addr_mode: AddressingMode::DirectIndirectLong},
+    DisassembleData {mnemonic: "tay", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "lda", addr_mode: AddressingMode::ImmediateM},
+    DisassembleData {mnemonic: "tax", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "plb", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "ldy", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "lda", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "ldx", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "lda", addr_mode: AddressingMode::Long},
+    DisassembleData {mnemonic: "bcs", addr_mode: AddressingMode::Relative8},
+    DisassembleData {mnemonic: "lda", addr_mode: AddressingMode::DirectIndirectY},
+    DisassembleData {mnemonic: "lda", addr_mode: AddressingMode::DirectIndirect},
+    DisassembleData {mnemonic: "lda", addr_mode: AddressingMode::StackRelativeIndirectY},
+    DisassembleData {mnemonic: "ldy", addr_mode: AddressingMode::DirectX},
+    DisassembleData {mnemonic: "lda", addr_mode: AddressingMode::DirectX},
+    DisassembleData {mnemonic: "ldx", addr_mode: AddressingMode::DirectY},
+    DisassembleData {mnemonic: "lda", addr_mode: AddressingMode::DirectIndirectLongY},
+    DisassembleData {mnemonic: "clv", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "lda", addr_mode: AddressingMode::AbsoluteY},
+    DisassembleData {mnemonic: "tsx", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "tyx", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "ldy", addr_mode: AddressingMode::AbsoluteX},
+    DisassembleData {mnemonic: "lda", addr_mode: AddressingMode::AbsoluteX},
+    DisassembleData {mnemonic: "ldx", addr_mode: AddressingMode::AbsoluteY},
+    DisassembleData {mnemonic: "lda", addr_mode: AddressingMode::LongX},
+    DisassembleData {mnemonic: "cpy", addr_mode: AddressingMode::ImmediateX},
+    DisassembleData {mnemonic: "cmp", addr_mode: AddressingMode::DirectXIndirect},
+    DisassembleData {mnemonic: "rep", addr_mode: AddressingMode::Immediate8},
+    DisassembleData {mnemonic: "cmp", addr_mode: AddressingMode::StackRelative},
+    DisassembleData {mnemonic: "cpy", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "cmp", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "dec", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "cmp", addr_mode: AddressingMode::DirectIndirectLong},
+    DisassembleData {mnemonic: "iny", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "cmp", addr_mode: AddressingMode::ImmediateM},
+    DisassembleData {mnemonic: "dex", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "wai", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "cpy", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "cmp", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "dec", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "cmp", addr_mode: AddressingMode::Long},
+    DisassembleData {mnemonic: "bne", addr_mode: AddressingMode::Relative8},
+    DisassembleData {mnemonic: "cmp", addr_mode: AddressingMode::DirectIndirectY},
+    DisassembleData {mnemonic: "cmp", addr_mode: AddressingMode::DirectIndirect},
+    DisassembleData {mnemonic: "cmp", addr_mode: AddressingMode::StackRelativeIndirectY},
+    DisassembleData {mnemonic: "pei", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "cmp", addr_mode: AddressingMode::DirectX},
+    DisassembleData {mnemonic: "dec", addr_mode: AddressingMode::DirectX},
+    DisassembleData {mnemonic: "cmp", addr_mode: AddressingMode::DirectIndirectLongY},
+    DisassembleData {mnemonic: "cld", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "cmp", addr_mode: AddressingMode::AbsoluteY},
+    DisassembleData {mnemonic: "phx", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "stp", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "jmp", addr_mode: AddressingMode::LongIndirect},
+    DisassembleData {mnemonic: "cmp", addr_mode: AddressingMode::AbsoluteX},
+    DisassembleData {mnemonic: "dec", addr_mode: AddressingMode::AbsoluteX},
+    DisassembleData {mnemonic: "cmp", addr_mode: AddressingMode::LongX},
+    DisassembleData {mnemonic: "cpx", addr_mode: AddressingMode::ImmediateX},
+    DisassembleData {mnemonic: "sbc", addr_mode: AddressingMode::DirectXIndirect},
+    DisassembleData {mnemonic: "sep", addr_mode: AddressingMode::Immediate8},
+    DisassembleData {mnemonic: "sbc", addr_mode: AddressingMode::StackRelative},
+    DisassembleData {mnemonic: "cpx", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "sbc", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "inc", addr_mode: AddressingMode::Direct},
+    DisassembleData {mnemonic: "sbc", addr_mode: AddressingMode::DirectIndirectLong},
+    DisassembleData {mnemonic: "inx", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "sbc", addr_mode: AddressingMode::ImmediateM},
+    DisassembleData {mnemonic: "nop", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "xba", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "cpx", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "sbc", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "inc", addr_mode: AddressingMode::Absolute},
+    DisassembleData {mnemonic: "sbc", addr_mode: AddressingMode::Long},
+    DisassembleData {mnemonic: "beq", addr_mode: AddressingMode::Relative8},
+    DisassembleData {mnemonic: "sbc", addr_mode: AddressingMode::DirectIndirectY},
+    DisassembleData {mnemonic: "sbc", addr_mode: AddressingMode::DirectIndirect},
+    DisassembleData {mnemonic: "sbc", addr_mode: AddressingMode::StackRelativeIndirectY},
+    DisassembleData {mnemonic: "pea", addr_mode: AddressingMode::Immediate16},
+    DisassembleData {mnemonic: "sbc", addr_mode: AddressingMode::DirectX},
+    DisassembleData {mnemonic: "inc", addr_mode: AddressingMode::DirectX},
+    DisassembleData {mnemonic: "sbc", addr_mode: AddressingMode::DirectIndirectLongY},
+    DisassembleData {mnemonic: "sed", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "sbc", addr_mode: AddressingMode::AbsoluteY},
+    DisassembleData {mnemonic: "plx", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "xcefc", addr_mode: AddressingMode::Implied},
+    DisassembleData {mnemonic: "jsr", addr_mode: AddressingMode::AbsoluteXIndirect},
+    DisassembleData {mnemonic: "sbc", addr_mode: AddressingMode::AbsoluteX},
+    DisassembleData {mnemonic: "inc", addr_mode: AddressingMode::AbsoluteX},
+    DisassembleData {mnemonic: "sbc", addr_mode: AddressingMode::LongX},
 ];
-
-pub fn get_memory_region(addr: u32) -> MemoryRegion {
-    let bank = addr >> 16;
-    let offset = addr & 0xFFFF;
-    
-    if bank & 0x7F < 0x40 && offset < 0x8000 {
-        if offset < 0x2000 {
-            MemoryRegion::LowRamMirror
-        } else {
-            MemoryRegion::Invalid // MMIO regs
-        }
-    } else if bank == 0x7E || bank == 0x7F {
-        MemoryRegion::Ram
-    } else {
-        MemoryRegion::Rom
-    }
-}
 
 /// Returns the hardware register name for a given SNES MMIO address, if known
 fn get_register_name(addr: u32) -> Option<&'static str> {
@@ -536,68 +515,160 @@ fn get_register_name(addr: u32) -> Option<&'static str> {
     }
 }
 
+fn format_accumulator() -> DisasmOperand {
+    DisasmOperand {
+        value: 0,
+        text: "A".to_string(),
+        kind: DisasmOperandKind::Register,
+    }
+}
+
 /// Formats an absolute address, optionally replacing with register name
-fn format_absolute(addr: u16, options: &DisassemblyOptions) -> String {
+fn format_absolute(addr: u16, options: &DisassemblyOptions) -> DisasmOperand {
     if !options.use_hw_reg_names {
-        return format!("${:04X}", addr);
+        return DisasmOperand {
+            value: addr as u32,
+            text: format!("${:04X}", addr),
+            kind: DisasmOperandKind::Address,
+        };
     }
     
     match get_register_name(addr as u32) {
-        Some(name) => name.to_string(),
-        None => format!("${:04X}", addr),
+        Some(name) => DisasmOperand {
+            value: 0,
+            text: name.to_string(),
+            kind: DisasmOperandKind::Register,
+        },
+        None => DisasmOperand {
+            value: addr as u32,
+            text: format!("${:04X}", addr),
+            kind: DisasmOperandKind::Address,
+        }
+    }
+}
+
+fn format_immediate8(byte: u8) -> DisasmOperand {
+    DisasmOperand {
+        value: byte as u32,
+        text: format!("#${:02X}", byte),
+        kind: DisasmOperandKind::Number,
+    }
+}
+
+fn format_immediate16(word: u16) -> DisasmOperand {
+    DisasmOperand {
+        value: word as u32,
+        text: format!("#${:06X}", word),
+        kind: DisasmOperandKind::Number,
     }
 }
 
 /// Formats an absolute long address, optionally replacing with register name
-fn format_absolute_long(addr: u32, options: &DisassemblyOptions) -> String {
+fn format_absolute_long(addr: u32, options: &DisassemblyOptions) -> DisasmOperand {
     if !options.use_hw_reg_names {
-        return format!("${:06X}", addr);
+        return DisasmOperand {
+            value: addr as u32,
+            text: format!("${:06X}", addr),
+            kind: DisasmOperandKind::Address,
+        };
     }
     
     // Only check for register names in bank $00 or $80 (mirror)
     let bank = (addr >> 16) & 0xFF;
     if bank != 0x00 && bank != 0x80 {
-        return format!("${:06X}", addr);
+        return DisasmOperand {
+            value: addr,
+            text: format!("${:06X}", addr),
+            kind: DisasmOperandKind::Address,
+        };
     }
     
     match get_register_name(addr) {
-        Some(name) => name.to_string(),
-        None => format!("${:06X}", addr),
+        Some(name) => DisasmOperand {
+            value: 0,
+            text: name.to_string(),
+            kind: DisasmOperandKind::Register,
+        },
+        None => DisasmOperand {
+            value: addr,
+            text: format!("${:06X}", addr),
+            kind: DisasmOperandKind::Address,
+        },
     }
 }
 
 /// Formats a direct page address, optionally replacing with register name
 /// Note: This resolves the effective address using the direct page register
-fn format_direct(dp: u16, dp_offset: u8, options: &DisassemblyOptions) -> String {
+fn format_direct(dp: u16, dp_offset: u8, options: &DisassemblyOptions) -> DisasmOperand {
     if !options.use_hw_reg_names {
-        return format!("${:02X}", dp_offset);
+        return DisasmOperand {
+            value: dp_offset as u32,
+            text: format!("${:02X}", dp_offset),
+            kind: DisasmOperandKind::Number,
+        };
     }
     
+    // let address = ((dp as u32) << 8) + dp_offset as u32;
+
     // Not an mmio reg
     if (dp >> 8) & 0x7F >= 0x40 || dp & 0xFF >= 0x80 {
-        return format!("${:02X}", dp_offset);
+        return DisasmOperand {
+            value: dp_offset as u32,
+            text: format!("${:02X}", dp_offset),
+            kind: DisasmOperandKind::Number,
+        };
     }
     
     match get_register_name(dp_offset as u32) {
-        Some(name) => name.to_string(),
-        None => format!("${:02X}", dp_offset),
+        Some(name) => DisasmOperand {
+            value: 0,
+            text: name.to_string(),
+            kind: DisasmOperandKind::Register,
+        },
+        None => DisasmOperand {
+            value: dp_offset as u32,
+            text: format!("${:02X}", dp_offset),
+            kind: DisasmOperandKind::Number,
+        },
     }
 }
 
-fn format_rel8(pc: u16, offset_byte: u8, options: &DisassemblyOptions) -> String {
+fn format_rel8(pb: u8, pc: u16, offset_byte: u8, options: &DisassemblyOptions) -> DisasmOperand {
     if options.show_rel_addr_dest {
-        return format!("${:04X}", pc as u16 + ((offset_byte as i8) as i16) as u16);
+        let address = pc as u16 + ((offset_byte as i8) as i16) as u16;
+        let address = (pb as u32) << 16 | address as u32;
+
+        return DisasmOperand {
+            value: address,
+            text: format!("${:04X}", address & 0xFFFF),
+            kind: DisasmOperandKind::Address
+        };
     }
     
-    format!("#${:02X}", offset_byte as u8)
+    DisasmOperand {
+        value: offset_byte as u32,
+        text: format!("#${:02X}", offset_byte),
+        kind: DisasmOperandKind::Number,
+    }
 }
 
-fn format_rel16(pc: u16, offset_word: u16, options: &DisassemblyOptions) -> String {
+fn format_rel16(pb: u8, pc: u16, offset_word: u16, options: &DisassemblyOptions) -> DisasmOperand {
     if options.show_rel_addr_dest {
-        return format!("${:04X}", pc as u16 + offset_word as u16);
+        let address = pc as u16 + offset_word as u16;
+        let address = (pb as u32) << 16 | address as u32;
+
+        return DisasmOperand {
+            value: address,
+            text: format!("${:04X}", address & 0xFFFF),
+            kind: DisasmOperandKind::Address
+        };
     }
     
-    format!("#${:04X}", offset_word as u16)
+    DisasmOperand {
+        value: offset_word as u32,
+        text: format!("#${:04X}", offset_word as u16),
+        kind: DisasmOperandKind::Number,
+    }
 }
 
 fn disassemble(prg_bytes: &[u8; 4], state: &ExecuteState, options: &DisassemblyOptions) -> DisasmLine {
@@ -605,44 +676,109 @@ fn disassemble(prg_bytes: &[u8; 4], state: &ExecuteState, options: &DisassemblyO
     let flag_x = state.flag_x;
     let flag_m = state.flag_m;
 
-
+    let arg8 = prg_bytes[1];
     let arg16 = prg_bytes[1] as u16 | (prg_bytes[2] as u16) << 8;
     let arg24 = arg16 as u32 | (prg_bytes[3] as u32) << 16;
     let data = &DISASSEMBLE_TABLE[prg_bytes[0] as usize];
     
     let operand = match data.addr_mode {
-        AddressingMode::Implied => String::new(),
-        AddressingMode::Accumulator => "A".to_string(),
-        AddressingMode::Immediate8  => { format!("#${:02X}", prg_bytes[1]) }
-        AddressingMode::Immediate16 => { format!("#${:04X}", arg16) }
-        AddressingMode::ImmediateM if flag_m => { format!("#${:02X}", prg_bytes[1]) }
-        AddressingMode::ImmediateM           => { format!("#${:04X}", arg16) }
-        AddressingMode::ImmediateX if flag_x => { format!("#${:02X}", prg_bytes[1]) }
-        AddressingMode::ImmediateX           => { format!("#${:04X}", arg16) }
-        AddressingMode::Relative8  => { format_rel8(state.addr.offset + 2, prg_bytes[1], options) }
-        AddressingMode::Relative16 => { format_rel16(state.addr.offset + 2, arg16, options) }
-        AddressingMode::Direct  => { format_direct(dp, prg_bytes[1], options) }
-        AddressingMode::DirectX => { format!("{},X", format_direct(dp, prg_bytes[1], options)) }
-        AddressingMode::DirectY => { format!("{},Y", format_direct(dp, prg_bytes[1], options)) }
-        AddressingMode::DirectIndirect      => { format!("({})", format_direct(dp, prg_bytes[1], options)) }
-        AddressingMode::DirectIndirectLong  => { format!("[{}]", format_direct(dp, prg_bytes[1], options)) }
-        AddressingMode::DirectXIndirect     => { format!("({},X)", format_direct(dp, prg_bytes[1], options)) }
-        AddressingMode::DirectIndirectY     => { format!("({}),Y", format_direct(dp, prg_bytes[1], options)) }
-        AddressingMode::DirectIndirectLongY => { format!("[{}],Y", format_direct(dp, prg_bytes[1], options)) }
-        AddressingMode::Absolute  => { format_absolute(arg16, options) }
-        AddressingMode::AbsoluteX => { format!("{},X", format_absolute(arg16, options)) }
-        AddressingMode::AbsoluteY => { format!("{},Y", format_absolute(arg16, options)) }
-        AddressingMode::Long  => { format_absolute_long(arg24, options) }
-        AddressingMode::LongX => { format!("{},X", format_absolute_long(arg24, options)) }
-        AddressingMode::AbsoluteIndirect  => { format!("({})", format_absolute(arg16, options)) }
-        AddressingMode::LongIndirect      => { format!("[{}]", format_absolute(arg16, options)) }
-        AddressingMode::AbsoluteXIndirect => { format!("({},X)", format_absolute(arg16, options)) }
-        AddressingMode::StackRelative     => { format!("${:02X},S", prg_bytes[1]) }
-        AddressingMode::StackRelativeIndirectY => { format!("(${:02X},S),Y", prg_bytes[1]) }
+        AddressingMode::Implied => None,
+        AddressingMode::Accumulator => Some(format_accumulator()),
+        AddressingMode::Immediate8  => Some(format_immediate8(arg8)),
+        AddressingMode::Immediate16 => Some(format_immediate16(arg16)),
+        AddressingMode::ImmediateM if flag_m => Some(format_immediate8(arg8)),
+        AddressingMode::ImmediateM           => Some(format_immediate16(arg16)),
+        AddressingMode::ImmediateX if flag_x => Some(format_immediate8(arg8)),
+        AddressingMode::ImmediateX           => Some(format_immediate16(arg16)),
+        AddressingMode::Relative8  => Some(format_rel8(state.addr.bank, state.addr.offset + 2, arg8, options)),
+        AddressingMode::Relative16 => Some(format_rel16(state.addr.bank, state.addr.offset + 2, arg16, options)),
+        AddressingMode::Direct  => Some(format_direct(dp, prg_bytes[1], options)),
+        AddressingMode::DirectX => {
+            let mut operand = format_direct(dp, arg8, options);
+            operand.text = format!("{},X", operand.text);
+            Some(operand)
+        },
+        AddressingMode::DirectY => {
+            let mut operand = format_direct(dp, arg8, options);
+            operand.text = format!("{},Y", operand.text);
+            Some(operand)
+        },
+        AddressingMode::DirectIndirect      => {
+            let mut operand = format_direct(dp, arg8, options);
+            operand.text = format!("({})", operand.text);
+            Some(operand)
+        },
+        AddressingMode::DirectIndirectLong  => {
+            let mut operand = format_direct(dp, arg8, options);
+            operand.text = format!("[{}]", operand.text);
+            Some(operand)
+        },
+        AddressingMode::DirectXIndirect     => {
+            let mut operand = format_direct(dp, arg8, options);
+            operand.text = format!("({},X)", operand.text);
+            Some(operand)
+        },
+        AddressingMode::DirectIndirectY     => {
+            let mut operand = format_direct(dp, arg8, options);
+            operand.text = format!("({}),Y", operand.text);
+            Some(operand)
+        },
+        AddressingMode::DirectIndirectLongY => {
+            let mut operand = format_direct(dp, arg8, options);
+            operand.text = format!("[{}],Y", operand.text);
+            Some(operand)
+        },
+        AddressingMode::Absolute  => Some(format_absolute(arg16, options)),
+        AddressingMode::AbsoluteX => {
+            let mut operand = format_absolute(arg16, options);
+            operand.text = format!("{},X", operand.text);
+            Some(operand)
+        },
+        AddressingMode::AbsoluteY => {
+            let mut operand = format_absolute(arg16, options);
+            operand.text = format!("{},Y", operand.text);
+            Some(operand)
+        },
+        AddressingMode::Long  => Some(format_absolute_long(arg24, options)),
+        AddressingMode::LongX => {
+            let mut operand = format_absolute_long(arg24, options);
+            operand.text = format!("{},X", operand.text);
+            Some(operand)
+        }
+        AddressingMode::AbsoluteIndirect  => {
+            let mut operand = format_absolute(arg16, options);
+            operand.text = format!("({})", operand.text);
+            Some(operand)
+        }
+        AddressingMode::LongIndirect      => {
+            let mut operand = format_absolute(arg16, options);
+            operand.text = format!("[{}]", operand.text);
+            Some(operand)
+        }
+        AddressingMode::AbsoluteXIndirect => {
+            let mut operand = format_absolute(arg16, options);
+            operand.text = format!("({},X)", operand.text);
+            Some(operand)
+        }
+        AddressingMode::StackRelative => Some(DisasmOperand {
+            value: 0,
+            text: format!("${:02X},S", arg8),
+            kind: DisasmOperandKind::Number,
+        }),
+        AddressingMode::StackRelativeIndirectY => Some(DisasmOperand {
+            value: 0,
+            text: format!("(${:02X},S),Y", arg8),
+            kind: DisasmOperandKind::Number,
+        }),
         AddressingMode::SrcDst => {
             let dst = prg_bytes[1];
             let src = prg_bytes[2];
-            format!("${:02X},${:02X}", src, dst)
+
+            Some(DisasmOperand {
+                value: 0,
+                text: format!("${:02X},${:02X}", src, dst),
+                kind: DisasmOperandKind::Number,
+            })
         }
     };
     
@@ -681,16 +817,11 @@ fn disassemble(prg_bytes: &[u8; 4], state: &ExecuteState, options: &DisassemblyO
     
     let bytes = prg_bytes[..num_bytes].to_vec();
     
-    let instr_str = if operand.is_empty() {
-        data.name.to_string()
-    } else {
-        format!("{} {}", data.name, operand)
-    };
-    
     let disasm_line = DisasmLine {
         addr: state.addr.to_u32(),
         bytes,
-        disasm_str: instr_str,
+        mnemonic: data.mnemonic,
+        operand,
     };
     
     disasm_line

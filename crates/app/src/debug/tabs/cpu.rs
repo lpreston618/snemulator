@@ -1,16 +1,19 @@
-// use crate::debug::{breakpoints::BreakpointInfo, debugger::Debugger};
-use crate::{app_utils::monospace_text, theme::AppTheme};
+use std::collections::HashMap;
+
+use crate::{debug::tabs::cpu::symbols::{LabelEditState, SymbolManager}, theme::AppTheme};
 use snemcore::{Snemulator, scpu};
 
 use crate::debug::harness::MainDebugHarness;
 
 mod disassembler;
+mod symbols;
 
 const DISASM_BLOCK_SIZE: usize = 64;
 
 struct DisassemblyView {
     cached_lines: Option<Vec<disassembler::DisasmLine>>,
-    // scroll_offset: usize,
+    comments: HashMap<u32, String>,
+    symbols: SymbolManager,
     options: disassembler::DisassemblyOptions,
     follow_pc: bool,
     current_addr: u32,
@@ -20,10 +23,12 @@ impl DisassemblyView {
     fn new() -> Self {        
         Self {
             cached_lines: None,
-            // scroll_offset: 0,
+            comments: HashMap::new(),
+            symbols: SymbolManager::new(),
             options: disassembler::DisassemblyOptions {
                 use_hw_reg_names: true,
                 show_rel_addr_dest: true,
+                show_symbols: true,
                 max_instr_count: DISASM_BLOCK_SIZE,
                 forced_flag_x: None,
                 forced_flag_m: None,
@@ -46,81 +51,11 @@ impl DisassemblyView {
     }
 }
 
-struct RomEdit {
-    /// Line index of the first instruction included in this edit.
-    lowest_idx: usize,
-    /// Line index of the last instruction included in this edit.
-    highest_idx: usize,
-    /// Line index (within the disasm view) of the currently selected instruction.
-    current_line: usize,
-    /// Flat index into `bytes_strs` of the byte currently being edited.
-    current_byte: usize,
-    /// Number of bytes per instruction, in order from lowest_idx to highest_idx.
-    /// Used to map a flat byte index back to a line index for up/down navigation.
-    line_byte_counts: Vec<usize>,
-    /// User-typed edits for each byte, as uppercase hex strings. Empty means unchanged.
-    /// At most 2 hex chars
-    bytes_strs: Vec<String>,
-    bytes_originals: Vec<String>,
-    just_went_down: bool,
-    just_went_right: bool,
-}
-
-impl RomEdit {
-    /// Returns true if every non-empty byte string is a valid 1-2 digit hex value.
-    /// Empty strings are valid (they mean "keep original").
-    fn is_valid(&self) -> bool {
-        self.bytes_strs.iter().all(|s| {
-            s.is_empty() || (s.len() <= 2 && s.chars().all(|c| c.is_ascii_hexdigit()))
-        })
-    }
-
-    /// Pad the current byte to two chars if it only has one, treating it as "0X".
-    /// If the field is empty it is left empty — the original will be used on commit.
-    fn pad_current(&mut self) {
-        let s = &mut self.bytes_strs[self.current_byte];
-        if s.len() == 1 {
-            *s = format!("0{}", s);
-        }
-    }
-
-    /// Returns the effective hex string for `flat_i`: the user's input if non-empty,
-    /// otherwise the original value.
-    fn effective_str(&self, flat_i: usize) -> &str {
-        let typed = &self.bytes_strs[flat_i];
-        if typed.is_empty() {
-            &self.bytes_originals[flat_i]
-        } else {
-            typed
-        }
-    }
-
-    /// Returns the flat byte index of the first byte belonging to `line_idx`.
-    /// `line_idx` must be within [lowest_idx, highest_idx].
-    fn byte_offset_for_line(&self, line_idx: usize) -> usize {
-        let relative = line_idx - self.lowest_idx;
-        self.line_byte_counts[..relative].iter().sum()
-    }
-
-    /// Returns the line index (within the disasm view) that owns `byte_idx`.
-    fn line_for_byte(&self, byte_idx: usize) -> usize {
-        let mut remaining = byte_idx;
-        for (i, &count) in self.line_byte_counts.iter().enumerate() {
-            if remaining < count {
-                return self.lowest_idx + i;
-            }
-            remaining -= count;
-        }
-        // Shouldn't happen if invariants hold, but fall back to highest line.
-        self.highest_idx
-    }
-}
-
 pub struct CpuTab {
     disasm: DisassemblyView,
     bp_input: String,
-    rom_changes: std::collections::HashMap<u32, u8>,
-    rom_edit: Option<RomEdit>,
+    rom_changes: HashMap<u32, u8>,
+    label_edit: LabelEditState,
 }
 
 impl CpuTab {
@@ -129,7 +64,8 @@ impl CpuTab {
             disasm: DisassemblyView::new(),
             bp_input: String::new(),
             rom_changes: std::collections::HashMap::new(),
-            rom_edit: None,
+            label_edit: LabelEditState::new(),
+            // rom_edit: None,
         }
     }
     
@@ -145,6 +81,8 @@ impl CpuTab {
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 ui.checkbox(&mut self.disasm.options.use_hw_reg_names, "Use HW Reg Names");
+
+                ui.checkbox(&mut self.disasm.options.show_symbols, "Show Labels");
                 
                 ui.checkbox(&mut self.disasm.options.show_rel_addr_dest, "Show Branch Dest Addr");
 
@@ -260,8 +198,78 @@ impl CpuTab {
         ui.add_space(5.0);
 
         self.breakpoints_section(ui, core, harness);
+
+        self.label_edit_popup(ui.ctx());
     }
     
+    fn label_edit_popup(&mut self, ctx: &egui::Context) {
+        if !self.label_edit.open {
+            return;
+        }
+
+        let mut should_close = false;
+        let mut should_save = false;
+
+        egui::Window::new("Edit Label")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Address:");
+                    ui.label(
+                        egui::RichText::new(format!("${:06X}", self.label_edit.address))
+                            .monospace()
+                    );
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("Label:");
+                    let response = ui.text_edit_singleline(&mut self.label_edit.input);
+                    if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        should_save = true;
+                    }
+                    response.request_focus();
+                });
+
+                if let Some(error) = &self.label_edit.error {
+                    ui.colored_label(egui::Color32::RED, error);
+                }
+
+                ui.add_space(8.0);
+
+                ui.horizontal(|ui| {
+                    if ui.button("Save").clicked() {
+                        should_save = true;
+                    }
+                    if ui.button("Remove").clicked() {
+                        let _ = self.disasm.symbols.set_address_label(self.label_edit.address, None);
+                        should_close = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        should_close = true;
+                    }
+                });
+            });
+
+        if should_save {
+            let label = self.label_edit.input.trim();
+            if label.is_empty() {
+                let _ = self.disasm.symbols.set_address_label(self.label_edit.address, None);
+                should_close = true;
+            } else {
+                match self.disasm.symbols.set_address_label(self.label_edit.address, Some(label.to_string())) {
+                    Ok(_) => should_close = true,
+                    Err(e) => self.label_edit.error = Some(e.to_string()),
+                }
+            }
+        }
+
+        if should_close {
+            self.label_edit.close();
+        }
+    }
+
     fn disasm_section(
         &mut self,
         ui: &mut egui::Ui,
@@ -273,29 +281,26 @@ impl CpuTab {
         ui.vertical(|ui| {
             egui::ScrollArea::vertical().id_salt("disasm_scroll").min_scrolled_height(available_height).show(ui, |ui| {
                 let lines = self.disasm.cached_lines.take();
-                
-                if let Some(lines) = lines {
-                    // let line_count = lines.len();
-                    
-                    // if let Some(re) = &mut self.rom_edit {
-                    //     re.just_went_down = false;
-                    //     re.just_went_right = false;
-                    // }
-                    
-                    for (i, line) in lines.iter().enumerate() {
-                        ui.horizontal(|ui| {
-                            // match &self.rom_edit {
-                            //     Some(rom_edit) if rom_edit.lowest_idx <= i && i <= rom_edit.highest_idx => {
-                            //         self.disasm_line_editable(ui, core, harness, line, i, line_count);
-                            //     }
-                            //     _ => {
-                            //         self.disasm_line(ui, core, harness, line, i);
-                            //     }
-                            // }
-                            
-                            self.disasm_line(ui, core, harness, app_theme, line, i);
 
-                            ui.add_space(10.0);
+                if let Some(lines) = lines {
+                    for line in lines.iter() {
+                        if self.disasm.options.show_symbols {
+                            let label = self.disasm.symbols.get_address_label(line.addr);
+                        
+                            // Render label line if present
+                            if let Some(label) = label {
+                                ui.horizontal(|ui| {
+                                    // Empty space for breakpoint gutter alignment
+                                    // ui.add_space(20.0); // Adjust this to match your breakpoint marker width
+                                    
+                                    let label_job = self.format_label_line(app_theme, label);
+                                    ui.label(label_job);
+                                });
+                            }
+                        }
+                        
+                        ui.horizontal(|ui| {
+                            self.disasm_line(ui, core, harness, app_theme, line);
                         });
                     }
                 } else {
@@ -312,7 +317,6 @@ impl CpuTab {
         harness: &mut MainDebugHarness,
         app_theme: &AppTheme,
         line: &disassembler::DisasmLine,
-        line_idx: usize
     ) {
         let pc = (core.cpu.pb as u32) << 16 | core.cpu.pc as u32;
         
@@ -331,338 +335,21 @@ impl CpuTab {
             }
         }
         
-        // Parse mnemonic and operand
-        let (mnemonic, operand) = parse_disasm_str(&line.disasm_str);
-        
         // Format with theme
-        let job = app_theme.format_disassembly_line(
-            addr,
-            &line.bytes,
-            mnemonic,
-            operand,
+        let job = self.format_disassembly_line(
+            app_theme,
+            line,
             None,
             is_current,
             has_breakpoint,
+            is_modified,
         );
         
         ui.label(job)
-            .context_menu(|ui| self.disasm_context_menu(ui, core, line_idx, line));
+            .context_menu(|ui| self.disasm_context_menu(ui, core, line));
     }
     
-    fn disasm_line_editable(&mut self, ui: &mut egui::Ui, core: &mut Snemulator, harness: &mut MainDebugHarness, app_theme: &AppTheme, line: &disassembler::DisasmLine, line_idx: usize, total_lines: usize) {
-        let pc = (core.cpu.pb as u32) << 16 | core.cpu.pc as u32;
-        
-        let is_pc  = line.addr == pc;
-        let addr   = line.addr;
-        let has_bp = harness.breakpoints.contains(&addr);
-        
-        // Breakpoint toggle dot — same as normal line.
-        let dot = if has_bp { "🔴" } else { "⚪" };
-        if ui.small_button(dot).clicked() {
-            if has_bp {
-                harness.breakpoints.remove(&addr);
-            } else {
-                harness.breakpoints.insert(addr);
-            }
-        }
-
-        ui.label(" ");
-
-        let addr_text_col = if has_bp {
-            app_theme.breakpoint
-        } else if is_pc {
-            app_theme.highlight_line
-        } else {
-            app_theme.syntax_address
-        };
-
-        ui.label(
-            egui::RichText::new(format!("{:06X} ", line.addr))
-                .monospace()
-                .color(addr_text_col)
-        );
-
-        let (byte_offset, byte_count, current_byte, current_line) = {
-            let re = self.rom_edit.as_ref().unwrap();
-            let offset = re.byte_offset_for_line(line_idx);
-            let count  = re.line_byte_counts[line_idx - re.lowest_idx];
-            (offset, count, re.current_byte, re.current_line)
-        };
-
-        // Collect key events before rendering widgets so we can act on them
-        // after the focus check below.
-        let press_enter  = ui.input(|i| i.key_pressed(egui::Key::Enter));
-        let press_escape = ui.input(|i| i.key_pressed(egui::Key::Escape));
-        let press_left   = ui.input(|i| i.key_pressed(egui::Key::ArrowLeft));
-        let press_right  = ui.input(|i| i.key_pressed(egui::Key::ArrowRight));
-        let press_up     = ui.input(|i| i.key_pressed(egui::Key::ArrowUp));
-        let press_down   = ui.input(|i| i.key_pressed(egui::Key::ArrowDown));
-
-        // Render each byte in this instruction as a small TextEdit.
-        let mut any_focused = false;
-        for byte_i in 0..byte_count {
-            let flat_i = byte_offset + byte_i;
-            let is_current = flat_i == current_byte;
-
-            // Background: theme modified/highlight for the active byte, elevated bg for others.
-            let bg = if is_current {
-                app_theme.modified
-            } else {
-                app_theme.bg_elevated
-            };
-            let fg = if is_current {
-                app_theme.bg_primary
-            } else {
-                app_theme.syntax_number
-            };
-
-            // A non-empty byte string that isn't valid hex is an error.
-            let byte_str = &self.rom_edit.as_ref().unwrap().bytes_strs[flat_i];
-            let byte_invalid = !byte_str.is_empty()
-                && (byte_str.len() > 2 || !byte_str.chars().all(|c| c.is_ascii_hexdigit()));
-
-            let actual_bg = if byte_invalid {
-                app_theme.error
-            } else {
-                bg
-            };
-
-            // The hint text shows the original value so the user knows what they
-            // are replacing without having to manually clear a pre-filled field.
-            let hint = self.rom_edit.as_ref().unwrap().bytes_originals[flat_i].clone();
-
-            let widget_id = ui.id().with(("rom_edit_byte", flat_i));
-
-            let te = egui::TextEdit::singleline(
-                    &mut self.rom_edit.as_mut().unwrap().bytes_strs[flat_i]
-                )
-                .id(widget_id)
-                .char_limit(2)
-                .desired_width(22.0)
-                .font(egui::TextStyle::Monospace)
-                .text_color(fg)
-                .background_color(actual_bg)
-                .hint_text(hint);
-
-            let resp = ui.add(te);
-
-            // Request focus on the current byte every frame so arrow-key navigation
-            // feels immediate without requiring a mouse click.
-            if is_current {
-                resp.request_focus();
-            }
-
-            if resp.has_focus() {
-                any_focused = true;
-            }
-
-            // Filter non-hex characters and auto-advance only when the content
-            // actually changed this frame, so empty fields never spuriously advance.
-            if resp.changed() {
-                {
-                    let s = &mut self.rom_edit.as_mut().unwrap().bytes_strs[flat_i];
-                    s.retain(|c| c.is_ascii_hexdigit());
-                    *s = s.to_ascii_uppercase();
-                    if s.len() > 2 {
-                        s.truncate(2);
-                    }
-                }
-
-                // Auto-advance when the user has just typed the second character.
-                if is_current {
-                    let len = self.rom_edit.as_ref().unwrap().bytes_strs[flat_i].len();
-                    if len == 2 {
-                        let re = self.rom_edit.as_mut().unwrap();
-                        let total_bytes = re.bytes_strs.len();
-                        if re.current_byte + 1 < total_bytes {
-                            re.current_byte += 1;
-                            // If the new current_byte is in the next line, advance current_line too.
-                            re.current_line = re.line_for_byte(re.current_byte);
-                        }
-                    }
-                }
-            }
-        }
-
-        // ── Instruction mnemonic (read-only label, same as normal line) ──────
-        let disasm_col = if is_pc { app_theme.modified } else { app_theme.syntax_opcode };
-        ui.label(
-            egui::RichText::new(&line.disasm_str)
-                .monospace()
-                .color(disasm_col)
-        );
-
-        // ── Commit / cancel / navigation ─────────────────────────────────────
-        // Only process keys when a byte in this line is focused, so that key
-        // events don't fire multiple times (once per editable line rendered).
-        if !any_focused {
-            return;
-        }
-
-        if press_escape {
-            self.rom_edit = None;
-            return;
-        }
-
-        if press_enter {
-            let re = self.rom_edit.as_ref().unwrap();
-            if re.is_valid() {
-                // Build the list of (rom_address, new_byte) pairs to write.
-                // Derive the range's start address from the current line's address
-                // and how many bytes of earlier instructions are in the edit.
-                let writes: Vec<(u32, u8)> = {
-                    let cur_line_relative = line_idx - re.lowest_idx;
-                    let bytes_before_cur: usize = re.line_byte_counts[..cur_line_relative].iter().sum();
-                    let range_start_addr = line.addr - bytes_before_cur as u32;
-
-                    (0..re.bytes_strs.len())
-                        .map(|flat_i| {
-                            let rom_addr = range_start_addr + flat_i as u32;
-                            // Use the typed value if present, otherwise the original.
-                            let new_val = u8::from_str_radix(re.effective_str(flat_i), 16).unwrap();
-                            (rom_addr, new_val)
-                        })
-                        .collect()
-                };
-
-                let cart = core.cart.as_mut().unwrap();
-                for (rom_addr, new_val) in writes {
-                    // Record the original value before overwriting (if not already tracked).
-                    self.rom_changes.entry(rom_addr).or_insert_with(|| {
-                        cart.read(scpu::Address::from_u32(rom_addr))
-                    });
-                    cart.force_write(scpu::Address::from_u32(rom_addr), new_val);
-                }
-
-                self.rom_edit = None;
-            }
-            // If not valid, silently block commit — the red highlights show the problem.
-            return;
-        }
-
-        // ── Arrow key navigation ──────────────────────────────────────────────
-        let re = self.rom_edit.as_mut().unwrap();
-
-        if press_left {
-            re.pad_current();
-            if re.current_byte > 0 {
-                re.current_byte -= 1;
-                re.current_line = re.line_for_byte(re.current_byte);
-            }
-        } else if press_right && !re.just_went_right {
-            re.just_went_right = true;
-            
-            re.pad_current();
-            let total = re.bytes_strs.len();
-            if re.current_byte + 1 < total {
-                re.current_byte += 1;
-                re.current_line = re.line_for_byte(re.current_byte);
-            }
-        } else if press_up {
-            re.pad_current();
-            if re.current_line > re.lowest_idx {
-                // Move to the first byte of the previous line within the current range.
-                re.current_line -= 1;
-                re.current_byte = re.byte_offset_for_line(re.current_line);
-            } else if re.lowest_idx > 0 {
-                // Already on the lowest line — expand the range upward.
-                let new_line_idx = re.lowest_idx - 1;
-
-                let cur_line_relative = line_idx - re.lowest_idx;
-                let bytes_before_cur: usize = re.line_byte_counts[..cur_line_relative].iter().sum();
-                let range_start_addr = line.addr - bytes_before_cur as u32;
-
-                // Find the preceding instruction by trying lengths 1-4 and checking
-                // whether the disassembler agrees on that length.
-                let (prev_originals, prev_count) = {
-                    let mut found: Option<Vec<u8>> = None;
-                    for len in 1usize..=4 {
-                        let candidate_addr = range_start_addr.wrapping_sub(len as u32);
-                        let disasm_result = disassembler::disassemble_forward(
-                            core,
-                            &self.disasm.options,
-                            candidate_addr,
-                        );
-                        if let Some(first) = disasm_result.first() {
-                            if first.bytes.len() == len {
-                                found = Some(first.bytes.clone());
-                                break;
-                            }
-                        }
-                    }
-                    let bytes = found.unwrap_or_else(|| {
-                        vec![core.cart.as_ref().unwrap()
-                            .read(scpu::Address::from_u32(range_start_addr - 1))]
-                    });
-                    let count = bytes.len();
-                    let strs: Vec<String> = bytes.iter().map(|b| format!("{:02X}", b)).collect();
-                    (strs, count)
-                };
-
-                // Prepend the new instruction's originals and empty typed strings.
-                let mut new_originals = prev_originals;
-                new_originals.extend(re.bytes_originals.drain(..));
-                re.bytes_originals = new_originals;
-
-                let new_typed: Vec<String> = std::iter::repeat_with(String::new)
-                    .take(prev_count)
-                    .chain(re.bytes_strs.drain(..))
-                    .collect();
-                re.bytes_strs = new_typed;
-
-                re.line_byte_counts.insert(0, prev_count);
-                re.lowest_idx = new_line_idx;
-                re.current_line = new_line_idx;
-                // Move cursor to the first byte of the newly added instruction.
-                re.current_byte = 0;
-            }
-        } else if press_down && !re.just_went_down {
-            re.just_went_down = true;
-            
-            re.pad_current();
-            if re.current_line < re.highest_idx {
-                // Move to the first byte of the next line within the current range.
-                re.current_line += 1;
-                re.current_byte = re.byte_offset_for_line(re.current_line);
-            } else if re.highest_idx + 1 < total_lines {
-                // Already on the highest line — expand the range downward.
-                let cur_line_relative = line_idx - re.lowest_idx;
-                let bytes_before_cur: usize = re.line_byte_counts[..cur_line_relative].iter().sum();
-                let range_start_addr = line.addr - bytes_before_cur as u32;
-                let total_bytes_in_range: usize = re.line_byte_counts.iter().sum();
-                let next_instr_addr = range_start_addr + total_bytes_in_range as u32;
-
-                let (next_originals, next_count) = {
-                    let disasm_result = disassembler::disassemble_forward(
-                        core,
-                        &self.disasm.options,
-                        next_instr_addr,
-                    );
-                    let bytes = if let Some(first) = disasm_result.first() {
-                        first.bytes.clone()
-                    } else {
-                        vec![core.cart.as_ref().unwrap()
-                            .read(scpu::Address::from_u32(next_instr_addr))]
-                    };
-                    let count = bytes.len();
-                    let strs: Vec<String> = bytes.iter().map(|b| format!("{:02X}", b)).collect();
-                    (strs, count)
-                };
-
-                let first_new_byte_idx = re.bytes_strs.len();
-                re.line_byte_counts.push(next_count);
-                // Append empty typed strings and the originals for the new instruction.
-                re.bytes_strs.extend(std::iter::repeat_with(String::new).take(next_count));
-                re.bytes_originals.extend(next_originals);
-                re.highest_idx += 1;
-                re.current_line = re.highest_idx;
-                // Move cursor to the first byte of the new instruction.
-                re.current_byte = first_new_byte_idx;
-            }
-        }
-    }
-    
-    fn disasm_context_menu(&mut self, ui: &mut egui::Ui, core: &mut Snemulator, line_idx: usize, line: &disassembler::DisasmLine) {
+    fn disasm_context_menu(&mut self, ui: &mut egui::Ui, core: &mut Snemulator, line: &disassembler::DisasmLine) {
         const NOP: u8 = 0xEA;
         
         let is_changed = self.rom_changes.contains_key(&line.addr);
@@ -698,21 +385,36 @@ impl CpuTab {
                 ui.close();
             }
         }
+
+        // Label for current instruction address
+        let current_label = self.disasm.symbols.get_address_label(line.addr);
+        let current_label_text = if current_label.is_some() {
+            "Edit Label"
+        } else {
+            "Add Label"
+        };
         
-        if ui.button("Edit Bytes").clicked() {
-            let originals: Vec<String> = line.bytes.iter().map(|b| format!("{:02X}", b)).collect();
-            self.rom_edit = Some(RomEdit {
-                lowest_idx: line_idx,
-                highest_idx: line_idx,
-                current_line: line_idx,
-                current_byte: 0,
-                line_byte_counts: vec![line.bytes.len()],
-                bytes_strs: vec![String::new(); line.bytes.len()],
-                bytes_originals: originals,
-                just_went_down: false,
-                just_went_right: false,
-            });
+        if ui.button(current_label_text).clicked() {
+            self.label_edit.open_for(line.addr, current_label);
             ui.close();
+        }
+
+        // Label for destination address (if operand is an address)
+        if let Some(operand) = &line.operand {
+            if matches!(operand.kind, disassembler::DisasmOperandKind::Address) {
+                let dest_addr = operand.value;
+                let dest_label = self.disasm.symbols.get_address_label(dest_addr);
+                let dest_label_text = if dest_label.is_some() {
+                    format!("Edit Argument Label")
+                } else {
+                    format!("Add Argument Label")
+                };
+                
+                if ui.button(dest_label_text).clicked() {
+                    self.label_edit.open_for(dest_addr, dest_label);
+                    ui.close();
+                }
+            }
         }
     }
     
@@ -886,9 +588,6 @@ impl CpuTab {
                                 let pc = ((core.cpu.pb as u32) << 16) | core.cpu.pc as u32;
                                 self.disasm.follow_pc = breakpoint == pc;
                                 self.disasm.current_addr = breakpoint;
-                                // self.disasm.options.forced_flag_m = Some(breakpoint.force_m);
-                                // self.disasm.options.forced_flag_x = Some(breakpoint.force_x);
-                                // self.disasm.options.forced_e = Some(breakpoint.force_e);
                             }
                         });
                     }
@@ -908,23 +607,137 @@ impl CpuTab {
         self.disasm.update(core, &options);
     }
 
-    // fn add_breakpoint(&mut self, addr: u32, core: &mut Snemulator<Debugger>) {
-    //     let mut breakpoint = BreakpointInfo::new(addr);
-    //     breakpoint.force_x = match self.disasm.options.forced_flag_x {
-    //         Some(v) => v,
-    //         None => core.cpu.is_flag_set(scpu::Flag::FlagX)
-    //     };
-    //     breakpoint.force_m = match self.disasm.options.forced_flag_m {
-    //         Some(v) => v,
-    //         None => core.cpu.is_flag_set(scpu::Flag::FlagM)
-    //     };
-    //     breakpoint.force_e = match self.disasm.options.forced_e {
-    //         Some(v) => v,
-    //         None => core.cpu.e
-    //     };
+    fn format_label_line(&self, app_theme: &AppTheme, label: &str) -> egui::text::LayoutJob {
+        use egui::text::{LayoutJob, TextFormat};
+        
+        let mut job = LayoutJob::default();
+        let mono = egui::FontId::monospace(13.0);
+        
+        job.append(
+            &format!(".{}:", label),
+            0.0,
+            TextFormat {
+                font_id: mono,
+                color: app_theme.syntax_label,
+                ..Default::default()
+            },
+        );
+        
+        job
+    }
 
-    //     core.probe.as_mut().unwrap().breakpoints.insert(breakpoint);
-    // }
+    /// Create a highlighted job for disassembly view
+    pub fn format_disassembly_line(
+        &self,
+        app_theme: &AppTheme,
+        line: &disassembler::DisasmLine,
+        comment: Option<&str>,
+        is_current: bool,
+        has_breakpoint: bool,
+        is_modified: bool,
+    ) -> egui::text::LayoutJob {
+        use egui::text::{LayoutJob, TextFormat};
+        
+        let mut job = LayoutJob::default();
+        let mono = egui::FontId::monospace(13.0);
+        
+        // Address
+        job.append(
+            &format!("{:06X}  ", line.addr),
+            0.0,
+            TextFormat {
+                font_id: mono.clone(),
+                color: app_theme.syntax_address,
+                ..Default::default()
+            },
+        );
+        
+        // Raw bytes (up to 4 bytes shown)
+        let bytes_str: String = line.bytes
+            .iter()
+            .take(4)
+            .map(|b| format!("{:02X} ", b))
+            .collect();
+        job.append(
+            &format!("{:<12}", bytes_str),
+            0.0,
+            TextFormat {
+                font_id: mono.clone(),
+                color: app_theme.text_muted,
+                ..Default::default()
+            },
+        );
+        
+        // Mnemonic
+        job.append(
+            &format!("{:<6}", line.mnemonic),
+            0.0,
+            TextFormat {
+                font_id: mono.clone(),
+                color: app_theme.syntax_opcode,
+                ..Default::default()
+            },
+        );
+
+        if let Some(operand) = line.operand.as_ref() {
+            let (text, color) = match operand.kind {
+                disassembler::DisasmOperandKind::Address => {
+                    if self.disasm.options.show_symbols {
+                        if let Some(label) = self.disasm.symbols.get_address_label(operand.value) {
+                            (label, app_theme.syntax_label)
+                        } else {
+                            (operand.text.as_str(), app_theme.syntax_address)
+                        }
+                    } else {
+                        (operand.text.as_str(), app_theme.syntax_address)
+                    }
+                }
+                disassembler::DisasmOperandKind::Number => (operand.text.as_str(), app_theme.syntax_number),
+                disassembler::DisasmOperandKind::Register => (operand.text.as_str(), app_theme.syntax_register),
+            };
+
+            // Operand (with register/number highlighting)
+            job.append(
+                text,
+                0.0,
+                TextFormat {
+                    font_id: mono.clone(),
+                    color,
+                    ..Default::default()
+                },
+            );
+        }
+        
+        // Comment
+        if let Some(comment) = comment {
+            job.append(
+                &format!("  ; {}", comment),
+                0.0,
+                TextFormat {
+                    font_id: mono.clone(),
+                    color: app_theme.syntax_comment,
+                    ..Default::default()
+                },
+            );
+        }
+        
+        // Background highlighting for current line or breakpoint
+        if is_current || has_breakpoint || is_modified {
+            let color = if has_breakpoint {
+                app_theme.breakpoint_bg
+            } else if is_modified {
+                app_theme.modified_bg
+            } else {
+                app_theme.highlight_line
+            };
+
+            job.sections.iter_mut().for_each(|section| {
+                section.format.background = color;
+            });
+        }
+        
+        job
+    }
 }
 
 /// Parse a combined disassembly string into mnemonic and operand
