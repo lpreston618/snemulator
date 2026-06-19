@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{debug::tabs::cpu::symbols::{LabelEditState, SymbolManager}, theme::AppTheme};
+use crate::{debug::tabs::cpu::{disassembler::DisasmOperandKind, symbols::{LabelEditState, SymbolManager}}, theme::AppTheme};
 use snemcore::{Snemulator, scpu};
 
 use crate::debug::harness::MainDebugHarness;
@@ -47,7 +47,7 @@ impl DisassemblyView {
             self.current_addr = (core.cpu.pb as u32) << 16 | core.cpu.pc as u32;
         }
 
-        self.cached_lines = Some(disassembler::disassemble_forward(core, options, self.current_addr));
+        self.cached_lines = Some(disassembler::disassemble_forward(core, options, &self.symbols, self.current_addr));
     }
 }
 
@@ -278,6 +278,8 @@ impl CpuTab {
         app_theme: &AppTheme,
         available_height: f32
     ) {
+        let mut jump_target: Option<u32> = None;
+
         ui.vertical(|ui| {
             egui::ScrollArea::vertical().id_salt("disasm_scroll").min_scrolled_height(available_height).show(ui, |ui| {
                 let lines = self.disasm.cached_lines.take();
@@ -300,7 +302,12 @@ impl CpuTab {
                         }
                         
                         ui.horizontal(|ui| {
-                            self.disasm_line(ui, core, harness, app_theme, line);
+                            jump_target = self.disasm_line(ui, core, harness, app_theme, line);
+
+                            if let Some(addr) = jump_target {
+                                self.disasm.follow_pc = false;
+                                self.disasm.current_addr = addr;
+                            }
                         });
                     }
                 } else {
@@ -317,13 +324,27 @@ impl CpuTab {
         harness: &mut MainDebugHarness,
         app_theme: &AppTheme,
         line: &disassembler::DisasmLine,
-    ) {
+    ) -> Option<u32> {
+        use egui::text::{LayoutJob, TextFormat};
+        
         let pc = (core.cpu.pb as u32) << 16 | core.cpu.pc as u32;
+        let mono = egui::FontId::monospace(13.0);
         
         let addr = line.addr;
         let is_current = addr == pc;
         let has_breakpoint = harness.breakpoints.contains(&addr);
         let is_modified = self.rom_changes.contains_key(&addr);
+        
+        // Determine background color for highlighting
+        let bg_color = if has_breakpoint {
+            Some(app_theme.breakpoint_bg)
+        } else if is_modified {
+            Some(app_theme.modified_bg)
+        } else if is_current {
+            Some(app_theme.highlight_line)
+        } else {
+            None
+        };
         
         // Breakpoint gutter
         let bp_response = app_theme.draw_breakpoint_marker(ui, has_breakpoint, is_current);
@@ -335,18 +356,125 @@ impl CpuTab {
             }
         }
         
-        // Format with theme
-        let job = self.format_disassembly_line(
-            app_theme,
-            line,
-            None,
-            is_current,
-            has_breakpoint,
-            is_modified,
+        let mut full_rect = egui::Rect::NOTHING;
+        let mut jump_target: Option<u32> = None;
+        
+        // Build prefix job: address, bytes, mnemonic
+        let mut prefix_job = LayoutJob::default();
+        
+        let make_format = |color: egui::Color32, bg: Option<egui::Color32>| -> TextFormat {
+            TextFormat {
+                font_id: mono.clone(),
+                color,
+                background: bg.unwrap_or(egui::Color32::TRANSPARENT),
+                ..Default::default()
+            }
+        };
+        
+        // Address
+        prefix_job.append(
+            &format!("{:06X}  ", line.addr),
+            0.0,
+            make_format(app_theme.syntax_address, bg_color),
         );
         
-        ui.label(job)
-            .context_menu(|ui| self.disasm_context_menu(ui, core, line));
+        // Raw bytes
+        let bytes_str: String = line.bytes
+            .iter()
+            .take(4)
+            .map(|b| format!("{:02X} ", b))
+            .collect();
+        prefix_job.append(
+            &format!("{:<12}", bytes_str),
+            0.0,
+            make_format(app_theme.text_muted, bg_color),
+        );
+        
+        // Mnemonic
+        prefix_job.append(
+            &format!("{:<6}", line.mnemonic),
+            0.0,
+            make_format(app_theme.syntax_opcode, bg_color),
+        );
+        
+        let prefix_response = ui.label(prefix_job);
+        full_rect = full_rect.union(prefix_response.rect);
+        
+        // Operand (render as clickable if it's an address)
+        if let Some(operand) = &line.operand {            
+            let color = match operand.kind {
+                DisasmOperandKind::Number => app_theme.syntax_number,
+                DisasmOperandKind::Address { .. } => app_theme.syntax_address,
+                DisasmOperandKind::LabeledAddress { .. } => app_theme.syntax_label,
+                DisasmOperandKind::Register => app_theme.syntax_register,
+            };
+            
+            match operand.kind {
+                DisasmOperandKind::Address { addr } |
+                DisasmOperandKind::LabeledAddress { addr } => {
+                    let mut rich_text = egui::RichText::new(&operand.text)
+                        .monospace()
+                        .color(color);
+                    
+                    if let Some(bg) = bg_color {
+                        rich_text = rich_text.background_color(bg);
+                    }
+                    
+                    let operand_response = ui.add(
+                        egui::Label::new(rich_text).sense(egui::Sense::click())
+                    );
+                    
+                    full_rect = full_rect.union(operand_response.rect);
+                    
+                    if operand_response.clicked() {
+                        jump_target = Some(addr);
+                    }
+                    
+                    operand_response.context_menu(|ui| self.disasm_context_menu(ui, core, line));
+                    operand_response.on_hover_cursor(egui::CursorIcon::PointingHand);
+                }
+                _ => {
+                    let mut operand_job = LayoutJob::default();
+                    operand_job.append(&operand.text, 0.0, make_format(color, bg_color));
+                    let operand_response = ui.label(operand_job);
+                    operand_response.context_menu(|ui| self.disasm_context_menu(ui, core, line));
+                    full_rect = full_rect.union(operand_response.rect);
+                }
+            }
+        }
+        
+        // Comment (if any)
+        let comment = self.disasm.comments.get(&line.addr);
+        if let Some(comment) = comment {
+            let mut comment_job = LayoutJob::default();
+            comment_job.append(
+                &format!("  ; {}", comment),
+                0.0,
+                make_format(app_theme.syntax_comment, bg_color),
+            );
+            
+            let comment_response = ui.label(comment_job);
+            comment_response.context_menu(|ui| self.disasm_context_menu(ui, core, line));
+            full_rect = full_rect.union(comment_response.rect);
+        }
+        
+        // Draw hover background behind everything
+        let is_hovered = ui.rect_contains_pointer(full_rect);
+        if is_hovered && bg_color.is_none() {
+            ui.painter().rect_stroke(
+                full_rect,
+                egui::CornerRadius::same(app_theme.widget_corner_radius),
+                egui::Stroke::new(
+                    app_theme.widget_corner_radius as f32,
+                    app_theme.highlight_line,
+                ),
+                egui::StrokeKind::Outside,
+            );
+        }
+        
+        prefix_response.context_menu(|ui| self.disasm_context_menu(ui, core, line));
+        
+        jump_target
     }
     
     fn disasm_context_menu(&mut self, ui: &mut egui::Ui, core: &mut Snemulator, line: &disassembler::DisasmLine) {
@@ -401,19 +529,22 @@ impl CpuTab {
 
         // Label for destination address (if operand is an address)
         if let Some(operand) = &line.operand {
-            if matches!(operand.kind, disassembler::DisasmOperandKind::Address) {
-                let dest_addr = operand.value;
-                let dest_label = self.disasm.symbols.get_address_label(dest_addr);
-                let dest_label_text = if dest_label.is_some() {
-                    format!("Edit Argument Label")
-                } else {
-                    format!("Add Argument Label")
-                };
-                
-                if ui.button(dest_label_text).clicked() {
-                    self.label_edit.open_for(dest_addr, dest_label);
-                    ui.close();
+            match operand.kind {
+                DisasmOperandKind::Address { addr } |
+                DisasmOperandKind::LabeledAddress { addr } => {
+                    let dest_label = self.disasm.symbols.get_address_label(addr);
+                    let dest_label_text = if dest_label.is_some() {
+                        format!("Edit Argument Label")
+                    } else {
+                        format!("Add Argument Label")
+                    };
+                    
+                    if ui.button(dest_label_text).clicked() {
+                        self.label_edit.open_for(addr, dest_label);
+                        ui.close();
+                    }
                 }
+                _ => {}
             }
         }
     }
@@ -624,126 +755,5 @@ impl CpuTab {
         );
         
         job
-    }
-
-    /// Create a highlighted job for disassembly view
-    pub fn format_disassembly_line(
-        &self,
-        app_theme: &AppTheme,
-        line: &disassembler::DisasmLine,
-        comment: Option<&str>,
-        is_current: bool,
-        has_breakpoint: bool,
-        is_modified: bool,
-    ) -> egui::text::LayoutJob {
-        use egui::text::{LayoutJob, TextFormat};
-        
-        let mut job = LayoutJob::default();
-        let mono = egui::FontId::monospace(13.0);
-        
-        // Address
-        job.append(
-            &format!("{:06X}  ", line.addr),
-            0.0,
-            TextFormat {
-                font_id: mono.clone(),
-                color: app_theme.syntax_address,
-                ..Default::default()
-            },
-        );
-        
-        // Raw bytes (up to 4 bytes shown)
-        let bytes_str: String = line.bytes
-            .iter()
-            .take(4)
-            .map(|b| format!("{:02X} ", b))
-            .collect();
-        job.append(
-            &format!("{:<12}", bytes_str),
-            0.0,
-            TextFormat {
-                font_id: mono.clone(),
-                color: app_theme.text_muted,
-                ..Default::default()
-            },
-        );
-        
-        // Mnemonic
-        job.append(
-            &format!("{:<6}", line.mnemonic),
-            0.0,
-            TextFormat {
-                font_id: mono.clone(),
-                color: app_theme.syntax_opcode,
-                ..Default::default()
-            },
-        );
-
-        if let Some(operand) = line.operand.as_ref() {
-            let (text, color) = match operand.kind {
-                disassembler::DisasmOperandKind::Address => {
-                    if self.disasm.options.show_symbols {
-                        if let Some(label) = self.disasm.symbols.get_address_label(operand.value) {
-                            (label, app_theme.syntax_label)
-                        } else {
-                            (operand.text.as_str(), app_theme.syntax_address)
-                        }
-                    } else {
-                        (operand.text.as_str(), app_theme.syntax_address)
-                    }
-                }
-                disassembler::DisasmOperandKind::Number => (operand.text.as_str(), app_theme.syntax_number),
-                disassembler::DisasmOperandKind::Register => (operand.text.as_str(), app_theme.syntax_register),
-            };
-
-            // Operand (with register/number highlighting)
-            job.append(
-                text,
-                0.0,
-                TextFormat {
-                    font_id: mono.clone(),
-                    color,
-                    ..Default::default()
-                },
-            );
-        }
-        
-        // Comment
-        if let Some(comment) = comment {
-            job.append(
-                &format!("  ; {}", comment),
-                0.0,
-                TextFormat {
-                    font_id: mono.clone(),
-                    color: app_theme.syntax_comment,
-                    ..Default::default()
-                },
-            );
-        }
-        
-        // Background highlighting for current line or breakpoint
-        if is_current || has_breakpoint || is_modified {
-            let color = if has_breakpoint {
-                app_theme.breakpoint_bg
-            } else if is_modified {
-                app_theme.modified_bg
-            } else {
-                app_theme.highlight_line
-            };
-
-            job.sections.iter_mut().for_each(|section| {
-                section.format.background = color;
-            });
-        }
-        
-        job
-    }
-}
-
-/// Parse a combined disassembly string into mnemonic and operand
-fn parse_disasm_str(disasm_str: &str) -> (&str, &str) {
-    match disasm_str.split_once(char::is_whitespace) {
-        Some((mnemonic, operand)) => (mnemonic, operand.trim()),
-        None => (disasm_str, ""),
     }
 }

@@ -1,5 +1,7 @@
 use snemcore::{Snemulator, scpu};
 
+use crate::debug::tabs::cpu::symbols::SymbolManager;
+
 #[derive(Clone, Copy)]
 enum AddressingMode {
     Implied,
@@ -50,7 +52,8 @@ pub struct DisassemblyOptions {
 
 pub enum DisasmOperandKind {
     Number,
-    Address,
+    Address { addr: u32 },
+    LabeledAddress { addr: u32 },
     Register,
 }
 
@@ -62,7 +65,6 @@ pub struct DisasmLine {
 }
 
 pub struct DisasmOperand {
-    pub value: u32,
     pub text: String,
     pub kind: DisasmOperandKind,
 }
@@ -517,39 +519,39 @@ fn get_register_name(addr: u32) -> Option<&'static str> {
 
 fn format_accumulator() -> DisasmOperand {
     DisasmOperand {
-        value: 0,
         text: "A".to_string(),
         kind: DisasmOperandKind::Register,
     }
 }
 
 /// Formats an absolute address, optionally replacing with register name
-fn format_absolute(addr: u16, options: &DisassemblyOptions) -> DisasmOperand {
-    if !options.use_hw_reg_names {
-        return DisasmOperand {
-            value: addr as u32,
-            text: format!("${:04X}", addr),
-            kind: DisasmOperandKind::Address,
-        };
-    }
-    
-    match get_register_name(addr as u32) {
-        Some(name) => DisasmOperand {
-            value: 0,
-            text: name.to_string(),
-            kind: DisasmOperandKind::Register,
-        },
-        None => DisasmOperand {
-            value: addr as u32,
-            text: format!("${:04X}", addr),
-            kind: DisasmOperandKind::Address,
+fn format_absolute(addr: u32, options: &DisassemblyOptions, symbols: &SymbolManager) -> DisasmOperand {
+    if options.use_hw_reg_names {
+        if let Some(name) = get_register_name(addr & 0xFFFF) {
+            return DisasmOperand {
+                text: name.to_string(),
+                kind: DisasmOperandKind::Register,
+            };
         }
+    }
+
+    if options.show_symbols {
+        if let Some(label) = symbols.get_address_label(addr & 0xFFFF) {
+            return DisasmOperand {
+                text: label.to_string(),
+                kind: DisasmOperandKind::LabeledAddress { addr },
+            }
+        }
+    }
+
+    DisasmOperand {
+        text: format!("${:04X}", addr),
+        kind: DisasmOperandKind::Address { addr },
     }
 }
 
 fn format_immediate8(byte: u8) -> DisasmOperand {
     DisasmOperand {
-        value: byte as u32,
         text: format!("#${:02X}", byte),
         kind: DisasmOperandKind::Number,
     }
@@ -557,121 +559,124 @@ fn format_immediate8(byte: u8) -> DisasmOperand {
 
 fn format_immediate16(word: u16) -> DisasmOperand {
     DisasmOperand {
-        value: word as u32,
         text: format!("#${:06X}", word),
         kind: DisasmOperandKind::Number,
     }
 }
 
 /// Formats an absolute long address, optionally replacing with register name
-fn format_absolute_long(addr: u32, options: &DisassemblyOptions) -> DisasmOperand {
-    if !options.use_hw_reg_names {
-        return DisasmOperand {
-            value: addr as u32,
-            text: format!("${:06X}", addr),
-            kind: DisasmOperandKind::Address,
-        };
+fn format_absolute_long(addr: u32, options: &DisassemblyOptions, symbols: &SymbolManager) -> DisasmOperand {
+    if options.use_hw_reg_names && (addr >> 16) <= 0x3F {
+        if let Some(name) = get_register_name(addr & 0xFFFF) {
+            return DisasmOperand {
+                text: name.to_string(),
+                kind: DisasmOperandKind::Register,
+            };
+        }
     }
-    
-    // Only check for register names in bank $00 or $80 (mirror)
-    let bank = (addr >> 16) & 0xFF;
-    if bank != 0x00 && bank != 0x80 {
-        return DisasmOperand {
-            value: addr,
-            text: format!("${:06X}", addr),
-            kind: DisasmOperandKind::Address,
-        };
+
+    if options.show_symbols {
+        if let Some(label) = symbols.get_address_label(addr) {
+            return DisasmOperand {
+                text: label.to_string(),
+                kind: DisasmOperandKind::LabeledAddress { addr },
+            }
+        }
     }
-    
-    match get_register_name(addr) {
-        Some(name) => DisasmOperand {
-            value: 0,
-            text: name.to_string(),
-            kind: DisasmOperandKind::Register,
-        },
-        None => DisasmOperand {
-            value: addr,
-            text: format!("${:06X}", addr),
-            kind: DisasmOperandKind::Address,
-        },
+
+    DisasmOperand {
+        text: format!("${:06X}", addr),
+        kind: DisasmOperandKind::Address { addr },
     }
 }
 
 /// Formats a direct page address, optionally replacing with register name
 /// Note: This resolves the effective address using the direct page register
-fn format_direct(dp: u16, dp_offset: u8, options: &DisassemblyOptions) -> DisasmOperand {
-    if !options.use_hw_reg_names {
-        return DisasmOperand {
-            value: dp_offset as u32,
-            text: format!("${:02X}", dp_offset),
-            kind: DisasmOperandKind::Number,
-        };
-    }
+fn format_direct(dp: u16, dp_offset: u8, options: &DisassemblyOptions, symbols: &SymbolManager) -> DisasmOperand {
+    let addr = dp + dp_offset as u16;
     
-    // let address = ((dp as u32) << 8) + dp_offset as u32;
+    if options.use_hw_reg_names {
+        if let Some(name) = get_register_name(addr as u32) {
+            return DisasmOperand {
+                text: name.to_string(),
+                kind: DisasmOperandKind::Register,
+            };
+        }
+    }
 
-    // Not an mmio reg
-    if (dp >> 8) & 0x7F >= 0x40 || dp & 0xFF >= 0x80 {
-        return DisasmOperand {
-            value: dp_offset as u32,
-            text: format!("${:02X}", dp_offset),
-            kind: DisasmOperandKind::Number,
-        };
+    if options.show_symbols {
+        if let Some(label) = symbols.get_address_label(addr as u32) {
+            return DisasmOperand {
+                text: label.to_string(),
+                kind: DisasmOperandKind::LabeledAddress { addr: addr as u32 },
+            }
+        }
     }
-    
-    match get_register_name(dp_offset as u32) {
-        Some(name) => DisasmOperand {
-            value: 0,
-            text: name.to_string(),
-            kind: DisasmOperandKind::Register,
-        },
-        None => DisasmOperand {
-            value: dp_offset as u32,
-            text: format!("${:02X}", dp_offset),
-            kind: DisasmOperandKind::Number,
-        },
+
+    DisasmOperand {
+        text: format!("${:02X}", dp_offset),
+        kind: DisasmOperandKind::Address { addr: addr as u32 },
     }
 }
 
-fn format_rel8(pb: u8, pc: u16, offset_byte: u8, options: &DisassemblyOptions) -> DisasmOperand {
-    if options.show_rel_addr_dest {
-        let address = pc as u16 + ((offset_byte as i8) as i16) as u16;
-        let address = (pb as u32) << 16 | address as u32;
+fn format_rel8(pb: u8, pc: u16, offset_byte: u8, options: &DisassemblyOptions, symbols: &SymbolManager) -> DisasmOperand {
+    let address = pc as u16 + ((offset_byte as i8) as i16) as u16;
+    let address = (pb as u32) << 16 | address as u32;
+    
+    if options.show_symbols {
+        if let Some(label) = symbols.get_address_label(address) {
+            return DisasmOperand {
+                text: label.to_string(),
+                kind: DisasmOperandKind::LabeledAddress { addr: address },
+            }
+        }
+    }
 
+    if options.show_rel_addr_dest {
         return DisasmOperand {
-            value: address,
             text: format!("${:04X}", address & 0xFFFF),
-            kind: DisasmOperandKind::Address
+            kind: DisasmOperandKind::Address { addr: address },
         };
     }
     
     DisasmOperand {
-        value: offset_byte as u32,
         text: format!("#${:02X}", offset_byte),
         kind: DisasmOperandKind::Number,
     }
 }
 
-fn format_rel16(pb: u8, pc: u16, offset_word: u16, options: &DisassemblyOptions) -> DisasmOperand {
-    if options.show_rel_addr_dest {
-        let address = pc as u16 + offset_word as u16;
-        let address = (pb as u32) << 16 | address as u32;
+fn format_rel16(pb: u8, pc: u16, offset_word: u16, options: &DisassemblyOptions, symbols: &SymbolManager) -> DisasmOperand {
+    let address = pc as u16 + offset_word as u16;
+    let address = (pb as u32) << 16 | address as u32;
+    
+    if options.show_symbols {
+        if let Some(label) = symbols.get_address_label(address) {
+            return DisasmOperand {
+                text: label.to_string(),
+                kind: DisasmOperandKind::LabeledAddress { addr: address },
+            }
+        }
+    }
 
+    if options.show_rel_addr_dest {
         return DisasmOperand {
-            value: address,
             text: format!("${:04X}", address & 0xFFFF),
-            kind: DisasmOperandKind::Address
+            kind: DisasmOperandKind::Address { addr: address },
         };
     }
     
     DisasmOperand {
-        value: offset_word as u32,
         text: format!("#${:04X}", offset_word as u16),
         kind: DisasmOperandKind::Number,
     }
 }
 
-fn disassemble(prg_bytes: &[u8; 4], state: &ExecuteState, options: &DisassemblyOptions) -> DisasmLine {
+fn disassemble(
+    prg_bytes: &[u8; 4],
+    state: &ExecuteState,
+    options: &DisassemblyOptions,
+    symbols: &SymbolManager,
+) -> DisasmLine {
     let dp = state.dp;
     let flag_x = state.flag_x;
     let flag_m = state.flag_m;
@@ -690,83 +695,81 @@ fn disassemble(prg_bytes: &[u8; 4], state: &ExecuteState, options: &DisassemblyO
         AddressingMode::ImmediateM           => Some(format_immediate16(arg16)),
         AddressingMode::ImmediateX if flag_x => Some(format_immediate8(arg8)),
         AddressingMode::ImmediateX           => Some(format_immediate16(arg16)),
-        AddressingMode::Relative8  => Some(format_rel8(state.addr.bank, state.addr.offset + 2, arg8, options)),
-        AddressingMode::Relative16 => Some(format_rel16(state.addr.bank, state.addr.offset + 2, arg16, options)),
-        AddressingMode::Direct  => Some(format_direct(dp, prg_bytes[1], options)),
+        AddressingMode::Relative8  => Some(format_rel8(state.addr.bank, state.addr.offset + 2, arg8, options, symbols)),
+        AddressingMode::Relative16 => Some(format_rel16(state.addr.bank, state.addr.offset + 2, arg16, options, symbols)),
+        AddressingMode::Direct  => Some(format_direct(dp, arg8, options, symbols)),
         AddressingMode::DirectX => {
-            let mut operand = format_direct(dp, arg8, options);
+            let mut operand = format_direct(dp, arg8, options, symbols);
             operand.text = format!("{},X", operand.text);
             Some(operand)
         },
         AddressingMode::DirectY => {
-            let mut operand = format_direct(dp, arg8, options);
+            let mut operand = format_direct(dp, arg8, options, symbols);
             operand.text = format!("{},Y", operand.text);
             Some(operand)
         },
         AddressingMode::DirectIndirect      => {
-            let mut operand = format_direct(dp, arg8, options);
+            let mut operand = format_direct(dp, arg8, options, symbols);
             operand.text = format!("({})", operand.text);
             Some(operand)
         },
         AddressingMode::DirectIndirectLong  => {
-            let mut operand = format_direct(dp, arg8, options);
+            let mut operand = format_direct(dp, arg8, options, symbols);
             operand.text = format!("[{}]", operand.text);
             Some(operand)
         },
         AddressingMode::DirectXIndirect     => {
-            let mut operand = format_direct(dp, arg8, options);
+            let mut operand = format_direct(dp, arg8, options, symbols);
             operand.text = format!("({},X)", operand.text);
             Some(operand)
         },
         AddressingMode::DirectIndirectY     => {
-            let mut operand = format_direct(dp, arg8, options);
+            let mut operand = format_direct(dp, arg8, options, symbols);
             operand.text = format!("({}),Y", operand.text);
             Some(operand)
         },
         AddressingMode::DirectIndirectLongY => {
-            let mut operand = format_direct(dp, arg8, options);
+            let mut operand = format_direct(dp, arg8, options, symbols);
             operand.text = format!("[{}],Y", operand.text);
             Some(operand)
         },
-        AddressingMode::Absolute  => Some(format_absolute(arg16, options)),
+        AddressingMode::Absolute  => Some(format_absolute(arg16 as u32, options, symbols)),
         AddressingMode::AbsoluteX => {
-            let mut operand = format_absolute(arg16, options);
+            let mut operand = format_absolute(arg16 as u32, options, symbols);
             operand.text = format!("{},X", operand.text);
             Some(operand)
         },
         AddressingMode::AbsoluteY => {
-            let mut operand = format_absolute(arg16, options);
+            let mut operand = format_absolute(arg16 as u32, options, symbols);
             operand.text = format!("{},Y", operand.text);
             Some(operand)
         },
-        AddressingMode::Long  => Some(format_absolute_long(arg24, options)),
+        AddressingMode::Long  => Some(format_absolute_long(arg24, options, symbols)),
         AddressingMode::LongX => {
-            let mut operand = format_absolute_long(arg24, options);
+            let mut operand = format_absolute_long(arg24, options, symbols);
             operand.text = format!("{},X", operand.text);
             Some(operand)
         }
         AddressingMode::AbsoluteIndirect  => {
-            let mut operand = format_absolute(arg16, options);
+            let mut operand = format_absolute(arg16 as u32, options, symbols);
             operand.text = format!("({})", operand.text);
             Some(operand)
         }
         AddressingMode::LongIndirect      => {
-            let mut operand = format_absolute(arg16, options);
+            let mut operand = format_absolute(arg16 as u32, options, symbols);
             operand.text = format!("[{}]", operand.text);
             Some(operand)
         }
         AddressingMode::AbsoluteXIndirect => {
-            let mut operand = format_absolute(arg16, options);
+            let mut operand = format_absolute(arg16 as u32, options, symbols);
             operand.text = format!("({},X)", operand.text);
             Some(operand)
         }
         AddressingMode::StackRelative => Some(DisasmOperand {
-            value: 0,
             text: format!("${:02X},S", arg8),
             kind: DisasmOperandKind::Number,
         }),
         AddressingMode::StackRelativeIndirectY => Some(DisasmOperand {
-            value: 0,
             text: format!("(${:02X},S),Y", arg8),
             kind: DisasmOperandKind::Number,
         }),
@@ -775,7 +778,6 @@ fn disassemble(prg_bytes: &[u8; 4], state: &ExecuteState, options: &DisassemblyO
             let src = prg_bytes[2];
 
             Some(DisasmOperand {
-                value: 0,
                 text: format!("${:02X},${:02X}", src, dst),
                 kind: DisasmOperandKind::Number,
             })
@@ -827,7 +829,12 @@ fn disassemble(prg_bytes: &[u8; 4], state: &ExecuteState, options: &DisassemblyO
     disasm_line
 }
 
-pub fn disassemble_forward(core: &Snemulator, options: &DisassemblyOptions, start_addr: u32) -> Vec<DisasmLine> {
+pub fn disassemble_forward(
+    core: &Snemulator,
+    options: &DisassemblyOptions,
+    symbols: &SymbolManager,
+    start_addr: u32,
+) -> Vec<DisasmLine> {
     let mut disassembly = Vec::new();
     let mut addr = scpu::Address::from_u32(start_addr);
     
@@ -866,7 +873,8 @@ pub fn disassemble_forward(core: &Snemulator, options: &DisassemblyOptions, star
         let disasm_line = disassemble(
             &[b0, b1, b2, b3],
             &state,
-            options
+            options,
+            symbols,
         );
         
         addr = scpu::Address::from_u32(addr.to_u32() + disasm_line.bytes.len() as u32);
