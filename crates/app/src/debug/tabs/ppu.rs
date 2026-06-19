@@ -37,9 +37,9 @@ pub struct PpuTab {
     bg2_viewer: layers::BgDebugView<1>,
     bg3_viewer: layers::BgDebugView<2>,
     bg4_viewer: layers::BgDebugView<3>,
+    bg_view_settings: layers::BgDebugViewSettings,
     // obj_viewer: layers::LayerView,
     selected_tab: PpuSubTab,
-    bg_zoom: f32,
 }
 
 impl PpuTab {
@@ -50,10 +50,10 @@ impl PpuTab {
             bg2_viewer: layers::BgDebugView::new(),
             bg3_viewer: layers::BgDebugView::new(),
             bg4_viewer: layers::BgDebugView::new(),
+            bg_view_settings: layers::BgDebugViewSettings { zoom: 1.0, show_viewport: true },
             // obj_viewer: layers::LayerView::new(painter),
             // layer_viewer: layers::LayerViewer::new(painter),
             selected_tab: PpuSubTab::Chr,
-            bg_zoom: 1.0,
         }
     }
     
@@ -80,31 +80,23 @@ impl PpuTab {
                 // PpuSubTab::Chr => self.chr_viewer.render(ui, core),
                 PpuSubTab::Bg1 => {
                     self.bg1_viewer.update(core, harness);
-                    self.bg1_viewer.render(ui, core, app_theme);
-                    self.sync_bg_zooms(self.bg1_viewer.zoom);
+                    self.bg1_viewer.render(ui, core, app_theme, &mut self.bg_view_settings);
                 }
                 PpuSubTab::Bg2 => {
                     self.bg2_viewer.update(core, harness);
-                    self.bg2_viewer.render(ui, core, app_theme);
+                    self.bg2_viewer.render(ui, core, app_theme, &mut self.bg_view_settings);
                 }
                 PpuSubTab::Bg3 => {
                     self.bg3_viewer.update(core, harness);
-                    self.bg3_viewer.render(ui, core, app_theme);
+                    self.bg3_viewer.render(ui, core, app_theme, &mut self.bg_view_settings);
                 }
                 PpuSubTab::Bg4 => {
                     self.bg4_viewer.update(core, harness);
-                    self.bg4_viewer.render(ui, core, app_theme);
+                    self.bg4_viewer.render(ui, core, app_theme, &mut self.bg_view_settings);
                 }
                 // PpuSubTab::Obj => self.obj_viewer.render(ui, &core.probe.as_ref().unwrap().layer_buffers.obj[..]),
                 _ => {}
             }
         });
-    }
-
-    fn sync_bg_zooms(&mut self, zoom: f32) {
-        self.bg1_viewer.zoom = zoom;
-        self.bg2_viewer.zoom = zoom;
-        self.bg3_viewer.zoom = zoom;
-        self.bg4_viewer.zoom = zoom;
     }
 }

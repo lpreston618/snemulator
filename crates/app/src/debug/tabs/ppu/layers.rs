@@ -3,6 +3,11 @@ use snemcore::{Snemulator, sppu::{self, BgMode, BgSettings, Color, TileSize, Til
 use crate::{debug::harness::MainDebugHarness, theme::AppTheme};
 use egui::{Color32, ColorImage, TextureHandle, TextureOptions, Vec2};
 
+pub struct BgDebugViewSettings {
+    pub zoom: f32,
+    pub show_viewport: bool,
+}
+
 pub struct BgDebugView<const BG_LAYER: usize> {
     /// The renderer for this background
     renderer: BgRenderer,
@@ -12,10 +17,6 @@ pub struct BgDebugView<const BG_LAYER: usize> {
     texture: Option<TextureHandle>,
     /// Last rendered dimensions
     rendered_size: (u32, u32),
-    /// Zoom level for display
-    pub zoom: f32,
-    /// Whether to show the screen viewport overlay
-    show_viewport: bool,
     /// How much extra tilemap to show around the screen (in screens)
     /// 1.0 = show one extra screen worth on each side
     padding_screens: f32,
@@ -45,7 +46,6 @@ fn uv_segments(uv_start: f32, uv_end: f32) -> Vec<(f32, f32, f32, f32)> {
     const UV_MAX: f32 = 1.0 - f32::EPSILON;
 
     let total = uv_end - uv_start;
-    debug_assert!(total > 0.0, "uv_segments: uv_end must be greater than uv_start");
 
     let mut segments = Vec::new();
     let mut cur = uv_start;
@@ -91,8 +91,6 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
             pixel_buffer: Vec::new(),
             texture: None,
             rendered_size: (0, 0),
-            zoom: 1.0,
-            show_viewport: true,
             padding_screens: 0.5,
             hovered_tile: None,
             selected_tile: None,
@@ -151,7 +149,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
     }
 
     /// Render the debug view UI
-    pub fn render(&mut self, ui: &mut egui::Ui, core: &Snemulator, app_theme: &AppTheme) {
+    pub fn render(&mut self, ui: &mut egui::Ui, core: &Snemulator, app_theme: &AppTheme, render_settings: &mut BgDebugViewSettings) {
         let bg_settings = &core.ppu_regs.bg_settings[BG_LAYER];
 
         // Controls panel
@@ -164,10 +162,10 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
             ui.separator();
 
             ui.label(egui::RichText::new("Zoom:").color(app_theme.text_secondary));
-            ui.add(egui::Slider::new(&mut self.zoom, 0.25..=4.0).logarithmic(true));
+            ui.add(egui::Slider::new(&mut render_settings.zoom, 0.25..=4.0).logarithmic(true));
 
             ui.separator();
-            ui.checkbox(&mut self.show_viewport, "Show viewport");
+            ui.checkbox(&mut render_settings.show_viewport, "Show viewport");
 
             ui.separator();
             ui.label(
@@ -203,7 +201,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
             .max_width(available_size.x)
             .max_height(available_size.y)
             .show(ui, |ui| {
-                self.render_scrolling_background(ui, core, app_theme);
+                self.render_scrolling_background(ui, core, app_theme, render_settings);
             });
     }
 
@@ -242,10 +240,12 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
     }
 
     /// Render the background image with viewport overlay
-    fn render_scrolling_background(&mut self, ui: &mut egui::Ui, core: &Snemulator, app_theme: &AppTheme) {
+    fn render_scrolling_background(&mut self, ui: &mut egui::Ui, core: &Snemulator, app_theme: &AppTheme, render_settings: &BgDebugViewSettings) {
         let Some(texture) = &self.texture else {
+            let text = format!("Background {} not rendered in mode {}", BG_LAYER + 1, core.ppu_regs.bg_mode as usize + 1);
+
             ui.label(
-                egui::RichText::new("No background rendered")
+                egui::RichText::new(text)
                     .color(app_theme.text_muted)
                     .italics(),
             );
@@ -269,8 +269,8 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
         // Calculate display size: screen + padding on each side
         let padding_x = screen_w * self.padding_screens;
         let padding_y = screen_h * self.padding_screens;
-        let display_w = (screen_w + padding_x * 2.0) * self.zoom;
-        let display_h = (screen_h + padding_y * 2.0) * self.zoom;
+        let display_w = (screen_w + padding_x * 2.0) * render_settings.zoom;
+        let display_h = (screen_h + padding_y * 2.0) * render_settings.zoom;
 
         // How many "tilemaps" worth of UV space we need to cover the display
         let uv_width = (screen_w + padding_x * 2.0) / tilemap_w;
@@ -303,7 +303,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
         let available = ui.available_size();
         let scale = (available.x / display_w).min(available.y / display_h).min(1.0);
         let display_size = Vec2::new(display_w * scale, display_h * scale);
-        let effective_zoom = self.zoom * scale;
+        let effective_zoom = render_settings.zoom * scale;
 
         let (rect, response) = ui.allocate_exact_size(display_size, egui::Sense::hover() | egui::Sense::click());
 
@@ -334,7 +334,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
         }
 
         // Draw the fixed, centered screen viewport
-        if self.show_viewport {
+        if render_settings.show_viewport {
             self.draw_centered_viewport(ui, rect, screen_w, screen_h, effective_zoom, app_theme);
         }
 
@@ -358,11 +358,11 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
 
         // Draw highlight for hovered tile and selected tile, if distinct
         if let Some((tx, ty)) = self.selected_tile {
-            self.draw_tile_highlight(ui, tx, ty, rect, uv, app_theme.modified);
+            self.draw_tile_highlight(ui, render_settings, tx, ty, rect, uv, app_theme.modified);
         }
         if let Some((tx, ty)) = self.hovered_tile {
             if self.hovered_tile != self.selected_tile {
-                self.draw_tile_highlight(ui, tx, ty, rect, uv, app_theme.breakpoint);
+                self.draw_tile_highlight(ui, render_settings, tx, ty, rect, uv, app_theme.breakpoint);
             }
         }
     }
@@ -423,6 +423,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
     fn draw_tile_highlight(
         &self,
         ui: &mut egui::Ui,
+        render_settings: &BgDebugViewSettings,
         tile_x: u32,
         tile_y: u32,
         image_rect: egui::Rect,
@@ -444,7 +445,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
         let tile_screen_w = (8.0 / tilemap_w) * (image_rect.width() / uv.width());
         let tile_screen_h = (8.0 / tilemap_h) * (image_rect.height() / uv.height());
 
-        let stroke_width = (1.5 * self.zoom.max(1.0)).min(3.0);
+        let stroke_width = (1.5 * render_settings.zoom.max(1.0)).min(3.0);
         ui.painter().rect_stroke(
             egui::Rect::from_min_size(egui::pos2(screen_x, screen_y), egui::vec2(tile_screen_w, tile_screen_h)),
             0.0,

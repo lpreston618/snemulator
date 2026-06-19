@@ -86,7 +86,7 @@ macro_rules! ppu_bus {
             cpu_regs: &mut $core.cpu_regs,
             $frame_buffer,
             frame_ready: &mut $core.frame_ready,
-            interrupt: &mut $core.cpu_interrupt,
+            cpu_nmi_pending: &mut $core.cpu.nmi_pending,
 
             harness: $harness,
             vblank_start: &mut $vblank_start,
@@ -416,7 +416,6 @@ impl Snemulator {
         }
 
         match self.cpu_interrupt {
-            Some(CpuInterrupt::IRQ) => self.cpu.irq_pending = true,
             Some(CpuInterrupt::NMI) => self.cpu.nmi_pending = true,
             _ => {}
         }

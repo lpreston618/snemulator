@@ -13,22 +13,12 @@ pub struct PpuBus<'a, H: DebugHarness> {
     pub cpu_regs: &'a mut CpuIoRegs,
     pub frame_buffer: &'a mut [u8],
     pub frame_ready: &'a mut bool,
-    pub interrupt: &'a mut Option<CpuInterrupt>,
+    pub cpu_nmi_pending: &'a mut bool,
 
     pub harness: &'a mut H,
     pub vblank_start: &'a mut bool,
     pub vblank_end: &'a mut bool,
     pub hblank_start: &'a mut bool,
     pub hblank_end: &'a mut bool,
-}
-
-impl<'a, H: DebugHarness> PpuBus<'a, H> {
-    pub fn trigger_interrupt(&mut self, interrupt: CpuInterrupt) {
-        *self.interrupt = Some(interrupt);
-    }
-    
-    pub fn set_frame_finished(&mut self) {
-        *self.frame_ready = true;
-    }
 }
 

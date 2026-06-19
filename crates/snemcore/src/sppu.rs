@@ -1306,11 +1306,11 @@ impl Ppu5C7x {
 
             if cpu_regs.vblank_nmi_en {
                 cpu_regs.vblank_nmi_flag = true;
-                bus.trigger_interrupt(CpuInterrupt::NMI);
+                *bus.cpu_nmi_pending = true;
             }
 
             self.frame += 1;
-            bus.set_frame_finished();
+            *bus.frame_ready = true;
         }
     }
 
@@ -1335,7 +1335,6 @@ impl Ppu5C7x {
 
         if trigger_int {
             cpu_regs.hv_timer_irq_flag = true;
-            bus.trigger_interrupt(CpuInterrupt::IRQ);
         }
     }
 

@@ -47,7 +47,6 @@ pub struct Cpu65c816 {
     pub halted: bool,
     pub stopped: bool,
     pub waiting_for_interrupt: bool,
-    pub irq_pending: bool,
     pub nmi_pending: bool,
 
     /// The number of clocks before the next instruction is executed
@@ -83,7 +82,6 @@ impl Cpu65c816 {
             // Internal state
             halted: false,
             waiting_for_interrupt: false,
-            irq_pending: false,
             nmi_pending: false,
 
             // Cycle tracking
@@ -109,7 +107,6 @@ impl Cpu65c816 {
         self.e = true;
         self.halted = false;
         self.waiting_for_interrupt = false;
-        self.irq_pending = false;
         self.nmi_pending = false;
         self.stopped = false;
         self.handle_interrupt(bus, CpuInterrupt::Reset);
@@ -117,7 +114,6 @@ impl Cpu65c816 {
 
     pub fn reset<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
         self.stopped = false;
-        self.irq_pending = false;
         self.nmi_pending = false;
         self.waiting_for_interrupt = false;
         self.handle_interrupt(bus, CpuInterrupt::Reset);
@@ -136,7 +132,7 @@ impl Cpu65c816 {
             return;
         }
 
-        if self.irq_pending && !self.is_flag_set(Flag::FlagI) {
+        if bus.cpu_regs.hv_timer_irq_flag && !self.is_flag_set(Flag::FlagI) {
             self.handle_interrupt(bus, CpuInterrupt::IRQ);
             self.waiting_for_interrupt = false;
             return;
