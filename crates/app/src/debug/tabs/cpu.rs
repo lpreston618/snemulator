@@ -588,7 +588,7 @@ impl CpuTab {
 
         ui.horizontal(|ui| {
             let mut irq_pending = core.cpu_regs.hv_timer_irq_flag;
-            let mut nmi_pending = core.cpu.nmi_pending;
+            let mut nmi_pending = core.cpu_regs.nmi_pending;
 
             ui.add_enabled(false,
                 egui::Checkbox::new(&mut irq_pending, "IRQ Pending")

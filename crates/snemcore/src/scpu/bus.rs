@@ -577,12 +577,12 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
             0x420E..=0x420F => 0, // Open bus
 
             0x4210 => {
-                let vblank_nmi = if cpu_regs.vblank_flag { 0x80 } else { 0 };
+                let vblank_nmi = if cpu_regs.vblank_nmi_flag { 0x80 } else { 0 };
                 let cpu_version = 0x02;
 
                 cpu_regs.vblank_nmi_flag = false;
 
-                vblank_nmi | cpu_version
+                vblank_nmi | cpu_version | 0x40
             }
 
             0x4211 => {

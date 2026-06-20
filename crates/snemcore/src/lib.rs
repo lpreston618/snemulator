@@ -86,7 +86,6 @@ macro_rules! ppu_bus {
             cpu_regs: &mut $core.cpu_regs,
             $frame_buffer,
             frame_ready: &mut $core.frame_ready,
-            cpu_nmi_pending: &mut $core.cpu.nmi_pending,
 
             harness: $harness,
             vblank_start: &mut $vblank_start,
@@ -413,11 +412,6 @@ impl Snemulator {
             } else if hblank_end_flag {
                 harness.on_hblank_end(self);
             }
-        }
-
-        match self.cpu_interrupt {
-            Some(CpuInterrupt::NMI) => self.cpu.nmi_pending = true,
-            _ => {}
         }
 
         if self.dma.hdma_pending

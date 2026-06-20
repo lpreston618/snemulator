@@ -12,7 +12,6 @@ pub struct PpuBus<'a, H: DebugHarness> {
     pub cpu_regs: &'a mut CpuIoRegs,
     pub frame_buffer: &'a mut [u8],
     pub frame_ready: &'a mut bool,
-    pub cpu_nmi_pending: &'a mut bool,
 
     pub harness: &'a mut H,
     pub vblank_start: &'a mut bool,

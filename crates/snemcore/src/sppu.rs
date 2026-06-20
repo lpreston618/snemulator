@@ -1301,11 +1301,11 @@ impl Ppu5C7x {
         // Start of v-blank
         if self.dot == 0 && self.scanline == VBLANK_START_SCANLINE {
             cpu_regs.vblank_flag = true;
+            cpu_regs.vblank_nmi_flag = true;
             *bus.vblank_start = true;
 
             if cpu_regs.vblank_nmi_en {
-                cpu_regs.vblank_nmi_flag = true;
-                *bus.cpu_nmi_pending = true;
+                bus.cpu_regs.nmi_pending = true;
             }
 
             self.frame += 1;

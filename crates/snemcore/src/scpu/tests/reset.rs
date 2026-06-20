@@ -119,14 +119,12 @@ fn test_reset_clears_internal_flags() {
     let mut harness = NullHarness {};
     let (mut cpu, mut backing) = mk_cpu_and_backing(0x8000);
     cpu.stopped = true;
-    cpu.nmi_pending = true;
     cpu.waiting_for_interrupt = true;
     {
         let mut bus = backing.bus(&mut harness);
         cpu.reset(&mut bus);
     }
     assert!(!cpu.stopped);
-    assert!(!cpu.nmi_pending);
     assert!(!cpu.waiting_for_interrupt);
 }
 

@@ -65,6 +65,8 @@ pub struct CpuIoRegs {
 
     // $4216-$4217
     pub mult_result: u16, // Also the division remainder
+
+    pub nmi_pending: bool,
 }
 
 impl CpuIoRegs {
@@ -85,6 +87,7 @@ impl CpuIoRegs {
         self.vblank_flag = false;
         self.hblank_flag = true;
         self.hv_timer_irq_flag = false;
+        self.nmi_pending = false;
         self.div_quotient = 0;
         self.mult_result = 0;
     }
@@ -96,6 +99,7 @@ impl CpuIoRegs {
         self.vblank_flag = false;
         self.hblank_flag = true;
         self.hv_timer_irq_flag = false;
+        self.nmi_pending = false;
     }
 
     pub fn write_2181(&mut self, value: u8) {
@@ -115,6 +119,8 @@ impl CpuIoRegs {
     }
 
     pub fn write_4200(&mut self, value: u8) {
+        let old_nmi_en = self.vblank_nmi_en;
+
         self.vblank_nmi_en = get_bit_n!(value, 7);
         self.joypad_autoread_en = get_bit_n!(value, 0);
 
@@ -125,6 +131,10 @@ impl CpuIoRegs {
             3 => HVTimerIRQ::Both,
             _ => unreachable!(),
         };
+
+        if self.vblank_nmi_en && !old_nmi_en && self.vblank_nmi_flag {
+            self.nmi_pending = true;
+        }
     }
 
     pub fn write_4201(&mut self, value: u8) {
