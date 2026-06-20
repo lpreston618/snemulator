@@ -20,8 +20,8 @@ pub const ENVELOPE_HISTORY_LEN: usize = 256;
 
 #[derive(Clone, Copy)]
 pub enum StopCondition {
-    AnyCpuCycle,
-    Instruction,
+    AnyScpuCycle,
+    ScpuInstruction,
     Interrupt,
     Frame,
     StepOverSubroutine { depth: usize },
@@ -29,6 +29,8 @@ pub enum StopCondition {
     DmaEnd { ch: u8 },
     HdmaStart { ch: u8 },
     HdmaEnd { ch: u8 },
+    SampleGenerated,
+    SpcInstruction,
 }
 
 pub struct MainDebugHarness {
@@ -77,7 +79,7 @@ impl DebugHarness for MainDebugHarness {
         _dst_addr: snemcore::scpu::Address,
         _value: u8
     ) {
-        if matches!(self.stop_condition, Some(StopCondition::AnyCpuCycle)) {
+        if matches!(self.stop_condition, Some(StopCondition::AnyScpuCycle)) {
             self.stop_emulation = true;
         }
     }
@@ -109,6 +111,10 @@ impl DebugHarness for MainDebugHarness {
     }
 
     fn on_sample_generated(&mut self, ssmp: &mut snemcore::ssmp::Ssmp) {
+        if matches!(self.stop_condition, Some(StopCondition::SampleGenerated)) {
+            self.stop_emulation = true;
+        }
+
         let left_sample  = ssmp.sdsp.last_generated_left;
         let right_sample = ssmp.sdsp.last_generated_right;
 
@@ -142,7 +148,7 @@ impl DebugHarness for MainDebugHarness {
 
         if let Some(stop_cond) = self.stop_condition {
             match stop_cond {
-                StopCondition::Instruction | StopCondition::AnyCpuCycle => self.stop_emulation = true,
+                StopCondition::ScpuInstruction | StopCondition::AnyScpuCycle => self.stop_emulation = true,
                 StopCondition::StepOverSubroutine { depth } => {
                     let opcode = prg_bytes[0];
 

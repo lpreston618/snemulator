@@ -21,6 +21,7 @@ enum DebugTab {
     Ppu,
     Sdsp,
     Audio,
+    Brr,
 }
 
 impl DebugTab {
@@ -32,6 +33,7 @@ impl DebugTab {
             DebugTab::Ppu => "PPU",
             DebugTab::Sdsp => "S-DSP",
             DebugTab::Audio => "Audio",
+            DebugTab::Brr => "BRR",
         }
     }
 
@@ -43,6 +45,7 @@ impl DebugTab {
             DebugTab::Ppu,
             DebugTab::Sdsp,
             DebugTab::Audio,
+            DebugTab::Brr,
         ]
     }
 }
@@ -63,6 +66,7 @@ pub struct DebugWindow {
     ppu_tab: Box<tabs::ppu::PpuTab>,
     sdsp_tab: Box<tabs::ssmp::sdsp::SdspTab>,
     audio_tab: Box<tabs::ssmp::audio::SdspAudioTab>,
+    brr_tab: Box<tabs::ssmp::brr::SdspBrrTab>,
     // wp_tab: Box<tabs::WatchpointsTab>,
     selected_tab: DebugTab,
     // jump_to_bps_on_hit: bool,
@@ -84,6 +88,7 @@ impl DebugWindow {
             ppu_tab: Box::new(tabs::ppu::PpuTab::new()),
             sdsp_tab: Box::new(tabs::ssmp::sdsp::SdspTab::new()),
             audio_tab: Box::new(tabs::ssmp::audio::SdspAudioTab::new()),
+            brr_tab: Box::new(tabs::ssmp::brr::SdspBrrTab::new()),
             // wp_tab: Box::new(tabs::WatchpointsTab::new()),
             selected_tab: DebugTab::Cpu,
             // jump_to_bps_on_hit: true,
@@ -136,6 +141,7 @@ impl DebugWindow {
                     DebugTab::Ppu => self.ppu_tab.render(ui, core, harness, app_theme),
                     DebugTab::Sdsp => self.sdsp_tab.render(ui, core, harness, app_theme),
                     DebugTab::Audio => self.audio_tab.render(ui, harness, audio_stream, app_state, app_theme),
+                    DebugTab::Brr => self.brr_tab.render(ui, core, app_theme),
                     // DebugTab::Watchpoints => {
                     //     self.wp_tab.render(ui, core, app_state)
                     // }
@@ -315,10 +321,23 @@ impl DebugWindow {
                     debug_action = Some(DebugAction::TogglePause);
                 }
 
+                let (single_step_text, single_step_stop_cond) = match self.selected_tab {
+                    DebugTab::Brr => ("Next Sample", StopCondition::SampleGenerated),
+                    _ => ("Single Step", StopCondition::AnyScpuCycle),
+                };
+
+                if ui.add_enabled_ui(app_state.is_paused, |ui| {
+                        ui.icon_button(icons::SINGLE_STEP, app_theme)
+                    }).inner
+                    .on_hover_text(single_step_text)
+                    .clicked() {
+                    debug_action = Some(DebugAction::TogglePause);
+                    harness.stop_condition = Some(single_step_stop_cond);
+                }
+
                 for (icon, text, stop_cond) in [
-                    (icons::SINGLE_STEP, "Single Step", StopCondition::AnyCpuCycle),
                     (icons::STEP_OVER, "Step Over", StopCondition::StepOverSubroutine { depth: 0 }),
-                    (icons::STEP_INTO, "Step Into", StopCondition::Instruction),
+                    (icons::STEP_INTO, "Step Into", StopCondition::ScpuInstruction),
                     (icons::STEP_OUT, "Step Out", StopCondition::StepOverSubroutine { depth: 1 }),
                     (icons::RUN_FRAME, "Run Frame", StopCondition::Frame),
                     (icons::RUN_UNTIL_INTERRUPT, "Run Until Interrupt", StopCondition::Interrupt),
