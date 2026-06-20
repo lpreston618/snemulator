@@ -545,7 +545,7 @@ fn format_absolute(addr: u32, options: &DisassemblyOptions, symbols: &SymbolMana
     }
 
     DisasmOperand {
-        text: format!("${:04X}", addr),
+        text: format!("${:04X}", addr as u16),
         kind: DisasmOperandKind::Address { addr },
     }
 }
@@ -559,7 +559,7 @@ fn format_immediate8(byte: u8) -> DisasmOperand {
 
 fn format_immediate16(word: u16) -> DisasmOperand {
     DisasmOperand {
-        text: format!("#${:06X}", word),
+        text: format!("#${:04X}", word),
         kind: DisasmOperandKind::Number,
     }
 }
