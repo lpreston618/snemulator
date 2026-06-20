@@ -699,6 +699,10 @@ impl SnemulatorApp {
                 log::error!("failed to clear audio stream: {}", e);
             }
 
+            if let Some(debug_window) = &mut self.debug_window {
+                debug_window.resume();
+            }
+
             log::trace!("Resumed emulation");
         }
     }

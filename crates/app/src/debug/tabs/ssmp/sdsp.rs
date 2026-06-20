@@ -1,7 +1,7 @@
 use egui::text::LayoutJob;
 use egui::{Color32, FontId, Pos2, Rect, Stroke, Vec2};
 
-use crate::debug::harness::MainDebugHarness;
+use crate::debug::harness::{ENVELOPE_HISTORY_LEN, MainDebugHarness};
 use crate::theme::AppTheme;
 use snemcore::Snemulator;
 use snemcore::ssmp::sdsp::{GainMode, ADSRStage};
@@ -9,36 +9,22 @@ use super::{append, detail_heading, detail_row, fmt_bool, fmt_hex_u8, fmt_hex_u1
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const ENVELOPE_HISTORY_LEN: usize = 256;
 const ENVELOPE_PAINTER_HEIGHT: f32 = 40.0;
 
 // ─── Struct ───────────────────────────────────────────────────────────────────
 
 pub struct SdspTab {
     voice_open: [bool; 8],
-    /// Per-voice ring buffer of recent envelope values for the live ADSR painter.
-    envelope_history: [[i16; ENVELOPE_HISTORY_LEN]; 8],
-    envelope_history_head: [usize; 8],
 }
 
 impl SdspTab {
     pub fn new() -> Self {
         Self {
             voice_open: [false; 8],
-            envelope_history: [[0i16; ENVELOPE_HISTORY_LEN]; 8],
-            envelope_history_head: [0; 8],
         }
     }
 
     pub fn render(&mut self, ui: &mut egui::Ui, core: &mut Snemulator, harness: &mut MainDebugHarness, app_theme: &AppTheme) {
-        // Push envelope samples before borrowing regs for rendering.
-        for v in 0..8usize {
-            let env = core.ssmp.voice_regs[v].envelope;
-            let head = &mut self.envelope_history_head[v];
-            self.envelope_history[v][*head] = env;
-            *head = (*head + 1) % ENVELOPE_HISTORY_LEN;
-        }
-
         let regs = &core.ssmp.sdsp_regs;
         let voice_regs = &core.ssmp.voice_regs;
 
@@ -110,7 +96,7 @@ impl SdspTab {
                     .id_salt(format!("sdsp_voice_{v}"))
                     .open(Some(self.voice_open[v]))
                     .show(ui, |ui| {
-                        self.render_voice_detail(ui, app_theme, v, vr);
+                        self.render_voice_detail(ui, harness, app_theme, v, vr);
                     });
 
                 if resp.header_response.clicked() {
@@ -173,6 +159,7 @@ impl SdspTab {
     fn render_voice_detail(
         &self,
         ui: &mut egui::Ui,
+        harness: &MainDebugHarness,
         app_theme: &AppTheme,
         v: usize,
         vr: &snemcore::ssmp::sdsp::voices::VoiceRegs,
@@ -232,28 +219,26 @@ impl SdspTab {
 
         // ── Envelope history painter ─────────────────────────────────────────
         let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), ENVELOPE_PAINTER_HEIGHT));
-        self.paint_envelope(ui, app_theme, v, rect);
+        self.paint_envelope(ui, harness, app_theme, v, rect);
 
         ui.add_space(4.0);
     }
 
     // ── Envelope painter ──────────────────────────────────────────────────────
 
-    fn paint_envelope(&self, ui: &egui::Ui, app_theme: &AppTheme, v: usize, rect: Rect) {
+    fn paint_envelope(&self, ui: &egui::Ui, harness: &MainDebugHarness, app_theme: &AppTheme, v: usize, rect: Rect) {
         let painter = ui.painter_at(rect);
 
         // Background
         painter.rect_filled(rect, app_theme.corner_radius as f32, app_theme.bg_tertiary);
 
-        let history = &self.envelope_history[v];
-        let head = self.envelope_history_head[v];
+        let history = &harness.envelope_history[v];
         let w = rect.width();
         let h = rect.height();
 
-        // Build chronological sample slice
-        let points: Vec<Pos2> = (0..ENVELOPE_HISTORY_LEN)
-            .map(|i| {
-                let sample = history[(head + i) % ENVELOPE_HISTORY_LEN];
+        let points: Vec<Pos2> = history.iter_chronological()
+            .enumerate()
+            .map(|(i, sample)| {
                 // envelope is i16 in range 0..=0x7FF (2047)
                 let norm = (sample as f32 / 2047.0).clamp(0.0, 1.0);
                 let x = rect.left() + (i as f32 / (ENVELOPE_HISTORY_LEN - 1) as f32) * w;

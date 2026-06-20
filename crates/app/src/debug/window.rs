@@ -61,7 +61,7 @@ pub struct DebugWindow {
     dma_tab: Box<tabs::dma::DmaTab>,
     mem_tab: Box<tabs::mem::MemoryTab>,
     ppu_tab: Box<tabs::ppu::PpuTab>,
-    sdsp_tab: Box<tabs::ssmp::state::SdspTab>,
+    sdsp_tab: Box<tabs::ssmp::sdsp::SdspTab>,
     audio_tab: Box<tabs::ssmp::audio::SdspAudioTab>,
     // wp_tab: Box<tabs::WatchpointsTab>,
     selected_tab: DebugTab,
@@ -82,7 +82,7 @@ impl DebugWindow {
             dma_tab: Box::new(tabs::dma::DmaTab::new()),
             mem_tab: Box::new(tabs::mem::MemoryTab::new()),
             ppu_tab: Box::new(tabs::ppu::PpuTab::new()),
-            sdsp_tab: Box::new(tabs::ssmp::state::SdspTab::new()),
+            sdsp_tab: Box::new(tabs::ssmp::sdsp::SdspTab::new()),
             audio_tab: Box::new(tabs::ssmp::audio::SdspAudioTab::new()),
             // wp_tab: Box::new(tabs::WatchpointsTab::new()),
             selected_tab: DebugTab::Cpu,
@@ -94,6 +94,10 @@ impl DebugWindow {
         debug_window.egui_window = Some(Box::new(egui_window));
 
         Ok(debug_window)
+    }
+
+    pub fn resume(&mut self) {
+        self.audio_tab.playing_voice = None;
     }
 
     pub fn set_theme(&mut self, app_theme: &AppTheme) {
@@ -131,7 +135,7 @@ impl DebugWindow {
                     DebugTab::Memory => self.mem_tab.render(ui, core, app_theme),
                     DebugTab::Ppu => self.ppu_tab.render(ui, core, harness, app_theme),
                     DebugTab::Sdsp => self.sdsp_tab.render(ui, core, harness, app_theme),
-                    DebugTab::Audio => self.audio_tab.render(ui, core, harness, audio_stream, app_theme),
+                    DebugTab::Audio => self.audio_tab.render(ui, harness, audio_stream, app_state, app_theme),
                     // DebugTab::Watchpoints => {
                     //     self.wp_tab.render(ui, core, app_state)
                     // }

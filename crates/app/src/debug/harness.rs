@@ -12,8 +12,11 @@ const JSR_INDIRECT_OPCODE: u8 = 0xFC;
 const RTS_OPCODE: u8 = 0x60;
 const RTL_OPCODE: u8 = 0x68;
 
+pub const DSP_SAMPLE_RATE: usize = 32_000;
+pub const SAMPLE_HISTORY_SECONDS: f32 = 10.0;
+pub const SAMPLE_HISTORY_LEN: usize = (SAMPLE_HISTORY_SECONDS as usize) * DSP_SAMPLE_RATE;
 
-
+pub const ENVELOPE_HISTORY_LEN: usize = 256;
 
 #[derive(Clone, Copy)]
 pub enum StopCondition {
@@ -37,8 +40,11 @@ pub struct MainDebugHarness {
     pub stack_tracker: StackTracker,
 
     pub voices_just_keyed_on: [bool; 8],
-    pub voice_buffers: [(RingBuffer, RingBuffer); 8],
-    pub mix_buffers: (RingBuffer, RingBuffer),
+    pub voice_buffers: [(RingBuffer<SAMPLE_HISTORY_LEN>, RingBuffer<SAMPLE_HISTORY_LEN>); 8],
+    pub mix_buffers: (RingBuffer<SAMPLE_HISTORY_LEN>, RingBuffer<SAMPLE_HISTORY_LEN>),
+
+    /// Per-voice ring buffer of recent envelope values for the live ADSR painter.
+    pub envelope_history: [RingBuffer<ENVELOPE_HISTORY_LEN>; 8],
 }
 
 impl MainDebugHarness {
@@ -50,6 +56,7 @@ impl MainDebugHarness {
             stack_tracker: StackTracker::new(),
             voices_just_keyed_on: [false; 8],
             voice_buffers: std::array::from_fn(|_| (RingBuffer::new(), RingBuffer::new())),
+            envelope_history: std::array::from_fn(|_| RingBuffer::new()),
             mix_buffers: (RingBuffer::new(), RingBuffer::new()),
         }
     }
@@ -162,7 +169,11 @@ impl DebugHarness for MainDebugHarness {
         }
     }
 
-    fn on_vblank_start(&mut self, _core: &mut snemcore::Snemulator) {
+    fn on_vblank_start(&mut self, core: &mut snemcore::Snemulator) {
+        for voice in 0..8usize {
+            self.envelope_history[voice].push(core.ssmp.voice_regs[voice].envelope);
+        }
+
         if matches!(self.stop_condition, Some(StopCondition::Frame)) {
             self.stop_emulation = true;
         }

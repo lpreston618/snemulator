@@ -1,29 +1,23 @@
 pub mod audio;
-pub mod state;
+pub mod sdsp;
 
 use egui::{Color32, FontId};
 use egui::text::{LayoutJob, TextFormat};
 use crate::theme::AppTheme;
 
-// ─── Ring Buffer ──────────────────────────────────────────────────────────────
-
-const DSP_SAMPLE_RATE: usize = 32_000;
-pub const RING_BUFFER_SECONDS: f32 = 10.0;
-pub const RING_BUFFER_LEN: usize = (RING_BUFFER_SECONDS as usize) * DSP_SAMPLE_RATE;
-
-/// A fixed-capacity circular buffer for audio samples.
-pub struct RingBuffer {
+/// A fixed-capacity circular buffer for audio samples or envelopes.
+pub struct RingBuffer<const CAPACITY: usize> {
     data: Vec<i16>,
     /// Index of the next write position.
     head: usize,
-    /// Number of valid samples currently stored.
+    /// Number of valid samples/envelopes currently stored.
     pub len: usize,
 }
 
-impl RingBuffer {
+impl<const CAPACITY: usize> RingBuffer<CAPACITY> {
     pub fn new() -> Self {
         Self {
-            data: vec![0i16; RING_BUFFER_LEN],
+            data: vec![0i16; CAPACITY],
             head: 0,
             len: 0,
         }
@@ -31,29 +25,25 @@ impl RingBuffer {
 
     pub fn push(&mut self, sample: i16) {
         self.data[self.head] = sample;
-        self.head = (self.head + 1) % RING_BUFFER_LEN;
-        self.len = (self.len + 1).min(RING_BUFFER_LEN);
+        self.head = (self.head + 1) % CAPACITY;
+        self.len = (self.len + 1).min(CAPACITY);
     }
 
     /// Iterates samples from oldest to newest.
     pub fn iter_chronological(&self) -> impl Iterator<Item = i16> + '_ {
-        let start = if self.len < RING_BUFFER_LEN {
+        let start = if self.len < CAPACITY {
             0
         } else {
             self.head
         };
-        (0..self.len).map(move |i| self.data[(start + i) % RING_BUFFER_LEN])
+        (0..self.len).map(move |i| self.data[(start + i) % CAPACITY])
     }
 
     /// Returns the most recent `n` samples, oldest first.
     pub fn tail(&self, n: usize) -> impl Iterator<Item = i16> + '_ {
         let n = n.min(self.len);
-        let start = (self.head + RING_BUFFER_LEN - n) % RING_BUFFER_LEN;
-        (0..n).map(move |i| self.data[(start + i) % RING_BUFFER_LEN])
-    }
-
-    pub fn seconds_buffered(&self) -> f32 {
-        self.len as f32 / DSP_SAMPLE_RATE as f32
+        let start = (self.head + CAPACITY - n) % CAPACITY;
+        (0..n).map(move |i| self.data[(start + i) % CAPACITY])
     }
 }
 

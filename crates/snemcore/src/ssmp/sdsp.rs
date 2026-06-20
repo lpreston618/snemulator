@@ -379,7 +379,7 @@ impl SuperDSP {
     // The same calculation is done for adjusting both echo feedback and echo output volumes,
     // but with different volume registers. This fujnction carries out that calculation
     fn echo_volume_adjust(&mut self, sample: i16, volume: i8) -> i16 {
-        (sample * volume as i16) >> 7
+        (sample * volume as i16) >> 6
     }
 
     pub fn generate_sample(&mut self, audio_buffer: &mut Vec<i16>, bus: &mut SdspBus) {
@@ -452,7 +452,7 @@ impl SuperDSP {
 
         let voice = &mut bus.voice_regs[voice_idx];
 
-        let volume_adjusted_sample = (raw_sample * voice.envelope as i32) >> 11;
+        let volume_adjusted_sample = (raw_sample * voice.envelope as i32) >> 10;
 
         voice.sample_out_high = (volume_adjusted_sample as u16) & 0x7FFF;
 
