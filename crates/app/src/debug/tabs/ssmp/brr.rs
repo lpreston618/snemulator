@@ -42,11 +42,11 @@ impl SdspBrrTab {
                         let buf        = core.ssmp.voice_regs[v].brr_sample_buffer;
                         let interp_idx = core.ssmp.voice_regs[v].prev_interpolation_idx;
                         let shift      = Self::current_shift(&core.ssmp.voice_regs[v]);
-                        let group_step = core.ssmp.voice_regs[v].brr_group_step;
+                        // let group_step = core.ssmp.voice_regs[v].brr_group_step;
 
                         ui.add_space(4.0);
                         let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), GRID_HEIGHT));
-                        let dot_positions = Self::paint_grid(ui, t, rect, &buf, interp_idx, shift, group_step);
+                        let dot_positions = Self::paint_grid(ui, t, rect, &buf, interp_idx, shift);
 
                         // ── Hover tooltips for each BRR sample dot ───────────
                         for (col, (&raw, (cx, cy))) in buf.iter().zip(dot_positions.iter()).enumerate() {
@@ -57,7 +57,13 @@ impl SdspBrrTab {
                             );
                             let resp = ui.allocate_rect(dot_rect, egui::Sense::hover());
                             if resp.hovered() {
-                                egui::show_tooltip_at_pointer(ui.ctx(), ui.layer_id(), egui::Id::new(("brr_tip", v, col)), |ui| {
+                                egui::Tooltip::always_open(
+                                    ui.ctx().clone(),
+                                    ui.layer_id(),
+                                    egui::Id::new(("brr_tip", v, col)),
+                                    egui::containers::PopupAnchor::Pointer,
+                                )
+                                .show(|ui| {
                                     ui.label(format!("buf[{col}]"));
                                     ui.label(format!("Raw:    ${raw:04X}"));
                                     ui.label(format!("Signed: {signed}"));
@@ -105,7 +111,7 @@ impl SdspBrrTab {
         buf: &[u16; 12],
         interp_idx: usize,
         shift: u8,
-        group_step: usize,
+        // group_step: usize,
     ) -> [(f32, f32); 12] {
         let painter = ui.painter_at(rect);
         let w = rect.width();

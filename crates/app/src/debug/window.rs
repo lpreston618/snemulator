@@ -322,7 +322,7 @@ impl DebugWindow {
                 }
 
                 let (single_step_text, single_step_stop_cond) = match self.selected_tab {
-                    DebugTab::Brr => ("Next Sample", StopCondition::SampleGenerated),
+                    DebugTab::Brr | DebugTab::Audio | DebugTab::Sdsp => ("Next Sample", StopCondition::SampleGenerated),
                     _ => ("Single Step", StopCondition::AnyScpuCycle),
                 };
 
