@@ -472,6 +472,7 @@ impl SuperDSP {
             step = (step * factor) >> 10
         }
 
+        bus.voice_regs[voice_idx].prev_interpolation_idx = bus.voice_regs[voice_idx].interpolation_idx;
         bus.voice_regs[voice_idx].interpolation_idx += step;
 
         bus.voice_regs[voice_idx].last_generated_left = left_sample;
@@ -496,18 +497,10 @@ impl SuperDSP {
         let g2 = Self::GAUSS_LOOKUP_TABLE[256 + gauss_table_offset] as i32;
         let g3 = Self::GAUSS_LOOKUP_TABLE[0 + gauss_table_offset] as i32;
 
-        let s0 = sign_extend::<15>(
-            voice.brr_sample_buffer[(voice.brr_sample_buffer_idx - (i + 1) + 12) % 12] as i32,
-        );
-        let s1 = sign_extend::<15>(
-            voice.brr_sample_buffer[(voice.brr_sample_buffer_idx - (i + 2) + 12) % 12] as i32,
-        );
-        let s2 = sign_extend::<15>(
-            voice.brr_sample_buffer[(voice.brr_sample_buffer_idx - (i + 3) + 12) % 12] as i32,
-        );
-        let s3 = sign_extend::<15>(
-            voice.brr_sample_buffer[(voice.brr_sample_buffer_idx - (i + 4) + 12) % 12] as i32,
-        );
+        let s0 = sign_extend::<15>(voice.brr_sample_buffer[4 + i - 2] as i32);
+        let s1 = sign_extend::<15>(voice.brr_sample_buffer[4 + i - 1] as i32);
+        let s2 = sign_extend::<15>(voice.brr_sample_buffer[4 + i] as i32);
+        let s3 = sign_extend::<15>(voice.brr_sample_buffer[4 + i + 1] as i32);
 
         let mut gauss_sample = 0;
         gauss_sample += (g0 * s0) >> 10;
@@ -585,12 +578,9 @@ impl SuperDSP {
             )
         };
 
-        let prev_s1 = sign_extend::<15>(
-            voice.brr_sample_buffer[(voice.brr_sample_buffer_idx - 1 + 12) % 12] as i32,
-        );
-        let prev_s2 = sign_extend::<15>(
-            voice.brr_sample_buffer[(voice.brr_sample_buffer_idx - 2 + 12) % 12] as i32,
-        );
+        // TODO: filtering doesn't happen across blocks
+        let prev_s1 = sign_extend::<15>(voice.brr_sample_buffer[7] as i32);
+        let prev_s2 = sign_extend::<15>(voice.brr_sample_buffer[6] as i32);
 
         let (decoded_0, decoded_1, decoded_2, decoded_3) = match filter {
             BrrFilter::Filter0 => (brr_sample0, brr_sample1, brr_sample2, brr_sample3),
@@ -627,16 +617,12 @@ impl SuperDSP {
         let clipped_2 = clamped_2 & 0x7FFF;
         let clipped_3 = clamped_3 & 0x7FFF;
 
-        voice.brr_sample_buffer[voice.brr_sample_buffer_idx + 0] = clipped_0 as u16;
-        voice.brr_sample_buffer[voice.brr_sample_buffer_idx + 1] = clipped_1 as u16;
-        voice.brr_sample_buffer[voice.brr_sample_buffer_idx + 2] = clipped_2 as u16;
-        voice.brr_sample_buffer[voice.brr_sample_buffer_idx + 3] = clipped_3 as u16;
-        voice.brr_sample_buffer_idx += 4;
+        voice.brr_sample_buffer.copy_within(4..12, 0); // Shift last 8 samples back by 4, overwritting first 4
 
-        // 12 BRR samples in buffer
-        if voice.brr_sample_buffer_idx == 12 {
-            voice.brr_sample_buffer_idx = 0;
-        }
+        voice.brr_sample_buffer[8]  = clipped_0 as u16;
+        voice.brr_sample_buffer[9]  = clipped_1 as u16;
+        voice.brr_sample_buffer[10] = clipped_2 as u16;
+        voice.brr_sample_buffer[11] = clipped_3 as u16;
 
         voice.brr_group_step += 1;
     }

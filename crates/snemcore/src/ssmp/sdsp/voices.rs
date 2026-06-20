@@ -54,8 +54,8 @@ pub struct VoiceRegs {
     pub echo_en: bool,
 
     pub adsr_stage: ADSRStage,
+    pub prev_interpolation_idx: usize,
     pub interpolation_idx: usize,
-    pub brr_sample_buffer_idx: usize,
     pub brr_sample_buffer: [u16; 12],
     pub brr_group_addr: u16, // Base address of the BRR sample group (9 bytes)
     pub brr_group_step: usize, // Keeps track of how many sets of 4 BRR samples
@@ -93,8 +93,8 @@ impl VoiceRegs {
             ram_a: 0,
             ram_b: 0,
             adsr_stage: ADSRStage::Attack,
+            prev_interpolation_idx: 0,
             interpolation_idx: 0,
-            brr_sample_buffer_idx: 0,
             brr_sample_buffer: [0; 12],
             brr_group_addr: 0,
             brr_group_step: 0,
