@@ -59,6 +59,8 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
                 // WRAM mirror (first 8KB)
                 0x0000..=0x1FFF => self.wram[addr.offset as usize],
 
+                0x2000..=0x20FF => 0, // Unused
+
                 // PPU registers
                 0x2100..=0x213F => self.read_ppu_regs(addr.offset),
 
@@ -74,17 +76,19 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
                 // S-WRAM access registers
                 0x2180..=0x2183 => self.read_wram_port(addr.offset),
 
+                0x2184..=0x3FFF => *self.open_bus_value, // Expansion bus
+
                 // CPU I/O registers (joypad, DMA, IRQ, etc.)
                 0x4000..=0x42FF => self.read_cpuio_regs(addr.offset),
 
-                0x4300..=0x43FF => self.read_dma_regs(addr.offset),
+                0x4300..=0x437F => self.read_dma_regs(addr.offset),
 
-                0x4400..=0x5FFF => 0, // Open bus
+                0x4380..=0x5FFF => *self.open_bus_value,
+
+                0x6000..=0x7FFF => self.cart.read(addr), // Cartridge expansion region
 
                 // Cartridge (LoROM: $8000-$FFFF)
                 0x8000..=0xFFFF => self.cart.read(addr),
-
-                _ => 0, // Open bus
             },
 
             // Banks $40-$6F: LoROM cartridge
@@ -114,6 +118,8 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
                 // WRAM mirror
                 0x0000..=0x1FFF => self.wram[addr.offset as usize] = value,
 
+                0x2000..=0x20FF => {}, // Unused
+
                 // PPU registers
                 0x2100..=0x213F => self.write_ppu_regs(addr.offset, value),
 
@@ -129,17 +135,19 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
                 // WRAM access port
                 0x2180..=0x2183 => self.write_wram_port(addr.offset, value),
 
+                0x2184..=0x3FFF => { *self.open_bus_value = value; },
+
                 // CPU I/O registers
                 0x4000..=0x42FF => self.write_cpuio_regs(addr.offset, value),
 
-                0x4300..=0x43FF => self.write_dma_regs(addr.offset, value),
+                0x4300..=0x437F => self.write_dma_regs(addr.offset, value),
 
-                0x4400..=0x5FFF => {} // Open bus
+                0x4380..=0x5FFF => { *self.open_bus_value = value; }
+
+                0x6000..=0x7FFF => self.cart.write(addr, value), // Cartridge expansion region
 
                 // Cartridge (SRAM, mapper registers)
                 0x8000..=0xFFFF => self.cart.write(addr, value),
-
-                _ => {}
             },
 
             // WRAM direct access
@@ -552,15 +560,16 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
         let cpu_regs = &mut self.cpu_regs;
 
         match offset {
-            0x4000..=0x4015 => 0, // Open bus
+            0x4000..=0x4015 => *self.open_bus_value, // Write-only/Open Bus
 
             0x4016 => {
                 self.controller_data.joypad_cmd = Some(JoypadCmd::ClockJoy1);
 
+                let open_bus = *self.open_bus_value & 0xFC;
                 let joy1_data1 = (self.controller_data.joy1_latch & 1) as u8;
                 let joy1_data2 = 0x00; // unused for joypads
 
-                joy1_data2 | joy1_data1
+                open_bus | joy1_data2 | joy1_data1
             }
 
             0x4017 => {
@@ -568,17 +577,14 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
 
                 self.controller_data.joypad_cmd = Some(JoypadCmd::ClockJoy2);
 
+                let open_bus = *self.open_bus_value & 0xE0;
                 let joy2_data1 = (self.controller_data.joy2_latch & 1) as u8;
                 let joy2_data2 = 0x00; // unused for joypads
 
-                ALWAYS_ON | joy2_data2 | joy2_data1
+                open_bus | ALWAYS_ON | joy2_data2 | joy2_data1
             }
 
-            0x4018..=0x41FF => 0, // Open bus
-
-            0x4200..=0x420D => 0, // Write-only registers
-
-            0x420E..=0x420F => 0, // Open bus
+            0x4018..=0x420F => *self.open_bus_value, // Write-only/Open Bus
 
             0x4210 => {
                 let vblank_nmi = if cpu_regs.vblank_nmi_flag { 0x80 } else { 0 };
@@ -592,18 +598,20 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
 
             0x4211 => {
                 let timer_irq = if cpu_regs.hv_timer_irq_flag { 0x80 } else { 0 };
+                let open_bus = *self.open_bus_value & 0x7F;
 
                 cpu_regs.hv_timer_irq_flag = false;
 
-                timer_irq
+                timer_irq | open_bus
             }
 
             0x4212 => {
                 let in_vblank = if cpu_regs.vblank_flag { 0x80 } else { 0 };
                 let in_hblank = if cpu_regs.hblank_flag { 0x40 } else { 0 };
+                let open_bus = *self.open_bus_value & 0x3E;
                 let in_joypad_autoread = if cpu_regs.joypad_autoread_flag { 1 } else { 0 };
 
-                in_vblank | in_hblank | in_joypad_autoread
+                in_vblank | in_hblank | open_bus | in_joypad_autoread
             }
 
             0x4213 => cpu_regs.raw_rdwrio,
@@ -623,6 +631,8 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
             0x421E => get_byte_n!(self.controller_data.joy2_data2_auto, 0),
             0x421F => get_byte_n!(self.controller_data.joy2_data2_auto, 1),
 
+            0x4220..=0x42FF => *self.open_bus_value,
+
             _ => 0,
         }
     }
@@ -631,7 +641,7 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
         let cpu_regs = &mut self.cpu_regs;
 
         match offset {
-            0x4000..=0x4015 => {} // Open bus
+            0x4000..=0x4015 => { *self.open_bus_value = value; } // Open bus
 
             0x4016 => {
                 self.cpu_regs.latch_controllers = get_bit_n!(value, 0);
@@ -639,7 +649,7 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
 
             0x4017 => {} // Write-only register
 
-            0x4018..=0x41FF => {} // Open bus
+            0x4018..=0x41FF => { *self.open_bus_value = value; } // Open bus
 
             0x4200 => {
                 cpu_regs.write_4200(value);
@@ -693,7 +703,11 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
                 cpu_regs.write_420D(value);
             }
 
-            0x4210..=0x42FF => {} // Read-only regs
+            0x420E..=0x420F => { *self.open_bus_value = value; },
+
+            0x4210..=0x421F => {} // Read-only regs
+
+            0x4220..=0x42FF => { *self.open_bus_value = value; }
 
             _ => {}
         }
@@ -705,10 +719,6 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
         }
 
         let channel_idx = ((offset >> 4) & 0xF) as usize;
-
-        if channel_idx >= 7 {
-            return 0; // TODO: Maybe mirror channel_idx & 7?
-        }
 
         let channel = &mut self.dma.as_mut().unwrap().regs[channel_idx];
 
@@ -728,7 +738,7 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
                 hdma_reload | channel.entry_scanline_count
             }
             0xB => channel.unused,
-            0xC..=0xE => 0, // Open bus
+            0xC..=0xE => *self.open_bus_value, // Open bus
             0xF => channel.unused,
             _ => unreachable!(),
         }
@@ -740,10 +750,6 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
         }
 
         let channel_idx = ((offset >> 4) & 0xF) as usize;
-
-        if channel_idx > 7 {
-            return; // TODO: Maybe mirror channel_idx & 7?
-        }
 
         let channel = &mut self.dma.as_mut().unwrap().regs[channel_idx];
 
@@ -811,7 +817,7 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
             0xB => {
                 channel.unused = value;
             }
-            0xC..=0xE => {} // Open bus
+            0xC..=0xE => { *self.open_bus_value = value; } // Open bus
             0xF => {
                 channel.unused = value;
             }
