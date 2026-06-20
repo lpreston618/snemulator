@@ -10,6 +10,7 @@ use crate::scpu::*;
 
 static mut _FAKE_FBLANK_START_FLAG: bool = false;
 static mut _FAKE_FBLANK_END_FLAG: bool = false;
+static mut _FAKE_OPEN_BUS: u8 = 0;
 
 /// Build a fresh CPU and a backing-store struct containing all the buffers
 /// needed to construct a `CpuBus`. The reset vector is baked into the
@@ -60,6 +61,7 @@ impl TestBacking {
             controller_data: &mut self.controller_data,
             harness,
             // SAFETY: Values are never read or accessed by NullProbe
+            open_bus_value: unsafe { &mut _FAKE_OPEN_BUS },
             fblank_start: unsafe { &mut _FAKE_FBLANK_START_FLAG },
             fblank_end: unsafe { &mut _FAKE_FBLANK_END_FLAG },
         }

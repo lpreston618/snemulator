@@ -41,6 +41,8 @@ macro_rules! cpu_bus {
             cpu_regs: &mut $core.cpu_regs,
             apu_ports: &mut $core.apu_ports,
 
+            open_bus_value: &mut $core.cpu_open_bus,
+
             dma: Some(&mut $core.dma),
 
             controller_data: &mut $core.controller_data,
@@ -63,6 +65,8 @@ macro_rules! dma_bus {
             ppu_regs: &mut $core.ppu_regs,
             cpu_regs: &mut $core.cpu_regs,
             apu_ports: &mut $core.apu_ports,
+
+            open_bus_value: &mut $core.cpu_open_bus,
 
             dma: None,
 
@@ -112,6 +116,7 @@ pub struct Snemulator {
     pub ppu_regs: PpuRegs,
     pub cpu_regs: CpuIoRegs,
     pub apu_ports: ApuIoPorts,
+    pub cpu_open_bus: u8,
 
     pub dma: DmaController,
 
@@ -149,6 +154,7 @@ impl Snemulator {
             ppu_regs: PpuRegs::default(),
             cpu_regs: CpuIoRegs::default(),
             apu_ports: ApuIoPorts::default(),
+            cpu_open_bus: 0u8,
 
             dma: DmaController::new(),
 
@@ -161,7 +167,7 @@ impl Snemulator {
             total_cycles: 0u64,
             frame: 0u64,
 
-            clocks_last_frame: 0,
+            clocks_last_frame: 0u64,
 
             random_seed,
             rng: StdRng::seed_from_u64(random_seed),

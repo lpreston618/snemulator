@@ -39,6 +39,8 @@ pub struct CpuBus<'a, H: DebugHarness> {
     pub cpu_regs: &'a mut CpuIoRegs,
     pub apu_ports: &'a mut ApuIoPorts,
 
+    pub open_bus_value: &'a mut u8,
+
     pub cart: &'a mut Cartridge,
     pub dma: Option<&'a mut DmaController>,
 
@@ -100,6 +102,8 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
             // Banks $C0-$FF: HiROM cartridge / mirror
             0xC0..=0xFF => self.cart.read(addr),
         };
+
+        *self.open_bus_value = value;
 
         value
     }
@@ -579,10 +583,11 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
             0x4210 => {
                 let vblank_nmi = if cpu_regs.vblank_nmi_flag { 0x80 } else { 0 };
                 let cpu_version = 0x02;
+                let open_bus = *self.open_bus_value & 0x70;
 
                 cpu_regs.vblank_nmi_flag = false;
 
-                vblank_nmi | cpu_version | 0x40
+                vblank_nmi | cpu_version | open_bus
             }
 
             0x4211 => {
