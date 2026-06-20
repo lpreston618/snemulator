@@ -43,7 +43,7 @@ fn create_harness() -> MainDebugHarness {
 
 #[cfg(not(feature = "debug"))]
 fn create_harness() -> NullHarness {
-    NullHarness
+    NullHarness {}
 }
 
 pub enum AppAction {
@@ -510,7 +510,9 @@ impl SnemulatorApp {
             AppAction::OpenSettings => self.show_settings(),
             AppAction::ToggleFullscreen => self.toggle_fullscreen(),
             AppAction::TogglePause => self.toggle_pause(),
+            #[cfg(feature = "debug")]
             AppAction::OpenDebug => self.show_debug(),
+            #[cfg(feature = "debug")]
             AppAction::CloseDebug => { self.debug_window = None; }
             
             _ => {}

@@ -11,16 +11,25 @@ impl MainMenuBar {
 
     pub fn render(&self, ctx: &egui::Context, app_state: &AppState, app_settings: &mut Settings) -> AppAction {
         let mut app_action = AppAction::Continue;
+
+        let debug_active;
+
+        #[cfg(feature = "debug")]
+        {
+            debug_active = app_state.debug_active;
+        }
+        #[cfg(not(feature = "debug"))]
+        {
+            debug_active = false;
+        }
     
         // Top menu bar
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {                
                 ui.menu_button("File", |ui| {
                     ui.set_width(120.0);
-                    
-                    let ui_en = !cfg!(feature = "debug") | !app_state.debug_active;
                                         
-                    ui.add_enabled_ui(ui_en, |ui| {
+                    ui.add_enabled_ui(!debug_active, |ui| {
                         if ui.button("Load Rom").clicked() {
                             app_action = AppAction::LoadRom;
                             ui.close();
@@ -61,18 +70,7 @@ impl MainMenuBar {
                 ui.menu_button("Emulation", |ui| {
                     ui.set_width(100.0);
                     
-                    let ui_en;
-                    
-                    #[cfg(feature = "debug")]
-                    {
-                        ui_en = !app_state.debug_active;
-                    }
-                    #[cfg(not(feature = "debug"))]
-                    {
-                        ui_en = true;
-                    }
-                    
-                    ui.add_enabled_ui(ui_en, |ui| {
+                    ui.add_enabled_ui(!debug_active, |ui| {
                         let pause_text = if app_state.is_paused { "Resume" } else { "Pause" };
                         if ui.button(pause_text).clicked() {
                             app_action = AppAction::TogglePause;
