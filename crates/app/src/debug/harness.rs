@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use snemcore::debug::DebugHarness;
 
-use crate::debug::stack_tracker::StackTracker;
+use crate::debug::{stack_tracker::StackTracker, tabs::ssmp::RingBuffer};
 
 const JSL_OPCODE: u8 = 0x22;
 const JSR_OPCODE: u8 = 0x20;
@@ -35,6 +35,10 @@ pub struct MainDebugHarness {
     pub breakpoints: HashSet<u32>,
 
     pub stack_tracker: StackTracker,
+
+    pub voices_just_keyed_on: [bool; 8],
+    pub voice_buffers: [(RingBuffer, RingBuffer); 8],
+    pub mix_buffers: (RingBuffer, RingBuffer),
 }
 
 impl MainDebugHarness {
@@ -44,6 +48,9 @@ impl MainDebugHarness {
             stop_emulation: false,
             breakpoints: HashSet::new(),
             stack_tracker: StackTracker::new(),
+            voices_just_keyed_on: [false; 8],
+            voice_buffers: std::array::from_fn(|_| (RingBuffer::new(), RingBuffer::new())),
+            mix_buffers: (RingBuffer::new(), RingBuffer::new()),
         }
     }
 }
@@ -83,6 +90,30 @@ impl DebugHarness for MainDebugHarness {
                 self.stop_emulation |= channel == ch as usize;
             }
             _ => {}
+        }
+    }
+
+    fn on_voice_key_on(&mut self, _voice_regs: &mut snemcore::ssmp::sdsp::voices::VoiceRegs, voice: usize) {
+        self.voices_just_keyed_on[voice] = true;
+    }
+
+    fn on_voice_key_off(&mut self, _voice_regs: &mut snemcore::ssmp::sdsp::voices::VoiceRegs, voice: usize) {
+        self.voices_just_keyed_on[voice] = false;
+    }
+
+    fn on_sample_generated(&mut self, ssmp: &mut snemcore::ssmp::Ssmp) {
+        let left_sample  = ssmp.sdsp.last_generated_left;
+        let right_sample = ssmp.sdsp.last_generated_right;
+
+        self.mix_buffers.0.push(left_sample);
+        self.mix_buffers.1.push(right_sample);
+
+        for voice in 0..8usize {
+            let left_sample  = ssmp.voice_regs[voice].last_generated_left;
+            let right_sample = ssmp.voice_regs[voice].last_generated_right;
+
+            self.voice_buffers[voice].0.push(left_sample);
+            self.voice_buffers[voice].1.push(right_sample);
         }
     }
 

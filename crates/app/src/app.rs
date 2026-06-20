@@ -668,20 +668,37 @@ impl SnemulatorApp {
         Ok(())
     }
 
+    #[cfg(not(feature = "debug"))]
     fn toggle_pause(&mut self) {
         self.state.is_paused = !self.state.is_paused;
 
         if self.state.is_paused {
-            #[cfg(feature = "debug")]
-            {
-                self.debug_harness.stop_emulation = false;
-                self.debug_harness.stop_condition = None;
-            }
-
             self.audio_stream.pause().unwrap();
             log::trace!("Paused emulation");
         } else {
             self.audio_stream.resume().unwrap();
+            log::trace!("Resumed emulation");
+        }
+    }
+
+    #[cfg(feature = "debug")]
+    fn toggle_pause(&mut self) {
+        self.state.is_paused = !self.state.is_paused;
+
+        if self.state.is_paused {
+            self.debug_harness.stop_emulation = false;
+            self.debug_harness.stop_condition = None;
+            
+            if let Err(e) = self.audio_stream.clear() {
+                log::error!("failed to clear audio stream: {}", e);
+            }
+
+            log::trace!("Paused emulation");
+        } else {
+            if let Err(e) = self.audio_stream.clear() {
+                log::error!("failed to clear audio stream: {}", e);
+            }
+
             log::trace!("Resumed emulation");
         }
     }
@@ -813,6 +830,7 @@ impl SnemulatorApp {
             &mut self.state,
             &self.theme,
             &mut self.debug_harness,
+            &mut self.audio_stream,
         );
 
         match debug_action {

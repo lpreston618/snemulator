@@ -61,6 +61,10 @@ pub struct VoiceRegs {
     pub brr_group_step: usize, // Keeps track of how many sets of 4 BRR samples
                              // have been read into the buffer so far from
                              // the current BRR group.
+    
+    // For debuggign purposes
+    pub last_generated_left: i16,
+    pub last_generated_right: i16,
 }
 
 impl VoiceRegs {
@@ -94,6 +98,8 @@ impl VoiceRegs {
             brr_sample_buffer: [0; 12],
             brr_group_addr: 0,
             brr_group_step: 0,
+            last_generated_left: 0,
+            last_generated_right: 0,
         }
     }
 
@@ -102,6 +108,8 @@ impl VoiceRegs {
         self.end_of_sample_flag = true;
         self.sample_out_high = 0;
         self.envelope = 0;
+        self.last_generated_left = 0;
+        self.last_generated_right = 0;
     }
 
     pub fn soft_reset(&mut self) {

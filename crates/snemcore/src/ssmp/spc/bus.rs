@@ -417,6 +417,10 @@ impl<'a, H: DebugHarness> SpcBus<'a, H> {
 
                                 voice.brr_group_addr = start_addr;
                                 voice.brr_group_step = 0;
+
+                                if H::IS_DEBUGGING_HARNESS && H::TRACK_VOICES {
+                                    self.harness.on_voice_key_on(&mut self.voice_regs[voice_idx], voice_idx);
+                                }
                             }
                         }
                     } // TODO: The internal KON bits are cleared 63 clocks after the bit is polled.

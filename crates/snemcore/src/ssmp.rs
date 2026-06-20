@@ -16,16 +16,18 @@ mod timers;
 
 /// The sound processor chip of the S-NES. Contains the SPC700 and S-DSP.
 pub struct Ssmp {
-    spc: Spc700,
-    sdsp: sdsp::SuperDSP,
+    pub spc: Spc700,
+    pub sdsp: sdsp::SuperDSP,
 
-    aram: Box<[u8; ARAM_SIZE]>,
-    spc_regs: SpcIoRegs,
-    sdsp_regs: SdspRegs,
-    timer0: Timer<SLOW_TIMER_CLOCK_PERIOD>,
-    timer1: Timer<SLOW_TIMER_CLOCK_PERIOD>,
-    timer2: Timer<FAST_TIMER_CLOCK_PERIOD>,
-    voice_regs: [VoiceRegs; 8],
+    pub aram: Box<[u8; ARAM_SIZE]>,
+    pub spc_regs: SpcIoRegs,
+    pub sdsp_regs: SdspRegs,
+    pub timer0: Timer<SLOW_TIMER_CLOCK_PERIOD>,
+    pub timer1: Timer<SLOW_TIMER_CLOCK_PERIOD>,
+    pub timer2: Timer<FAST_TIMER_CLOCK_PERIOD>,
+    pub voice_regs: [VoiceRegs; 8],
+
+    pub samples_generated: u64,
 
     sample_cycle_accumulator: usize,
     spc_cycle_accumulator: usize,
@@ -44,6 +46,8 @@ impl Ssmp {
             timer1: Timer::new(),
             timer2: Timer::new(),
             voice_regs: [VoiceRegs::new(); 8],
+
+            samples_generated: 0,
 
             sample_cycle_accumulator: 0,
             spc_cycle_accumulator: 0,
@@ -72,6 +76,8 @@ impl Ssmp {
         self.timer2.reset();
 
         self.voice_regs.iter_mut().for_each(|voice| voice.reset());
+
+        self.samples_generated = 0;
     }
 
     pub fn reset(&mut self) {
@@ -88,6 +94,8 @@ impl Ssmp {
         self.timer2.reset();
 
         self.voice_regs.iter_mut().for_each(|voice| voice.reset());
+
+        self.samples_generated = 0;
     }
 
     /// Clocks the sound processor, checking if it is time to generate a new
@@ -105,8 +113,14 @@ impl Ssmp {
                 voice_regs: &mut self.voice_regs,
             };
 
-            self.sdsp.clock_envelopes(&mut sdsp_bus);
+            self.sdsp.clock_envelopes(&mut sdsp_bus, harness);
             self.sdsp.generate_sample(audio_buffer, &mut sdsp_bus);
+
+            self.samples_generated += 1;
+
+            if H::IS_DEBUGGING_HARNESS && H::TRACK_SAMPLE_OUTPUT {
+                harness.on_sample_generated(self);
+            }
         }
 
         if self.spc_cycle_accumulator >= MASTER_CLOCK_HZ {
@@ -131,39 +145,6 @@ impl Ssmp {
             self.timer2.clock();
         }
     }
-
-    // pub fn cycle_no_output(&mut self, clocks: usize, apu_regs: &mut ApuIoPorts) {
-    //     self.sample_cycle_accumulator += clocks * AUDIO_SAMPLE_HZ;
-    //     self.spc_cycle_accumulator += clocks * SPC_CLOCK_HZ;
-
-    //     if self.sample_cycle_accumulator >= MASTER_CLOCK_HZ {
-    //         self.sample_cycle_accumulator -= MASTER_CLOCK_HZ;
-
-    //         // self.sdsp.clock_envelopes();
-    //         // self.sdsp.generate_sample(audio_buffer);
-    //     }
-
-    //     if self.spc_cycle_accumulator >= MASTER_CLOCK_HZ {
-    //         self.spc_cycle_accumulator -= MASTER_CLOCK_HZ;
-
-    //         let mut bus = SpcBus {
-    //             aram: &mut self.aram,
-    //             spc_regs: &mut self.spc_regs,
-    //             sdsp_regs: &mut self.sdsp_regs,
-    //             timer0: &mut self.timer0,
-    //             timer1: &mut self.timer1,
-    //             timer2: &mut self.timer2,
-    //             voice_regs: &mut self.voice_regs,
-    //             apuio_regs: apu_regs,
-    //         };
-
-    //         self.spc.clock(&mut bus);
-
-    //         self.timer0.clock();
-    //         self.timer1.clock();
-    //         self.timer2.clock();
-    //     }
-    // }
 
     pub fn aram_slice(&self) -> &[u8] {
         &self.aram[..]

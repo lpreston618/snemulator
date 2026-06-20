@@ -1,4 +1,4 @@
-use crate::{get_bit_n, get_byte_n};
+use crate::{debug::DebugHarness, get_bit_n, get_byte_n};
 
 use bus::SdspBus;
 
@@ -37,9 +37,11 @@ pub enum BrrFilter {
 }
 
 pub struct SuperDSP {
-    envelope_counter: usize,
-    noise_output: u16,
-    echo_ptr: usize,
+    pub envelope_counter: usize,
+    pub noise_output: u16,
+    pub echo_ptr: usize,
+    pub last_generated_left: i16,
+    pub last_generated_right: i16,
 }
 
 impl SuperDSP {
@@ -98,17 +100,23 @@ impl SuperDSP {
             envelope_counter: 0,
             noise_output: 0,
             echo_ptr: 0,
+            last_generated_left: 0,
+            last_generated_right: 0,
         }
     }
 
     pub fn power_on(&mut self) {
         self.envelope_counter = 0;
         self.noise_output = 0x4000;
+        self.last_generated_left = 0;
+        self.last_generated_right = 0;
     }
 
     pub fn reset(&mut self) {
         self.envelope_counter = 0;
         self.noise_output = 0x4000;
+        self.last_generated_left = 0;
+        self.last_generated_right = 0;
     }
 
     fn should_do_envelope_op(&self, period_idx: usize) -> bool {
@@ -122,7 +130,7 @@ impl SuperDSP {
         }
     }
 
-    pub fn clock_envelopes(&mut self, bus: &mut SdspBus) {
+    pub fn clock_envelopes<H: DebugHarness>(&mut self, bus: &mut SdspBus, harness: &mut H) {
         self.clock_noise_generator(bus);
 
         for voice_idx in 0..8 {
@@ -130,6 +138,10 @@ impl SuperDSP {
 
             if get_bit_n!(bus.sdsp_regs.key_off, voice_idx) {
                 voice.adsr_stage = ADSRStage::Release;
+
+                if H::IS_DEBUGGING_HARNESS && H::TRACK_VOICES {
+                    harness.on_voice_key_on(voice, voice_idx);
+                }
             }
 
             // Release decreases envelope by 8 regardles of VxADSR and VxGAIN settings
@@ -419,6 +431,9 @@ impl SuperDSP {
         }
 
         self.push_echo_samples(left_echo_feedback, right_echo_feedback, bus);
+
+        self.last_generated_left = left_sample;
+        self.last_generated_right = right_sample;
         
         audio_buffer.push(left_sample);
         audio_buffer.push(right_sample);
@@ -458,6 +473,9 @@ impl SuperDSP {
         }
 
         bus.voice_regs[voice_idx].interpolation_idx += step;
+
+        bus.voice_regs[voice_idx].last_generated_left = left_sample;
+        bus.voice_regs[voice_idx].last_generated_right = right_sample;
 
         (left_sample, right_sample)
     }

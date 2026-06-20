@@ -1,4 +1,4 @@
-use crate::{Snemulator, dma::DmaController, scpu::{Address, Cpu65c816, CpuInterrupt}, ssmp::spc::Spc700};
+use crate::{Snemulator, dma::DmaController, scpu::{Address, Cpu65c816, CpuInterrupt}, ssmp::{Ssmp, sdsp::voices::VoiceRegs, spc::Spc700}};
 
 #[allow(unused_variables)]
 pub trait DebugHarness {
@@ -33,7 +33,12 @@ pub trait DebugHarness {
     /// Controls whether the `on_ppu_step` callback will be called for debugging harnesses.
     const TRACK_PPU_STEP: bool = true;
 
+    /// Controls whether the `on_spc_instruction` callback will be called for debugging harnesses.
     const TRACK_SPC_INSTRUCTIONS: bool = true;
+    /// Controls whether the `on_sample_generated` callback will be called for debugging harnesses.
+    const TRACK_SAMPLE_OUTPUT: bool = true;
+    /// Controls whether the `on_voice_key_on` and `on_voice_key_off` callbacks will be called for debugging harnesses.
+    const TRACK_VOICES: bool = true;
 
     fn should_stop(&mut self, core: &mut Snemulator) -> bool { false }
 
@@ -90,7 +95,15 @@ pub trait DebugHarness {
     /// Called after each time the PPU is advanced (once per dot).
     fn on_ppu_step(&mut self, core: &mut Snemulator) {}
 
+    /// Called after each SPC-700 instruction. prg_bytes contains the opcode and immediate data for the instruction.
     fn on_spc_instruction(&mut self, spc: &mut Spc700, prg_bytes: &[u8]) {}
+    /// Called after each time a sample is generated (ideally at 32 kHz). The samples generated
+    /// can be accessed via `ssmp.sdsp.last_generated_left` and `last_generated_right`. The 
+    /// individual voice samples generated can be accessed via `ssmp.voice_regs[n].last_generated_left`
+    /// and `last_generated_right`.
+    fn on_sample_generated(&mut self, ssmp: &mut Ssmp) {}
+    fn on_voice_key_on(&mut self, voice_regs: &mut VoiceRegs, voice: usize) {}
+    fn on_voice_key_off(&mut self, voice_regs: &mut VoiceRegs, voice: usize) {}
 }
 
 /// Debug harness with no callbacks (compiles out for release builds)

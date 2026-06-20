@@ -1,4 +1,5 @@
 use anyhow::Result;
+use sdl3::audio::AudioStreamOwner;
 use snemcore::Snemulator;
 
 use crate::app;
@@ -18,6 +19,8 @@ enum DebugTab {
     Dma,
     Memory,
     Ppu,
+    Sdsp,
+    Audio,
 }
 
 impl DebugTab {
@@ -27,6 +30,8 @@ impl DebugTab {
             DebugTab::Dma => "DMA",
             DebugTab::Memory => "Memory",
             DebugTab::Ppu => "PPU",
+            DebugTab::Sdsp => "S-DSP",
+            DebugTab::Audio => "Audio",
         }
     }
 
@@ -35,7 +40,9 @@ impl DebugTab {
             DebugTab::Cpu,
             DebugTab::Dma,
             DebugTab::Memory,
-            DebugTab::Ppu    
+            DebugTab::Ppu,
+            DebugTab::Sdsp,
+            DebugTab::Audio,
         ]
     }
 }
@@ -54,6 +61,8 @@ pub struct DebugWindow {
     dma_tab: Box<tabs::dma::DmaTab>,
     mem_tab: Box<tabs::mem::MemoryTab>,
     ppu_tab: Box<tabs::ppu::PpuTab>,
+    sdsp_tab: Box<tabs::ssmp::state::SdspTab>,
+    audio_tab: Box<tabs::ssmp::audio::SdspAudioTab>,
     // wp_tab: Box<tabs::WatchpointsTab>,
     selected_tab: DebugTab,
     // jump_to_bps_on_hit: bool,
@@ -73,6 +82,8 @@ impl DebugWindow {
             dma_tab: Box::new(tabs::dma::DmaTab::new()),
             mem_tab: Box::new(tabs::mem::MemoryTab::new()),
             ppu_tab: Box::new(tabs::ppu::PpuTab::new()),
+            sdsp_tab: Box::new(tabs::ssmp::state::SdspTab::new()),
+            audio_tab: Box::new(tabs::ssmp::audio::SdspAudioTab::new()),
             // wp_tab: Box::new(tabs::WatchpointsTab::new()),
             selected_tab: DebugTab::Cpu,
             // jump_to_bps_on_hit: true,
@@ -95,6 +106,7 @@ impl DebugWindow {
         app_state: &mut app::AppState,
         app_theme: &AppTheme,
         harness: &mut MainDebugHarness,
+        audio_stream: &mut AudioStreamOwner,
     ) -> app::AppAction {
         let mut app_action = app::AppAction::Continue;
 
@@ -118,6 +130,8 @@ impl DebugWindow {
                     DebugTab::Dma => self.dma_tab.render(ui, core, harness, app_state, app_theme, &mut debug_action),
                     DebugTab::Memory => self.mem_tab.render(ui, core, app_theme),
                     DebugTab::Ppu => self.ppu_tab.render(ui, core, harness, app_theme),
+                    DebugTab::Sdsp => self.sdsp_tab.render(ui, core, harness, app_theme),
+                    DebugTab::Audio => self.audio_tab.render(ui, core, harness, audio_stream, app_theme),
                     // DebugTab::Watchpoints => {
                     //     self.wp_tab.render(ui, core, app_state)
                     // }
