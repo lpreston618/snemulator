@@ -134,7 +134,7 @@ impl SdspBrrTab {
         // ── Amplitude grid lines ─────────────────────────────────────────────
         // shift determines the amplitude range: max amplitude = 1 << shift (clamped to i16 range).
         // We draw horizontal lines at every power-of-two step for the current shift.
-        let amplitude_range = (1i32 << shift.min(14)) as f32;
+        let amplitude_range = (1i32 << shift.min(12)) as f32;
         // pixels per unit amplitude
         let px_per_unit = (h * 0.5) / amplitude_range;
         // Draw lines at intervals that keep spacing above the minimum.
