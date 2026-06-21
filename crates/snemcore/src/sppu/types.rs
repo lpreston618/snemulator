@@ -162,6 +162,14 @@ pub struct ColorData {
     pub transparent: bool,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct ObjColorData {
+    pub color: sppu::Color,
+    pub palette: u8,
+    pub priority: u8,
+    pub transparent: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct TileData {
     pub tile_addr: u16,

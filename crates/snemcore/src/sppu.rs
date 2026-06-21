@@ -247,7 +247,7 @@ impl Ppu5C7x {
     }
 
     /// Gets the color of the first visible sprite on the screen.
-    fn sprite_col<H: DebugHarness>(&self, bus: &mut PpuBus<H>) -> ColorData {
+    fn sprite_col<H: DebugHarness>(&self, bus: &mut PpuBus<H>) -> ObjColorData {
         let regs = &bus.ppu_regs;
 
         let mut scanline_spr_cnt = self.scanline_spr_cnt;
@@ -318,8 +318,9 @@ impl Ppu5C7x {
                 if pal_idx == 0 {
                     // If it's the last sprite, all sprites were transparent
                     if i == self.scanline_sprites.len() - 1 {
-                        return ColorData {
+                        return ObjColorData {
                             color: Color::BLACK,
+                            palette: 0,
                             priority: 0,
                             transparent: true,
                         };
@@ -332,8 +333,9 @@ impl Ppu5C7x {
 
                 let spr_col = bus.cgram[cgram_addr as usize];
 
-                return ColorData {
+                return ObjColorData {
                     color: spr_col,
+                    palette: sprite.palette,
                     priority: sprite.priority,
                     transparent: false,
                 };
@@ -341,8 +343,9 @@ impl Ppu5C7x {
         }
 
         // No sprites on this dot, return a transparent color
-        ColorData {
+        ObjColorData {
             color: bus.cgram[0],
+            palette: 0,
             priority: 0,
             transparent: true,
         }
@@ -445,7 +448,7 @@ impl Ppu5C7x {
             ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
             ColorLayer::Bg3 => bus.ppu_regs.bg_settings[2].cmath_en,
             ColorLayer::Bg4 => bus.ppu_regs.bg_settings[3].cmath_en,
-            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en,
+            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.palette >= 4,
             ColorLayer::Back => bus.ppu_regs.back_cmath_en,
         };
 
@@ -548,7 +551,7 @@ impl Ppu5C7x {
             ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
             ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
             ColorLayer::Bg3 => bus.ppu_regs.bg_settings[2].cmath_en,
-            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en,
+            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.palette >= 4,
             ColorLayer::Back => bus.ppu_regs.back_cmath_en,
             _ => unreachable!(), // No other layers considered in Mode 1
         };
@@ -623,7 +626,7 @@ impl Ppu5C7x {
         let cmath_en = match main_layer {
             ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
             ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
-            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en,
+            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.palette >= 4,
             ColorLayer::Back => bus.ppu_regs.back_cmath_en,
             _ => unreachable!(), // No other layers considered in Mode 2
         };
@@ -698,7 +701,7 @@ impl Ppu5C7x {
         let cmath_en = match main_layer {
             ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
             ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
-            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en,
+            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.palette >= 4,
             ColorLayer::Back => bus.ppu_regs.back_cmath_en,
             _ => unreachable!(), // No other layers considered in Mode 2
         };
@@ -773,7 +776,7 @@ impl Ppu5C7x {
         let cmath_en = match main_layer {
             ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
             ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
-            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en,
+            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.palette >= 4,
             ColorLayer::Back => bus.ppu_regs.back_cmath_en,
             _ => unreachable!(), // No other layers considered in Mode 2
         };
@@ -1222,7 +1225,7 @@ impl Ppu5C7x {
         (bg_main_col, bg_sub_col)
     }
 
-    fn obj_layer_colors<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> (ColorData, ColorData) {
+    fn obj_layer_colors<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> (ObjColorData, ObjColorData) {
         let win_en = Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.obj_settings.window);
 
         let obj_win_main = bus.ppu_regs.obj_settings.window.main_en && win_en;
@@ -1239,8 +1242,8 @@ impl Ppu5C7x {
             obj_sub_col = Some(obj_main_col.unwrap_or(self.sprite_col(bus)));
         }
 
-        let obj_main_col = obj_main_col.unwrap_or(self.transparent_color_data(bus));
-        let obj_sub_col = obj_sub_col.unwrap_or(self.transparent_color_data(bus));
+        let obj_main_col = obj_main_col.unwrap_or(self.transparent_obj_color_data(bus));
+        let obj_sub_col = obj_sub_col.unwrap_or(self.transparent_obj_color_data(bus));
 
         (obj_main_col, obj_sub_col)
     }
@@ -1248,6 +1251,15 @@ impl Ppu5C7x {
     fn transparent_color_data<H: DebugHarness>(&self, bus: &mut PpuBus<H>) -> ColorData {
         ColorData {
             color: bus.cgram[0],
+            priority: 0,
+            transparent: true,
+        }
+    }
+
+    fn transparent_obj_color_data<H: DebugHarness>(&self, bus: &mut PpuBus<H>) -> ObjColorData {
+        ObjColorData {
+            color: bus.cgram[0],
+            palette: 0,
             priority: 0,
             transparent: true,
         }
