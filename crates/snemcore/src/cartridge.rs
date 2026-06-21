@@ -1,6 +1,8 @@
 //use std::intrinsics::simd::SimdAlign::Vector;
 
 use log::trace;
+use serde::{Serialize, ser::SerializeStruct};
+use sha2::Digest;
 
 use crate::scpu::bus::Address;
 
@@ -46,6 +48,8 @@ pub struct Cartridge {
     pub is_ntsc: bool,
 
     pub interrupt_vectors: [u8; 32],
+
+    rom_hash: [u8; 32],
 }
 
 impl Cartridge {
@@ -83,6 +87,8 @@ impl Cartridge {
             is_ntsc: true,
 
             interrupt_vectors: [0; 32],
+
+            rom_hash: [0u8; 32],
         };
 
         cart.force_write(Address::from_u32(0x00FFFC), reset_vec as u8);
@@ -108,6 +114,8 @@ impl Cartridge {
             rom: cart_rom,
             ..Default::default()
         };
+
+        cart.rom_hash = Self::hash_rom(cart.rom.as_slice());
 
         let header_start = find_header(&cart.rom)?;
         let header_end = header_start + 0x40 as usize;
@@ -210,6 +218,12 @@ impl Cartridge {
         );
 
         Ok(cart)
+    }
+
+    pub fn hash_rom(rom: &[u8]) -> [u8; 32] {
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(rom);
+        hasher.finalize().into()
     }
 
     pub fn read(&self, addr: Address) -> u8 {
@@ -487,4 +501,16 @@ fn find_header(cart_rom: &Vec<u8>) -> Result<usize, String> {
 // Compute the checksum of the cartridge using the proper mirroring
 fn compute_checksum(cart_rom: &Vec<u8>) -> u16 {
     cart_rom.iter().fold(0u16, |acc, &x| acc + x as u16)
+}
+
+impl Serialize for Cartridge {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer
+    {
+        let mut s = serializer.serialize_struct("cartridge", 2)?;
+        s.serialize_field("ram", &self.ram)?;
+        s.serialize_field("rom_hash", &self.rom_hash)?;
+        s.end()
+    }
 }

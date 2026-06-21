@@ -7,6 +7,7 @@ use crate::debug::window::DebugWindow;
 use crate::theme::{AppTheme, ThemePreset};
 use crate::ui_window::UiWindow;
 use sdl3::VideoSubsystem;
+use serde::Serialize;
 #[cfg(not(feature="debug"))]
 use snemcore::debug::NullHarness;
 
@@ -22,7 +23,9 @@ use sdl3::keyboard::{Keycode, Mod};
 use snemcore::controller::{ControllerPlayer, JoypadButton};
 use snemcore::sysinfo::{self, AUDIO_SAMPLE_HZ, FRAMES_PER_SECOND, SCREEN_HEIGHT, SCREEN_WIDTH};
 use snemcore::Snemulator;
+use std::io::Write;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 pub const FRAME_BUF_SIZE: usize = (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize;
@@ -100,6 +103,7 @@ pub struct SnemulatorApp {
     audio_buffer: Vec<i16>,
 
     snem_core: Snemulator,
+    random_seed: u64,
 
     #[cfg(feature = "debug")]
     debug_harness: MainDebugHarness,
@@ -175,6 +179,7 @@ impl SnemulatorApp {
             fonts,
             prev_frame_micros: HeapRb::new(PREV_FPS_BUFFER_LEN),
             total_frame_micros: 0,
+            random_seed: 0, 
             
             snem_core,
             frame_buffer,
@@ -188,7 +193,9 @@ impl SnemulatorApp {
 
         app.handle_args(args)?;
 
-        log::trace!("Random Seed: {}", app.snem_core.get_random_seed());
+        app.random_seed = app.snem_core.get_random_seed();
+
+        log::trace!("Random Seed: {}", app.random_seed);
 
         Ok(app)
     }
@@ -730,7 +737,13 @@ impl SnemulatorApp {
     }
 
     fn save_state(&mut self) {
-        log::warn!("Save State called");
+        let outfilepath = PathBuf::from_str("save.snem").unwrap();
+        let mut outfile = std::fs::File::create(outfilepath).unwrap();
+
+        let bytes = serde_json::to_string_pretty(&self.snem_core).unwrap();
+        outfile.write_all(&bytes.as_bytes()).unwrap();
+
+        log::debug!("Wrote save state to 'save.snem'");
     }
 
     fn load_state(&mut self) {

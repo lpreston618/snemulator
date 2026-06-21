@@ -6,9 +6,11 @@ use crate::scpu::bus::CpuBus;
 pub mod regs;
 mod types;
 
+use serde::Serialize;
 pub use types::*;
 pub use regs::DmaRegs;
 
+#[derive(Serialize)]
 pub struct DmaController {
     pub regs: [DmaRegs; 8],
     pub dma_en: bool,

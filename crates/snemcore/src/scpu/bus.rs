@@ -1,3 +1,5 @@
+use serde::Serialize;
+
 use crate::cartridge::Cartridge;
 use crate::controller::{ControllerData, JoypadCmd};
 use crate::dma::DmaController;
@@ -11,7 +13,7 @@ use crate::ssmp::ioports::ApuIoPorts;
 use crate::sysinfo::{CGRAM_SIZE, OAM_SIZE, VRAM_SIZE, WRAM_SIZE};
 use crate::{get_bit_n, get_byte_n, set_byte_n};
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize)]
 pub struct Address {
     pub bank: u8,
     pub offset: u16,

@@ -10,6 +10,7 @@ pub use types::*;
 pub mod bus;
 pub mod color;
 pub mod regs;
+pub mod serialize;
 mod types;
 
 #[macro_use]

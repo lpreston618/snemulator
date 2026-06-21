@@ -5,6 +5,7 @@ mod tests;
 pub mod bus;
 pub mod ioregs;
 pub mod mult;
+pub mod serialize;
 
 pub use bus::Address;
 
@@ -95,6 +96,7 @@ impl Cpu65c816 {
 
     /// Sets the CPU to its proper initial state.
     pub fn power_on<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
+        self.a = 0;
         self.x = 0;
         self.y = 0;
         self.db = 0;

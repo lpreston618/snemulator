@@ -1,3 +1,5 @@
+use serde::Serialize;
+
 use crate::dma::{
     AddressIncMode,
     TransferPattern,
@@ -6,7 +8,7 @@ use crate::dma::{
 use crate::scpu::Address;
 
 /// A single DMA/H-DMA channel
-#[derive(Default, Clone, Copy, Debug)]
+#[derive(Default, Clone, Copy, Debug, Serialize)]
 pub struct DmaRegs {
     // $420B
     pub dma_en: bool,

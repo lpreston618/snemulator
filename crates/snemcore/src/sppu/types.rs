@@ -1,6 +1,8 @@
+use serde::Serialize;
+
 use crate::sppu;
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize)]
 pub enum ObjectSizeSelect {
     #[default]
     Size8x8_16x16,
@@ -13,7 +15,7 @@ pub enum ObjectSizeSelect {
     Size16x32_32x32,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize)]
 pub enum ObjectSize {
     Size8x8,
     Size16x16,
@@ -23,14 +25,14 @@ pub enum ObjectSize {
     Size32x64,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize)]
 pub enum TileSize {
     #[default]
     Size8x8,
     Size16x16,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize)]
 pub enum BgMode {
     #[default]
     Mode0,
@@ -43,21 +45,21 @@ pub enum BgMode {
     Mode7,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Default, Serialize)]
 pub enum TilemapCount {
     #[default]
     One,
     Two,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize)]
 pub enum VramIncMode {
     #[default]
     HighByte,
     LowByte,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize)]
 pub enum AddressRemapping {
     #[default]
     None,
@@ -66,7 +68,7 @@ pub enum AddressRemapping {
     ColDepth8,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize)]
 pub enum ColorDepth {
     #[default]
     Bpp2,
@@ -75,7 +77,7 @@ pub enum ColorDepth {
     // Direct,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize)]
 pub enum IncrSize {
     #[default]
     Bytes2,
@@ -83,14 +85,14 @@ pub enum IncrSize {
     Bytes256,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize)]
 pub enum M7FillMode {
     #[default]
     Transparent,
     Character,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize)]
 pub enum WindowLogic {
     #[default]
     Or,
@@ -99,7 +101,7 @@ pub enum WindowLogic {
     Xnor,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize)]
 pub enum WindowColorRegion {
     #[default]
     Nowhere,
@@ -108,21 +110,21 @@ pub enum WindowColorRegion {
     Everywhere,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize)]
 pub enum CMathOperator {
     #[default]
     Add,
     Subtract,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize)]
 pub enum MasterSlave {
     #[default]
     Master,
     Slave,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize)]
 pub enum VideoType {
     #[default]
     Ntsc,
@@ -189,7 +191,7 @@ pub struct ChrData {
     pub tile_width: u8, // 8 or 16; needed to invert chr_col when flip_x
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize)]
 pub struct WindowSettings {
     pub logic: WindowLogic,
     pub main_en: bool,
@@ -200,7 +202,7 @@ pub struct WindowSettings {
     pub w2_inv: bool,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize)]
 pub struct LayerSettings {
     pub main_en: bool,
     pub sub_en: bool,
@@ -208,7 +210,7 @@ pub struct LayerSettings {
     pub window: WindowSettings,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize)]
 pub struct BgSettings {
     pub main_en: bool,
     pub sub_en: bool,

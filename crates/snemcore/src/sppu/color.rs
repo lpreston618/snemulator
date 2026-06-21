@@ -1,4 +1,6 @@
-#[derive(Clone, Copy, Debug, Default)]
+use serde::Serialize;
+
+#[derive(Clone, Copy, Debug, Default, Serialize)]
 pub struct Color {
     pub r: u8,
     pub g: u8,

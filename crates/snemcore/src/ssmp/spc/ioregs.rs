@@ -1,4 +1,6 @@
-#[derive(Default)]
+use serde::Serialize;
+
+#[derive(Default, Serialize)]
 pub struct SpcIoRegs {
     // $F0 (unused)
 

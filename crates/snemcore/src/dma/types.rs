@@ -1,27 +1,13 @@
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum DmaStatus {
-    /// No enabled DMA or H-DMA channels
-    Off,
-    /// DMA in progress, no H-DMA channels enabled
-    DMA,
-    /// H-DMA in progress, no DMA channels enabled
-    HDMA,
-    /// H-DMA waiting for next hblank, no DMA channels enabled
-    InactiveHDMA,
-    /// H-DMA active, DMA waiting for H-DMA to finish
-    ActiveLayeredHDMA,
-    /// DMA active, H-DMA waiting for next hblank
-    InactiveLayeredHDMA,
-}
+use serde::Serialize;
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug, Serialize)]
 pub enum Direction {
     #[default]
     AtoB,
     BtoA,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize)]
 pub enum AddressIncMode {
     #[default]
     Inc,
@@ -29,7 +15,7 @@ pub enum AddressIncMode {
     Dec,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize)]
 pub enum TransferPattern {
     #[default]
     Pattern0,

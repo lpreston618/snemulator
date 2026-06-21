@@ -1,7 +1,9 @@
+use serde::Serialize;
+
 use crate::ssmp::sdsp::{ADSRStage, GainMode};
 
 /// Contains all registers controlling a single voice of the S-DSP
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Serialize)]
 pub struct VoiceRegs {
     // $X0
     pub lchannel_volume: u8,

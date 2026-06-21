@@ -5,6 +5,7 @@ use dma::DmaController;
 use scpu::bus::CpuBus;
 use scpu::ioregs::CpuIoRegs;
 use scpu::{Cpu65c816, CpuInterrupt};
+use serde::ser::SerializeStruct;
 use sppu::bus::PpuBus;
 use sppu::color::Color;
 use sppu::regs::PpuRegs;
@@ -28,6 +29,7 @@ pub mod sppu;
 pub mod ssmp;
 pub mod sysinfo;
 pub mod debug;
+pub mod savestate;
 mod utils;
 
 macro_rules! cpu_bus {
@@ -102,8 +104,8 @@ macro_rules! ppu_bus {
 
 // Emulator core
 pub struct Snemulator {
-    p1_controller: SnemController,
-    p2_controller: SnemController,
+    pub p1_controller: SnemController,
+    pub p2_controller: SnemController,
 
     pub cpu: Cpu65c816,
     pub ppu: Ppu5C7x,
@@ -128,8 +130,6 @@ pub struct Snemulator {
     pub cart: Option<Cartridge>,
     pub total_cycles: u64,
     pub frame: u64,
-
-    clocks_last_frame: u64,
 
     random_seed: u64,
     rng: StdRng,
@@ -166,8 +166,6 @@ impl Snemulator {
             cart: None,
             total_cycles: 0u64,
             frame: 0u64,
-
-            clocks_last_frame: 0u64,
 
             random_seed,
             rng: StdRng::seed_from_u64(random_seed),
@@ -278,8 +276,6 @@ impl Snemulator {
         harness: &mut H,
     ) {
         self.frame_ready = false;
-
-        self.clocks_last_frame = self.total_cycles;
 
         while !self.frame_ready {
             if H::IS_DEBUGGING_HARNESS && harness.should_stop(self) {
@@ -490,65 +486,3 @@ impl Snemulator {
     //     self.cart.as_ref().unwrap().sram_slice()
     // }
 }
-
-// impl Snemulator {
-//     fn cycle_no_video(&mut self, audio_buffer: &mut Vec<i16>) {
-//         let mut probe = self.probe.take().unwrap();
-
-//         let clocks = self.cpu.clocks.min(self.ppu.clocks);
-
-//         self.cpu.clocks -= clocks;
-//         self.ppu.clocks -= clocks;
-//         self.total_cycles += clocks as u64;
-
-//         if self.cpu.clocks == 0 {
-//             self.cycle_cpu();
-
-//             probe.on_instruction(self);
-//         }
-
-//         if self.ppu.clocks == 0 {
-//             let scanline = self.ppu.scanline;
-
-//             self.cycle_ppu_no_output();
-
-//             probe.on_dot(self);
-
-//             if self.ppu.scanline != scanline {
-//                 probe.on_scanline(self);
-//             }
-//         }
-
-//         self.ssmp.cycle(clocks, audio_buffer, &mut self.apu_ports);
-
-//         self.probe = Some(probe);
-//     }
-
-//     fn cycle_ppu_no_output(&mut self) {
-//         self.cpu_interrupt = None;
-
-//         let frame_buffer = &mut [];
-
-//         let mut bus = ppu_bus!(self, frame_buffer);
-
-//         self.ppu.cycle_no_output(&mut bus);
-
-//         match self.cpu_interrupt {
-//             Some(CpuInterrupt::IRQ) => {
-//                 self.cpu.irq_pending = true;
-//             }
-//             Some(CpuInterrupt::NMI) => {
-//                 self.cpu.nmi_pending = true;
-//             }
-//             _ => {}
-//         }
-
-//         if self.dma.hdma_pending
-//             && self.ppu.scanline < sppu::VBLANK_START_SCANLINE
-//             && self.ppu.dot == sppu::HBLANK_START_DOT
-//         {
-//             self.dma.hdma_en = true;
-//             self.dma.regs[self.dma.hdma_active_ch].transfer_pattern_step = 0;
-//         }
-//     }
-// }

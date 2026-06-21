@@ -1,3 +1,5 @@
+use serde::Serialize;
+
 use crate::{debug::DebugHarness, ssmp::spc::bus::SpcBus};
 
 pub mod bus;
@@ -17,7 +19,7 @@ pub enum Flag {
     FlagN = 128, // Negative
 }
 
-#[derive(Default)]
+#[derive(Default, Serialize)]
 pub struct Spc700 {
     pub pc: u16,
     pub sp: u8,

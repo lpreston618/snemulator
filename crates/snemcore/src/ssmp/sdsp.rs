@@ -1,6 +1,7 @@
 use crate::{debug::DebugHarness, get_bit_n, get_byte_n};
 
 use bus::SdspBus;
+use serde::Serialize;
 
 pub mod bus;
 pub mod regs;
@@ -11,7 +12,7 @@ const fn sign_extend<const WIDTH: usize>(value: i32) -> i32 {
     (value << shift) >> shift
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize)]
 pub enum ADSRStage {
     Attack,
     Decay,
@@ -19,7 +20,7 @@ pub enum ADSRStage {
     Release,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize)]
 pub enum GainMode {
     Fixed,
     Decrease,
@@ -28,7 +29,7 @@ pub enum GainMode {
     BentIncrease,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize)]
 pub enum BrrFilter {
     Filter0,
     Filter1,
@@ -36,6 +37,7 @@ pub enum BrrFilter {
     Filter3,
 }
 
+#[derive(Serialize)]
 pub struct SuperDSP {
     pub envelope_counter: usize,
     pub noise_output: u16,

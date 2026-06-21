@@ -1,3 +1,6 @@
+use serde::Serialize;
+use serde_with::serde_as;
+
 use crate::debug::DebugHarness;
 use crate::ssmp::ioports::ApuIoPorts;
 use crate::ssmp::sdsp::{SuperDSP, bus::SdspBus, regs::SdspRegs, voices::VoiceRegs};
@@ -9,16 +12,20 @@ use crate::sysinfo::{
     SLOW_TIMER_CLOCK_PERIOD, FAST_TIMER_CLOCK_PERIOD,
 };
 
+pub mod serialize;
 pub mod ioports;
 pub mod sdsp;
 pub mod spc;
 mod timers;
 
 /// The sound processor chip of the S-NES. Contains the SPC700 and S-DSP.
+#[serde_as]
+#[derive(Serialize)]
 pub struct Ssmp {
     pub spc: Spc700,
     pub sdsp: sdsp::SuperDSP,
 
+    #[serde_as(as = "Box<[_; ARAM_SIZE]>")]
     pub aram: Box<[u8; ARAM_SIZE]>,
     pub spc_regs: SpcIoRegs,
     pub sdsp_regs: SdspRegs,

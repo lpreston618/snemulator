@@ -1,4 +1,5 @@
 use rand::rngs::StdRng;
+use serde::Serialize;
 
 use crate::sppu::color::Color;
 use crate::sppu::types::*;
@@ -6,7 +7,7 @@ use crate::utils::RandomExt;
 use crate::get_bit_n;
 
 /// Contains all of the shared data (registers, memory, etc.) between the S-CPU and S-PPU.
-#[derive(Default)]
+#[derive(Default, Serialize)]
 pub struct PpuRegs {
     pub h_counter: u16,
     pub v_counter: u16,
@@ -314,6 +315,8 @@ impl PpuRegs {
         self.write_2132(rng.rand_byte());
         self.write_2133(0);
 
+        self.v_counter = 0;
+        self.h_counter = 0;
         self.multiply_result = 0x000001;
         self.h_counter_latch = 0x01FF;
         self.v_counter_latch = 0x01FF;
