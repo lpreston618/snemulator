@@ -36,7 +36,7 @@ pub struct VoiceRegs {
     pub envelope: i16,
 
     // $X9
-    pub sample_out_high: u16,
+    pub sample_out_high: u8,
 
     // $XA, $XB
     pub ram_a: u8,
@@ -61,9 +61,9 @@ pub struct VoiceRegs {
     pub brr_sample_buffer: [u16; 12],
     pub brr_group_addr: u16, // Base address of the BRR sample group (9 bytes)
     pub brr_group_step: usize, // Keeps track of how many sets of 4 BRR samples
-                             // have been read into the buffer so far from
-                             // the current BRR group.
-    
+    // have been read into the buffer so far from
+    // the current BRR group.
+
     // For debuggign purposes
     pub last_generated_left: i16,
     pub last_generated_right: i16,

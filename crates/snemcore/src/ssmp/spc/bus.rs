@@ -366,8 +366,7 @@ impl<'a, H: DebugHarness> SpcBus<'a, H> {
                         voice.envelope = (value << 4) as i16;
                     }
                     9 => {
-                        voice.sample_out_high &= 0x00EF;
-                        voice.sample_out_high |= (value as u16) << 7;
+                        voice.sample_out_high = value;
                     }
                     0xA => {
                         voice.ram_a = value;
@@ -419,7 +418,10 @@ impl<'a, H: DebugHarness> SpcBus<'a, H> {
                                 voice.brr_group_step = 0;
 
                                 if H::IS_DEBUGGING_HARNESS && H::TRACK_VOICES {
-                                    self.harness.on_voice_key_on(&mut self.voice_regs[voice_idx], voice_idx);
+                                    self.harness.on_voice_key_on(
+                                        &mut self.voice_regs[voice_idx],
+                                        voice_idx,
+                                    );
                                 }
                             }
                         }
@@ -434,10 +436,12 @@ impl<'a, H: DebugHarness> SpcBus<'a, H> {
                         self.sdsp_regs.noise_freq = value & 0x1F;
 
                         if self.sdsp_regs.soft_reset {
-                            self.voice_regs.iter_mut().for_each(|voice| voice.soft_reset());
+                            self.voice_regs
+                                .iter_mut()
+                                .for_each(|voice| voice.soft_reset());
                         }
-                    },
-                    _ =>  {},
+                    }
+                    _ => {}
                 }
             }
 
