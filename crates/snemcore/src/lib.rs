@@ -5,7 +5,6 @@ use dma::DmaController;
 use scpu::bus::CpuBus;
 use scpu::ioregs::CpuIoRegs;
 use scpu::{Cpu65c816, CpuInterrupt};
-use serde::ser::SerializeStruct;
 use sppu::bus::PpuBus;
 use sppu::color::Color;
 use sppu::regs::PpuRegs;

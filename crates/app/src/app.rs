@@ -1,15 +1,12 @@
 use crate::SnemulatorArgs;
 
-#[cfg(feature = "debug")]
-use crate::debug::harness::MainDebugHarness;
-#[cfg(feature = "debug")]
-use crate::debug::window::DebugWindow;
 use crate::theme::{AppTheme, ThemePreset};
 use crate::ui_window::UiWindow;
 use sdl3::VideoSubsystem;
-use serde::Serialize;
 #[cfg(not(feature="debug"))]
 use snemcore::debug::NullHarness;
+#[cfg(feature = "debug")]
+use crate::debug::{harness::MainDebugHarness, window::DebugWindow};
 
 use crate::game::MainWindow;
 use crate::settings::{Settings, SettingsWindow};

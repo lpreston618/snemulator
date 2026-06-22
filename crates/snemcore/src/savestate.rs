@@ -1,19 +1,6 @@
 use serde::{Serialize, ser::SerializeStruct};
 
-use crate::{Snemulator, scpu::Cpu65c816, sppu::Ppu5C7x, ssmp::Ssmp};
-
-// // : Box<[u8; WRAM_SIZE]>,
-// // : Box<[u16; VRAM_SIZE]>,
-// // : Box<[Color; CGRAM_SIZE]>,
-// // : Box<[u8; OAM_SIZE]>,
-// // : PpuRegs,
-// // : CpuIoRegs,
-// // : ApuIoPorts,
-// // : u8,
-// // : DmaController,
-// // : ControllerData,
-// // : bool,
-// // : Option<Cartridge>,
+use crate::Snemulator;
 
 impl Serialize for Snemulator {
     fn serialize<S>(&self, serializer: S) -> std::prelude::v1::Result<S::Ok, S::Error>

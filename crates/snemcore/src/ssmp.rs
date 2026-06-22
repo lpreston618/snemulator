@@ -12,7 +12,6 @@ use crate::sysinfo::{
     SLOW_TIMER_CLOCK_PERIOD, FAST_TIMER_CLOCK_PERIOD,
 };
 
-pub mod serialize;
 pub mod ioports;
 pub mod sdsp;
 pub mod spc;
