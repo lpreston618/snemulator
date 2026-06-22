@@ -72,6 +72,12 @@ pub fn fmt_i8_signed(val: i8, t: &AppTheme) -> LayoutJob {
     job
 }
 
+pub fn fmt_i16_signed(val: i16, t: &AppTheme) -> LayoutJob {
+    let mut job = LayoutJob::default();
+    append(&mut job, &format!("{val:+}"), FontId::monospace(12.0), t.syntax_number);
+    job
+}
+
 pub fn fmt_bool(val: bool, t: &AppTheme) -> LayoutJob {
     let mut job = LayoutJob::default();
     let (text, color) = if val { ("✓", t.success) } else { ("✗", t.text_disabled) };

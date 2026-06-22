@@ -146,7 +146,7 @@ impl<'a, H: DebugHarness> SpcBus<'a, H> {
                     }
                     6 => (voice.adsr_sustain_level << 5) | voice.adsr_sustain_rate,
                     7 => voice.gain_reg_raw,
-                    8 => (voice.envelope >> 4) as u8,
+                    8 => ((voice.envelope >> 3) as u8) & 0x7F,
                     9 => (voice.sample_out_high >> 7) as u8,
                     0xA => voice.ram_a,
                     0xB => voice.ram_b,
@@ -363,10 +363,12 @@ impl<'a, H: DebugHarness> SpcBus<'a, H> {
                         voice.gain_rate = value & 0x1F;
                     }
                     8 => {
-                        voice.envelope = (value << 4) as i16;
+                        voice.envelope &= 0x0007;
+                        voice.envelope = (value as i16) << 3;
                     }
                     9 => {
-                        voice.sample_out_high = value;
+                        voice.sample_out_high &= 0x007F;
+                        voice.sample_out_high |= ((value as i8) as i16) << 7;
                     }
                     0xA => {
                         voice.ram_a = value;
