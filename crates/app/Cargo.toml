@@ -22,6 +22,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 dirs = "6.0.0"
 toml = "1.1.2"
 serde_json = "1.0.150"
+rubato = "3.0.0"
 
 [features]
 debug = []

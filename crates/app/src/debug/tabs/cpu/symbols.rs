@@ -45,10 +45,6 @@ impl SymbolManager {
 
         Ok(())
     }
-
-    pub fn get_address_of_label(&self, label: &str) -> Option<u32> {
-        self.inv_label_lookup.get(label).copied()
-    }
 }
 
 pub struct LabelEditState {

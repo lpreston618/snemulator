@@ -31,6 +31,9 @@ pub struct SnemulatorArgs {
     #[arg(long)]
     pub theme: Option<String>,
 
+    #[arg(long)]
+    pub resampling: bool,
+
     /// Start in debug mode
     #[cfg(feature = "debug")]
     #[arg(long)]

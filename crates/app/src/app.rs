@@ -1,15 +1,13 @@
 use crate::SnemulatorArgs;
 
-#[cfg(feature = "debug")]
-use crate::debug::harness::MainDebugHarness;
-#[cfg(feature = "debug")]
-use crate::debug::window::DebugWindow;
 use crate::theme::{AppTheme, ThemePreset};
 use crate::ui_window::UiWindow;
+use crate::app::resampler::AudioResampler;
 use sdl3::VideoSubsystem;
-use serde::Serialize;
 #[cfg(not(feature="debug"))]
 use snemcore::debug::NullHarness;
+#[cfg(feature = "debug")]
+use crate::debug::{harness::MainDebugHarness, window::DebugWindow};
 
 use crate::game::MainWindow;
 use crate::settings::{Settings, SettingsWindow};
@@ -27,6 +25,8 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
+
+mod resampler;
 
 pub const FRAME_BUF_SIZE: usize = (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize;
 
@@ -101,6 +101,7 @@ pub struct SnemulatorApp {
     total_frame_micros: usize,
     frame_buffer: Box<[u8; FRAME_BUF_SIZE]>,
     audio_buffer: Vec<i16>,
+    audio_resampler: Option<AudioResampler>,
 
     snem_core: Snemulator,
     random_seed: u64,
@@ -154,13 +155,44 @@ impl SnemulatorApp {
 
         let main_window = MainWindow::new(main_egui_window, &video_subsystem, &settings)?;
 
-        let audio_spec = AudioSpec {
-            freq: Some(sysinfo::AUDIO_SAMPLE_HZ as i32),
-            channels: Some(2),
-            format: Some(AudioFormat::s16_sys()),
+        
+        if args.resampling {
+            
+        }
+        
+        let (audio_stream, audio_resampler) = if args.resampling {
+            let audio_spec = AudioSpec {
+                freq: None,
+                channels: Some(2),
+                format: Some(AudioFormat::s16_sys()),
+            };
+            let audio_device = audio_subsystem.open_playback_device(&audio_spec)?;
+            let obtained_spec = audio_device.format()?;
+            let output_rate = obtained_spec.0.freq.unwrap() as usize;
+
+            let stream_spec = AudioSpec {
+                freq: obtained_spec.0.freq,
+                channels: Some(2),
+                format: Some(AudioFormat::s16_sys()),
+            };
+
+            let audio_stream = audio_device.open_device_stream(Some(&stream_spec))?;
+    
+            let audio_resampler = AudioResampler::new(32000, output_rate);
+
+            (audio_stream, Some(audio_resampler))
+        } else {
+            let audio_spec = AudioSpec {
+                freq: Some(sysinfo::AUDIO_SAMPLE_HZ as i32),
+                channels: Some(2),
+                format: Some(AudioFormat::s16_sys()),
+            };
+
+            let audio_device = audio_subsystem.open_playback_device(&audio_spec)?;
+            let audio_stream = audio_device.open_device_stream(Some(&audio_spec))?;
+
+            (audio_stream, None)
         };
-        let audio_device = audio_subsystem.open_playback_device(&audio_spec)?;
-        let audio_stream = audio_device.open_device_stream(Some(&audio_spec))?;
 
         let snem_core = Snemulator::new();
         let debug_harness = create_harness();
@@ -184,6 +216,7 @@ impl SnemulatorApp {
             snem_core,
             frame_buffer,
             audio_buffer,
+            audio_resampler,
 
             debug_harness,
 
@@ -397,11 +430,24 @@ impl SnemulatorApp {
             return;
         }
 
-        if let Err(e) = self.audio_stream.put_data_i16(&self.audio_buffer) {
-            log::warn!("Audio stream write failed: {e}");
-        }
+        if let Some(resampler) = &mut self.audio_resampler {
+            // Called once per frame, after SDSP finishes
+            while self.audio_buffer.len() >= resampler.input_frames_needed() * 2 {
+                let needed = resampler.input_frames_needed() * 2;
+                let chunk: Vec<i16> = self.audio_buffer.drain(..needed).collect();
+                let resampled = resampler.resample(&chunk);
+                
+                if let Err(e) = self.audio_stream.put_data_i16(&resampled) {
+                    log::warn!("Audio stream write failed: {e}");
+                }
+            }
+        } else {
+            if let Err(e) = self.audio_stream.put_data_i16(&self.audio_buffer) {
+                log::warn!("Audio stream write failed: {e}");
+            }
 
-        self.audio_buffer.clear();
+            self.audio_buffer.clear();
+        }
     }
 
     fn handle_input(&mut self) -> AppAction {
