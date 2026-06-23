@@ -755,6 +755,10 @@ impl SnemulatorApp {
     }
 
     fn try_load_rom_from_path(&mut self, path: &PathBuf) -> Result<()> {
+        if self.state.loaded_rom_data.is_some() {
+            self.save_cartridge_save_ram(false);
+        }
+
         let data = std::fs::read(path)?;
         let crc = crc32fast::hash(&data);
 

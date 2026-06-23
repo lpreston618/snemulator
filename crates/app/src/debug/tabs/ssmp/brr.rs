@@ -4,7 +4,7 @@ use egui::text::LayoutJob;
 use crate::app::AppState;
 use crate::debug::harness::MainDebugHarness;
 use crate::debug::window::DebugAction;
-use crate::theme::AppTheme;
+use crate::app::theme::AppTheme;
 use snemcore::Snemulator;
 use snemcore::ssmp::sdsp::SuperDSP;
 use super::append;
@@ -52,12 +52,12 @@ impl SdspBrrTab {
                         // Snapshot the fields we need — avoids holding borrow into painter call.
                         let buf        = core.ssmp.voice_regs[v].brr_sample_buffer;
                         let interp_idx = core.ssmp.voice_regs[v].prev_interpolation_idx;
-                        let shift      = Self::current_shift(&core.ssmp.voice_regs[v]);
+                        // let shift      = Self::current_shift(&core.ssmp.voice_regs[v]);
                         // let group_step = core.ssmp.voice_regs[v].brr_group_step;
 
                         ui.add_space(4.0);
                         let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), GRID_HEIGHT));
-                        let dot_positions = Self::paint_grid(ui, app_theme, rect, &buf, interp_idx, shift);
+                        let dot_positions = Self::paint_grid(ui, app_theme, rect, &buf, interp_idx);
 
                         // ── Hover tooltips for each BRR sample dot ───────────
                         for (col, (&raw, (cx, cy))) in buf.iter().zip(dot_positions.iter()).enumerate() {
@@ -125,7 +125,6 @@ impl SdspBrrTab {
         rect: Rect,
         buf: &[i16; 12],
         interp_idx: usize,
-        shift: u8,
         // group_step: usize,
     ) -> [(f32, f32); 12] {
         let painter = ui.painter_at(rect);

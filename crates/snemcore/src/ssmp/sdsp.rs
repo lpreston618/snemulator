@@ -327,11 +327,6 @@ impl SuperDSP {
     }
 
     fn push_echo_samples(&mut self, left_sample: i16, right_sample: i16, bus: &mut SdspBus) {
-        // TODO: Generate FIR sample and add to echo samples
-
-        let left_echo_final = left_sample;
-        let right_echo_final = right_sample;
-
         let echo_buffer_start = (bus.sdsp_regs.echo_page as usize) << 8;
         let echo_delay_length = if bus.sdsp_regs.echo_delay_time != 0 {
             (bus.sdsp_regs.echo_delay_time as usize) << 11
@@ -339,25 +334,20 @@ impl SuperDSP {
             4
         };
 
-        // Write four bytes to the echo buffer. Handle nasty wrapping logic.
-        if bus.sdsp_regs.echo_en {
-            let addr = (echo_buffer_start + self.echo_ptr) & 0xFFFF;
-            bus.aram[addr] = get_byte_n!(left_echo_final, 0);
-            self.echo_ptr += 1;
-            self.echo_ptr %= echo_delay_length;
-            let addr = (echo_buffer_start + self.echo_ptr) & 0xFFFF;
-            bus.aram[addr] = get_byte_n!(left_echo_final, 1);
-            self.echo_ptr += 1;
-            self.echo_ptr %= echo_delay_length;
-            let addr = (echo_buffer_start + self.echo_ptr) & 0xFFFF;
-            bus.aram[addr] = get_byte_n!(right_echo_final, 0);
-            self.echo_ptr += 1;
-            self.echo_ptr %= echo_delay_length;
-            let addr = (echo_buffer_start + self.echo_ptr) & 0xFFFF;
-            bus.aram[addr] = get_byte_n!(right_echo_final, 1);
-            self.echo_ptr += 1;
-            self.echo_ptr %= echo_delay_length;
-        }
+        let eptr0 = (self.echo_ptr + 0) % echo_delay_length;
+        let eptr1 = (self.echo_ptr + 1) % echo_delay_length;
+        let eptr2 = (self.echo_ptr + 2) % echo_delay_length;
+        let eptr3 = (self.echo_ptr + 3) % echo_delay_length;
+
+        let addr0 = (echo_buffer_start + eptr0) & 0xFFFF;
+        let addr1 = (echo_buffer_start + eptr1) & 0xFFFF;
+        let addr2 = (echo_buffer_start + eptr2) & 0xFFFF;
+        let addr3 = (echo_buffer_start + eptr3) & 0xFFFF;
+
+        bus.aram[addr0] = get_byte_n!(left_sample, 0);
+        bus.aram[addr1] = get_byte_n!(left_sample, 1);
+        bus.aram[addr2] = get_byte_n!(right_sample, 0);
+        bus.aram[addr3] = get_byte_n!(right_sample, 1);
     }
 
     // Read 16 samples (8 left, 8 right) from the end of the echo buffer for use in generating an
@@ -402,28 +392,18 @@ impl SuperDSP {
     fn generate_echo_samples(&mut self, bus: &mut SdspBus) -> (i16, i16) {
         let (left_samples, right_samples) = self.read_fir_samples(bus);
 
-        let mut left_fir: i32 = 0;
-        let mut right_fir: i32 = 0;
+        let mut left_fir: i16 = 0;
+        let mut right_fir: i16 = 0;
 
         for i in 0..7 {
-            left_fir += (left_samples[i] as i32 * (bus.sdsp_regs.fir_regs[i] as i32)) >> 6;
-            left_fir &= 0xFFFF;
-            right_fir += (right_samples[i] as i32 * (bus.sdsp_regs.fir_regs[i] as i32)) >> 6;
-            right_fir &= 0xFFFF;
+            left_fir  += (left_samples[i]  * (bus.sdsp_regs.fir_regs[i] as i16)) >> 6;
+            right_fir += (right_samples[i] * (bus.sdsp_regs.fir_regs[i] as i16)) >> 6;
         }
-        left_fir += (left_samples[7] as i32 * (bus.sdsp_regs.fir_regs[7] as i32)) >> 6;
-        right_fir += (right_samples[7] as i32 * (bus.sdsp_regs.fir_regs[7] as i32)) >> 6;
 
-        let left_echo = left_fir.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
-        let right_echo = right_fir.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+        left_fir  =  left_fir.saturating_add((left_samples[7]  * (bus.sdsp_regs.fir_regs[7] as i16)) >> 6);
+        right_fir = right_fir.saturating_add((right_samples[7] * (bus.sdsp_regs.fir_regs[7] as i16)) >> 6);
 
-        (left_echo, right_echo)
-    }
-
-    // The same calculation is done for adjusting both echo feedback and echo output volumes,
-    // but with different volume registers. This fujnction carries out that calculation
-    fn echo_volume_adjust(&mut self, sample: i16, volume: i8) -> i16 {
-        (sample * volume as i16) >> 6
+        (left_fir, right_fir)
     }
 
     pub fn generate_sample(&mut self, audio_buffer: &mut Vec<i16>, bus: &mut SdspBus) {
@@ -454,35 +434,51 @@ impl SuperDSP {
             // }
         }
 
-        let l_volume = (bus.sdsp_regs.lmain_volume as i8) as i32;
-        let r_volume = (bus.sdsp_regs.rmain_volume as i8) as i32;
+        let l_volume = bus.sdsp_regs.lmain_volume as i8;
+        let r_volume = bus.sdsp_regs.rmain_volume as i8;
 
         // Properly clamp lo/hi with full precision, then store as i16
-        left_sample =
-            (((left_sample as i32) * l_volume) >> 7).clamp(i16::MIN as i32, i16::MAX as i32) as i16;
-        right_sample = (((right_sample as i32) * r_volume) >> 7)
-            .clamp(i16::MIN as i32, i16::MAX as i32) as i16;
-
+        left_sample = volume_adjust_8bit(left_sample, l_volume);
+        right_sample = volume_adjust_8bit(right_sample, r_volume);
+        
+        // 16-bit signed samples
         let (left_echo_out, right_echo_out) = self.generate_echo_samples(bus);
 
-        // Feed echo back into itself
-        left_echo_feedback = left_echo_feedback.saturating_add(
-            echo_volume_adjust(left_echo_out, bus.sdsp_regs.echo_feedback as i8),
-        );
-        right_echo_feedback = right_echo_feedback.saturating_add(
-            echo_volume_adjust(right_echo_out, bus.sdsp_regs.echo_feedback as i8),
-        );
+        let left_echo_out = volume_adjust_8bit(left_echo_out, bus.sdsp_regs.lecho_volume as i8);
+        let right_echo_out = volume_adjust_8bit(right_echo_out, bus.sdsp_regs.recho_volume as i8);
 
         // Add echo to output
         left_sample = left_sample.saturating_add(left_echo_out);
         right_sample = right_sample.saturating_add(right_echo_out);
 
+        // Feed echo back into itself
+        left_echo_feedback = left_echo_feedback.saturating_add(
+            volume_adjust_8bit(left_echo_out, bus.sdsp_regs.echo_feedback as i8),
+        );
+        right_echo_feedback = right_echo_feedback.saturating_add(
+            volume_adjust_8bit(right_echo_out, bus.sdsp_regs.echo_feedback as i8),
+        );
+
+        left_echo_feedback = (left_echo_feedback >> 1) << 1;
+        right_echo_feedback = (right_echo_feedback >> 1) << 1;
+
         if bus.sdsp_regs.mute_all {
             left_sample = 0;
             right_sample = 0;
         }
+        
+        if bus.sdsp_regs.echo_en {
+            self.push_echo_samples(left_echo_feedback, right_echo_feedback, bus);
+        }
+        
+        if bus.sdsp_regs.echo_delay_time == 0 {
+            self.echo_ptr = 0;
+        } else {
+            self.echo_ptr %= (bus.sdsp_regs.echo_delay_time as usize) << 11;
+        }
 
-        self.push_echo_samples(left_echo_feedback, right_echo_feedback, bus);
+        left_sample = !left_sample;
+        right_sample = !right_sample;
 
         self.last_generated_left = left_sample;
         self.last_generated_right = right_sample;
@@ -514,16 +510,16 @@ impl SuperDSP {
         let l_volume = (voice.lchannel_volume as i8) as i32;
         let r_volume = (voice.rchannel_volume as i8) as i32;
 
-        // After this, the samples are signed 16-bit values.
-        let left_sample = ((volume_adjusted_sample * l_volume) >> 7) as i16;
-        let right_sample = ((volume_adjusted_sample * r_volume) >> 7) as i16;
+        // Make 15-bit signed sample, then shift up to make 16-bit signed sample w/ 0 in low bit
+        let left_sample = (((volume_adjusted_sample * l_volume) >> 7) << 1) as i16;
+        let right_sample = (((volume_adjusted_sample * r_volume) >> 7) << 1) as i16;
 
         let mut pitch = voice.pitch as i32;
 
         if voice_idx != 0 && voice.pitchmod_en && !voice.noise_en {
             let factor = (bus.voice_regs[voice_idx - 1].sample_out_high as i32 >> 4) + 0x400;
             pitch += (pitch * factor) >> 10;
-            pitch = pitch.clamp(0, 0x3FFF);
+            pitch = pitch.clamp(0, 0x3FFF); // TODO: double triple check that this clamp happens
         }
 
         let voice = &mut bus.voice_regs[voice_idx];
@@ -664,7 +660,7 @@ impl SuperDSP {
     }
 }
 
-fn echo_volume_adjust(sample: i16, volume: i8) -> i16 {
+fn volume_adjust_8bit(sample: i16, volume: i8) -> i16 {
     ((sample as i32 * volume as i32) >> 7).clamp(i16::MIN as i32, i16::MAX as i32) as i16
 }
 
