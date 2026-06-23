@@ -1,11 +1,11 @@
 use egui::text::LayoutJob;
 use egui::{Color32, FontId, Pos2, Rect, Stroke, Vec2};
+use snemcore::ssmp::sdsp::{ADSRStage, GainMode};
 
 use crate::debug::harness::{ENVELOPE_HISTORY_LEN, MainDebugHarness};
-use crate::theme::AppTheme;
+use crate::app::theme::AppTheme;
+use crate::debug::tabs::ssmp::{append, detail_heading, detail_row, fmt_bool, fmt_hex_u8, fmt_hex_u16, fmt_i16_signed, fmt_u8_dec};
 use snemcore::Snemulator;
-use snemcore::ssmp::sdsp::{GainMode, ADSRStage};
-use super::{append, detail_heading, detail_row, fmt_bool, fmt_hex_u8, fmt_hex_u16, fmt_u8_dec};
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -24,7 +24,13 @@ impl SdspTab {
         }
     }
 
-    pub fn render(&mut self, ui: &mut egui::Ui, core: &mut Snemulator, harness: &mut MainDebugHarness, app_theme: &AppTheme) {
+    pub fn render(
+        &mut self,
+        ui: &mut egui::Ui,
+        core: &mut Snemulator,
+        harness: &mut MainDebugHarness,
+        app_theme: &AppTheme,
+    ) {
         let regs = &core.ssmp.sdsp_regs;
         let voice_regs = &core.ssmp.voice_regs;
 
@@ -35,28 +41,63 @@ impl SdspTab {
             .corner_radius(app_theme.corner_radius as f32)
             .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    self.global_kv(ui, app_theme, "Vol L/R",
-                        &format!("${:02X}/${:02X}", regs.lmain_volume, regs.rmain_volume));
+                    self.global_kv(
+                        ui,
+                        app_theme,
+                        "Vol L/R",
+                        &format!("${:02X}/${:02X}", regs.lmain_volume, regs.rmain_volume),
+                    );
                     ui.separator();
-                    self.global_kv(ui, app_theme, "Echo L/R",
-                        &format!("${:02X}/${:02X}", regs.lecho_volume, regs.recho_volume));
+                    self.global_kv(
+                        ui,
+                        app_theme,
+                        "Echo L/R",
+                        &format!("${:02X}/${:02X}", regs.lecho_volume, regs.recho_volume),
+                    );
                     ui.separator();
-                    self.global_kv(ui, app_theme, "Echo FB",  &format!("${:02X}", regs.echo_feedback));
+                    self.global_kv(
+                        ui,
+                        app_theme,
+                        "Echo FB",
+                        &format!("${:02X}", regs.echo_feedback),
+                    );
                     ui.separator();
-                    self.global_kv(ui, app_theme, "Noise Freq", &format!("${:02X}", regs.noise_freq));
+                    self.global_kv(
+                        ui,
+                        app_theme,
+                        "Noise Freq",
+                        &format!("${:02X}", regs.noise_freq),
+                    );
                     ui.separator();
-                    self.global_kv(ui, app_theme, "Echo Delay", &format!("${:02X}", regs.echo_delay_time));
+                    self.global_kv(
+                        ui,
+                        app_theme,
+                        "Echo Delay",
+                        &format!("${:02X}", regs.echo_delay_time),
+                    );
                     ui.separator();
-                    self.global_kv(ui, app_theme, "Echo Page",  &format!("${:02X}", regs.echo_page));
+                    self.global_kv(
+                        ui,
+                        app_theme,
+                        "Echo Page",
+                        &format!("${:02X}", regs.echo_page),
+                    );
                     ui.separator();
-                    self.global_kv(ui, app_theme, "Sample Dir", &format!("${:02X}", regs.sample_directory_page));
+                    self.global_kv(
+                        ui,
+                        app_theme,
+                        "Sample Dir",
+                        &format!("${:02X}", regs.sample_directory_page),
+                    );
                 });
 
                 ui.add_space(4.0);
 
                 ui.horizontal(|ui| {
                     // FIR coefficients
-                    let fir_str = regs.fir_regs.iter()
+                    let fir_str = regs
+                        .fir_regs
+                        .iter()
                         .map(|b| format!("{:02X}", *b as u8))
                         .collect::<Vec<_>>()
                         .join(" ");
@@ -65,11 +106,11 @@ impl SdspTab {
 
                     // Global flags
                     self.flag_badge(ui, app_theme, "RESET", regs.soft_reset, app_theme.error);
-                    self.flag_badge(ui, app_theme, "MUTE",  regs.mute_all,   app_theme.warning);
-                    self.flag_badge(ui, app_theme, "ECHO",  regs.echo_en,    app_theme.success);
+                    self.flag_badge(ui, app_theme, "MUTE", regs.mute_all, app_theme.warning);
+                    self.flag_badge(ui, app_theme, "ECHO", regs.echo_en, app_theme.success);
                     ui.separator();
 
-                    self.global_kv(ui, app_theme, "Key On",  &format!("0b{:08b}", regs.key_on));
+                    self.global_kv(ui, app_theme, "Key On", &format!("0b{:08b}", regs.key_on));
                     ui.separator();
                     self.global_kv(ui, app_theme, "Key Off", &format!("0b{:08b}", regs.key_off));
                 });
@@ -122,16 +163,26 @@ impl SdspTab {
         let mut job = LayoutJob::default();
         let mono = FontId::monospace(13.0);
 
-        let ch_color = if is_active { app_theme.accent } else { app_theme.text_muted };
+        let ch_color = if is_active {
+            app_theme.accent
+        } else {
+            app_theme.text_muted
+        };
         append(&mut job, &format!("VOICE {v}  "), mono.clone(), ch_color);
 
-        self.append_flag_badge(&mut job, "ADSR",     vr.adsr_en,    app_theme, mono.clone());
+        self.append_flag_badge(&mut job, "ADSR", vr.adsr_en, app_theme, mono.clone());
         append(&mut job, " ", mono.clone(), app_theme.text_muted);
-        self.append_flag_badge(&mut job, "NOISE",    vr.noise_en,   app_theme, mono.clone());
+        self.append_flag_badge(&mut job, "NOISE", vr.noise_en, app_theme, mono.clone());
         append(&mut job, " ", mono.clone(), app_theme.text_muted);
-        self.append_flag_badge(&mut job, "ECHO",     vr.echo_en,    app_theme, mono.clone());
+        self.append_flag_badge(&mut job, "ECHO", vr.echo_en, app_theme, mono.clone());
         append(&mut job, " ", mono.clone(), app_theme.text_muted);
-        self.append_flag_badge(&mut job, "PITCHMOD", vr.pitchmod_en, app_theme, mono.clone());
+        self.append_flag_badge(
+            &mut job,
+            "PITCHMOD",
+            vr.pitchmod_en,
+            app_theme,
+            mono.clone(),
+        );
         append(&mut job, "  ", mono.clone(), app_theme.text_muted);
 
         let (stage_str, stage_color) = adsr_stage_fmt(vr.adsr_stage, app_theme);
@@ -140,12 +191,24 @@ impl SdspTab {
         append(&mut job, "  ", mono.clone(), app_theme.text_muted);
 
         append(&mut job, "Src: ", mono.clone(), app_theme.text_secondary);
-        append(&mut job, &format!("${:02X}", vr.sample_source), mono.clone(), app_theme.syntax_number);
+        append(
+            &mut job,
+            &format!("${:02X}", vr.sample_source),
+            mono.clone(),
+            app_theme.syntax_number,
+        );
 
         job
     }
 
-    fn append_flag_badge(&self, job: &mut LayoutJob, label: &str, val: bool, app_theme: &AppTheme, font_id: FontId) {
+    fn append_flag_badge(
+        &self,
+        job: &mut LayoutJob,
+        label: &str,
+        val: bool,
+        app_theme: &AppTheme,
+        font_id: FontId,
+    ) {
         let (text, color) = if val {
             (format!("[{label} ✓]"), app_theme.success)
         } else {
@@ -173,46 +236,110 @@ impl SdspTab {
             ui.add_space(2.0);
             detail_row(ui, app_theme, "Vol L/R", &{
                 let mut j = LayoutJob::default();
-                append(&mut j, &format!("${:02X} / ${:02X}", vr.lchannel_volume, vr.rchannel_volume),
-                    FontId::monospace(12.0), app_theme.syntax_number);
+                append(
+                    &mut j,
+                    &format!("${:02X} / ${:02X}", vr.lchannel_volume, vr.rchannel_volume),
+                    FontId::monospace(12.0),
+                    app_theme.syntax_number,
+                );
                 j
             });
-            detail_row(ui, app_theme, "Pitch",      &fmt_hex_u16(vr.pitch, app_theme));
-            detail_row(ui, app_theme, "Envelope",   &fmt_hex_u16(vr.envelope as u16, app_theme));
-            detail_row(ui, app_theme, "Sample Out", &fmt_hex_u16(vr.sample_out_high, app_theme));
-            detail_row(ui, app_theme, "EOS",        &fmt_bool(vr.end_of_sample_flag, app_theme));
-            detail_row(ui, app_theme, "Loop",       &fmt_bool(vr.loop_flag, app_theme));
+            detail_row(ui, app_theme, "Pitch", &fmt_hex_u16(vr.pitch, app_theme));
+            detail_row(
+                ui,
+                app_theme,
+                "Envelope",
+                &fmt_hex_u16(vr.envelope as u16, app_theme),
+            );
+            detail_row(
+                ui,
+                app_theme,
+                "Sample Out",
+                &fmt_i16_signed(vr.sample_out_high, app_theme),
+            );
+            detail_row(
+                ui,
+                app_theme,
+                "EOS",
+                &fmt_bool(vr.end_of_sample_flag, app_theme),
+            );
+            detail_row(ui, app_theme, "Loop", &fmt_bool(vr.loop_flag, app_theme));
 
             ui.add_space(6.0);
             ui.label(detail_heading(app_theme, "Gain"));
             ui.add_space(2.0);
-            detail_row(ui, app_theme, "Mode",       &fmt_gain_mode(vr.gain_mode, app_theme));
-            detail_row(ui, app_theme, "Rate",       &fmt_u8_dec(vr.gain_rate, app_theme));
-            detail_row(ui, app_theme, "Fixed",      &fmt_hex_u8(vr.gain_fixed, app_theme));
-            detail_row(ui, app_theme, "Raw",        &fmt_hex_u8(vr.gain_reg_raw, app_theme));
+            detail_row(
+                ui,
+                app_theme,
+                "Mode",
+                &fmt_gain_mode(vr.gain_mode, app_theme),
+            );
+            detail_row(ui, app_theme, "Rate", &fmt_u8_dec(vr.gain_rate, app_theme));
+            detail_row(
+                ui,
+                app_theme,
+                "Fixed",
+                &fmt_hex_u8(vr.gain_fixed, app_theme),
+            );
+            detail_row(
+                ui,
+                app_theme,
+                "Raw",
+                &fmt_hex_u8(vr.gain_reg_raw, app_theme),
+            );
 
             // ── Right: ADSR ──────────────────────────────────────────────────
             let ui = &mut cols[1];
             let (stage_str, stage_color) = adsr_stage_fmt(vr.adsr_stage, app_theme);
             ui.label({
                 let mut j = LayoutJob::default();
-                append(&mut j, "ADSR  ", FontId::monospace(12.0), app_theme.syntax_directive);
+                append(
+                    &mut j,
+                    "ADSR  ",
+                    FontId::monospace(12.0),
+                    app_theme.syntax_directive,
+                );
                 append(&mut j, stage_str, FontId::monospace(12.0), stage_color);
                 j
             });
             ui.add_space(2.0);
-            detail_row(ui, app_theme, "ADSR En",    &fmt_bool(vr.adsr_en, app_theme));
-            detail_row(ui, app_theme, "Attack",     &fmt_u8_dec(vr.adsr_attack, app_theme));
-            detail_row(ui, app_theme, "Decay",      &fmt_u8_dec(vr.adsr_decay, app_theme));
-            detail_row(ui, app_theme, "Sus. Level", &fmt_u8_dec(vr.adsr_sustain_level, app_theme));
-            detail_row(ui, app_theme, "Sus. Rate",  &fmt_u8_dec(vr.adsr_sustain_rate, app_theme));
+            detail_row(ui, app_theme, "ADSR En", &fmt_bool(vr.adsr_en, app_theme));
+            detail_row(
+                ui,
+                app_theme,
+                "Attack",
+                &fmt_u8_dec(vr.adsr_attack, app_theme),
+            );
+            detail_row(
+                ui,
+                app_theme,
+                "Decay",
+                &fmt_u8_dec(vr.adsr_decay, app_theme),
+            );
+            detail_row(
+                ui,
+                app_theme,
+                "Sus. Level",
+                &fmt_u8_dec(vr.adsr_sustain_level, app_theme),
+            );
+            detail_row(
+                ui,
+                app_theme,
+                "Sus. Rate",
+                &fmt_u8_dec(vr.adsr_sustain_rate, app_theme),
+            );
 
             ui.add_space(6.0);
             ui.label(detail_heading(app_theme, "Flags"));
             ui.add_space(2.0);
-            detail_row(ui, app_theme, "Noise",      &fmt_bool(vr.noise_en, app_theme));
-            detail_row(ui, app_theme, "Echo",       &fmt_bool(vr.echo_en, app_theme));
-            detail_row(ui, app_theme, "Pitch Mod",  &fmt_bool(vr.pitchmod_en, app_theme));
+            detail_row(ui, app_theme, "Noise", &fmt_bool(vr.noise_en, app_theme));
+            detail_row(ui, app_theme, "Echo", &fmt_bool(vr.echo_en, app_theme));
+            detail_row(
+                ui,
+                app_theme,
+                "Pitch Mod",
+                &fmt_bool(vr.pitchmod_en, app_theme),
+            );
         });
 
         ui.add_space(6.0);
@@ -226,7 +353,14 @@ impl SdspTab {
 
     // ── Envelope painter ──────────────────────────────────────────────────────
 
-    fn paint_envelope(&self, ui: &egui::Ui, harness: &MainDebugHarness, app_theme: &AppTheme, v: usize, rect: Rect) {
+    fn paint_envelope(
+        &self,
+        ui: &egui::Ui,
+        harness: &MainDebugHarness,
+        app_theme: &AppTheme,
+        v: usize,
+        rect: Rect,
+    ) {
         let painter = ui.painter_at(rect);
 
         // Background
@@ -236,7 +370,8 @@ impl SdspTab {
         let w = rect.width();
         let h = rect.height();
 
-        let points: Vec<Pos2> = history.iter_chronological()
+        let points: Vec<Pos2> = history
+            .iter_chronological()
             .enumerate()
             .map(|(i, sample)| {
                 // envelope is i16 in range 0..=0x7FF (2047)
@@ -248,7 +383,10 @@ impl SdspTab {
             .collect();
 
         if points.len() >= 2 {
-            painter.add(egui::Shape::line(points, Stroke::new(1.5, app_theme.accent)));
+            painter.add(egui::Shape::line(
+                points,
+                Stroke::new(1.5, app_theme.accent),
+            ));
         }
 
         // Border
@@ -273,13 +411,30 @@ impl SdspTab {
     fn global_kv(&self, ui: &mut egui::Ui, app_theme: &AppTheme, label: &str, value: &str) {
         ui.horizontal(|ui| {
             let mut job = LayoutJob::default();
-            append(&mut job, &format!("{label}: "), FontId::monospace(12.0), app_theme.text_secondary);
-            append(&mut job, value, FontId::monospace(12.0), app_theme.syntax_number);
+            append(
+                &mut job,
+                &format!("{label}: "),
+                FontId::monospace(12.0),
+                app_theme.text_secondary,
+            );
+            append(
+                &mut job,
+                value,
+                FontId::monospace(12.0),
+                app_theme.syntax_number,
+            );
             ui.label(job);
         });
     }
 
-    fn flag_badge(&self, ui: &mut egui::Ui, app_theme: &AppTheme, label: &str, active: bool, color: Color32) {
+    fn flag_badge(
+        &self,
+        ui: &mut egui::Ui,
+        app_theme: &AppTheme,
+        label: &str,
+        active: bool,
+        color: Color32,
+    ) {
         let (fg, bg) = if active {
             (color, app_theme.bg_elevated)
         } else {
@@ -301,22 +456,27 @@ impl SdspTab {
 
 fn adsr_stage_fmt(stage: ADSRStage, app_theme: &AppTheme) -> (&'static str, Color32) {
     match stage {
-        ADSRStage::Attack   => ("ATTACK",   app_theme.warning),
-        ADSRStage::Decay    => ("DECAY",    app_theme.info),
-        ADSRStage::Sustain  => ("SUSTAIN",  app_theme.success),
-        ADSRStage::Release  => ("RELEASE",  app_theme.text_muted),
+        ADSRStage::Attack => ("ATTACK", app_theme.warning),
+        ADSRStage::Decay => ("DECAY", app_theme.info),
+        ADSRStage::Sustain => ("SUSTAIN", app_theme.success),
+        ADSRStage::Release => ("RELEASE", app_theme.text_muted),
     }
 }
 
 fn fmt_gain_mode(mode: GainMode, app_theme: &AppTheme) -> LayoutJob {
     let mut job = LayoutJob::default();
     let text = match mode {
-        GainMode::Increase     => "Linear Inc",
+        GainMode::Increase => "Linear Inc",
         GainMode::BentIncrease => "Bent Inc",
-        GainMode::Decrease     => "Linear Dec",
-        GainMode::ExpDecrease  => "Exp. Dec",
-        GainMode::Fixed        => "Fixed",
+        GainMode::Decrease => "Linear Dec",
+        GainMode::ExpDecrease => "Exp. Dec",
+        GainMode::Fixed => "Fixed",
     };
-    append(&mut job, text, FontId::monospace(12.0), app_theme.syntax_keyword);
+    append(
+        &mut job,
+        text,
+        FontId::monospace(12.0),
+        app_theme.syntax_keyword,
+    );
     job
 }

@@ -1,4 +1,4 @@
-use crate::{app::{AppAction, AppState}, settings::Settings};
+use crate::app::{AppAction, AppState, MAX_SAVE_STATE_SLOTS, settings::Settings};
 
 fn button_with_shortcut(ui: &mut egui::Ui, label: &str, shortcut: &str) -> egui::Response {
     ui.add(egui::Button::new(label).right_text(egui::RichText::new(shortcut).weak()))
@@ -30,7 +30,7 @@ impl MainMenuBar {
                     ui.set_width(120.0);
                                         
                     ui.add_enabled_ui(!debug_active, |ui| {
-                        if ui.button("Load Rom").clicked() {
+                        if ui.button("Load ROM").clicked() {
                             app_action = AppAction::LoadRom;
                             ui.close();
                         }
@@ -48,8 +48,39 @@ impl MainMenuBar {
                                 ui.label("No recent ROMs");
                             }
                         });
+                        if ui.button("Unload ROM").clicked() {
+                            app_action = AppAction::UnloadRom;
+                            ui.close();
+                        }
                     });
                     
+                    ui.separator();
+
+                    ui.add_enabled_ui(app_state.loaded_rom_data.is_some(), |ui| {
+                        ui.menu_button("Save State", |ui| {
+                            for slot in 0..MAX_SAVE_STATE_SLOTS {
+                                if ui.button(format!("Slot {}", slot)).clicked() {
+                                    app_action = AppAction::SaveState { slot };
+                                    ui.close();
+                                }
+                            }
+                        });
+                        ui.menu_button("Load State", |ui| {
+                            for slot in 0..MAX_SAVE_STATE_SLOTS {
+                                let save_exists = app_state.loaded_rom_data.as_ref().unwrap().used_save_state_slots[slot];
+    
+                                let resp = ui.add_enabled_ui(save_exists, |ui| {
+                                    ui.button(format!("Slot {}", slot))
+                                }).inner;
+    
+                                if resp.clicked() {
+                                    app_action = AppAction::LoadState { slot };
+                                    ui.close();
+                                }
+                            }
+                        });
+                    });
+
                     ui.separator();
                     
                     if ui.button("Settings").clicked() {
@@ -82,17 +113,6 @@ impl MainMenuBar {
                         }
                         if ui.button("Hard Reset").clicked() {
                             app_action = AppAction::PowerOnCore;
-                            ui.close();
-                        }
-                        
-                        ui.separator();
-                        
-                        if ui.button("Save State").clicked() {
-                            app_action = AppAction::SaveState;
-                            ui.close();
-                        }
-                        if ui.button("Load State").clicked() {
-                            app_action = AppAction::LoadState;
                             ui.close();
                         }
                     });

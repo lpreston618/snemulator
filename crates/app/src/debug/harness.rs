@@ -177,7 +177,7 @@ impl DebugHarness for MainDebugHarness {
 
     fn on_vblank_start(&mut self, core: &mut snemcore::Snemulator) {
         for voice in 0..8usize {
-            self.envelope_history[voice].push(core.ssmp.voice_regs[voice].envelope);
+            self.envelope_history[voice].push(core.ssmp.voice_regs[voice].envelope as i16);
         }
 
         if matches!(self.stop_condition, Some(StopCondition::Frame)) {

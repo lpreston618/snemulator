@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{debug::tabs::cpu::{disassembler::DisasmOperandKind, symbols::{LabelEditState, SymbolManager}}, theme::AppTheme};
+use crate::{debug::tabs::cpu::{disassembler::DisasmOperandKind, symbols::{LabelEditState, SymbolManager}}, app::theme::AppTheme};
 use snemcore::{Snemulator, scpu};
 
 use crate::debug::harness::MainDebugHarness;

@@ -4,7 +4,7 @@ use sdl3::audio::AudioStreamOwner;
 
 use crate::app::AppState;
 use crate::debug::harness::{DSP_SAMPLE_RATE, MainDebugHarness, SAMPLE_HISTORY_LEN, SAMPLE_HISTORY_SECONDS};
-use crate::theme::AppTheme;
+use crate::app::theme::AppTheme;
 use super::{append, RingBuffer};
 
 // ─── Constants ────────────────────────────────────────────────────────────────

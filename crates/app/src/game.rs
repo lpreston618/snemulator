@@ -3,10 +3,10 @@ use egui::TextureHandle;
 use sdl3::video::GLProfile;
 
 use crate::app;
-use crate::theme::AppTheme;
+use crate::app::theme::AppTheme;
 use snemcore::sysinfo;
 use crate::menu::MainMenuBar;
-use crate::settings::Settings;
+use crate::app::settings::Settings;
 use crate::ui_window::UiWindow;
 
 pub struct MainWindow {

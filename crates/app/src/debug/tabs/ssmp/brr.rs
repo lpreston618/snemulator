@@ -1,7 +1,7 @@
 use egui::{Color32, FontId, Pos2, Rect, Stroke, Vec2};
 use egui::text::LayoutJob;
 
-use crate::theme::AppTheme;
+use crate::app::theme::AppTheme;
 use snemcore::Snemulator;
 use snemcore::ssmp::sdsp::SuperDSP;
 use super::append;
@@ -98,6 +98,8 @@ impl SdspBrrTab {
         append(&mut job, &format!("${:04X}  ", vr.brr_group_addr), mono.clone(), t.syntax_address);
         append(&mut job, "Group Step: ", mono.clone(), t.text_secondary);
         append(&mut job, &format!("{}", vr.brr_group_step), mono.clone(), t.syntax_number);
+        // append(&mut job, "Filter: ", mono.clone(), t.text_secondary);
+        // append(&mut job, &format!("{}", vr.filter as u8), mono.clone(), t.syntax_number);
 
         job
     }
@@ -108,7 +110,7 @@ impl SdspBrrTab {
         ui: &egui::Ui,
         t: &AppTheme,
         rect: Rect,
-        buf: &[u16; 12],
+        buf: &[i16; 12],
         interp_idx: usize,
         shift: u8,
         // group_step: usize,
@@ -140,7 +142,7 @@ impl SdspBrrTab {
         // ── Amplitude grid lines ─────────────────────────────────────────────
         // shift determines the amplitude range: max amplitude = 1 << shift (clamped to i16 range).
         // We draw horizontal lines at every power-of-two step for the current shift.
-        let amplitude_range = (1i32 << shift.min(12)) as f32;
+        let amplitude_range = 0x4000 as f32;
         // pixels per unit amplitude
         let px_per_unit = (h * 0.5) / amplitude_range;
         // Draw lines at intervals that keep spacing above the minimum.
@@ -175,9 +177,6 @@ impl SdspBrrTab {
             );
         }
 
-        // ── Helper: sign-extend 15-bit BRR sample stored as u16 ─────────────
-        let brr_sign = |raw: u16| -> i16 { ((raw << 1) as i16) >> 1 };
-
         // ── Helper: map a sample value to a y coordinate ─────────────────────
         let sample_y = |s: i16| -> f32 {
             mid_y - (s as f32 * px_per_unit).clamp(-h * 0.5, h * 0.5)
@@ -208,7 +207,7 @@ impl SdspBrrTab {
             // The four samples around this position, mirroring the DSP's indexing.
             // coarse maps to the buffer index of the "current" sample.
             // We clamp to keep indices in [0, 11].
-            let s  = |i: usize| -> i32 { brr_sign(buf[i.clamp(0, 11)]) as i32 };
+            let s  = |i: usize| -> i32 { buf[i.clamp(0, 11)] as i32 };
             let i0 = coarse.saturating_sub(1);
             let i1 = coarse;
             let i2 = (coarse + 1).min(11);
@@ -230,7 +229,7 @@ impl SdspBrrTab {
         // via per-column sense rects allocated by the caller.
         let mut dot_positions = [(0.0f32, 0.0f32); 12];
         for (col, &raw) in buf.iter().enumerate() {
-            let s  = brr_sign(raw);
+            let s  = raw;
             let cx = rect.left() + (col as f32 + 0.5) * col_w;
             let cy = sample_y(s);
             dot_positions[col] = (cx, cy);
@@ -255,12 +254,12 @@ impl SdspBrrTab {
         let gauss_w2 = gauss[0x100 + frac] as i32;
         let gauss_w3 = gauss[0x000 + frac] as i32;
 
-        let s = |i: usize| -> i32 { brr_sign(buf[i]) as i32 };
+        let s = |i: usize| -> i32 { buf[i] as i32 };
         let interp_out = (
-              gauss_w0 * s(4 + coarse_idx - 2)  // wrapping handled below
-            + gauss_w1 * s(4 + coarse_idx - 1)
-            + gauss_w2 * s(4 + coarse_idx)
-            + gauss_w3 * s(4 + coarse_idx + 1)
+              gauss_w0 * s(4 + coarse_idx + 0)  // wrapping handled below
+            + gauss_w1 * s(4 + coarse_idx + 1)
+            + gauss_w2 * s(4 + coarse_idx + 2)
+            + gauss_w3 * s(4 + coarse_idx + 3)
         ) >> 11;
         let interp_out = interp_out.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
 

@@ -4,7 +4,7 @@ pub mod brr;
 
 use egui::{Color32, FontId};
 use egui::text::{LayoutJob, TextFormat};
-use crate::theme::AppTheme;
+use crate::app::theme::AppTheme;
 
 /// A fixed-capacity circular buffer for audio samples or envelopes.
 pub struct RingBuffer<const CAPACITY: usize> {
@@ -67,6 +67,12 @@ pub fn fmt_hex_u16(val: u16, t: &AppTheme) -> LayoutJob {
 }
 
 pub fn fmt_i8_signed(val: i8, t: &AppTheme) -> LayoutJob {
+    let mut job = LayoutJob::default();
+    append(&mut job, &format!("{val:+}"), FontId::monospace(12.0), t.syntax_number);
+    job
+}
+
+pub fn fmt_i16_signed(val: i16, t: &AppTheme) -> LayoutJob {
     let mut job = LayoutJob::default();
     append(&mut job, &format!("{val:+}"), FontId::monospace(12.0), t.syntax_number);
     job

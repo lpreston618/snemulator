@@ -1,7 +1,7 @@
-use crate::{debug::DebugHarness, get_bit_n, get_byte_n};
+use crate::{debug::DebugHarness, get_bit_n, get_byte_n, savestate, ssmp::sdsp::regs::SdspRegs};
 
 use bus::SdspBus;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub mod bus;
 pub mod regs;
@@ -12,7 +12,7 @@ const fn sign_extend<const WIDTH: usize>(value: i32) -> i32 {
     (value << shift) >> shift
 }
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum ADSRStage {
     Attack,
     Decay,
@@ -20,7 +20,7 @@ pub enum ADSRStage {
     Release,
 }
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum GainMode {
     Fixed,
     Decrease,
@@ -29,7 +29,7 @@ pub enum GainMode {
     BentIncrease,
 }
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug)]
 pub enum BrrFilter {
     Filter0,
     Filter1,
@@ -37,7 +37,6 @@ pub enum BrrFilter {
     Filter3,
 }
 
-#[derive(Serialize)]
 pub struct SuperDSP {
     pub envelope_counter: usize,
     pub noise_output: u16,
@@ -107,6 +106,52 @@ impl SuperDSP {
         }
     }
 
+    pub fn save_state(&self, regs: &SdspRegs) -> savestate::SdspState {
+        savestate::SdspState {
+            envelope_counter: self.envelope_counter,
+            noise_output: self.noise_output,
+            echo_ptr: self.echo_ptr,
+            lmain_volume: regs.lmain_volume,
+            rmain_volume: regs.rmain_volume,
+            lecho_volume: regs.lecho_volume,
+            recho_volume: regs.recho_volume,
+            key_on: regs.key_on,
+            key_off: regs.key_off,
+            soft_reset: regs.soft_reset,
+            mute_all: regs.mute_all,
+            echo_en: regs.echo_en,
+            noise_freq: regs.noise_freq,
+            echo_feedback: regs.echo_feedback,
+            unused: regs.unused,
+            sample_directory_page: regs.sample_directory_page,
+            echo_page: regs.echo_page,
+            echo_delay_time: regs.echo_delay_time,
+            fir_regs: regs.fir_regs,
+        }
+    }
+
+    pub fn load_state(&mut self, regs: &mut SdspRegs, state: &savestate::SdspState, _version: u32) {
+        self.envelope_counter = state.envelope_counter;
+        self.noise_output = state.noise_output;
+        self.echo_ptr = state.echo_ptr;
+        regs.lmain_volume = state.lmain_volume;
+        regs.rmain_volume = state.rmain_volume;
+        regs.lecho_volume = state.lecho_volume;
+        regs.recho_volume = state.recho_volume;
+        regs.key_on = state.key_on;
+        regs.key_off = state.key_off;
+        regs.soft_reset = state.soft_reset;
+        regs.mute_all = state.mute_all;
+        regs.echo_en = state.echo_en;
+        regs.noise_freq = state.noise_freq;
+        regs.echo_feedback = state.echo_feedback;
+        regs.unused = state.unused;
+        regs.sample_directory_page = state.sample_directory_page;
+        regs.echo_page = state.echo_page;
+        regs.echo_delay_time = state.echo_delay_time;
+        regs.fir_regs = state.fir_regs;
+    }
+
     pub fn power_on(&mut self) {
         self.envelope_counter = 0;
         self.noise_output = 0x4000;
@@ -138,7 +183,7 @@ impl SuperDSP {
         for voice_idx in 0..8 {
             let voice = &mut bus.voice_regs[voice_idx];
 
-            if get_bit_n!(bus.sdsp_regs.key_off, voice_idx) {
+            if get_bit_n!(bus.sdsp_regs.key_off, voice_idx) || bus.sdsp_regs.soft_reset {
                 voice.adsr_stage = ADSRStage::Release;
 
                 if H::IS_DEBUGGING_HARNESS && H::TRACK_VOICES {
@@ -186,7 +231,7 @@ impl SuperDSP {
 
                     voice.envelope = (voice.envelope + attack_rate).min(0x7FF);
 
-                    if voice.envelope >= 0x7E0 {
+                    if voice.envelope >= 0x7FF {
                         voice.adsr_stage = ADSRStage::Decay;
                     }
 
@@ -240,6 +285,7 @@ impl SuperDSP {
                 }
             }
             ADSRStage::Release => {
+                // Release lowers envelope by 8 every sample until it hits 0
                 voice.envelope = (voice.envelope - 8).max(0);
             }
         }
@@ -249,7 +295,7 @@ impl SuperDSP {
         let voice = &mut bus.voice_regs[voice_idx];
 
         if matches!(voice.gain_mode, GainMode::Fixed) {
-            voice.envelope = (voice.gain_fixed << 4) as i16;
+            voice.envelope = (voice.gain_fixed as i16) << 4;
             return;
         }
 
@@ -392,40 +438,48 @@ impl SuperDSP {
         let mut right_echo_feedback: i16 = 0;
 
         for voice_idx in 0..8 {
+            // Generates signed 16-bit samples
             let (voice_left, voice_right) = self.generate_voice_sample(bus, voice_idx);
 
             left_sample = left_sample.saturating_add(voice_left);
             right_sample = right_sample.saturating_add(voice_right);
 
             if bus.voice_regs[voice_idx].echo_en {
-                // These are the values that will be fed IN to the echo buffer from this sample
-                left_echo_feedback = left_sample.saturating_add(voice_left);
-                right_echo_feedback = right_sample.saturating_add(voice_right);
+                left_echo_feedback = left_echo_feedback.saturating_add(voice_left);
+                right_echo_feedback = right_echo_feedback.saturating_add(voice_right);
             }
+
+            // if bus.voice_regs[voice_idx].echo_en {
+            //     // These are the values that will be fed IN to the echo buffer from this sample
+            //     //
+            //     // NOTE: probably a bug here. Look back later!!!
+            //     left_echo_feedback = left_sample.saturating_add(voice_left);
+            //     right_echo_feedback = right_sample.saturating_add(voice_right);
+            // }
         }
 
         let l_volume = (bus.sdsp_regs.lmain_volume as i8) as i32;
         let r_volume = (bus.sdsp_regs.rmain_volume as i8) as i32;
 
-        left_sample = (((left_sample as i32) * l_volume) >> 7) as i16;
-        right_sample = (((right_sample as i32) * r_volume) >> 7) as i16;
+        // Properly clamp lo/hi with full precision, then store as i16
+        left_sample =
+            (((left_sample as i32) * l_volume) >> 7).clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+        right_sample = (((right_sample as i32) * r_volume) >> 7)
+            .clamp(i16::MIN as i32, i16::MAX as i32) as i16;
 
         let (left_echo_out, right_echo_out) = self.generate_echo_samples(bus);
 
         // Feed echo back into itself
         left_echo_feedback = left_echo_feedback.saturating_add(
-            self.echo_volume_adjust(left_echo_out, bus.sdsp_regs.echo_feedback as i8),
+            echo_volume_adjust(left_echo_out, bus.sdsp_regs.echo_feedback as i8),
         );
         right_echo_feedback = right_echo_feedback.saturating_add(
-            self.echo_volume_adjust(right_echo_out, bus.sdsp_regs.echo_feedback as i8),
+            echo_volume_adjust(right_echo_out, bus.sdsp_regs.echo_feedback as i8),
         );
 
         // Add echo to output
         left_sample = left_sample.saturating_add(left_echo_out);
         right_sample = right_sample.saturating_add(right_echo_out);
-
-        left_sample *= 2;
-        right_sample *= 2;
 
         if bus.sdsp_regs.mute_all {
             left_sample = 0;
@@ -436,7 +490,7 @@ impl SuperDSP {
 
         self.last_generated_left = left_sample;
         self.last_generated_right = right_sample;
-        
+
         audio_buffer.push(left_sample);
         audio_buffer.push(right_sample);
     }
@@ -449,41 +503,51 @@ impl SuperDSP {
         let raw_sample = if bus.voice_regs[voice_idx].noise_en {
             sign_extend::<15>(self.noise_output as i32)
         } else {
-            sign_extend::<15>(self.generate_interpolated_sample(bus, voice_idx) as i32)
+            self.generate_interpolated_sample(bus, voice_idx) as i32
         };
 
         let voice = &mut bus.voice_regs[voice_idx];
 
-        let volume_adjusted_sample = (raw_sample * voice.envelope as i32) >> 10;
+        // Since envelope volume is unsigned, we shift down by the full 11 bits so that the env volume
+        // is effectively 0<=evol<1. Still a 15-bit sample sign extended to 16-bits.
+        let volume_adjusted_sample = (raw_sample * voice.envelope as i32) >> 11;
 
-        voice.sample_out_high = (volume_adjusted_sample as u16) & 0x7FFF;
+        // Store whole sample for pitch-mod calculation
+        voice.sample_out_high = volume_adjusted_sample as i16;
 
         let l_volume = (voice.lchannel_volume as i8) as i32;
         let r_volume = (voice.rchannel_volume as i8) as i32;
 
+        // After this, the samples are signed 16-bit values.
         let left_sample = ((volume_adjusted_sample * l_volume) >> 7) as i16;
         let right_sample = ((volume_adjusted_sample * r_volume) >> 7) as i16;
 
-        let mut step = voice.pitch as usize;
+        let mut pitch = voice.pitch as i32;
 
-        if voice_idx != 0 && voice.pitchmod_en {
-            let prev_out = sign_extend::<15>(bus.voice_regs[voice_idx - 1].sample_out_high as i32);
-
-            let factor = ((prev_out >> 4) + 0x400) as usize;
-
-            step = (step * factor) >> 10
+        if voice_idx != 0 && voice.pitchmod_en && !voice.noise_en {
+            let factor = (bus.voice_regs[voice_idx - 1].sample_out_high as i32 >> 4) + 0x400;
+            pitch += (pitch * factor) >> 10;
+            pitch = pitch.clamp(0, 0x3FFF);
         }
 
-        bus.voice_regs[voice_idx].prev_interpolation_idx = bus.voice_regs[voice_idx].interpolation_idx;
-        bus.voice_regs[voice_idx].interpolation_idx += step;
+        let voice = &mut bus.voice_regs[voice_idx];
 
-        bus.voice_regs[voice_idx].last_generated_left = left_sample;
-        bus.voice_regs[voice_idx].last_generated_right = right_sample;
+        voice.prev_interpolation_idx = voice.interpolation_idx;
+
+        voice.interpolation_idx += pitch as usize;
+
+        // Clamp interpolation index to 15 bits
+        if voice.interpolation_idx > 0x7FFF {
+            voice.interpolation_idx = 0x7FFF;
+        }
+
+        voice.last_generated_left = left_sample;
+        voice.last_generated_right = right_sample;
 
         (left_sample, right_sample)
     }
 
-    fn generate_interpolated_sample(&mut self, bus: &mut SdspBus, voice_idx: usize) -> u16 {
+    fn generate_interpolated_sample(&mut self, bus: &mut SdspBus, voice_idx: usize) -> i16 {
         if bus.voice_regs[voice_idx].interpolation_idx >= 0x4000 {
             self.load_new_brr_samples_into_buffer(bus, voice_idx);
             bus.voice_regs[voice_idx].interpolation_idx -= 0x4000;
@@ -497,21 +561,24 @@ impl SuperDSP {
         let g0 = Self::GAUSS_LOOKUP_TABLE[255 - gauss_table_offset] as i32;
         let g1 = Self::GAUSS_LOOKUP_TABLE[511 - gauss_table_offset] as i32;
         let g2 = Self::GAUSS_LOOKUP_TABLE[256 + gauss_table_offset] as i32;
-        let g3 = Self::GAUSS_LOOKUP_TABLE[0 + gauss_table_offset] as i32;
+        let g3 = Self::GAUSS_LOOKUP_TABLE[  0 + gauss_table_offset] as i32;
 
-        let s0 = sign_extend::<15>(voice.brr_sample_buffer[4 + i - 2] as i32);
-        let s1 = sign_extend::<15>(voice.brr_sample_buffer[4 + i - 1] as i32);
-        let s2 = sign_extend::<15>(voice.brr_sample_buffer[4 + i] as i32);
-        let s3 = sign_extend::<15>(voice.brr_sample_buffer[4 + i + 1] as i32);
+        let s0 = voice.brr_sample_buffer[4 + i + 0] as i32;
+        let s1 = voice.brr_sample_buffer[4 + i + 1] as i32;
+        let s2 = voice.brr_sample_buffer[4 + i + 2] as i32;
+        let s3 = voice.brr_sample_buffer[4 + i + 3] as i32;
 
-        let mut gauss_sample = 0;
-        gauss_sample += (g0 * s0) >> 10;
-        gauss_sample += (g1 * s1) >> 10;
-        gauss_sample += (g2 * s2) >> 10;
-        gauss_sample += (g3 * s3) >> 10;
-        // gauss_sample = gauss_sample.clamp(u16::MIN as i32, u16::MAX as i32);
+        let mut gauss_sample: i32 = 0;
+        gauss_sample += (g0 * s0) >> 11;
+        gauss_sample += (g1 * s1) >> 11;
+        gauss_sample += (g2 * s2) >> 11;
+        // Wrap at 15-bit signed before the final addition
+        gauss_sample = ((gauss_sample & 0x7FFF) ^ 0x4000) - 0x4000;
+        gauss_sample += (g3 * s3) >> 11;
+        // Clamp to 15-bit signed
+        gauss_sample = gauss_sample.clamp(-0x4000, 0x3FFF);
 
-        ((gauss_sample >> 1).clamp(-0x4000, 0x3FFF)) as u16
+        gauss_sample as i16
     }
 
     fn load_new_brr_samples_into_buffer(&mut self, bus: &mut SdspBus, voice_idx: usize) {
@@ -564,12 +631,13 @@ impl SuperDSP {
         let brr_sample2 = sign_extend::<4>((brr_samples23 >> 4) as i32);
         let brr_sample3 = sign_extend::<4>((brr_samples23 & 0xF) as i32);
 
+        // 15-bit signed samples sign extended to 32 bits
         let (brr_sample0, brr_sample1, brr_sample2, brr_sample3) = if shift > 12 {
             (
-                (brr_sample0 >> 3) << 11, // TODO: Maybe 12?
-                (brr_sample1 >> 3) << 11,
-                (brr_sample2 >> 3) << 11,
-                (brr_sample3 >> 3) << 11,
+                if brr_sample0 >= 0 { 0 } else { -2048 },
+                if brr_sample1 >= 0 { 0 } else { -2048 },
+                if brr_sample2 >= 0 { 0 } else { -2048 },
+                if brr_sample3 >= 0 { 0 } else { -2048 },
             )
         } else {
             (
@@ -580,54 +648,45 @@ impl SuperDSP {
             )
         };
 
-        // TODO: filtering doesn't happen across blocks
-        let prev_s1 = sign_extend::<15>(voice.brr_sample_buffer[7] as i32);
-        let prev_s2 = sign_extend::<15>(voice.brr_sample_buffer[6] as i32);
+        let prev_s1 = voice.brr_sample_buffer[11] as i32;
+        let prev_s2 = voice.brr_sample_buffer[10] as i32;
 
-        let (decoded_0, decoded_1, decoded_2, decoded_3) = match filter {
-            BrrFilter::Filter0 => (brr_sample0, brr_sample1, brr_sample2, brr_sample3),
-            BrrFilter::Filter1 => {
-                let s0 = brr_filter1(brr_sample0, prev_s1);
-                let s1 = brr_filter1(brr_sample1, s0);
-                let s2 = brr_filter1(brr_sample2, s1);
-                let s3 = brr_filter1(brr_sample3, s2);
-                (s0, s1, s2, s3)
-            }
-            BrrFilter::Filter2 => {
-                let s0 = brr_filter2(brr_sample0, prev_s1, prev_s2);
-                let s1 = brr_filter2(brr_sample1, s0, prev_s1);
-                let s2 = brr_filter2(brr_sample2, s1, s0);
-                let s3 = brr_filter2(brr_sample3, s2, s1);
-                (s0, s1, s2, s3)
-            }
-            BrrFilter::Filter3 => {
-                let s0 = brr_filter3(brr_sample0, prev_s1, prev_s2);
-                let s1 = brr_filter3(brr_sample1, s0, prev_s1);
-                let s2 = brr_filter3(brr_sample2, s1, s0);
-                let s3 = brr_filter3(brr_sample3, s2, s1);
-                (s0, s1, s2, s3)
-            }
-        };
+        let s0 = filter_brr_sample(brr_sample0, prev_s1, prev_s2, filter);
+        let s1 = filter_brr_sample(brr_sample1, s0 as i32, prev_s1, filter);
+        let s2 = filter_brr_sample(brr_sample2, s1 as i32, s0 as i32, filter);
+        let s3 = filter_brr_sample(brr_sample3, s2 as i32, s1 as i32, filter);
 
-        let clamped_0 = decoded_0.clamp(i16::MIN as i32, i16::MAX as i32);
-        let clamped_1 = decoded_1.clamp(i16::MIN as i32, i16::MAX as i32);
-        let clamped_2 = decoded_2.clamp(i16::MIN as i32, i16::MAX as i32);
-        let clamped_3 = decoded_3.clamp(i16::MIN as i32, i16::MAX as i32);
+        // Shift last 8 samples back by 4, overwritting first 4
+        voice.brr_sample_buffer.copy_within(4..12, 0); 
 
-        let clipped_0 = clamped_0 & 0x7FFF;
-        let clipped_1 = clamped_1 & 0x7FFF;
-        let clipped_2 = clamped_2 & 0x7FFF;
-        let clipped_3 = clamped_3 & 0x7FFF;
-
-        voice.brr_sample_buffer.copy_within(4..12, 0); // Shift last 8 samples back by 4, overwritting first 4
-
-        voice.brr_sample_buffer[8]  = clipped_0 as u16;
-        voice.brr_sample_buffer[9]  = clipped_1 as u16;
-        voice.brr_sample_buffer[10] = clipped_2 as u16;
-        voice.brr_sample_buffer[11] = clipped_3 as u16;
+        voice.brr_sample_buffer[8]  = s0 as i16;
+        voice.brr_sample_buffer[9]  = s1 as i16;
+        voice.brr_sample_buffer[10] = s2 as i16;
+        voice.brr_sample_buffer[11] = s3 as i16;
 
         voice.brr_group_step += 1;
     }
+}
+
+fn echo_volume_adjust(sample: i16, volume: i8) -> i16 {
+    ((sample as i32 * volume as i32) >> 7).clamp(i16::MIN as i32, i16::MAX as i32) as i16
+}
+
+#[inline]
+fn filter_brr_sample(brr_sample: i32, prev_sample1: i32, prev_sample2: i32, filter: BrrFilter) -> i16 {
+    let decoded_sample = match filter {
+        BrrFilter::Filter0 => brr_sample,
+        BrrFilter::Filter1 => brr_filter1(brr_sample, prev_sample1),
+        BrrFilter::Filter2 => brr_filter2(brr_sample, prev_sample1, prev_sample2),
+        BrrFilter::Filter3 => brr_filter3(brr_sample, prev_sample1, prev_sample2),
+    };
+
+    let clamped_sample = decoded_sample.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+    // Lose the high bit as part of the clipping, but retain sign.
+    // 15 bit signed value extended to i16
+    let clipped_sample = (clamped_sample << 1) >> 1;
+
+    clipped_sample
 }
 
 fn brr_filter1(brr_sample: i32, prev_sample: i32) -> i32 {
@@ -636,7 +695,7 @@ fn brr_filter1(brr_sample: i32, prev_sample: i32) -> i32 {
 
 fn brr_filter2(brr_sample: i32, prev_sample1: i32, prev_sample2: i32) -> i32 {
     brr_sample + prev_sample1 * 2 + ((-prev_sample1 * 3) >> 5) - prev_sample2
-        + ((prev_sample2 * 1) >> 4)
+        + (prev_sample2 >> 4)
 }
 
 fn brr_filter3(brr_sample: i32, prev_sample1: i32, prev_sample2: i32) -> i32 {

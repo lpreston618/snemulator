@@ -5,9 +5,6 @@ use crate::app::SnemulatorApp;
 mod app;
 mod game;
 mod menu;
-mod theme;
-mod settings;
-mod app_utils;
 mod ui_window;
 
 #[cfg(feature = "debug")]
