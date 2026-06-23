@@ -23,9 +23,7 @@ use sdl3::keyboard::{Keycode, Mod};
 use snemcore::controller::{ControllerPlayer, JoypadButton};
 use snemcore::sysinfo::{self, AUDIO_SAMPLE_HZ, FRAMES_PER_SECOND, SCREEN_HEIGHT, SCREEN_WIDTH};
 use snemcore::Snemulator;
-use std::io::Write;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 pub mod settings;
@@ -42,6 +40,9 @@ const FRAMES_BEFORE_HIDE_MENU: u64 = (3.0 * FRAMES_PER_SECOND) as u64;
 const FRAMES_BEFORE_HIDE_MOUSE: u64 = (3.0 * FRAMES_PER_SECOND) as u64;
 const FRAMES_BETWEEN_DISPLAY_FPS_UPDATE: u64 = (1.0 * FRAMES_PER_SECOND) as u64;
 const AUDIO_SAMPLES_PER_FRAME: usize = 2 * AUDIO_SAMPLE_HZ / FRAMES_PER_SECOND as usize;
+
+const SECONDS_BETWEEN_AUTO_SRAM_SAVES: f32 = 60.0;
+const FRAMES_BETWEEN_AUTO_SRAM_SAVES: u64 = (SECONDS_BETWEEN_AUTO_SRAM_SAVES * FRAMES_PER_SECOND) as u64;
 
 pub const MAX_SAVE_STATE_SLOTS: usize = 10;
 
@@ -61,6 +62,7 @@ pub enum AppAction {
     ToggleFullscreen,
     LoadRom,
     LoadRomFromPath(PathBuf),
+    UnloadRom,
     ResetCore,
     PowerOnCore,
     SaveState { slot: usize },
@@ -84,6 +86,7 @@ pub struct AppState {
     pub frame_count: u64,
     pub last_mouse_input_frame: u64,
     pub last_display_fps_update_frame: u64,
+    pub last_sram_autosave_frame: u64,
     pub show_menu: bool,
     pub show_mouse: bool,
     pub is_paused: bool,
@@ -132,6 +135,7 @@ impl SnemulatorApp {
             frame_count: 0,
             last_mouse_input_frame: 0,
             last_display_fps_update_frame: 0,
+            last_sram_autosave_frame: 0,
             show_menu: true,
             show_mouse: true,
             is_paused: false,
@@ -353,6 +357,11 @@ impl SnemulatorApp {
                 self.state.display_fps = self.state.fps as usize;
             }
 
+            if (self.state.frame_count - self.state.last_sram_autosave_frame) > FRAMES_BETWEEN_AUTO_SRAM_SAVES {
+                self.state.last_sram_autosave_frame = self.state.frame_count;
+                self.save_cartridge_save_ram(true);
+            }
+
             // Frame timing
             self.state.frame_count += 1;
 
@@ -371,6 +380,8 @@ impl SnemulatorApp {
 
             self.update_fps(frame_start.elapsed());
         }
+
+        self.save_cartridge_save_ram(false);
 
         Ok(())
     }
@@ -521,6 +532,19 @@ impl SnemulatorApp {
 
                     log::error!("Failed to load ROM '{}'", file_name);
                 }
+            }
+            AppAction::UnloadRom if self.state.loaded_rom_data.is_some() => {
+                self.save_cartridge_save_ram(false);
+                self.snem_core.unload_rom();
+                self.state.loaded_rom_data = None;
+                self.clear_frame_buf();
+                self.audio_stream.clear().ok();
+                
+                if !self.state.is_paused {
+                    self.toggle_pause();
+                }
+
+                log::info!("Unloaded ROM");
             }
             AppAction::LoadState { slot } => {
                 if let Err(e) = self.try_load_state(slot) {
@@ -677,8 +701,6 @@ impl SnemulatorApp {
             log::info!("Trying to load rom '{}'", file_name);
 
             self.try_load_rom_from_path(&romfile)?;
-
-            log::info!("Loaded rom '{file_name}'");
         }
 
         Ok(())
@@ -706,12 +728,6 @@ impl SnemulatorApp {
 
         self.snem_core.load_rom(data, crc)?;
 
-        if let Some(save_data) = self.find_cartridge_save_ram() {
-            if let Err(e) = self.snem_core.load_save_ram(save_data) {
-                log::warn!("Could not load previous save: {e}");
-            }
-        }
-
         self.snem_core.power_on(&mut self.debug_harness);
 
         self.settings.push_recent_rom(path);
@@ -730,8 +746,30 @@ impl SnemulatorApp {
             paths: rom_paths,
             used_save_state_slots,
         });
+
+        log::info!("Loaded rom '{}'", rom_name);
+
+        self.load_save_ram();
         
         Ok(())
+    }
+
+    fn load_save_ram(&mut self) {
+        if self.snem_core.cartridge_has_save_ram() {
+            if let Some(path) = self.cartridge_save_ram_path() {
+                match std::fs::read(path.clone()) {
+                    Ok(save_data) => {
+                        match self.snem_core.load_save_ram(save_data) {
+                            Err(e) => { log::error!("Could not load previous save: {e}"); },
+                            _ => { log::info!("Loaded previous save from '{}'", path.to_string_lossy()); }
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Failed to read save data from file '{}': {e}", path.to_string_lossy());
+                    }
+                }
+            }
+        }
     }
 
     #[cfg(not(feature = "debug"))]
@@ -793,9 +831,51 @@ impl SnemulatorApp {
         }
     }
 
-    fn find_cartridge_save_ram(&mut self) -> Option<Vec<u8>> {
+    fn cartridge_save_ram_path(&mut self) -> Option<PathBuf> {
         let path = self.state.loaded_rom_data.as_ref()?.paths.sav_path();
-        std::fs::read(path).ok()
+        Some(path)
+    }
+
+    fn save_cartridge_save_ram(&mut self, is_auto: bool) {
+        let Some(loaded_rom) = &self.state.loaded_rom_data else {
+            return;
+        };
+
+        if !self.snem_core.cartridge_has_save_ram() {
+            return;
+        }
+
+        if is_auto && !self.snem_core.sram_changed() {
+            log::info!("S-RAM is clean, skipping autosave.");
+            return;
+        }
+
+        let sram = self.snem_core.get_cart_save_ram();
+
+        if sram.len() == 0 {
+            return;
+        }
+
+        let path = loaded_rom.paths.sav_path();
+
+        match std::fs::write(path.clone(), sram) {
+            Err(e) => {
+                let message = format!("Failed to write save to '{}': {e}", path.to_string_lossy());
+            
+                if is_auto {
+                    log::warn!("{}", message);
+                } else {
+                    log::error!("{}", message);
+                }
+            }
+            _ => {
+                if is_auto {
+                    log::info!("Autosaved to '{}'", path.to_string_lossy());
+                } else {
+                    log::info!("Saved game to '{}'", path.to_string_lossy());
+                }
+            }
+        }
     }
 
     fn try_save_state(&mut self, slot: usize) -> Result<()> {

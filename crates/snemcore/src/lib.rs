@@ -337,6 +337,22 @@ impl Snemulator {
         Ok(())
     }
 
+    pub fn unload_rom(&mut self) {
+        self.cart = None;
+    }
+
+    pub fn cartridge_has_save_ram(&self) -> bool {
+        self.cart.as_ref().map_or(false, |cart| cart.extra_ram && cart.battery && cart.ram_size > 0)
+    }
+
+    pub fn sram_changed(&mut self) -> bool {
+        self.cart.as_mut().map_or(false, |cart| {
+            let has_changed = cart.ram_written;
+            cart.ram_written = false;
+            has_changed
+        })
+    }
+
     pub fn load_save_ram(&mut self, cart_save_ram: Vec<u8>) -> Result<()> {
         self.cart.as_mut().unwrap().try_load_sram(cart_save_ram)?;
 

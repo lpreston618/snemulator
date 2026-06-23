@@ -28,6 +28,8 @@ pub struct Cartridge {
     pub rom: Vec<u8>,
     pub ram: Vec<u8>,
 
+    pub ram_written: bool,
+
     pub title: [u8; 0x15],
 
     pub fast_rom: bool,
@@ -66,6 +68,8 @@ impl Cartridge {
         let mut cart = Self {
             rom: vec![0; ROM_SIZE],
             ram: Vec::new(),
+
+            ram_written: false,
 
             title,
 
@@ -283,6 +287,7 @@ impl Cartridge {
                     if self.ram_size != 0 {
                         let sram_addr = self.map_sram_addr(addr);
                         self.ram[sram_addr] = value;
+                        self.ram_written = true;
                     }
                 }
             }
@@ -295,6 +300,7 @@ impl Cartridge {
                     if self.ram_size != 0 {
                         let sram_addr = self.map_sram_addr(addr);
                         self.ram[sram_addr] = value;
+                        self.ram_written = true;
                     }
                 }
             }
@@ -307,6 +313,7 @@ impl Cartridge {
                     if self.ram_size != 0 {
                         let sram_addr = self.map_sram_addr(addr);
                         self.ram[sram_addr] = value;
+                        self.ram_written = true;
                     }
                 }
             }

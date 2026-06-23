@@ -30,7 +30,7 @@ impl MainMenuBar {
                     ui.set_width(120.0);
                                         
                     ui.add_enabled_ui(!debug_active, |ui| {
-                        if ui.button("Load Rom").clicked() {
+                        if ui.button("Load ROM").clicked() {
                             app_action = AppAction::LoadRom;
                             ui.close();
                         }
@@ -48,6 +48,10 @@ impl MainMenuBar {
                                 ui.label("No recent ROMs");
                             }
                         });
+                        if ui.button("Unload ROM").clicked() {
+                            app_action = AppAction::UnloadRom;
+                            ui.close();
+                        }
                     });
                     
                     ui.separator();
