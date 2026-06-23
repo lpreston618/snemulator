@@ -430,17 +430,15 @@ impl<'a, H: DebugHarness> SpcBus<'a, H> {
 
                         for voice_idx in 0..8 {
                             if H::IS_DEBUGGING_HARNESS && H::TRACK_VOICES {
-                                self.harness.on_voice_key_off(
-                                    &mut self.voice_regs[voice_idx],
-                                    voice_idx,
-                                );
+                                self.harness
+                                    .on_voice_key_off(&mut self.voice_regs[voice_idx], voice_idx);
                             }
                         }
                     }
                     6 => {
                         self.sdsp_regs.soft_reset = get_bit_n!(value, 7);
                         self.sdsp_regs.mute_all = get_bit_n!(value, 6);
-                        self.sdsp_regs.echo_en = get_bit_n!(value, 5);
+                        self.sdsp_regs.echo_en = !get_bit_n!(value, 5);
                         self.sdsp_regs.noise_freq = value & 0x1F;
 
                         if self.sdsp_regs.soft_reset {
