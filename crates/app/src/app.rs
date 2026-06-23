@@ -755,20 +755,26 @@ impl SnemulatorApp {
     }
 
     fn load_save_ram(&mut self) {
-        if self.snem_core.cartridge_has_save_ram() {
-            if let Some(path) = self.cartridge_save_ram_path() {
-                match std::fs::read(path.clone()) {
-                    Ok(save_data) => {
-                        match self.snem_core.load_save_ram(save_data) {
-                            Err(e) => { log::error!("Could not load previous save: {e}"); },
-                            _ => { log::info!("Loaded previous save from '{}'", path.to_string_lossy()); }
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("Failed to read save data from file '{}': {e}", path.to_string_lossy());
-                    }
-                }
+        if !self.snem_core.cartridge_has_save_ram() {
+            return;
+        }
+
+        let Some(path) = self.cartridge_save_ram_path() else {
+            return;
+        };
+
+        let save_data = match std::fs::read(&path) {
+            Ok(data) => data,
+            Err(e) => {
+                log::error!("Failed to read save data from file '{}': {e}", path.to_string_lossy());
+                return;
             }
+        };
+
+        if let Err(e) = self.snem_core.load_save_ram(save_data) {
+            log::error!("Could not load previous save: {e}");
+        } else {
+            log::info!("Loaded previous save from '{}'", path.to_string_lossy());
         }
     }
 
