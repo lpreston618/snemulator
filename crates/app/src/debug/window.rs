@@ -1,8 +1,8 @@
 use anyhow::Result;
-use sdl3::audio::AudioStreamOwner;
 use snemcore::Snemulator;
 
 use crate::app;
+use crate::app::audio::AudioManager;
 use crate::debug::harness::{MainDebugHarness, StopCondition};
 // use crate::core;
 use crate::debug::tabs;
@@ -115,7 +115,7 @@ impl DebugWindow {
         app_state: &mut app::AppState,
         app_theme: &AppTheme,
         harness: &mut MainDebugHarness,
-        audio_stream: &mut AudioStreamOwner,
+        audio_manager: &mut AudioManager,
     ) -> app::AppAction {
         let mut app_action = app::AppAction::Continue;
 
@@ -140,7 +140,7 @@ impl DebugWindow {
                     DebugTab::Memory => self.mem_tab.render(ui, core, app_theme),
                     DebugTab::Ppu => self.ppu_tab.render(ui, core, harness, app_theme),
                     DebugTab::Sdsp => self.sdsp_tab.render(ui, core, harness, app_theme),
-                    DebugTab::Audio => self.audio_tab.render(ui, harness, audio_stream, app_state, app_theme),
+                    DebugTab::Audio => self.audio_tab.render(ui, harness, audio_manager, app_state, app_theme),
                     DebugTab::Brr => self.brr_tab.render(ui, core, harness, app_theme, app_state, &mut debug_action),
                     // DebugTab::Watchpoints => {
                     //     self.wp_tab.render(ui, core, app_state)

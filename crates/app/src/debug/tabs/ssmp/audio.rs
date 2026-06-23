@@ -1,8 +1,8 @@
 use egui::{Color32, FontId, Pos2, Rect, Stroke, Vec2};
 use egui::text::LayoutJob;
-use sdl3::audio::AudioStreamOwner;
 
 use crate::app::AppState;
+use crate::app::audio::AudioManager;
 use crate::debug::harness::{DSP_SAMPLE_RATE, MainDebugHarness, SAMPLE_HISTORY_LEN, SAMPLE_HISTORY_SECONDS};
 use crate::app::theme::AppTheme;
 use super::{append, RingBuffer};
@@ -46,11 +46,11 @@ impl SdspAudioTab {
         &mut self,
         ui: &mut egui::Ui,
         harness: &mut MainDebugHarness,
-        stream: &mut AudioStreamOwner,
+        audio_manager: &mut AudioManager,
         app_state: &AppState,
         app_theme: &AppTheme,
     ) {
-        if stream.queued_bytes().unwrap_or(0) <= 128 {
+        if audio_manager.queued_samples() <= 128 {
             self.playing_track = None;
         }
 
@@ -71,7 +71,7 @@ impl SdspAudioTab {
                 append(&mut stop_job, &label, FontId::monospace(12.0), app_theme.warning);
                 if ui.button(stop_job).clicked() {
                     self.playing_track = None;
-                    let _ = stream.clear();
+                    let _ = audio_manager.clear_playing_samples();
                 }
             }
         });
@@ -87,7 +87,7 @@ impl SdspAudioTab {
                     ui,
                     app_state,
                     app_theme,
-                    stream,
+                    audio_manager,
                     left,
                     right,
                     AudioTrack::Voice { v: v as u8 },
@@ -100,7 +100,7 @@ impl SdspAudioTab {
                 ui,
                 app_state,
                 app_theme,
-                stream,
+                audio_manager,
                 &mut harness.echo_history.0,
                 &mut harness.echo_history.1,
                 AudioTrack::Echo,
@@ -112,7 +112,7 @@ impl SdspAudioTab {
                 ui,
                 app_state,
                 app_theme,
-                stream,
+                audio_manager,
                 &mut harness.mix_buffers.0,
                 &mut harness.mix_buffers.1,
                 AudioTrack::Mix,
@@ -125,7 +125,7 @@ impl SdspAudioTab {
         ui: &mut egui::Ui,
         app_state: &AppState,
         app_theme: &AppTheme,
-        stream: &mut AudioStreamOwner,
+        audio_manager: &mut AudioManager,
         left_rb: &mut RingBuffer<SAMPLE_HISTORY_LEN>,
         right_rb: &mut RingBuffer<SAMPLE_HISTORY_LEN>,
         track: AudioTrack,
@@ -150,10 +150,10 @@ impl SdspAudioTab {
                 })).clicked() {
                     if is_playing {
                         self.playing_track = None;
-                        let _ = stream.clear();
+                        let _ = audio_manager.clear_playing_samples();
                     } else {
                         self.playing_track = Some(track);
-                        self.upload_samples_to_stream(stream, left_rb, right_rb);
+                        self.upload_samples_to_stream(audio_manager, left_rb, right_rb);
                     }
                 }
             });
@@ -168,7 +168,7 @@ impl SdspAudioTab {
                 right_rb.clear();
                 if is_playing {
                     self.playing_track = None;
-                    let _ = stream.clear();
+                    let _ = audio_manager.clear_playing_samples();
                 }
             }
         });
@@ -237,9 +237,14 @@ impl SdspAudioTab {
 
     // ── SDL3 upload ───────────────────────────────────────────────────────────
 
-    fn upload_samples_to_stream(&self, stream: &mut AudioStreamOwner, left: &RingBuffer<SAMPLE_HISTORY_LEN>, right: &RingBuffer<SAMPLE_HISTORY_LEN>) {
+    fn upload_samples_to_stream(
+        &self,
+        audio_manager: &mut AudioManager,
+        left: &RingBuffer<SAMPLE_HISTORY_LEN>,
+        right: &RingBuffer<SAMPLE_HISTORY_LEN>
+    ) {
         let samples = self.interleave_stereo(left, right);
-        let _ = stream.put_data_i16(&samples);
+        audio_manager.upload_samples(&samples);
     }
 
     /// Interleaves two mono ring buffers into a stereo i16 vec [L, R, L, R, ...].

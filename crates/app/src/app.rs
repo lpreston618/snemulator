@@ -1,5 +1,6 @@
 use crate::SnemulatorArgs;
 
+use crate::app::audio::AudioManager;
 use crate::app::rom_paths::RomManifest;
 use crate::ui_window::UiWindow;
 use crate::app::resampler::AudioResampler;
@@ -18,7 +19,7 @@ use anyhow::{anyhow, Result};
 use rfd::FileDialog;
 use ringbuf::HeapRb;
 use ringbuf::traits::{Observer, RingBuffer};
-use sdl3::audio::{AudioFormat, AudioSpec, AudioStreamOwner};
+use sdl3::audio::{AudioFormat, AudioSpec};
 use sdl3::event::Event;
 use sdl3::keyboard::{Keycode, Mod};
 use snemcore::controller::{ControllerPlayer, JoypadButton};
@@ -30,6 +31,7 @@ use std::time::{Duration, Instant};
 mod resampler;
 pub mod settings;
 pub mod theme;
+pub mod audio;
 mod rom_paths;
 
 pub const FRAME_BUF_SIZE: usize = (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize;
@@ -105,7 +107,6 @@ pub struct AppState {
 pub struct SnemulatorApp {
     sdl_context: sdl3::Sdl,
     video_subsystem: sdl3::VideoSubsystem,
-    audio_stream: AudioStreamOwner,
     event_pump: Option<sdl3::EventPump>,
 
     main_window: MainWindow,
@@ -118,7 +119,7 @@ pub struct SnemulatorApp {
     total_frame_micros: usize,
     frame_buffer: Box<[u8; FRAME_BUF_SIZE]>,
     audio_buffer: Vec<i16>,
-    audio_resampler: Option<AudioResampler>,
+    audio_manager: AudioManager,
 
     snem_core: Snemulator,
     random_seed: u64,
@@ -213,7 +214,6 @@ impl SnemulatorApp {
         let mut app = Self {
             sdl_context,
             video_subsystem,
-            audio_stream,
             event_pump,
 
             main_window,
@@ -229,7 +229,7 @@ impl SnemulatorApp {
             snem_core,
             frame_buffer,
             audio_buffer,
-            audio_resampler,
+            audio_manager: AudioManager::new(audio_stream, audio_resampler),
 
             debug_harness,
 
@@ -450,24 +450,9 @@ impl SnemulatorApp {
             return;
         }
 
-        if let Some(resampler) = &mut self.audio_resampler {
-            // Called once per frame, after SDSP finishes
-            while self.audio_buffer.len() >= resampler.input_frames_needed() * 2 {
-                let needed = resampler.input_frames_needed() * 2;
-                let chunk: Vec<i16> = self.audio_buffer.drain(..needed).collect();
-                let resampled = resampler.resample(&chunk);
-                
-                if let Err(e) = self.audio_stream.put_data_i16(&resampled) {
-                    log::warn!("Audio stream write failed: {e}");
-                }
-            }
-        } else {
-            if let Err(e) = self.audio_stream.put_data_i16(&self.audio_buffer) {
-                log::warn!("Audio stream write failed: {e}");
-            }
+        let samples_uploaded = self.audio_manager.upload_samples(&self.audio_buffer);
 
-            self.audio_buffer.clear();
-        }
+        self.audio_buffer.drain(..samples_uploaded);
     }
 
     fn handle_input(&mut self) -> AppAction {
@@ -581,7 +566,7 @@ impl SnemulatorApp {
                 self.snem_core.unload_rom();
                 self.state.loaded_rom_data = None;
                 self.clear_frame_buf();
-                self.audio_stream.clear().ok();
+                self.audio_manager.clear_playing_samples();
                 
                 if !self.state.is_paused {
                     self.toggle_pause();
@@ -782,7 +767,7 @@ impl SnemulatorApp {
 
         self.audio_buffer.extend([0; AUDIO_SAMPLES_PER_FRAME]);
         self.render_audio();
-        self.audio_stream.resume()?;
+        self.audio_manager.resume();
 
         let used_save_state_slots: [bool; MAX_SAVE_STATE_SLOTS] = std::array::from_fn(|slot| {
             rom_paths.state_path(slot as u32).exists()
@@ -846,15 +831,11 @@ impl SnemulatorApp {
             self.debug_harness.stop_emulation = false;
             self.debug_harness.stop_condition = None;
             
-            if let Err(e) = self.audio_stream.clear() {
-                log::error!("failed to clear audio stream: {}", e);
-            }
+            self.audio_manager.clear_playing_samples();
 
             log::trace!("Paused emulation");
         } else {
-            if let Err(e) = self.audio_stream.clear() {
-                log::error!("failed to clear audio stream: {}", e);
-            }
+            self.audio_manager.clear_playing_samples();
 
             if let Some(debug_window) = &mut self.debug_window {
                 debug_window.resume();
@@ -866,10 +847,10 @@ impl SnemulatorApp {
 
     fn reset_emulation(&mut self, hard_reset: bool) {
         self.audio_buffer.clear();
-        self.audio_stream.pause().unwrap();
-        self.audio_stream.clear().unwrap();
-        self.audio_stream.put_data_i16(&[0; AUDIO_SAMPLES_PER_FRAME]).unwrap();
-        self.audio_stream.resume().unwrap();
+        self.audio_manager.pause();
+        self.audio_manager.clear_playing_samples();
+        self.audio_manager.upload_samples(&[0; AUDIO_SAMPLES_PER_FRAME]);
+        self.audio_manager.resume();
 
         self.clear_frame_buf();
 
@@ -1067,7 +1048,7 @@ impl SnemulatorApp {
             &mut self.state,
             &self.theme,
             &mut self.debug_harness,
-            &mut self.audio_stream,
+            &mut self.audio_manager,
         );
 
         match debug_action {
