@@ -1,6 +1,5 @@
-use serde::Serialize;
+use crate::savestate;
 
-#[derive(Serialize)]
 pub struct Timer<const PERIOD: usize> {
     enable: bool,
     target: u8,
@@ -19,6 +18,24 @@ impl<const PERIOD: usize> Timer<PERIOD> {
             internal_counter: 0,
             clocks: 0,
         }
+    }
+
+    pub fn save_state(&self) -> savestate::TimerState {
+        savestate::TimerState {
+            enable: self.enable,
+            target: self.target,
+            counter: self.counter,
+            internal_counter: self.internal_counter,
+            clocks: self.clocks,
+        }
+    }
+
+    pub fn load_state(&mut self, state: &savestate::TimerState, _version: u32) {
+        self.enable = state.enable;
+        self.target = state.target;
+        self.counter = state.counter;
+        self.internal_counter = state.internal_counter;
+        self.clocks = state.clocks;
     }
 
     pub fn reset(&mut self) {

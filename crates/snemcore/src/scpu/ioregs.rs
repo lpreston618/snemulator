@@ -1,8 +1,6 @@
-use serde::Serialize;
-
 use crate::{clr_bit_n, get_bit_n, set_bit_n, set_byte_n};
 
-#[derive(Clone, Copy, Debug, Default, Serialize)]
+#[derive(Clone, Copy, Debug, Default)]
 pub enum HVTimerIRQ {
     #[default]
     None, // Ignore H/V Timers
@@ -11,7 +9,7 @@ pub enum HVTimerIRQ {
     Both,   // IRQ when V counter == VTIME and H counter == HTIME
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Default)]
 pub struct CpuIoRegs {
     // $2181 - LLLL LLLL
     // $2182 - MMMM MMMM

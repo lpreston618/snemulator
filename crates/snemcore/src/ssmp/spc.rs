@@ -1,6 +1,4 @@
-use serde::Serialize;
-
-use crate::{debug::DebugHarness, ssmp::spc::bus::SpcBus};
+use crate::{debug::DebugHarness, savestate, ssmp::spc::{bus::SpcBus, ioregs::SpcIoRegs}};
 
 pub mod bus;
 pub mod ioregs;
@@ -19,7 +17,7 @@ pub enum Flag {
     FlagN = 128, // Negative
 }
 
-#[derive(Default, Serialize)]
+#[derive(Default)]
 pub struct Spc700 {
     pub pc: u16,
     pub sp: u8,
@@ -46,6 +44,36 @@ impl Spc700 {
         0x10, 0xEB, 0xBA, 0xF6, 0xDA, 0x00, 0xBA, 0xF4, 0xC4, 0xF4, 0xDD, 0x5D, 0xD0, 0xDB, 0x1F,
         0x00, 0x00, 0xC0, 0xFF,
     ];
+
+    pub fn save_state(&self, regs: &SpcIoRegs) -> savestate::SpcState {
+        savestate::SpcState {
+            pc: self.pc,
+            sp: self.sp,
+            a: self.a,
+            x: self.x,
+            y: self.y,
+            status: self.status,
+            dir_page: self.dir_page,
+            stopped: self.stopped,
+            ipl_read_en: regs.ipl_read_en,
+            sdsp_read_only: regs.sdsp_read_only,
+            sdsp_addr: regs.sdsp_addr,
+        }
+    }
+
+    pub fn load_state(&mut self, regs: &mut SpcIoRegs, state: &savestate::SpcState, _version: u32) {
+        self.pc = state.pc;
+        self.sp = state.sp;
+        self.a = state.a;
+        self.x = state.x;
+        self.y = state.y;
+        self.status = state.status;
+        self.dir_page = state.dir_page;
+        self.stopped = state.stopped;
+        regs.ipl_read_en = state.ipl_read_en;
+        regs.sdsp_read_only = state.sdsp_read_only;
+        regs.sdsp_addr = state.sdsp_addr;
+    }
 
     pub fn power_on(&mut self) {
         self.pc = 0xFFC0;

@@ -1,6 +1,6 @@
 use egui::{Color32, Image, ImageSource, Vec2};
 
-use crate::theme::AppTheme;
+use crate::app::theme::AppTheme;
 
 pub const CONTINUE: egui::ImageSource<'static> = egui::include_image!("../../assets/debug/continue.svg");
 pub const SINGLE_STEP: egui::ImageSource<'static> = egui::include_image!("../../assets/debug/single_step.svg");

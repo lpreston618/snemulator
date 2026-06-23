@@ -1,7 +1,5 @@
-use serde::Serialize;
-use serde_with::serde_as;
-
 use crate::debug::DebugHarness;
+use crate::savestate;
 use crate::ssmp::ioports::ApuIoPorts;
 use crate::ssmp::sdsp::{SuperDSP, bus::SdspBus, regs::SdspRegs, voices::VoiceRegs};
 use crate::ssmp::spc::{Spc700, bus::SpcBus, ioregs::SpcIoRegs};
@@ -12,20 +10,16 @@ use crate::sysinfo::{
     SLOW_TIMER_CLOCK_PERIOD, FAST_TIMER_CLOCK_PERIOD,
 };
 
-pub mod serialize;
 pub mod ioports;
 pub mod sdsp;
 pub mod spc;
 mod timers;
 
 /// The sound processor chip of the S-NES. Contains the SPC700 and S-DSP.
-#[serde_as]
-#[derive(Serialize)]
 pub struct Ssmp {
     pub spc: Spc700,
     pub sdsp: sdsp::SuperDSP,
 
-    #[serde_as(as = "Box<[_; ARAM_SIZE]>")]
     pub aram: Box<[u8; ARAM_SIZE]>,
     pub spc_regs: SpcIoRegs,
     pub sdsp_regs: SdspRegs,
@@ -59,6 +53,41 @@ impl Ssmp {
             sample_cycle_accumulator: 0,
             spc_cycle_accumulator: 0,
         }
+    }
+
+    pub fn save_state(&self) -> savestate::ApuState {
+        savestate::ApuState {
+            sample_cycle_accumulator: self.sample_cycle_accumulator,
+            spc_cycle_accumulator: self.spc_cycle_accumulator,
+            spc: self.spc.save_state(&self.spc_regs),
+            sdsp: self.sdsp.save_state(&self.sdsp_regs),
+            voices: [
+                self.voice_regs[0].save_state(), self.voice_regs[1].save_state(),
+                self.voice_regs[2].save_state(), self.voice_regs[3].save_state(),
+                self.voice_regs[4].save_state(), self.voice_regs[5].save_state(),
+                self.voice_regs[6].save_state(), self.voice_regs[7].save_state(),
+            ],
+            timers: [
+                self.timer0.save_state(),
+                self.timer1.save_state(),
+                self.timer2.save_state(),
+            ],
+        }
+    }
+
+    pub fn load_state(&mut self, state: &savestate::ApuState, version: u32) {
+        self.sample_cycle_accumulator = state.sample_cycle_accumulator;
+        self.spc_cycle_accumulator = state.spc_cycle_accumulator;
+        self.spc.load_state(&mut self.spc_regs, &state.spc, version);
+        self.sdsp.load_state(&mut self.sdsp_regs, &state.sdsp, version);
+
+        for v in 0..8usize {
+            self.voice_regs[v].load_state(&state.voices[v], version);
+        }
+
+        self.timer0.load_state(&state.timers[0], version);
+        self.timer1.load_state(&state.timers[1], version);
+        self.timer2.load_state(&state.timers[2], version);
     }
 
     pub fn power_on(&mut self) {

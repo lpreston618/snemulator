@@ -1,14 +1,13 @@
-use serde::Serialize;
-
 use crate::dma::{
     AddressIncMode,
     TransferPattern,
     Direction,
 };
+use crate::{get_bit_n, savestate};
 use crate::scpu::Address;
 
 /// A single DMA/H-DMA channel
-#[derive(Default, Clone, Copy, Debug, Serialize)]
+#[derive(Default, Clone, Copy, Debug)]
 pub struct DmaRegs {
     // $420B
     pub dma_en: bool,
@@ -52,6 +51,69 @@ pub struct DmaRegs {
 }
 
 impl DmaRegs {
+    pub fn save_state(&self) -> savestate::DmaChannelState {
+        savestate::DmaChannelState {
+            dma_en: self.dma_en,
+            hdma_en: self.hdma_en,
+            reg_43n0_raw: self.params_raw,
+            b_bus_addr: self.b_bus_addr,
+            a_bus_addr: self.a_bus_addr,
+            hdma_indirect_table_addr: self.hdma_indirect_table_addr,
+            hdma_table_offset: self.hdma_table_offset,
+            hdma_repeat_flag: self.hdma_repeat_flag,
+            entry_scanline_count: self.entry_scanline_count,
+            scanlines_left: self.scanlines_left,
+            unused: self.unused,
+            hdma_entry_just_loaded: self.hdma_entry_just_loaded,
+            hdma_initialized: self.hdma_initialized,
+            hdma_do_transfer: self.hdma_do_transfer,
+            dma_bytes_transferred: self.dma_bytes_transferred,
+        }
+    }
+
+    pub fn load_state(&mut self, state: &savestate::DmaChannelState, _version: u32) {
+        self.dma_en = state.dma_en;
+        self.hdma_en = state.hdma_en;
+        self.params_raw = state.reg_43n0_raw;
+        
+        self.direction = match get_bit_n!(state.reg_43n0_raw, 7) {
+            false => Direction::AtoB,
+            true => Direction::BtoA,
+        };
+        self.indirect_hdma = get_bit_n!(state.reg_43n0_raw, 6);
+        self.inc_mode = match (state.reg_43n0_raw >> 3) & 3 {
+            0 => AddressIncMode::Inc,
+            1 => AddressIncMode::Fixed,
+            2 => AddressIncMode::Dec,
+            3 => AddressIncMode::Fixed,
+            _ => unreachable!(),
+        };
+        self.transfer_pattern = match state.reg_43n0_raw & 7 {
+            0 => TransferPattern::Pattern0,
+            1 => TransferPattern::Pattern1,
+            2 => TransferPattern::Pattern2,
+            3 => TransferPattern::Pattern3,
+            4 => TransferPattern::Pattern4,
+            5 => TransferPattern::Pattern5,
+            6 => TransferPattern::Pattern6,
+            7 => TransferPattern::Pattern7,
+            _ => unreachable!(),
+        };
+
+        self.b_bus_addr = state.b_bus_addr;
+        self.a_bus_addr = state.a_bus_addr;
+        self.hdma_indirect_table_addr = state.hdma_indirect_table_addr;
+        self.hdma_table_offset = state.hdma_table_offset;
+        self.hdma_repeat_flag = state.hdma_repeat_flag;
+        self.entry_scanline_count = state.entry_scanline_count;
+        self.scanlines_left = state.scanlines_left;
+        self.unused = state.unused;
+        self.hdma_entry_just_loaded = state.hdma_entry_just_loaded;
+        self.hdma_initialized = state.hdma_initialized;
+        self.hdma_do_transfer = state.hdma_do_transfer;
+        self.dma_bytes_transferred = state.dma_bytes_transferred;
+    }
+
     pub fn power_on(&mut self) {
         self.dma_en = false;
         self.hdma_en = false;

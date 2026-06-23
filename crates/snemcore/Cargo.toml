@@ -10,9 +10,7 @@ slotmap = "1.0"
 anyhow = { workspace = true }
 env_logger = { workspace = true }
 log = { workspace = true }
-serde = "1.0.228"
-serde_with = "3.21.0"
-sha2 = "0.11.0"
+serde = { workspace = true }
 
 [profile.dev]
 overflow-checks = false

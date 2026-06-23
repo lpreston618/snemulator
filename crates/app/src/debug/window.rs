@@ -7,7 +7,7 @@ use crate::debug::harness::{MainDebugHarness, StopCondition};
 // use crate::core;
 use crate::debug::tabs;
 use crate::debug::icons::{self, IconExt};
-use crate::theme::AppTheme;
+use crate::app::theme::AppTheme;
 use crate::ui_window::UiWindow;
 
 pub const DEBUG_WINDOW_WIDTH: u32 = 800;

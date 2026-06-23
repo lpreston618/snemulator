@@ -1,16 +1,14 @@
 use crate::debug::DebugHarness;
-use crate::get_bit_n;
+use crate::{get_bit_n, savestate};
 use crate::scpu::Address;
 use crate::scpu::bus::CpuBus;
 
 pub mod regs;
 mod types;
 
-use serde::Serialize;
 pub use types::*;
 pub use regs::DmaRegs;
 
-#[derive(Serialize)]
 pub struct DmaController {
     pub regs: [DmaRegs; 8],
     pub dma_en: bool,
@@ -31,6 +29,36 @@ impl DmaController {
             hdma_needs_init: false,
             dma_active_ch: 8,
             hdma_active_ch: 8,
+        }
+    }
+
+    pub fn save_state(&self) -> savestate::DmaState {
+        savestate::DmaState {
+            dma_en: self.dma_en,
+            hdma_en: self.hdma_en,
+            hdma_pending: self.hdma_pending,
+            hdma_needs_init: self.hdma_needs_init,
+            dma_active_ch: self.dma_active_ch,
+            hdma_active_ch: self.hdma_active_ch,
+            channels: [
+                self.regs[0].save_state(), self.regs[1].save_state(),
+                self.regs[2].save_state(), self.regs[3].save_state(),
+                self.regs[4].save_state(), self.regs[5].save_state(),
+                self.regs[6].save_state(), self.regs[7].save_state(),
+            ],
+        }
+    }
+
+    pub fn load_state(&mut self, state: &savestate::DmaState, version: u32) {
+        self.dma_en = state.dma_en;
+        self.hdma_en = state.hdma_en;
+        self.hdma_pending = state.hdma_pending;
+        self.hdma_needs_init = state.hdma_needs_init;
+        self.dma_active_ch = state.dma_active_ch;
+        self.hdma_active_ch = state.hdma_active_ch;
+
+        for ch in 0..8usize {
+            self.regs[ch].load_state(&state.channels[ch], version);
         }
     }
 

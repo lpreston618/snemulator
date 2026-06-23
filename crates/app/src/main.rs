@@ -5,9 +5,6 @@ use crate::app::SnemulatorApp;
 mod app;
 mod game;
 mod menu;
-mod theme;
-mod settings;
-mod app_utils;
 mod ui_window;
 
 #[cfg(feature = "debug")]
@@ -30,6 +27,9 @@ pub struct SnemulatorArgs {
 
     #[arg(long)]
     pub theme: Option<String>,
+
+    #[arg(long)]
+    pub resampling: bool,
 
     /// Start in debug mode
     #[cfg(feature = "debug")]

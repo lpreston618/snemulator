@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
 
-use crate::{theme::AppTheme, ui_window::UiWindow};
+use crate::{app::theme::AppTheme, ui_window::UiWindow};
 
 pub const SETTINGS_WINDOW_WIDTH: u32 = 600;
 pub const SETTINGS_WINDOW_HEIGHT: u32 = 400;
@@ -33,11 +33,18 @@ pub struct Settings {
 
     #[serde(default)]
     pub recent_roms: Vec<PathBuf>,
+    
+    #[serde(default)]
+    pub default_rom_dir: Option<PathBuf>,
 }
 
 impl Settings {
     pub fn config_path() -> Option<PathBuf> {
         dirs::config_dir().map(|d| d.join("snemulator").join("settings.toml"))
+    }
+
+    pub fn data_dir() -> Option<PathBuf> {
+        dirs::data_dir().map(|d| d.join("snemulator"))
     }
 
     pub fn load() -> Self {

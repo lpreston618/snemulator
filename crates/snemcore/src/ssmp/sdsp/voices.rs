@@ -1,9 +1,7 @@
-use serde::Serialize;
-
-use crate::ssmp::sdsp::{ADSRStage, GainMode};
+use crate::{savestate, ssmp::sdsp::{ADSRStage, GainMode}};
 
 /// Contains all registers controlling a single voice of the S-DSP
-#[derive(Clone, Copy, Serialize)]
+#[derive(Clone, Copy)]
 pub struct VoiceRegs {
     // $X0
     pub lchannel_volume: u8,
@@ -103,6 +101,68 @@ impl VoiceRegs {
             last_generated_left: 0,
             last_generated_right: 0,
         }
+    }
+
+    pub fn save_state(&self) -> savestate::VoiceState {
+        savestate::VoiceState {
+            lchannel_volume: self.lchannel_volume,
+            rchannel_volume: self.rchannel_volume,
+            pitch: self.pitch,
+            sample_source: self.sample_source,
+            adsr_en: self.adsr_en,
+            adsr_decay: self.adsr_decay,
+            adsr_attack: self.adsr_attack,
+            adsr_sustain_level: self.adsr_sustain_level,
+            adsr_sustain_rate: self.adsr_sustain_rate,
+            gain_reg_raw: self.gain_reg_raw,
+            gain_fixed: self.gain_fixed,
+            gain_rate: self.gain_rate,
+            gain_mode: self.gain_mode,
+            envelope: self.envelope,
+            sample_out_high: self.sample_out_high,
+            ram_a: self.ram_a,
+            ram_b: self.ram_b,
+            end_of_sample_flag: self.end_of_sample_flag,
+            loop_flag: self.loop_flag,
+            pitchmod_en: self.pitchmod_en,
+            noise_en: self.noise_en,
+            echo_en: self.echo_en,
+            adsr_stage: self.adsr_stage,
+            interpolation_idx: self.interpolation_idx,
+            brr_sample_buffer: self.brr_sample_buffer,
+            brr_group_addr: self.brr_group_addr,
+            brr_group_step: self.brr_group_step,
+        }
+    }
+
+    pub fn load_state(&mut self, state: &savestate::VoiceState, _version: u32) {
+        self.lchannel_volume = state.lchannel_volume;
+        self.rchannel_volume = state.rchannel_volume;
+        self.pitch = state.pitch;
+        self.sample_source = state.sample_source;
+        self.adsr_en = state.adsr_en;
+        self.adsr_decay = state.adsr_decay;
+        self.adsr_attack = state.adsr_attack;
+        self.adsr_sustain_level = state.adsr_sustain_level;
+        self.adsr_sustain_rate = state.adsr_sustain_rate;
+        self.gain_reg_raw = state.gain_reg_raw;
+        self.gain_fixed = state.gain_fixed;
+        self.gain_rate = state.gain_rate;
+        self.gain_mode = state.gain_mode;
+        self.envelope = state.envelope;
+        self.sample_out_high = state.sample_out_high;
+        self.ram_a = state.ram_a;
+        self.ram_b = state.ram_b;
+        self.end_of_sample_flag = state.end_of_sample_flag;
+        self.loop_flag = state.loop_flag;
+        self.pitchmod_en = state.pitchmod_en;
+        self.noise_en = state.noise_en;
+        self.echo_en = state.echo_en;
+        self.adsr_stage = state.adsr_stage;
+        self.interpolation_idx = state.interpolation_idx;
+        self.brr_sample_buffer = state.brr_sample_buffer;
+        self.brr_group_addr = state.brr_group_addr;
+        self.brr_group_step = state.brr_group_step;
     }
 
     pub fn reset(&mut self) {

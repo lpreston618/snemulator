@@ -1,18 +1,19 @@
 use crate::SnemulatorArgs;
 
-#[cfg(feature = "debug")]
-use crate::debug::harness::MainDebugHarness;
-#[cfg(feature = "debug")]
-use crate::debug::window::DebugWindow;
-use crate::theme::{AppTheme, ThemePreset};
+use crate::app::rom_paths::RomManifest;
 use crate::ui_window::UiWindow;
+use crate::app::resampler::AudioResampler;
 use sdl3::VideoSubsystem;
-use serde::Serialize;
 #[cfg(not(feature="debug"))]
 use snemcore::debug::NullHarness;
+use snemcore::savestate::SaveState;
+#[cfg(feature = "debug")]
+use crate::debug::{harness::MainDebugHarness, window::DebugWindow};
 
 use crate::game::MainWindow;
-use crate::settings::{Settings, SettingsWindow};
+use theme::{AppTheme, ThemePreset};
+use settings::{Settings, SettingsWindow};
+use rom_paths::RomPaths;
 use anyhow::{anyhow, Result};
 use rfd::FileDialog;
 use ringbuf::HeapRb;
@@ -23,10 +24,13 @@ use sdl3::keyboard::{Keycode, Mod};
 use snemcore::controller::{ControllerPlayer, JoypadButton};
 use snemcore::sysinfo::{self, AUDIO_SAMPLE_HZ, FRAMES_PER_SECOND, SCREEN_HEIGHT, SCREEN_WIDTH};
 use snemcore::Snemulator;
-use std::io::Write;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::time::{Duration, Instant};
+
+mod resampler;
+pub mod settings;
+pub mod theme;
+mod rom_paths;
 
 pub const FRAME_BUF_SIZE: usize = (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize;
 
@@ -38,6 +42,11 @@ const FRAMES_BEFORE_HIDE_MENU: u64 = (3.0 * FRAMES_PER_SECOND) as u64;
 const FRAMES_BEFORE_HIDE_MOUSE: u64 = (3.0 * FRAMES_PER_SECOND) as u64;
 const FRAMES_BETWEEN_DISPLAY_FPS_UPDATE: u64 = (1.0 * FRAMES_PER_SECOND) as u64;
 const AUDIO_SAMPLES_PER_FRAME: usize = 2 * AUDIO_SAMPLE_HZ / FRAMES_PER_SECOND as usize;
+
+const SECONDS_BETWEEN_AUTO_SRAM_SAVES: f32 = 60.0;
+const FRAMES_BETWEEN_AUTO_SRAM_SAVES: u64 = (SECONDS_BETWEEN_AUTO_SRAM_SAVES * FRAMES_PER_SECOND) as u64;
+
+pub const MAX_SAVE_STATE_SLOTS: usize = 10;
 
 #[cfg(feature = "debug")]
 fn create_harness() -> MainDebugHarness {
@@ -55,10 +64,11 @@ pub enum AppAction {
     ToggleFullscreen,
     LoadRom,
     LoadRomFromPath(PathBuf),
+    UnloadRom,
     ResetCore,
     PowerOnCore,
-    SaveState,
-    LoadState,
+    SaveState { slot: usize },
+    LoadState { slot: usize },
     OpenSettings,
     Exit,
 
@@ -68,18 +78,25 @@ pub enum AppAction {
     OpenDebug,
 }
 
+pub struct RomMetadata {
+    pub crc32_hash: u32,
+    pub paths: RomPaths,
+    pub used_save_state_slots: [bool; MAX_SAVE_STATE_SLOTS],
+}
+
 pub struct AppState {
     pub frame_count: u64,
     pub last_mouse_input_frame: u64,
     pub last_display_fps_update_frame: u64,
+    pub last_sram_autosave_frame: u64,
     pub show_menu: bool,
     pub show_mouse: bool,
     pub is_paused: bool,
     pub is_fullscreen: bool,
     pub is_minimized: bool,
-    pub rom_loaded: bool,
     pub fps: f32,
     pub display_fps: usize,
+    pub loaded_rom_data: Option<RomMetadata>,
 
     #[cfg(feature = "debug")]
     pub debug_active: bool,
@@ -101,6 +118,7 @@ pub struct SnemulatorApp {
     total_frame_micros: usize,
     frame_buffer: Box<[u8; FRAME_BUF_SIZE]>,
     audio_buffer: Vec<i16>,
+    audio_resampler: Option<AudioResampler>,
 
     snem_core: Snemulator,
     random_seed: u64,
@@ -120,14 +138,15 @@ impl SnemulatorApp {
             frame_count: 0,
             last_mouse_input_frame: 0,
             last_display_fps_update_frame: 0,
+            last_sram_autosave_frame: 0,
             show_menu: true,
             show_mouse: true,
             is_paused: false,
             is_fullscreen: false,
             is_minimized: false,
-            rom_loaded: false,
             fps: 0.0,
             display_fps: 0,
+            loaded_rom_data: None,
 
             #[cfg(feature = "debug")]
             debug_active: false,
@@ -154,13 +173,44 @@ impl SnemulatorApp {
 
         let main_window = MainWindow::new(main_egui_window, &video_subsystem, &settings)?;
 
-        let audio_spec = AudioSpec {
-            freq: Some(sysinfo::AUDIO_SAMPLE_HZ as i32),
-            channels: Some(2),
-            format: Some(AudioFormat::s16_sys()),
+        
+        if args.resampling {
+            
+        }
+        
+        let (audio_stream, audio_resampler) = if args.resampling {
+            let audio_spec = AudioSpec {
+                freq: None,
+                channels: Some(2),
+                format: Some(AudioFormat::s16_sys()),
+            };
+            let audio_device = audio_subsystem.open_playback_device(&audio_spec)?;
+            let obtained_spec = audio_device.format()?;
+            let output_rate = obtained_spec.0.freq.unwrap() as usize;
+
+            let stream_spec = AudioSpec {
+                freq: obtained_spec.0.freq,
+                channels: Some(2),
+                format: Some(AudioFormat::s16_sys()),
+            };
+
+            let audio_stream = audio_device.open_device_stream(Some(&stream_spec))?;
+    
+            let audio_resampler = AudioResampler::new(32000, output_rate);
+
+            (audio_stream, Some(audio_resampler))
+        } else {
+            let audio_spec = AudioSpec {
+                freq: Some(sysinfo::AUDIO_SAMPLE_HZ as i32),
+                channels: Some(2),
+                format: Some(AudioFormat::s16_sys()),
+            };
+
+            let audio_device = audio_subsystem.open_playback_device(&audio_spec)?;
+            let audio_stream = audio_device.open_device_stream(Some(&audio_spec))?;
+
+            (audio_stream, None)
         };
-        let audio_device = audio_subsystem.open_playback_device(&audio_spec)?;
-        let audio_stream = audio_device.open_device_stream(Some(&audio_spec))?;
 
         let snem_core = Snemulator::new();
         let debug_harness = create_harness();
@@ -184,6 +234,7 @@ impl SnemulatorApp {
             snem_core,
             frame_buffer,
             audio_buffer,
+            audio_resampler,
 
             debug_harness,
 
@@ -341,6 +392,11 @@ impl SnemulatorApp {
                 self.state.display_fps = self.state.fps as usize;
             }
 
+            if (self.state.frame_count - self.state.last_sram_autosave_frame) > FRAMES_BETWEEN_AUTO_SRAM_SAVES {
+                self.state.last_sram_autosave_frame = self.state.frame_count;
+                self.save_cartridge_save_ram(true);
+            }
+
             // Frame timing
             self.state.frame_count += 1;
 
@@ -359,6 +415,8 @@ impl SnemulatorApp {
 
             self.update_fps(frame_start.elapsed());
         }
+
+        self.save_cartridge_save_ram(false);
 
         Ok(())
     }
@@ -383,7 +441,7 @@ impl SnemulatorApp {
     }
     
     fn update_emulator(&mut self) {
-        if self.state.rom_loaded && !self.state.is_paused && self.settings_window.is_none()
+        if self.state.loaded_rom_data.is_some() && !self.state.is_paused && self.settings_window.is_none()
             && (!self.state.is_minimized || !self.settings.pause_on_minimize)
         {
             // let audio_buf = if self.settings.audio_enabled { Some(&mut self.audio_buffer) } else { None };
@@ -397,11 +455,24 @@ impl SnemulatorApp {
             return;
         }
 
-        if let Err(e) = self.audio_stream.put_data_i16(&self.audio_buffer) {
-            log::warn!("Audio stream write failed: {e}");
-        }
+        if let Some(resampler) = &mut self.audio_resampler {
+            // Called once per frame, after SDSP finishes
+            while self.audio_buffer.len() >= resampler.input_frames_needed() * 2 {
+                let needed = resampler.input_frames_needed() * 2;
+                let chunk: Vec<i16> = self.audio_buffer.drain(..needed).collect();
+                let resampled = resampler.resample(&chunk);
+                
+                if let Err(e) = self.audio_stream.put_data_i16(&resampled) {
+                    log::warn!("Audio stream write failed: {e}");
+                }
+            }
+        } else {
+            if let Err(e) = self.audio_stream.put_data_i16(&self.audio_buffer) {
+                log::warn!("Audio stream write failed: {e}");
+            }
 
-        self.audio_buffer.clear();
+            self.audio_buffer.clear();
+        }
     }
 
     fn handle_input(&mut self) -> AppAction {
@@ -507,11 +578,32 @@ impl SnemulatorApp {
                         .unwrap()
                         .to_string();
 
-                    log::warn!("Failed to load ROM '{}'", file_name);
+                    log::error!("Failed to load ROM '{}'", file_name);
                 }
             }
-            AppAction::LoadState => self.load_state(),
-            AppAction::SaveState => self.save_state(),
+            AppAction::UnloadRom if self.state.loaded_rom_data.is_some() => {
+                self.save_cartridge_save_ram(false);
+                self.snem_core.unload_rom();
+                self.state.loaded_rom_data = None;
+                self.clear_frame_buf();
+                self.audio_stream.clear().ok();
+                
+                if !self.state.is_paused {
+                    self.toggle_pause();
+                }
+
+                log::info!("Unloaded ROM");
+            }
+            AppAction::LoadState { slot } => {
+                if let Err(e) = self.try_load_state(slot) {
+                    log::error!("Failed to load state: {e}");
+                }
+            },
+            AppAction::SaveState { slot } => {
+                if let Err(e) = self.try_save_state(slot) {
+                    log::error!("Failed to save state: {e}")
+                }
+            },
             AppAction::ResetCore => self.reset_emulation(false),
             AppAction::PowerOnCore => self.reset_emulation(true),
             AppAction::OpenSettings => self.show_settings(),
@@ -639,9 +731,13 @@ impl SnemulatorApp {
     }
 
     fn try_load_rom(&mut self) -> Result<()> {
+        let start_dir = self.settings.default_rom_dir
+            .clone()
+            .unwrap_or_else(|| PathBuf::from("/"));
+
         let romfile = FileDialog::new()
             .add_filter("ROM", &["sfc", "smc"])
-            .set_directory("/")
+            .set_directory(start_dir)
             .pick_file();
 
         if let Some(romfile) = romfile {
@@ -653,17 +749,34 @@ impl SnemulatorApp {
             log::info!("Trying to load rom '{}'", file_name);
 
             self.try_load_rom_from_path(&romfile)?;
-
-            log::info!("Loaded rom '{file_name}'");
         }
 
         Ok(())
     }
 
     fn try_load_rom_from_path(&mut self, path: &PathBuf) -> Result<()> {
-        let data = std::fs::read(&path)?;
+        let data = std::fs::read(path)?;
+        let crc = crc32fast::hash(&data);
 
-        self.snem_core.load_rom(data, &mut self.debug_harness)?;
+        let rom_name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| anyhow!("Invalid ROM filename"))?;
+
+        // Prefer existing folder by hash, fall back to name
+        let rom_paths = RomPaths::find_by_hash(crc)
+            .or_else(|| RomPaths::new(rom_name))
+            .ok_or_else(|| anyhow!("Could not resolve data directory"))?;
+
+        rom_paths.ensure_dirs()?;
+        rom_paths.write_manifest(&RomManifest {
+            rom_crc: crc,
+            display_name: rom_name.to_string(),
+        });
+
+        self.snem_core.load_rom(data, crc)?;
+
+        self.snem_core.power_on(&mut self.debug_harness);
 
         self.settings.push_recent_rom(path);
         self.settings.save();
@@ -672,9 +785,45 @@ impl SnemulatorApp {
         self.render_audio();
         self.audio_stream.resume()?;
 
-        self.state.rom_loaded = true;
+        let used_save_state_slots: [bool; MAX_SAVE_STATE_SLOTS] = std::array::from_fn(|slot| {
+            rom_paths.state_path(slot as u32).exists()
+        });
 
+        self.state.loaded_rom_data = Some(RomMetadata {
+            crc32_hash: crc,
+            paths: rom_paths,
+            used_save_state_slots,
+        });
+
+        log::info!("Loaded rom '{}'", rom_name);
+
+        self.load_save_ram();
+        
         Ok(())
+    }
+
+    fn load_save_ram(&mut self) {
+        if !self.snem_core.cartridge_has_save_ram() {
+            return;
+        }
+
+        let Some(path) = self.cartridge_save_ram_path() else {
+            return;
+        };
+
+        let save_data = match std::fs::read(&path) {
+            Ok(data) => data,
+            Err(e) => {
+                log::error!("Failed to read save data from file '{}': {e}", path.to_string_lossy());
+                return;
+            }
+        };
+
+        if let Err(e) = self.snem_core.load_save_ram(save_data) {
+            log::error!("Could not load previous save: {e}");
+        } else {
+            log::info!("Loaded previous save from '{}'", path.to_string_lossy());
+        }
     }
 
     #[cfg(not(feature = "debug"))]
@@ -736,18 +885,88 @@ impl SnemulatorApp {
         }
     }
 
-    fn save_state(&mut self) {
-        let outfilepath = PathBuf::from_str("save.snem").unwrap();
-        let mut outfile = std::fs::File::create(outfilepath).unwrap();
-
-        let bytes = serde_json::to_string_pretty(&self.snem_core).unwrap();
-        outfile.write_all(&bytes.as_bytes()).unwrap();
-
-        log::debug!("Wrote save state to 'save.snem'");
+    fn cartridge_save_ram_path(&mut self) -> Option<PathBuf> {
+        let path = self.state.loaded_rom_data.as_ref()?.paths.sav_path();
+        Some(path)
     }
 
-    fn load_state(&mut self) {
-        log::warn!("Load State called");
+    fn save_cartridge_save_ram(&mut self, is_auto: bool) {
+        let Some(loaded_rom) = &self.state.loaded_rom_data else {
+            return;
+        };
+
+        if !self.snem_core.cartridge_has_save_ram() {
+            return;
+        }
+
+        if is_auto && !self.snem_core.sram_changed() {
+            log::info!("S-RAM is clean, skipping autosave.");
+            return;
+        }
+
+        let sram = self.snem_core.get_cart_save_ram();
+
+        if sram.len() == 0 {
+            return;
+        }
+
+        let path = loaded_rom.paths.sav_path();
+
+        match std::fs::write(path.clone(), sram) {
+            Err(e) => {
+                let message = format!("Failed to write save to '{}': {e}", path.to_string_lossy());
+            
+                if is_auto {
+                    log::warn!("{}", message);
+                } else {
+                    log::error!("{}", message);
+                }
+            }
+            _ => {
+                if is_auto {
+                    log::info!("Autosaved to '{}'", path.to_string_lossy());
+                } else {
+                    log::info!("Saved game to '{}'", path.to_string_lossy());
+                }
+            }
+        }
+    }
+
+    fn try_save_state(&mut self, slot: usize) -> Result<()> {
+        let Some(loaded_rom) = &mut self.state.loaded_rom_data else {
+            return Err(anyhow!("cannot save state with no rom loaded"));
+        };
+
+        let path = loaded_rom.paths.state_path(slot as u32);
+        let state = self.snem_core.save_state();
+        let config = bincode_next::config::standard();
+        let bytes: Vec<u8> = bincode_next::serde::encode_to_vec(state, config)?;
+
+        std::fs::write(path.clone(), bytes)?;
+
+        loaded_rom.used_save_state_slots[slot] = true;
+
+        log::info!("Saved state '{}'", path.to_string_lossy());
+
+        Ok(())
+    }
+
+    fn try_load_state(&mut self, slot: usize) -> Result<()> {
+        let Some(loaded_rom) = &self.state.loaded_rom_data else {
+            return Err(anyhow!("cannot load state with no rom loaded"));
+        };
+
+        let path = loaded_rom.paths.state_path(slot as u32);
+
+        let bytes = std::fs::read(path.clone())?;
+        let config = bincode_next::config::standard();
+        let (state, _bytes_read): (SaveState, usize) = bincode_next::serde::decode_from_slice(&bytes, config)?;
+
+        self.snem_core.try_load_state(state)?;
+
+        log::info!("Loaded state from '{}'", path.to_string_lossy());
+
+        Ok(())
     }
 
     fn toggle_fullscreen(&mut self) {
@@ -771,8 +990,8 @@ impl SnemulatorApp {
 
         let settings_egui_window = Self::create_window(
             "Settings",
-            crate::settings::SETTINGS_WINDOW_WIDTH,
-            crate::settings::SETTINGS_WINDOW_HEIGHT,
+            settings::SETTINGS_WINDOW_WIDTH,
+            settings::SETTINGS_WINDOW_HEIGHT,
             &self.video_subsystem,
             &self.fonts,
             &self.theme,

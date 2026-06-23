@@ -1,6 +1,4 @@
-use serde::Serialize;
-
-#[derive(Default, Serialize)]
+#[derive(Default)]
 pub struct SdspRegs {
     // $0C
     pub lmain_volume: u8,

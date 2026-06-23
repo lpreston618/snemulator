@@ -1,11 +1,10 @@
-use crate::{debug::DebugHarness, scpu::bus::CpuBus};
+use crate::{debug::DebugHarness, savestate, scpu::bus::CpuBus};
 
 mod instructions;
 mod tests;
 pub mod bus;
 pub mod ioregs;
 pub mod mult;
-pub mod serialize;
 
 pub use bus::Address;
 
@@ -92,6 +91,42 @@ impl Cpu65c816 {
 
             prg_bytes: Vec::with_capacity(4),
         }
+    }
+
+    pub fn save_state(&self) -> savestate::CpuState {
+        savestate::CpuState {
+            a: self.a,
+            x: self.x,
+            y: self.y,
+            sp: self.sp,
+            pc: self.pc,
+            pb: self.pb,
+            db: self.db,
+            dp: self.dp,
+            p: self.p,
+            e: self.e,
+            halted: self.halted,
+            stopped: self.stopped,
+            waiting_for_interrupt: self.waiting_for_interrupt,
+            clocks: self.clocks,
+        }
+    }
+
+    pub fn load_state(&mut self, state: &savestate::CpuState, _version: u32) {
+        self.a = state.a;
+        self.x = state.x;
+        self.y = state.y;
+        self.sp = state.sp;
+        self.pc = state.pc;
+        self.pb = state.pb;
+        self.db = state.db;
+        self.dp = state.dp;
+        self.p = state.p;
+        self.e = state.e;
+        self.halted = state.halted;
+        self.stopped = state.stopped;
+        self.waiting_for_interrupt = state.waiting_for_interrupt;
+        self.clocks = state.clocks;
     }
 
     /// Sets the CPU to its proper initial state.

@@ -36,7 +36,7 @@ fn main() {
         .unwrap()
     };
     
-    snem_core.load_rom(data, &mut harness).unwrap();
+    snem_core.load_rom(data, 0).unwrap();
     snem_core.power_on(&mut harness);
     
     let mut speedups: Vec<f32> = Vec::new();

@@ -5,7 +5,6 @@ use dma::DmaController;
 use scpu::bus::CpuBus;
 use scpu::ioregs::CpuIoRegs;
 use scpu::{Cpu65c816, CpuInterrupt};
-use serde::ser::SerializeStruct;
 use sppu::bus::PpuBus;
 use sppu::color::Color;
 use sppu::regs::PpuRegs;
@@ -18,6 +17,7 @@ use rand::rngs::StdRng;
 
 use crate::controller::ControllerData;
 use crate::debug::DebugHarness;
+use crate::savestate::SaveState;
 use crate::sppu::VBLANK_START_SCANLINE;
 use crate::sysinfo::CLOCKS_BETWEEN_AUTOREAD_STEPS;
 
@@ -172,6 +172,83 @@ impl Snemulator {
         }
     }
 
+    pub fn get_cart_save_ram(&self) -> Vec<u8> {
+        self.cart.as_ref().map_or(Vec::new(), |cart| cart.ram.clone())
+    }
+
+    pub fn save_state(&self) -> SaveState {
+        SaveState {
+            magic_str: *savestate::MAGIC_SAVE_STATE_STRING,
+            version: savestate::SAVE_STATE_VERSION,
+            cpu: self.cpu.save_state(),
+            ppu: self.ppu.save_state(&self.ppu_regs),
+            apu: self.ssmp.save_state(),
+            dma: self.dma.save_state(),
+            sram: self.cart.as_ref().map_or(Vec::new(), |cart| cart.ram.clone()),
+            wram: self.wram.clone().to_vec(),
+            vram: self.vram.clone().to_vec(),
+            aram: self.ssmp.aram.clone().to_vec(),
+            cgram: self.cgram.clone().map(|c| c.to_rgba_bytes()).as_flattened().to_vec(),
+            oam: self.oam.clone().to_vec(),
+            cpu_open_bus: self.cpu_open_bus,
+            apuio: [
+                self.apu_ports.apuio0,
+                self.apu_ports.apuio1,
+                self.apu_ports.apuio2,
+                self.apu_ports.apuio3,
+            ],
+            cpuio: [
+                self.apu_ports.cpuio0,
+                self.apu_ports.cpuio1,
+                self.apu_ports.cpuio2,
+                self.apu_ports.cpuio3,
+            ],
+            rom_hash: self.cart.as_ref().map_or(0u32, |cart| cart.rom_hash),
+        }
+    }
+
+    pub fn try_load_state(&mut self, state: SaveState) -> Result<()> {
+        if self.cart.is_none() {
+            return Err(anyhow!("cannot load state with no rom loaded"));
+        }
+
+        if state.magic_str != *savestate::MAGIC_SAVE_STATE_STRING {
+            return Err(anyhow!("file is not a snemulator save :("));
+        }
+
+        if state.rom_hash != self.cart.as_ref().unwrap().rom_hash {
+            return Err(anyhow!("save state ROM hash does not match loaded ROM hash"));
+        }
+
+        if state.version > savestate::SAVE_STATE_VERSION {
+            return Err(anyhow!("invalid version number {}, newest is {}", state.version, savestate::SAVE_STATE_VERSION));
+        }
+
+        match state.version {
+            0 => {
+                self.cpu.load_state(&state.cpu, state.version);
+                self.ppu.load_state(&mut self.ppu_regs, &state.ppu, state.version);
+                self.ssmp.load_state(&state.apu, state.version);
+                self.dma.load_state(&state.dma, state.version);
+                self.cart.as_mut().unwrap().ram = state.sram;
+                self.wram.copy_from_slice(&state.wram);
+                self.vram.copy_from_slice(&state.vram);
+                self.ssmp.aram.copy_from_slice(&state.aram);
+                self.cgram.copy_from_slice(
+                    state.cgram.chunks(4)
+                        .map(|p| Color {r: p[0], g: p[1], b: p[2] })
+                        .collect::<Vec<Color>>()
+                        .as_slice()
+                );
+                self.oam.copy_from_slice(&state.oam);
+                self.cpu_open_bus = state.cpu_open_bus;
+            },
+            _ => unreachable!()
+        }
+
+        Ok(())
+    }
+
     pub fn set_random_seed(&mut self, seed: u64) {
         self.random_seed = seed;
         self.rng = StdRng::seed_from_u64(self.random_seed);
@@ -254,10 +331,30 @@ impl Snemulator {
         self.total_cycles = 0;
     }
 
-    pub fn load_rom<H: DebugHarness>(&mut self, data: Vec<u8>, harness: &mut H) -> Result<()> {
-        self.cart = Some(Cartridge::from_rom(data).map_err(|e| anyhow!(e))?);
+    pub fn load_rom(&mut self, rom_data: Vec<u8>, rom_hash: u32) -> Result<()> {
+        self.cart = Some(Cartridge::from_rom(rom_data, rom_hash).map_err(|e| anyhow!(e))?);
 
-        self.power_on(harness);
+        Ok(())
+    }
+
+    pub fn unload_rom(&mut self) {
+        self.cart = None;
+    }
+
+    pub fn cartridge_has_save_ram(&self) -> bool {
+        self.cart.as_ref().map_or(false, |cart| cart.extra_ram && cart.battery && cart.ram_size > 0)
+    }
+
+    pub fn sram_changed(&mut self) -> bool {
+        self.cart.as_mut().map_or(false, |cart| {
+            let has_changed = cart.ram_written;
+            cart.ram_written = false;
+            has_changed
+        })
+    }
+
+    pub fn load_save_ram(&mut self, cart_save_ram: Vec<u8>) -> Result<()> {
+        self.cart.as_mut().unwrap().try_load_sram(cart_save_ram)?;
 
         Ok(())
     }
@@ -477,12 +574,4 @@ impl Snemulator {
             self.cpu_regs.joypad_autoread_flag = false;
         }
     }
-
-    // pub fn rom_slice(&self) -> &[u8] {
-    //     self.cart.as_ref().unwrap().rom_slice()
-    // }
-
-    // pub fn sram_slice(&self) -> &[u8] {
-    //     self.cart.as_ref().unwrap().sram_slice()
-    // }
 }
