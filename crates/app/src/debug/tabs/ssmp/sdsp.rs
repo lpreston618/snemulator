@@ -1,8 +1,10 @@
 use egui::text::LayoutJob;
 use egui::{Color32, FontId, Pos2, Rect, Stroke, Vec2};
+use snemcore::ssmp::sdsp::{ADSRStage, GainMode};
 
 use crate::debug::harness::{ENVELOPE_HISTORY_LEN, MainDebugHarness};
 use crate::app::theme::AppTheme;
+use crate::debug::tabs::ssmp::{append, detail_heading, detail_row, fmt_bool, fmt_hex_u8, fmt_hex_u16, fmt_i16_signed, fmt_u8_dec};
 use snemcore::Snemulator;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
