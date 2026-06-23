@@ -140,10 +140,6 @@ impl SuperDSP {
 
             if get_bit_n!(bus.sdsp_regs.key_off, voice_idx) || bus.sdsp_regs.soft_reset {
                 voice.adsr_stage = ADSRStage::Release;
-
-                if H::IS_DEBUGGING_HARNESS && H::TRACK_VOICES {
-                    harness.on_voice_key_on(voice, voice_idx);
-                }
             }
 
             // Release decreases envelope by 8 regardles of VxADSR and VxGAIN settings

@@ -31,6 +31,8 @@ pub enum StopCondition {
     HdmaEnd { ch: u8 },
     SampleGenerated,
     SpcInstruction,
+    KeyOn { v: u8 },
+    KeyOff { v: u8 },
 }
 
 pub struct MainDebugHarness {
@@ -104,10 +106,24 @@ impl DebugHarness for MainDebugHarness {
 
     fn on_voice_key_on(&mut self, _voice_regs: &mut snemcore::ssmp::sdsp::voices::VoiceRegs, voice: usize) {
         self.voices_just_keyed_on[voice] = true;
+
+        match self.stop_condition {
+            Some(StopCondition::KeyOn { v }) => {
+                self.stop_emulation |= voice == v as usize;
+            }
+            _ => {}
+        }
     }
 
     fn on_voice_key_off(&mut self, _voice_regs: &mut snemcore::ssmp::sdsp::voices::VoiceRegs, voice: usize) {
         self.voices_just_keyed_on[voice] = false;
+
+        match self.stop_condition {
+            Some(StopCondition::KeyOff { v }) => {
+                self.stop_emulation |= voice == v as usize;
+            }
+            _ => {}
+        }
     }
 
     fn on_sample_generated(&mut self, ssmp: &mut snemcore::ssmp::Ssmp) {

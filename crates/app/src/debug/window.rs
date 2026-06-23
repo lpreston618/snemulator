@@ -141,7 +141,7 @@ impl DebugWindow {
                     DebugTab::Ppu => self.ppu_tab.render(ui, core, harness, app_theme),
                     DebugTab::Sdsp => self.sdsp_tab.render(ui, core, harness, app_theme),
                     DebugTab::Audio => self.audio_tab.render(ui, harness, audio_stream, app_state, app_theme),
-                    DebugTab::Brr => self.brr_tab.render(ui, core, app_theme),
+                    DebugTab::Brr => self.brr_tab.render(ui, core, harness, app_theme, app_state, &mut debug_action),
                     // DebugTab::Watchpoints => {
                     //     self.wp_tab.render(ui, core, app_state)
                     // }

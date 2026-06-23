@@ -4,6 +4,8 @@ pub mod brr;
 
 use egui::{Color32, FontId};
 use egui::text::{LayoutJob, TextFormat};
+use crate::app::AppState;
+use crate::debug::harness::{MainDebugHarness, StopCondition};
 use crate::theme::AppTheme;
 
 /// A fixed-capacity circular buffer for audio samples or envelopes.
@@ -46,6 +48,33 @@ impl<const CAPACITY: usize> RingBuffer<CAPACITY> {
         let start = (self.head + CAPACITY - n) % CAPACITY;
         (0..n).map(move |i| self.data[(start + i) % CAPACITY])
     }
+}
+
+// ─── Shared voice context menu helper ─────────────────────────────────────────
+
+/// Returns a bool for whether the app needs to unpause
+pub fn voice_context_menu(
+    ui: &mut egui::Ui,
+    core: &snemcore::Snemulator,
+    harness: &mut MainDebugHarness,
+    voice: usize,
+) -> bool {
+    let voice_mask = 1 << voice;
+    let is_on = core.ssmp.sdsp_regs.key_on & voice_mask != 0 && core.ssmp.sdsp_regs.key_off & voice_mask == 0;
+
+    let (text, stop_cond) = if is_on {
+        ("Run Until Key Off", StopCondition::KeyOff { v: voice as u8 })
+    } else {
+        ("Run Until Key On", StopCondition::KeyOn { v: voice as u8 })
+    };
+
+    let clicked = ui.button(text).clicked();
+
+    if clicked {
+        harness.stop_condition = Some(stop_cond);
+    }
+
+    clicked
 }
 
 // ─── Shared formatting helpers ────────────────────────────────────────────────

@@ -1,6 +1,9 @@
 use egui::{Color32, FontId, Pos2, Rect, Stroke, Vec2};
 use egui::text::LayoutJob;
 
+use crate::app::AppState;
+use crate::debug::harness::MainDebugHarness;
+use crate::debug::window::DebugAction;
 use crate::theme::AppTheme;
 use snemcore::Snemulator;
 use snemcore::ssmp::sdsp::SuperDSP;
@@ -27,12 +30,20 @@ impl SdspBrrTab {
         Self { voice_open: [false; 8] }
     }
 
-    pub fn render(&mut self, ui: &mut egui::Ui, core: &mut Snemulator, t: &AppTheme) {
+    pub fn render(
+        &mut self,
+        ui: &mut egui::Ui,
+        core: &mut Snemulator,
+        harness: &mut MainDebugHarness,
+        app_theme: &AppTheme,
+        app_state: &AppState,
+        debug_action: &mut Option<DebugAction>
+    ) {
         egui::ScrollArea::vertical().show(ui, |ui| {
             for v in 0..8usize {
                 let vr = &core.ssmp.voice_regs[v];
 
-                let header_job = self.format_header(t, v, vr);
+                let header_job = self.format_header(app_theme, v, vr);
 
                 let resp = egui::CollapsingHeader::new(header_job)
                     .id_salt(format!("brr_voice_{v}"))
@@ -46,7 +57,7 @@ impl SdspBrrTab {
 
                         ui.add_space(4.0);
                         let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), GRID_HEIGHT));
-                        let dot_positions = Self::paint_grid(ui, t, rect, &buf, interp_idx, shift);
+                        let dot_positions = Self::paint_grid(ui, app_theme, rect, &buf, interp_idx, shift);
 
                         // ── Hover tooltips for each BRR sample dot ───────────
                         for (col, (&raw, (cx, cy))) in buf.iter().zip(dot_positions.iter()).enumerate() {
@@ -78,9 +89,11 @@ impl SdspBrrTab {
                     self.voice_open[v] = !self.voice_open[v];
                 }
 
-                resp.header_response.context_menu(|ui| {
-                    self.render_context_menu(ui, v);
-                });
+                if app_state.is_paused {
+                    resp.header_response.context_menu(|ui| {
+                        self.render_context_menu(ui, core, harness, v, debug_action);
+                    });
+                }
             }
         });
     }
@@ -286,10 +299,13 @@ impl SdspBrrTab {
 
     // ── Context menu ──────────────────────────────────────────────────────────
 
-    fn render_context_menu(&mut self, ui: &mut egui::Ui, v: usize) {
-        ui.label(format!("Voice {v}"));
+    fn render_context_menu(&mut self, ui: &mut egui::Ui, core: &mut Snemulator, harness: &mut MainDebugHarness, voice: usize, debug_action: &mut Option<DebugAction>) {
+        ui.label(format!("Voice {voice}"));
         ui.separator();
-        // Add context menu items here
+
+        if super::voice_context_menu(ui, core, harness, voice) {
+            *debug_action = Some(DebugAction::TogglePause)
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
