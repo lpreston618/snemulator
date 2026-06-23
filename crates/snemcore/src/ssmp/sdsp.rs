@@ -1,7 +1,6 @@
 use crate::{debug::DebugHarness, get_bit_n, get_byte_n, savestate, ssmp::sdsp::regs::SdspRegs};
 
 use bus::SdspBus;
-use log::log;
 use serde::{Deserialize, Serialize};
 
 pub mod bus;
@@ -406,14 +405,13 @@ impl SuperDSP {
 
         for i in 0..7 {
             left_fir += ((left_samples[i] as i32 * (bus.sdsp_regs.fir_regs[i] as i32)) >> 6) as i16;
-            right_fir +=
-                ((right_samples[i] as i32 * (bus.sdsp_regs.fir_regs[i] as i32)) >> 6) as i16;
+            right_fir += ((right_samples[i] as i32 * (bus.sdsp_regs.fir_regs[i] as i32)) >> 6) as i16;
         }
 
         left_fir =
-            left_fir.saturating_add((left_samples[7] * (bus.sdsp_regs.fir_regs[7] as i16)) >> 6);
+            left_fir.saturating_add(((left_samples[7] as i32 * (bus.sdsp_regs.fir_regs[7] as i32)) >> 6) as i16);
         right_fir =
-            right_fir.saturating_add((right_samples[7] * (bus.sdsp_regs.fir_regs[7] as i16)) >> 6);
+            right_fir.saturating_add(((right_samples[7] as i32 * (bus.sdsp_regs.fir_regs[7] as i32)) >> 6) as i16);
 
         (left_fir, right_fir)
     }
@@ -448,16 +446,7 @@ impl SuperDSP {
         // 16-bit signed samples
         let (left_echo_out, right_echo_out) = self.generate_echo_samples(bus);
 
-        let left_echo_out = volume_adjust_8bit(left_echo_out, bus.sdsp_regs.lecho_volume as i8);
-        let right_echo_out = volume_adjust_8bit(right_echo_out, bus.sdsp_regs.recho_volume as i8);
-
-        self.last_generated_echo_left = left_echo_out;
-        self.last_generated_echo_left = right_echo_out;
-
-        // Add echo to output
-        left_sample = left_sample.saturating_add(left_echo_out);
-        right_sample = right_sample.saturating_add(right_echo_out);
-
+        
         // Feed echo back into itself
         left_echo_feedback = left_echo_feedback.saturating_add(volume_adjust_8bit(
             left_echo_out,
@@ -468,16 +457,11 @@ impl SuperDSP {
             bus.sdsp_regs.echo_feedback as i8,
         ));
 
-        // left_echo_feedback = (left_echo_feedback >> 1) << 1;
-        // right_echo_feedback = (right_echo_feedback >> 1) << 1;
-
-        if bus.sdsp_regs.mute_all {
-            left_sample = 0;
-            right_sample = 0;
-        }
+        // Zero out low bit to make sample signed 15-bit, left aligned to 16-bit
+        left_echo_feedback = (left_echo_feedback >> 1) << 1;
+        right_echo_feedback = (right_echo_feedback >> 1) << 1;
 
         if bus.sdsp_regs.echo_en {
-            log::debug!("Pushing echo samples (idx={:04x})", self.echo_ptr);
             self.push_echo_samples(left_echo_feedback, right_echo_feedback, bus);
         }
 
@@ -486,12 +470,21 @@ impl SuperDSP {
         } else {
             self.echo_ptr += 4;
             self.echo_ptr %= (bus.sdsp_regs.echo_delay_time as usize) << 11;
-            if self.echo_ptr == 0 {
-                log::debug!(
-                    "Echo pointer wrap w/edl {:02X}",
-                    bus.sdsp_regs.echo_delay_time
-                );
-            }
+        }
+        
+        let left_echo_out = volume_adjust_8bit(left_echo_out, bus.sdsp_regs.lecho_volume as i8);
+        let right_echo_out = volume_adjust_8bit(right_echo_out, bus.sdsp_regs.recho_volume as i8);
+
+        self.last_generated_echo_left = left_echo_out;
+        self.last_generated_echo_left = right_echo_out;
+
+        // Add echo to output
+        left_sample = left_sample.saturating_add(left_echo_out);
+        right_sample = right_sample.saturating_add(right_echo_out);
+
+        if bus.sdsp_regs.mute_all {
+            left_sample = 0;
+            right_sample = 0;
         }
 
         left_sample = !left_sample;
