@@ -12,16 +12,33 @@ use super::{append, RingBuffer};
 const WAVEFORM_HEIGHT: f32 = 48.0;
 const WAVEFORM_DISPLAY_SAMPLES: usize = 4096;
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum AudioTrack {
+    Voice { v: u8 },
+    Echo,
+    Mix,
+}
+
+impl AudioTrack {
+    fn title(self) -> String {
+        match self {
+            AudioTrack::Voice { v } => format!("V{v}"),
+            AudioTrack::Echo => "ECHO".to_string(),
+            AudioTrack::Mix => "MIX".to_string(),
+        }
+    }
+}
+
 // ─── Struct ───────────────────────────────────────────────────────────────────
 
 pub struct SdspAudioTab {
-    pub playing_voice: Option<usize>, // Which voice is currently playing, if any
+    pub playing_track: Option<AudioTrack>, // Which track is currently playing, if any
 }
 
 impl SdspAudioTab {
     pub fn new() -> Self {
         Self {
-            playing_voice: None,
+            playing_track: None,
         }
     }
 
@@ -34,7 +51,7 @@ impl SdspAudioTab {
         app_theme: &AppTheme,
     ) {
         if stream.queued_bytes().unwrap_or(0) <= 128 {
-            self.playing_voice = None;
+            self.playing_track = None;
         }
 
         // ── Toolbar ──────────────────────────────────────────────────────────
@@ -43,13 +60,17 @@ impl SdspAudioTab {
                 self.clear_all(harness);
             }
 
-            if let Some(v) = self.playing_voice {
+            if let Some(track) = self.playing_track {
                 ui.add_space(8.0);
                 let mut stop_job = LayoutJob::default();
-                let label = if v == usize::MAX { "■ Stop (MIX)".to_string() } else { format!("■ Stop (V{v})") };
+                let label = match track {
+                    AudioTrack::Voice { v } => &format!("V{v}"),
+                    AudioTrack::Echo => "ECHO",
+                    AudioTrack::Mix => "MIX",
+                };
                 append(&mut stop_job, &label, FontId::monospace(12.0), app_theme.warning);
                 if ui.button(stop_job).clicked() {
-                    self.playing_voice = None;
+                    self.playing_track = None;
                     let _ = stream.clear();
                 }
             }
@@ -60,41 +81,66 @@ impl SdspAudioTab {
         egui::ScrollArea::vertical().show(ui, |ui| {
             // ── Per-voice strips ──────────────────────────────────────────────
             for v in 0..8usize {
-                self.render_voice_strip(ui, app_state, app_theme, v, stream, harness);
+                let (left, right) = &mut harness.voice_buffers[v];
+
+                self.render_audio_strip(
+                    ui,
+                    app_state,
+                    app_theme,
+                    stream,
+                    left,
+                    right,
+                    AudioTrack::Voice { v: v as u8 },
+                );
+
                 ui.add_space(4.0);
             }
 
+            self.render_audio_strip(
+                ui,
+                app_state,
+                app_theme,
+                stream,
+                &mut harness.echo_history.0,
+                &mut harness.echo_history.1,
+                AudioTrack::Echo,
+            );
+
             ui.separator();
 
-            // ── Master mix strip ─────────────────────────────────────────────
-            self.render_mix_strip(ui, app_theme, stream, harness);
+            self.render_audio_strip(
+                ui,
+                app_state,
+                app_theme,
+                stream,
+                &mut harness.mix_buffers.0,
+                &mut harness.mix_buffers.1,
+                AudioTrack::Mix,
+            );
         });
     }
 
-    // ── Voice strip ───────────────────────────────────────────────────────────
-
-    fn render_voice_strip(
+    fn render_audio_strip(
         &mut self,
         ui: &mut egui::Ui,
         app_state: &AppState,
         app_theme: &AppTheme,
-        v: usize,
         stream: &mut AudioStreamOwner,
-        harness: &mut MainDebugHarness,
+        left_rb: &mut RingBuffer<SAMPLE_HISTORY_LEN>,
+        right_rb: &mut RingBuffer<SAMPLE_HISTORY_LEN>,
+        track: AudioTrack,
     ) {
-        let buf_secs = seconds_buffered(&harness.voice_buffers[v].0);
+        let buf_secs = seconds_buffered(left_rb);
+        let is_playing = self.playing_track.map_or(false, |t| t == track);
 
         ui.horizontal(|ui| {
-            // Voice label
             let mut label_job = LayoutJob::default();
-            append(&mut label_job, &format!("V{v} "), FontId::monospace(13.0), app_theme.accent);
+            append(&mut label_job, &track.title(), FontId::monospace(13.0), app_theme.syntax_label);
             ui.label(label_job);
 
-            // Play button
-            let is_playing = self.playing_voice == Some(v);
-            let play_label = if is_playing { "■" } else { "▶" };
+            let play_label = "▶";
             let play_color = if is_playing { app_theme.warning } else { app_theme.success };
-            let has_audio  = harness.voice_buffers[v].0.len > 0;
+            let has_audio  = left_rb.len > 0;
 
             ui.add_enabled_ui(has_audio && app_state.is_paused, |ui| {
                 if ui.add(egui::Button::new({
@@ -103,74 +149,11 @@ impl SdspAudioTab {
                     j
                 })).clicked() {
                     if is_playing {
-                        self.playing_voice = None;
+                        self.playing_track = None;
                         let _ = stream.clear();
                     } else {
-                        self.playing_voice = Some(v);
-                        self.upload_voice_to_stream(v, stream, harness);
-                    }
-                }
-            });
-
-            // Buffer length indicator
-            let mut buf_job = LayoutJob::default();
-            append(&mut buf_job, &format!("{buf_secs:.1}s / {}s", SAMPLE_HISTORY_SECONDS),
-                FontId::monospace(11.0), app_theme.text_muted);
-            ui.label(buf_job);
-
-            // Clear this voice
-            if ui.small_button("✕").clicked() {
-                harness.voice_buffers[v].0 = RingBuffer::new();
-                harness.voice_buffers[v].1 = RingBuffer::new();
-                if self.playing_voice == Some(v) {
-                    self.playing_voice = None;
-                    let _ = stream.clear();
-                }
-            }
-        });
-
-        // Waveform — left channel
-        let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), WAVEFORM_HEIGHT));
-        self.paint_waveform(ui, app_theme, rect, &harness.voice_buffers[v].0, app_theme.accent, "L");
-
-        // Waveform — right channel
-        let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), WAVEFORM_HEIGHT));
-        self.paint_waveform(ui, app_theme, rect, &harness.voice_buffers[v].1, app_theme.info, "R");
-    }
-
-    // ── Master mix strip ──────────────────────────────────────────────────────
-
-    fn render_mix_strip(
-        &mut self,
-        ui: &mut egui::Ui,
-        app_theme: &AppTheme,
-        stream: &mut AudioStreamOwner,
-        harness: &mut MainDebugHarness,
-    ) {
-        let buf_secs = seconds_buffered(&harness.mix_buffers.0);
-        let is_playing = self.playing_voice == Some(usize::MAX); // sentinel for mix
-
-        ui.horizontal(|ui| {
-            let mut label_job = LayoutJob::default();
-            append(&mut label_job, "MIX", FontId::monospace(13.0), app_theme.syntax_label);
-            ui.label(label_job);
-
-            let play_label = "▶";
-            let play_color = if is_playing { app_theme.warning } else { app_theme.success };
-            let has_audio  = harness.mix_buffers.0.len > 0;
-
-            ui.add_enabled_ui(has_audio, |ui| {
-                if ui.add(egui::Button::new({
-                    let mut j = LayoutJob::default();
-                    append(&mut j, play_label, FontId::monospace(12.0), play_color);
-                    j
-                })).clicked() {
-                    if is_playing {
-                        self.playing_voice = None;
-                        let _ = stream.clear();
-                    } else {
-                        self.playing_voice = Some(usize::MAX);
-                        self.upload_mix_to_stream(stream, harness);
+                        self.playing_track = Some(track);
+                        self.upload_samples_to_stream(stream, left_rb, right_rb);
                     }
                 }
             });
@@ -181,20 +164,20 @@ impl SdspAudioTab {
             ui.label(buf_job);
 
             if ui.small_button("✕").clicked() {
-                harness.mix_buffers.0 = RingBuffer::new();
-                harness.mix_buffers.1 = RingBuffer::new();
+                left_rb.clear();
+                right_rb.clear();
                 if is_playing {
-                    self.playing_voice = None;
+                    self.playing_track = None;
                     let _ = stream.clear();
                 }
             }
         });
 
         let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), WAVEFORM_HEIGHT));
-        self.paint_waveform(ui, app_theme, rect, &harness.mix_buffers.0, app_theme.success, "L");
+        self.paint_waveform(ui, app_theme, rect, left_rb, app_theme.success, "L");
 
         let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), WAVEFORM_HEIGHT));
-        self.paint_waveform(ui, app_theme, rect, &harness.mix_buffers.1, app_theme.success, "R");
+        self.paint_waveform(ui, app_theme, rect, right_rb, app_theme.success, "R");
     }
 
     // ── Waveform painter ──────────────────────────────────────────────────────
@@ -254,17 +237,8 @@ impl SdspAudioTab {
 
     // ── SDL3 upload ───────────────────────────────────────────────────────────
 
-    /// Interleaves left/right samples and uploads to the SDL3 stream.
-    fn upload_voice_to_stream(&self, v: usize, stream: &mut AudioStreamOwner, harness: &mut MainDebugHarness) {
-        let samples = self.interleave_stereo(
-            &harness.voice_buffers[v].0,
-            &harness.voice_buffers[v].1,
-        );
-        let _ = stream.put_data_i16(&samples);
-    }
-
-    fn upload_mix_to_stream(&self, stream: &mut AudioStreamOwner, harness: &mut MainDebugHarness) {
-        let samples = self.interleave_stereo(&harness.mix_buffers.0, &harness.mix_buffers.1);
+    fn upload_samples_to_stream(&self, stream: &mut AudioStreamOwner, left: &RingBuffer<SAMPLE_HISTORY_LEN>, right: &RingBuffer<SAMPLE_HISTORY_LEN>) {
+        let samples = self.interleave_stereo(left, right);
         let _ = stream.put_data_i16(&samples);
     }
 
@@ -286,7 +260,7 @@ impl SdspAudioTab {
         }
         harness.mix_buffers.0 = RingBuffer::new();
         harness.mix_buffers.1 = RingBuffer::new();
-        self.playing_voice = None;
+        self.playing_track = None;
     }
 }
 

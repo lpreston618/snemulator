@@ -25,6 +25,12 @@ impl<const CAPACITY: usize> RingBuffer<CAPACITY> {
         }
     }
 
+    pub fn clear(&mut self) {
+        self.data.clear();
+        self.len = 0;
+        self.head = 0;
+    }
+
     pub fn push(&mut self, sample: i16) {
         self.data[self.head] = sample;
         self.head = (self.head + 1) % CAPACITY;

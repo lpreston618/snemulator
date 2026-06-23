@@ -172,13 +172,19 @@ impl SnemulatorApp {
         )?;
 
         let main_window = MainWindow::new(main_egui_window, &video_subsystem, &settings)?;
+        
+        let (audio_stream, audio_resampler) = if args.noresample {
+            let audio_spec = AudioSpec {
+                freq: Some(sysinfo::AUDIO_SAMPLE_HZ as i32),
+                channels: Some(2),
+                format: Some(AudioFormat::s16_sys()),
+            };
 
-        
-        if args.resampling {
-            
-        }
-        
-        let (audio_stream, audio_resampler) = if args.resampling {
+            let audio_device = audio_subsystem.open_playback_device(&audio_spec)?;
+            let audio_stream = audio_device.open_device_stream(Some(&audio_spec))?;
+
+            (audio_stream, None)
+        } else {
             let audio_spec = AudioSpec {
                 freq: None,
                 channels: Some(2),
@@ -199,17 +205,6 @@ impl SnemulatorApp {
             let audio_resampler = AudioResampler::new(32000, output_rate);
 
             (audio_stream, Some(audio_resampler))
-        } else {
-            let audio_spec = AudioSpec {
-                freq: Some(sysinfo::AUDIO_SAMPLE_HZ as i32),
-                channels: Some(2),
-                format: Some(AudioFormat::s16_sys()),
-            };
-
-            let audio_device = audio_subsystem.open_playback_device(&audio_spec)?;
-            let audio_stream = audio_device.open_device_stream(Some(&audio_spec))?;
-
-            (audio_stream, None)
         };
 
         let snem_core = Snemulator::new();

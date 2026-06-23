@@ -29,7 +29,7 @@ pub struct SnemulatorArgs {
     pub theme: Option<String>,
 
     #[arg(long)]
-    pub resampling: bool,
+    pub noresample: bool,
 
     /// Start in debug mode
     #[cfg(feature = "debug")]

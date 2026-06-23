@@ -41,6 +41,8 @@ pub struct SuperDSP {
     pub envelope_counter: usize,
     pub noise_output: u16,
     pub echo_ptr: usize,
+    pub last_generated_echo_left: i16,
+    pub last_generated_echo_right: i16,
     pub last_generated_left: i16,
     pub last_generated_right: i16,
 }
@@ -101,6 +103,8 @@ impl SuperDSP {
             envelope_counter: 0,
             noise_output: 0,
             echo_ptr: 0,
+            last_generated_echo_left: 0,
+            last_generated_echo_right: 0,
             last_generated_left: 0,
             last_generated_right: 0,
         }
@@ -155,6 +159,8 @@ impl SuperDSP {
     pub fn power_on(&mut self) {
         self.envelope_counter = 0;
         self.noise_output = 0x4000;
+        self.last_generated_echo_left = 0;
+        self.last_generated_echo_right = 0;
         self.last_generated_left = 0;
         self.last_generated_right = 0;
     }
@@ -162,6 +168,8 @@ impl SuperDSP {
     pub fn reset(&mut self) {
         self.envelope_counter = 0;
         self.noise_output = 0x4000;
+        self.last_generated_echo_left = 0;
+        self.last_generated_echo_right = 0;
         self.last_generated_left = 0;
         self.last_generated_right = 0;
     }
@@ -424,14 +432,6 @@ impl SuperDSP {
                 left_echo_feedback = left_echo_feedback.saturating_add(voice_left);
                 right_echo_feedback = right_echo_feedback.saturating_add(voice_right);
             }
-
-            // if bus.voice_regs[voice_idx].echo_en {
-            //     // These are the values that will be fed IN to the echo buffer from this sample
-            //     //
-            //     // NOTE: probably a bug here. Look back later!!!
-            //     left_echo_feedback = left_sample.saturating_add(voice_left);
-            //     right_echo_feedback = right_sample.saturating_add(voice_right);
-            // }
         }
 
         let l_volume = bus.sdsp_regs.lmain_volume as i8;
@@ -446,6 +446,9 @@ impl SuperDSP {
 
         let left_echo_out = volume_adjust_8bit(left_echo_out, bus.sdsp_regs.lecho_volume as i8);
         let right_echo_out = volume_adjust_8bit(right_echo_out, bus.sdsp_regs.recho_volume as i8);
+
+        self.last_generated_echo_left = left_echo_out;
+        self.last_generated_echo_left = right_echo_out;
 
         // Add echo to output
         left_sample = left_sample.saturating_add(left_echo_out);

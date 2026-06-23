@@ -15,12 +15,14 @@ const ENVELOPE_PAINTER_HEIGHT: f32 = 40.0;
 
 pub struct SdspTab {
     voice_open: [bool; 8],
+    echo_open: bool,
 }
 
 impl SdspTab {
     pub fn new() -> Self {
         Self {
             voice_open: [false; 8],
+            echo_open: false,
         }
     }
 
@@ -147,6 +149,21 @@ impl SdspTab {
                 resp.header_response.context_menu(|ui| {
                     self.render_voice_context_menu(ui, v);
                 });
+            }
+
+            // ── Echo panel ───────────────────────────────────────────────────
+            let regs = &core.ssmp.sdsp_regs;
+            let echo_resp = egui::CollapsingHeader::new(self.format_echo_header(app_theme, regs))
+                .id_salt("sdsp_echo")
+                .open(Some(self.echo_open))
+                .show(ui, |ui| {
+                    let buf_size = echo_buffer_size(regs.echo_delay_time);
+                    let base     = (regs.echo_page as usize) << 8;
+                    self.render_echo_detail(ui, app_theme, regs, &core.ssmp.aram, base, buf_size, core.ssmp.sdsp.echo_ptr);
+                });
+
+            if echo_resp.header_response.clicked() {
+                self.echo_open = !self.echo_open;
             }
         });
     }
@@ -398,6 +415,138 @@ impl SdspTab {
         );
     }
 
+    // ── Echo panel ────────────────────────────────────────────────────────────
+
+    fn format_echo_header(&self, t: &AppTheme, regs: &snemcore::ssmp::sdsp::regs::SdspRegs) -> LayoutJob {
+        let mut job = LayoutJob::default();
+        let mono = FontId::monospace(13.0);
+        let active_color = if regs.echo_en { t.accent } else { t.text_muted };
+
+        append(&mut job, "ECHO  ", mono.clone(), active_color);
+        let (en_text, en_color) = if regs.echo_en { ("[EN ✓]", t.success) } else { ("[EN ✗]", t.text_disabled) };
+        append(&mut job, en_text, mono.clone(), en_color);
+        append(&mut job, "  Page: ", mono.clone(), t.text_secondary);
+        append(&mut job, &format!("${:02X}", regs.echo_page), mono.clone(), t.syntax_number);
+        append(&mut job, "  Delay: ", mono.clone(), t.text_secondary);
+        append(&mut job, &format!("${:02X}", regs.echo_delay_time), mono.clone(), t.syntax_number);
+        append(&mut job, &format!("  Size: {} bytes", echo_buffer_size(regs.echo_delay_time)), mono.clone(), t.text_muted);
+        append(&mut job, "  FB: ", mono.clone(), t.text_secondary);
+        append(&mut job, &format!("${:02X}", regs.echo_feedback), mono.clone(), t.syntax_number);
+        append(&mut job, "  Vol L/R: ", mono.clone(), t.text_secondary);
+        append(&mut job, &format!("${:02X}/${:02X}", regs.lecho_volume, regs.recho_volume), mono.clone(), t.syntax_number);
+
+        job
+    }
+
+    fn render_echo_detail(
+        &self,
+        ui: &mut egui::Ui,
+        t: &AppTheme,
+        regs: &snemcore::ssmp::sdsp::regs::SdspRegs,
+        aram: &[u8; 0x10000],
+        base: usize,
+        buf_size: usize,
+        echo_ptr: usize,
+    ) {
+        ui.add_space(4.0);
+
+        ui.columns(2, |cols| {
+            // ── Left: parameters ─────────────────────────────────────────────
+            let ui = &mut cols[0];
+            ui.label(detail_heading(t, "Echo"));
+            ui.add_space(2.0);
+            detail_row(ui, t, "Echo En",    &fmt_bool(regs.echo_en, t));
+            detail_row(ui, t, "Page",       &fmt_hex_u8(regs.echo_page, t));
+            detail_row(ui, t, "Base Addr",  &{
+                let mut j = LayoutJob::default();
+                append(&mut j, &format!("${:04X}", base), FontId::monospace(12.0), t.syntax_address);
+                j
+            });
+            detail_row(ui, t, "Delay",      &fmt_hex_u8(regs.echo_delay_time, t));
+            detail_row(ui, t, "Buf Size",   &{
+                let mut j = LayoutJob::default();
+                append(&mut j, &format!("{buf_size}"), FontId::monospace(12.0), t.syntax_number);
+                j
+            });
+            detail_row(ui, t, "Feedback",   &fmt_hex_u8(regs.echo_feedback, t));
+            detail_row(ui, t, "Vol L",      &fmt_hex_u8(regs.lecho_volume, t));
+            detail_row(ui, t, "Vol R",      &fmt_hex_u8(regs.recho_volume, t));
+
+            // ── Right: FIR coefficients ───────────────────────────────────────
+            let ui = &mut cols[1];
+            ui.label(detail_heading(t, "FIR Coefficients"));
+            ui.add_space(2.0);
+            for (i, &coef) in regs.fir_regs.iter().enumerate() {
+                let mut j = LayoutJob::default();
+                append(&mut j, &format!("{coef:+4}  "), FontId::monospace(12.0), t.syntax_number);
+                append(&mut j, &format!("${:02X}", coef as u8), FontId::monospace(12.0), t.text_muted);
+                detail_row(ui, t, &format!("FIR[{i}]"), &j);
+            }
+        });
+
+        ui.add_space(6.0);
+
+        let (_, rect) = ui.allocate_space(Vec2::new(ui.available_width(), 80.0));
+        Self::paint_echo_waveform(ui, t, rect, aram, base, buf_size, echo_ptr);
+
+        ui.add_space(4.0);
+    }
+
+    fn paint_echo_waveform(
+        ui: &egui::Ui,
+        t: &AppTheme,
+        rect: Rect,
+        aram: &[u8; 0x10000],
+        base: usize,
+        buf_size: usize,
+        echo_ptr: usize,
+    ) {
+        let painter = ui.painter_at(rect);
+        painter.rect_filled(rect, t.corner_radius as f32, t.bg_tertiary);
+
+        let w = rect.width();
+        let h = rect.height();
+        let mid_y = rect.center().y;
+
+        painter.line_segment(
+            [Pos2::new(rect.left(), mid_y), Pos2::new(rect.right(), mid_y)],
+            Stroke::new(1.0, t.border),
+        );
+
+        // Each stereo frame is 4 bytes: [L_lo, L_hi, R_lo, R_hi].
+        // We walk from echo_ptr wrapping around the buffer.
+        let num_frames = (buf_size / 4).max(1);
+        let mut left_pts  = Vec::with_capacity(num_frames);
+        let mut right_pts = Vec::with_capacity(num_frames);
+
+        for i in 0..num_frames {
+            let byte_off = (echo_ptr * 4 + i * 4) % buf_size;
+            let addr = (base + byte_off) & 0xFFFF;
+            let l = i16::from_le_bytes([aram[addr], aram[(addr + 1) & 0xFFFF]]);
+            let r = i16::from_le_bytes([aram[(addr + 2) & 0xFFFF], aram[(addr + 3) & 0xFFFF]]);
+
+            let x = rect.left() + (i as f32 / (num_frames - 1).max(1) as f32) * w;
+            let norm = |s: i16| mid_y - (s as f32 / i16::MAX as f32) * (h * 0.5);
+            left_pts.push(Pos2::new(x, norm(l)));
+            right_pts.push(Pos2::new(x, norm(r)));
+        }
+
+        if left_pts.len() >= 2 {
+            painter.add(egui::Shape::line(left_pts,  Stroke::new(1.0, t.accent)));
+            painter.add(egui::Shape::line(right_pts, Stroke::new(1.0, t.info)));
+        }
+
+        // Write-head marker
+        let marker_x = rect.left() + (echo_ptr as f32 / num_frames as f32) * w;
+        painter.line_segment(
+            [Pos2::new(marker_x, rect.top()), Pos2::new(marker_x, rect.bottom())],
+            Stroke::new(1.0, t.modified),
+        );
+
+        painter.rect_stroke(rect, t.corner_radius as f32,
+            Stroke::new(1.0, t.border), egui::StrokeKind::Outside);
+    }
+
     // ── Context menu ──────────────────────────────────────────────────────────
 
     fn render_voice_context_menu(&mut self, ui: &mut egui::Ui, v: usize) {
@@ -461,6 +610,10 @@ fn adsr_stage_fmt(stage: ADSRStage, app_theme: &AppTheme) -> (&'static str, Colo
         ADSRStage::Sustain => ("SUSTAIN", app_theme.success),
         ADSRStage::Release => ("RELEASE", app_theme.text_muted),
     }
+}
+
+fn echo_buffer_size(echo_delay_time: u8) -> usize {
+    if echo_delay_time == 0 { 4 } else { (echo_delay_time as usize) << 11 }
 }
 
 fn fmt_gain_mode(mode: GainMode, app_theme: &AppTheme) -> LayoutJob {

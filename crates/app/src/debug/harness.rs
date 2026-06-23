@@ -46,6 +46,7 @@ pub struct MainDebugHarness {
     pub voices_just_keyed_on: [bool; 8],
     pub voice_buffers: [(RingBuffer<SAMPLE_HISTORY_LEN>, RingBuffer<SAMPLE_HISTORY_LEN>); 8],
     pub mix_buffers: (RingBuffer<SAMPLE_HISTORY_LEN>, RingBuffer<SAMPLE_HISTORY_LEN>),
+    pub echo_history: (RingBuffer<SAMPLE_HISTORY_LEN>, RingBuffer<SAMPLE_HISTORY_LEN>),
 
     /// Per-voice ring buffer of recent envelope values for the live ADSR painter.
     pub envelope_history: [RingBuffer<ENVELOPE_HISTORY_LEN>; 8],
@@ -62,6 +63,7 @@ impl MainDebugHarness {
             voice_buffers: std::array::from_fn(|_| (RingBuffer::new(), RingBuffer::new())),
             envelope_history: std::array::from_fn(|_| RingBuffer::new()),
             mix_buffers: (RingBuffer::new(), RingBuffer::new()),
+            echo_history: (RingBuffer::new(), RingBuffer::new()),
         }
     }
 }
@@ -130,7 +132,10 @@ impl DebugHarness for MainDebugHarness {
         if matches!(self.stop_condition, Some(StopCondition::SampleGenerated)) {
             self.stop_emulation = true;
         }
-
+        
+        self.echo_history.0.push(ssmp.sdsp.last_generated_echo_left);
+        self.echo_history.1.push(ssmp.sdsp.last_generated_echo_right);
+        
         let left_sample  = ssmp.sdsp.last_generated_left;
         let right_sample = ssmp.sdsp.last_generated_right;
 

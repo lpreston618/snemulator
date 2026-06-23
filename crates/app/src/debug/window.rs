@@ -102,7 +102,7 @@ impl DebugWindow {
     }
 
     pub fn resume(&mut self) {
-        self.audio_tab.playing_voice = None;
+        self.audio_tab.playing_track = None;
     }
 
     pub fn set_theme(&mut self, app_theme: &AppTheme) {
