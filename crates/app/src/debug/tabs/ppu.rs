@@ -1,7 +1,7 @@
 use snemcore::Snemulator;
 
 use crate::debug::harness::MainDebugHarness;
-use crate::theme::AppTheme;
+use crate::app::theme::AppTheme;
 
 // mod chr;
 mod layers;

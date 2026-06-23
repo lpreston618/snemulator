@@ -1,8 +1,6 @@
 //use std::intrinsics::simd::SimdAlign::Vector;
 
 use log::trace;
-use serde::{Serialize, ser::SerializeStruct};
-use sha2::Digest;
 
 use crate::scpu::bus::Address;
 
@@ -49,7 +47,7 @@ pub struct Cartridge {
 
     pub interrupt_vectors: [u8; 32],
 
-    rom_hash: [u8; 32],
+    pub rom_hash: u32,
 }
 
 impl Cartridge {
@@ -88,7 +86,7 @@ impl Cartridge {
 
             interrupt_vectors: [0; 32],
 
-            rom_hash: [0u8; 32],
+            rom_hash: 0u32,
         };
 
         cart.force_write(Address::from_u32(0x00FFFC), reset_vec as u8);
@@ -97,8 +95,20 @@ impl Cartridge {
         cart
     }
 
+    /// Try to load a cartridges save RAM. Returns Err if the provided vec is of a different
+    /// length than how much RAM the cartridge expects.
+    pub fn try_load_sram(&mut self, sram: Vec<u8>) -> anyhow::Result<()> {
+        if sram.len() != self.ram_size {
+            return Err(anyhow::anyhow!("cartridge expects {} bytes of s-ram, got {}", self.ram_size, sram.len()));
+        }
+
+        self.ram = sram;
+
+        Ok(())
+    }
+
     /// Read in a cartridge from the given spc or sfc rom
-    pub fn from_rom(mut cart_rom: Vec<u8>) -> Result<Cartridge, String> {
+    pub fn from_rom(mut cart_rom: Vec<u8>, rom_hash: u32) -> Result<Cartridge, String> {
         // Ignore optional 512 byte header
         if cart_rom.len() % 1024 == 512 {
             cart_rom.drain(0..512);
@@ -106,16 +116,16 @@ impl Cartridge {
 
         let cart_rom = pad_rom(cart_rom)?;
 
-        Self::from_padded_rom(cart_rom)
+        Self::from_padded_rom(cart_rom, rom_hash)
     }
 
-    fn from_padded_rom(cart_rom: Vec<u8>) -> Result<Self, String> {
+    fn from_padded_rom(cart_rom: Vec<u8>, rom_hash: u32) -> Result<Self, String> {
         let mut cart = Cartridge {
             rom: cart_rom,
             ..Default::default()
         };
 
-        cart.rom_hash = Self::hash_rom(cart.rom.as_slice());
+        cart.rom_hash = rom_hash;
 
         let header_start = find_header(&cart.rom)?;
         let header_end = header_start + 0x40 as usize;
@@ -155,6 +165,7 @@ impl Cartridge {
         cart.interrupt_vectors
             .copy_from_slice(&header_bytes[0x20..0x40]);
 
+        trace!("ROM Hash (CRC32) = 0x{:04X}", cart.rom_hash);
         trace!(
             "Title: '{}'",
             std::str::from_utf8(&cart.title).unwrap_or("<FAILED TO READ TITLE>")
@@ -218,12 +229,6 @@ impl Cartridge {
         );
 
         Ok(cart)
-    }
-
-    pub fn hash_rom(rom: &[u8]) -> [u8; 32] {
-        let mut hasher = sha2::Sha256::new();
-        hasher.update(rom);
-        hasher.finalize().into()
     }
 
     pub fn read(&self, addr: Address) -> u8 {
@@ -501,16 +506,4 @@ fn find_header(cart_rom: &Vec<u8>) -> Result<usize, String> {
 // Compute the checksum of the cartridge using the proper mirroring
 fn compute_checksum(cart_rom: &Vec<u8>) -> u16 {
     cart_rom.iter().fold(0u16, |acc, &x| acc + x as u16)
-}
-
-impl Serialize for Cartridge {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer
-    {
-        let mut s = serializer.serialize_struct("cartridge", 2)?;
-        s.serialize_field("ram", &self.ram)?;
-        s.serialize_field("rom_hash", &self.rom_hash)?;
-        s.end()
-    }
 }

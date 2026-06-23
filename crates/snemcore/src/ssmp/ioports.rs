@@ -1,7 +1,5 @@
-use serde::Serialize;
-
 /// Shared registers between the S-CPU and SPC700
-#[derive(Clone, Copy, Default, Serialize)]
+#[derive(Clone, Copy, Default)]
 pub struct ApuIoPorts {
     /// SPC700 -> S-CPU register 0
     pub apuio0: u8,

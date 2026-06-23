@@ -1,4 +1,5 @@
 use crate::debug::DebugHarness;
+use crate::savestate;
 use crate::scpu::ioregs::HVTimerIRQ;
 use crate::sppu::bus::PpuBus;
 use crate::sppu::regs::PpuRegs;
@@ -10,7 +11,6 @@ pub use types::*;
 pub mod bus;
 pub mod color;
 pub mod regs;
-pub mod serialize;
 mod types;
 
 #[macro_use]
@@ -65,6 +65,172 @@ impl Ppu5C7x {
         ppu.y = ppu.screen_y();
 
         ppu
+    }
+
+    pub fn save_state(&self, regs: &PpuRegs) -> savestate::PpuState {
+        savestate::PpuState {
+            dot: self.dot,
+            scanline: self.scanline,
+            frame: self.frame,
+            clocks: self.clocks,
+            in_fblank: regs.in_fblank,
+            screen_brightness: regs.screen_brightness,
+            obj_sprite_size: regs.obj_sprite_size,
+            name_base_addr: regs.name_base_addr,
+            name_secondary_base_addr: regs.name_secondary_base_addr,
+            oam_write_high_table: regs.oam_write_high_table,
+            internal_oam_addr: regs.internal_oam_addr,
+            priority_rotation: regs.priority_rotation,
+            priority_rotation_idx: regs.priority_rotation_idx,
+            oam_data_latch: regs.oam_data_latch,
+            bg3_mode1_priority: regs.bg3_mode1_priority,
+            bg_mode: regs.bg_mode,
+            mosaic_size: regs.mosaic_size,
+            bg_settings: regs.bg_settings.clone(),
+            obj_settings: regs.obj_settings.clone(),
+            col_settings: regs.col_settings.clone(),
+            m7_latch: regs.m7_latch,
+            bg_offset_latch: regs.bg_offset_latch,
+            bg_offset_x_latch: regs.bg_offset_x_latch,
+            m7_scroll_x: regs.m7_scroll_x,
+            m7_scroll_y: regs.m7_scroll_y,
+            vram_addr_inc_mode: regs.vram_addr_inc_mode,
+            addr_remap_mode: regs.addr_remap_mode,
+            addr_inc_size: regs.addr_inc_size,
+            vram_addr: regs.vram_addr,
+            m7_tilemap_repeat: regs.m7_tilemap_repeat,
+            m7_fill_mode: regs.m7_fill_mode,
+            m7_flip_bg_y: regs.m7_flip_bg_y,
+            m7_flip_bg_x: regs.m7_flip_bg_x,
+            m7_matrix_a: regs.m7_matrix_a,
+            mult_factor_16: regs.mult_factor_16,
+            m7_matrix_b: regs.m7_matrix_b,
+            mult_factor_8: regs.mult_factor_8,
+            m7_matrix_c: regs.m7_matrix_c,
+            m7_matrix_d: regs.m7_matrix_d,
+            m7_center_x: regs.m7_center_x,
+            m7_center_y: regs.m7_center_y,
+            cgram_toggle: regs.cgram_toggle,
+            cgram_addr: regs.cgram_addr,
+            cgram_latch: regs.cgram_latch,
+            w1_left_pos: regs.w1_left_pos,
+            w1_right_pos: regs.w1_right_pos,
+            w2_left_pos: regs.w2_left_pos,
+            w2_right_pos: regs.w2_right_pos,
+            col_win_main_region: regs.col_win_main_region,
+            col_win_sub_region: regs.col_win_sub_region,
+            sub_color_fixed: regs.sub_color_fixed,
+            use_direct_col: regs.use_direct_col,
+            cmath_operator: regs.cmath_operator,
+            cmath_half: regs.cmath_half,
+            back_cmath_en: regs.back_cmath_en,
+            fixed_color: regs.fixed_color,
+            _external_sync: regs._external_sync,
+            ext_bg_en: regs.ext_bg_en,
+            hi_res_en: regs.hi_res_en,
+            overscan_en: regs.overscan_en,
+            obj_interlace_en: regs.obj_interlace_en,
+            screen_interlace_en: regs.screen_interlace_en,
+            multiply_result: regs.multiply_result,
+            vram_latch: regs.vram_latch,
+            h_counter_toggle: regs.h_counter_toggle,
+            h_counter_latch: regs.h_counter_latch,
+            v_counter_toggle: regs.v_counter_toggle,
+            v_counter_latch: regs.v_counter_latch,
+            sprite_overflow: regs.sprite_overflow,
+            sprite_tile_overflow: regs.sprite_tile_overflow,
+            master_slave_state: regs.master_slave_state,
+            ppu1_version: regs.ppu1_version,
+            interlace_field: regs.interlace_field,
+            counter_toggle: regs.counter_toggle,
+            video_type: regs.video_type,
+            ppu2_version: regs.ppu2_version,
+        }
+    }
+
+    pub fn load_state(&mut self, regs: &mut PpuRegs, state: &savestate::PpuState, _version: u32) {
+        self.dot = state.dot;
+        self.scanline = state.scanline;
+        self.x = self.screen_x();
+        self.y = self.screen_y();
+        self.frame = state.frame;
+        self.clocks = state.clocks;
+
+        regs.in_fblank = state.in_fblank;
+        regs.screen_brightness = state.screen_brightness;
+        regs.obj_sprite_size = state.obj_sprite_size;
+        regs.name_base_addr = state.name_base_addr;
+        regs.name_secondary_base_addr = state.name_secondary_base_addr;
+        regs.oam_write_high_table = state.oam_write_high_table;
+        regs.internal_oam_addr = state.internal_oam_addr;
+        regs.priority_rotation = state.priority_rotation;
+        regs.priority_rotation_idx = state.priority_rotation_idx;
+        regs.oam_data_latch = state.oam_data_latch;
+        regs.bg3_mode1_priority = state.bg3_mode1_priority;
+        regs.bg_mode = state.bg_mode;
+        regs.mosaic_size = state.mosaic_size;
+        regs.bg_settings = state.bg_settings.clone();
+        regs.obj_settings = state.obj_settings.clone();
+        regs.col_settings = state.col_settings.clone();
+        regs.m7_latch = state.m7_latch;
+        regs.bg_offset_latch = state.bg_offset_latch;
+        regs.bg_offset_x_latch = state.bg_offset_x_latch;
+        regs.m7_scroll_x = state.m7_scroll_x;
+        regs.m7_scroll_y = state.m7_scroll_y;
+        regs.vram_addr_inc_mode = state.vram_addr_inc_mode;
+        regs.addr_remap_mode = state.addr_remap_mode;
+        regs.addr_inc_size = state.addr_inc_size;
+        regs.vram_addr = state.vram_addr;
+        regs.m7_tilemap_repeat = state.m7_tilemap_repeat;
+        regs.m7_fill_mode = state.m7_fill_mode;
+        regs.m7_flip_bg_y = state.m7_flip_bg_y;
+        regs.m7_flip_bg_x = state.m7_flip_bg_x;
+        regs.m7_matrix_a = state.m7_matrix_a;
+        regs.mult_factor_16 = state.mult_factor_16;
+        regs.m7_matrix_b = state.m7_matrix_b;
+        regs.mult_factor_8 = state.mult_factor_8;
+        regs.m7_matrix_c = state.m7_matrix_c;
+        regs.m7_matrix_d = state.m7_matrix_d;
+        regs.m7_center_x = state.m7_center_x;
+        regs.m7_center_y = state.m7_center_y;
+        regs.cgram_toggle = state.cgram_toggle;
+        regs.cgram_addr = state.cgram_addr;
+        regs.cgram_latch = state.cgram_latch;
+        regs.w1_left_pos = state.w1_left_pos;
+        regs.w1_right_pos = state.w1_right_pos;
+        regs.w2_left_pos = state.w2_left_pos;
+        regs.w2_right_pos = state.w2_right_pos;
+        regs.col_win_main_region = state.col_win_main_region;
+        regs.col_win_sub_region = state.col_win_sub_region;
+        regs.sub_color_fixed = state.sub_color_fixed;
+        regs.use_direct_col = state.use_direct_col;
+        regs.cmath_operator = state.cmath_operator;
+        regs.cmath_half = state.cmath_half;
+        regs.back_cmath_en = state.back_cmath_en;
+        regs.fixed_color = state.fixed_color;
+        regs._external_sync = state._external_sync;
+        regs.ext_bg_en = state.ext_bg_en;
+        regs.hi_res_en = state.hi_res_en;
+        regs.overscan_en = state.overscan_en;
+        regs.obj_interlace_en = state.obj_interlace_en;
+        regs.screen_interlace_en = state.screen_interlace_en;
+        regs.multiply_result = state.multiply_result;
+        regs.vram_latch = state.vram_latch;
+        regs.h_counter_toggle = state.h_counter_toggle;
+        regs.h_counter_latch = state.h_counter_latch;
+        regs.v_counter_toggle = state.v_counter_toggle;
+        regs.v_counter_latch = state.v_counter_latch;
+        regs.sprite_overflow = state.sprite_overflow;
+        regs.sprite_tile_overflow = state.sprite_tile_overflow;
+        regs.master_slave_state = state.master_slave_state;
+        regs.ppu1_version = state.ppu1_version;
+        regs.interlace_field = state.interlace_field;
+        regs.counter_toggle = state.counter_toggle;
+        regs.video_type = state.video_type;
+        regs.ppu2_version = state.ppu2_version;
+
+        self.in_w1 = regs.w1_left_pos as usize <= self.x && self.x <= regs.w1_right_pos as usize;
+        self.in_w2 = regs.w2_left_pos as usize <= self.x && self.x <= regs.w2_right_pos as usize;
     }
 
     pub fn power_on(&mut self) {

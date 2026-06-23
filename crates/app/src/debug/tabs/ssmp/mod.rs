@@ -4,7 +4,7 @@ pub mod brr;
 
 use egui::{Color32, FontId};
 use egui::text::{LayoutJob, TextFormat};
-use crate::theme::AppTheme;
+use crate::app::theme::AppTheme;
 
 /// A fixed-capacity circular buffer for audio samples or envelopes.
 pub struct RingBuffer<const CAPACITY: usize> {

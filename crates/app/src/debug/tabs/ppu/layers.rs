@@ -1,6 +1,6 @@
 use snemcore::{Snemulator, sppu::{self, BgMode, BgSettings, Color, TileSize, TilemapCount}, sysinfo::VRAM_SIZE};
 
-use crate::{debug::harness::MainDebugHarness, theme::AppTheme};
+use crate::{debug::harness::MainDebugHarness, app::theme::AppTheme};
 use egui::{Color32, ColorImage, TextureHandle, TextureOptions, Vec2};
 
 pub struct BgDebugViewSettings {

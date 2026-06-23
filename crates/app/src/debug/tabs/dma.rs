@@ -4,7 +4,7 @@ use egui::{Color32, FontId};
 use crate::app::AppState;
 use crate::debug::harness::{MainDebugHarness, StopCondition};
 use crate::debug::window::DebugAction;
-use crate::theme::AppTheme;
+use crate::app::theme::AppTheme;
 use snemcore::Snemulator;
 use snemcore::dma::{AddressIncMode, Direction, TransferPattern};
 

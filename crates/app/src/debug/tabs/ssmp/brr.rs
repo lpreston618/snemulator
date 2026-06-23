@@ -1,7 +1,7 @@
 use egui::{Color32, FontId, Pos2, Rect, Stroke, Vec2};
 use egui::text::LayoutJob;
 
-use crate::theme::AppTheme;
+use crate::app::theme::AppTheme;
 use snemcore::Snemulator;
 use snemcore::ssmp::sdsp::SuperDSP;
 use super::append;

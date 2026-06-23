@@ -1,6 +1,3 @@
-use serde::Serialize;
-
-#[derive(Serialize)]
 pub enum JoypadCmd {
     LatchJoypads,
     EnableAutoread,
@@ -55,7 +52,7 @@ impl SnemController {
     pub fn read_state(&self) -> u16 { self.buttons }
 }
 
-#[derive(Default, Serialize)]
+#[derive(Default)]
 pub struct ControllerData {
     pub joy1_latch: u16,
     pub joy2_latch: u16,

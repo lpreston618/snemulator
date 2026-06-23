@@ -1,7 +1,7 @@
-use crate::{debug::DebugHarness, get_bit_n, get_byte_n};
+use crate::{debug::DebugHarness, get_bit_n, get_byte_n, savestate, ssmp::sdsp::regs::SdspRegs};
 
 use bus::SdspBus;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub mod bus;
 pub mod regs;
@@ -12,7 +12,7 @@ const fn sign_extend<const WIDTH: usize>(value: i32) -> i32 {
     (value << shift) >> shift
 }
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum ADSRStage {
     Attack,
     Decay,
@@ -20,7 +20,7 @@ pub enum ADSRStage {
     Release,
 }
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum GainMode {
     Fixed,
     Decrease,
@@ -29,7 +29,7 @@ pub enum GainMode {
     BentIncrease,
 }
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug)]
 pub enum BrrFilter {
     Filter0,
     Filter1,
@@ -37,7 +37,6 @@ pub enum BrrFilter {
     Filter3,
 }
 
-#[derive(Serialize)]
 pub struct SuperDSP {
     pub envelope_counter: usize,
     pub noise_output: u16,
@@ -105,6 +104,52 @@ impl SuperDSP {
             last_generated_left: 0,
             last_generated_right: 0,
         }
+    }
+
+    pub fn save_state(&self, regs: &SdspRegs) -> savestate::SdspState {
+        savestate::SdspState {
+            envelope_counter: self.envelope_counter,
+            noise_output: self.noise_output,
+            echo_ptr: self.echo_ptr,
+            lmain_volume: regs.lmain_volume,
+            rmain_volume: regs.rmain_volume,
+            lecho_volume: regs.lecho_volume,
+            recho_volume: regs.recho_volume,
+            key_on: regs.key_on,
+            key_off: regs.key_off,
+            soft_reset: regs.soft_reset,
+            mute_all: regs.mute_all,
+            echo_en: regs.echo_en,
+            noise_freq: regs.noise_freq,
+            echo_feedback: regs.echo_feedback,
+            unused: regs.unused,
+            sample_directory_page: regs.sample_directory_page,
+            echo_page: regs.echo_page,
+            echo_delay_time: regs.echo_delay_time,
+            fir_regs: regs.fir_regs,
+        }
+    }
+
+    pub fn load_state(&mut self, regs: &mut SdspRegs, state: &savestate::SdspState, _version: u32) {
+        self.envelope_counter = state.envelope_counter;
+        self.noise_output = state.noise_output;
+        self.echo_ptr = state.echo_ptr;
+        regs.lmain_volume = state.lmain_volume;
+        regs.rmain_volume = state.rmain_volume;
+        regs.lecho_volume = state.lecho_volume;
+        regs.recho_volume = state.recho_volume;
+        regs.key_on = state.key_on;
+        regs.key_off = state.key_off;
+        regs.soft_reset = state.soft_reset;
+        regs.mute_all = state.mute_all;
+        regs.echo_en = state.echo_en;
+        regs.noise_freq = state.noise_freq;
+        regs.echo_feedback = state.echo_feedback;
+        regs.unused = state.unused;
+        regs.sample_directory_page = state.sample_directory_page;
+        regs.echo_page = state.echo_page;
+        regs.echo_delay_time = state.echo_delay_time;
+        regs.fir_regs = state.fir_regs;
     }
 
     pub fn power_on(&mut self) {

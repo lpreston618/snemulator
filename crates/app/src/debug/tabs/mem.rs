@@ -3,7 +3,7 @@ use snemcore::{
     Snemulator,
 };
 
-use crate::theme::AppTheme;
+use crate::app::theme::AppTheme;
 
 #[derive(PartialEq, Clone, Copy)]
 enum MemViewRegion {
