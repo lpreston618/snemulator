@@ -1,5 +1,3 @@
-//use std::intrinsics::simd::SimdAlign::Vector;
-
 use log::trace;
 
 use crate::scpu::bus::Address;
@@ -142,7 +140,7 @@ impl Cartridge {
             1 => MappingMode::HiROM,
             5 => MappingMode::ExHiROM,
             _ => {
-                panic!("unimplemented mapping mode");
+                return Err(format!("unimplemented mapping mode 0x{:02X}", header_bytes[0x15] & 0x0F));
             }
         };
         (cart.extra_ram, cart.battery, cart.coprocessor) = match header_bytes[0x16] & 0x0F {

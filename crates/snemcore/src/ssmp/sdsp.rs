@@ -177,7 +177,7 @@ impl SuperDSP {
         }
     }
 
-    pub fn clock_envelopes<H: DebugHarness>(&mut self, bus: &mut SdspBus, harness: &mut H) {
+    pub fn clock_envelopes<H: DebugHarness>(&mut self, bus: &mut SdspBus, _harness: &mut H) {
         self.clock_noise_generator(bus);
 
         for voice_idx in 0..8 {
