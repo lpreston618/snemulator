@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::sppu;
+use crate::{get_bit_n, sppu::Color};
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 pub enum ObjectSizeSelect {
@@ -132,19 +132,96 @@ pub enum VideoType {
 }
 
 /// Contains all the relavent information about a sprite to be rendered
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct OAMSprite {
-    pub x: u16,
-    pub max_x: u16,
+    pub x: i16,
+    // pub max_x: u16,
     pub y: u8,
+    // pub max_y: u16,
     pub tile_idx: u8,
     pub use_second_obj_table: bool,
     pub palette: u8,
     pub priority: u8,
     pub flip_x: bool,
     pub flip_y: bool,
-    pub width: usize,
-    pub height: usize,
+    // pub width: u8,
+    // pub height: u8,
+    pub size_select: bool,
+}
+
+impl OAMSprite {
+    pub fn from_raw(bytes: &[u8], x_hi: bool, size_select: bool) -> OAMSprite {
+        let mut sprite = Self::default();
+
+        sprite.write_byte0(bytes[0]);
+        sprite.write_byte1(bytes[1]);
+        sprite.write_byte2(bytes[2]);
+        sprite.write_byte3(bytes[3]);
+        sprite.write_high_table_data(x_hi, size_select);
+
+        sprite
+    }
+
+    pub fn write_byte0(&mut self, value: u8) {
+        self.x = ((self.x >> 8) << 8) | value as i16;
+    }
+
+    pub fn write_byte1(&mut self, value: u8) {
+        self.y = value;
+    }
+
+    pub fn write_byte2(&mut self, value: u8) {
+        self.tile_idx = value;
+    }
+
+    pub fn write_byte3(&mut self, value: u8) {
+        self.flip_y = get_bit_n!(value, 7);
+        self.flip_x = get_bit_n!(value, 6);
+        self.priority = (value >> 4) & 3;
+        self.palette = (value >> 1) & 7;
+        self.use_second_obj_table = get_bit_n!(value, 0);
+    }
+
+    pub fn write_high_table_data(&mut self, x_hi: bool, size_select: bool) {
+        self.x &= 0xFF;
+        self.x -= if x_hi { 0x100 } else { 0 };
+        self.size_select = size_select;
+    }
+
+    pub fn sprite_size(&self, obj_sprite_size: ObjectSizeSelect) -> (usize, usize) {
+        let spr_size = if self.size_select {
+            match obj_sprite_size {
+                ObjectSizeSelect::Size8x8_16x16 => ObjectSize::Size16x16,
+                ObjectSizeSelect::Size8x8_32x32 => ObjectSize::Size32x32,
+                ObjectSizeSelect::Size8x8_64x64 => ObjectSize::Size64x64,
+                ObjectSizeSelect::Size16x16_32x32 => ObjectSize::Size32x32,
+                ObjectSizeSelect::Size16x16_64x64 => ObjectSize::Size64x64,
+                ObjectSizeSelect::Size32x32_64x64 => ObjectSize::Size64x64,
+                ObjectSizeSelect::Size16x32_32x64 => ObjectSize::Size32x64,
+                ObjectSizeSelect::Size16x32_32x32 => ObjectSize::Size32x32,
+            }
+        } else {
+            match obj_sprite_size {
+                ObjectSizeSelect::Size8x8_16x16 => ObjectSize::Size8x8,
+                ObjectSizeSelect::Size8x8_32x32 => ObjectSize::Size8x8,
+                ObjectSizeSelect::Size8x8_64x64 => ObjectSize::Size8x8,
+                ObjectSizeSelect::Size16x16_32x32 => ObjectSize::Size16x16,
+                ObjectSizeSelect::Size16x16_64x64 => ObjectSize::Size16x16,
+                ObjectSizeSelect::Size32x32_64x64 => ObjectSize::Size32x32,
+                ObjectSizeSelect::Size16x32_32x64 => ObjectSize::Size16x32,
+                ObjectSizeSelect::Size16x32_32x32 => ObjectSize::Size16x32,
+            }
+        };
+        
+        match spr_size {
+            ObjectSize::Size8x8 => (8, 8),
+            ObjectSize::Size16x16 => (16, 16),
+            ObjectSize::Size16x32 => (16, 32),
+            ObjectSize::Size32x32 => (32, 32),
+            ObjectSize::Size32x64 => (32, 64),
+            ObjectSize::Size64x64 => (64, 64),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -159,17 +236,23 @@ pub enum ColorLayer {
 
 #[derive(Clone, Copy, Debug)]
 pub struct ColorData {
-    pub color: sppu::Color,
+    pub color: Color,
     pub priority: u8,
     pub transparent: bool,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct ObjColorData {
-    pub color: sppu::Color,
+    pub color: Color,
     pub palette: u8,
     pub priority: u8,
     pub transparent: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ObjPixelData {
+    pub main: ObjColorData,
+    pub sub: ObjColorData,
 }
 
 #[derive(Debug, Clone)]
@@ -227,8 +310,8 @@ pub struct BgSettings {
 }
 
 pub struct DotColorData {
-    pub main_col: sppu::Color,
-    pub sub_col: sppu::Color,
+    pub main_col: Color,
+    pub sub_col: Color,
     pub cmath_en: bool,
 }
 

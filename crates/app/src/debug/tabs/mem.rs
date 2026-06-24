@@ -1,6 +1,5 @@
 use snemcore::{
-    sppu::{Color, ObjectSizeSelect},
-    Snemulator,
+    Snemulator, sppu::{Color, OAMSprite, ObjectSizeSelect},
 };
 
 use crate::app::theme::AppTheme;
@@ -48,66 +47,6 @@ impl OamViewMode {
         match self {
             OamViewMode::Raw => "Raw Memory",
             OamViewMode::Sprites => "Sprites",
-        }
-    }
-}
-
-/// Parsed OAM sprite entry for display
-struct OamSprite {
-    x: i16,           // X position (signed, can be negative for partial offscreen)
-    y: u8,            // Y position
-    tile: u16,        // Tile number (9 bits: high bit from attr, low 8 from tile byte)
-    palette: u8,      // Palette (0-7)
-    priority: u8,     // Priority (0-3)
-    h_flip: bool,     // Horizontal flip
-    v_flip: bool,     // Vertical flip
-    size_large: bool, // Size select (false = small, true = large)
-}
-
-impl OamSprite {
-    fn from_oam(oam: &[u8], index: usize) -> Self {
-        // Main table: 4 bytes per sprite at offset index * 4
-        let base = index * 4;
-        let x_low = oam[base] as u16;
-        let y = oam[base + 1];
-        let tile_low = oam[base + 2] as u16;
-        let attr = oam[base + 3];
-
-        // Extended table: 2 bits per sprite starting at offset 512
-        // Each byte holds data for 4 sprites
-        let ext_byte_idx = 512 + (index / 4);
-        let ext_bit_shift = (index % 4) * 2;
-        let ext_bits = (oam[ext_byte_idx] >> ext_bit_shift) & 0x03;
-
-        let x_high = (ext_bits & 0x01) != 0;
-        let size_large = (ext_bits & 0x02) != 0;
-
-        // X position is 9-bit signed (bit 8 from ext table)
-        let x_full = x_low | ((x_high as u16) << 8);
-        let x = if x_full >= 256 {
-            x_full as i16 - 512
-        } else {
-            x_full as i16
-        };
-
-        // Tile number: bit 8 from attr bit 0, low 8 bits from tile byte
-        let tile = tile_low | (((attr & 0x01) as u16) << 8);
-
-        // Attributes: vhoopppc
-        let palette = (attr >> 1) & 0x07;
-        let priority = (attr >> 4) & 0x03;
-        let h_flip = (attr & 0x40) != 0;
-        let v_flip = (attr & 0x80) != 0;
-
-        OamSprite {
-            x,
-            y,
-            tile,
-            palette,
-            priority,
-            h_flip,
-            v_flip,
-            size_large,
         }
     }
 }
@@ -184,7 +123,7 @@ impl MemoryTab {
                     MemViewRegion::Sram => &core.cart.as_ref().unwrap().ram[..],
                     MemViewRegion::Aram => &core.ssmp.aram_slice(),
                     MemViewRegion::Rom => &core.cart.as_ref().unwrap().rom[..],
-                    MemViewRegion::Oam => &core.oam[..],
+                    MemViewRegion::Oam => &core.raw_oam[..],
                     _ => unreachable!(),
                 };
                 Self::render_byte_dump(ui, data, addr_w, app_theme);
@@ -224,11 +163,11 @@ impl MemoryTab {
                                     ui.end_row();
 
                                     for i in 0..128 {
-                                        let sprite = OamSprite::from_oam(&core.oam[..], i);
+                                        let sprite = &core.oam[i];
 
                                         // Dim off-screen or unused sprites
                                         let is_active =
-                                            sprite.y < 224 && sprite.x > -64 && sprite.x < 256;
+                                            sprite.y < 224 && sprite.x < 0x100 && sprite.x < 256;
                                         let color = if is_active {
                                             app_theme.text_primary
                                         } else {
@@ -262,7 +201,7 @@ impl MemoryTab {
                                         );
                                         ui.colored_label(
                                             color,
-                                            egui::RichText::new(format!("${:03X}", sprite.tile))
+                                            egui::RichText::new(format!("${}{:02X}", sprite.use_second_obj_table as u8, sprite.tile_idx))
                                                 .monospace(),
                                         );
                                         ui.colored_label(
@@ -277,7 +216,7 @@ impl MemoryTab {
                                         );
                                         ui.colored_label(
                                             color,
-                                            egui::RichText::new(if sprite.size_large {
+                                            egui::RichText::new(if sprite.size_select {
                                                 "L"
                                             } else {
                                                 "S"
@@ -295,15 +234,15 @@ impl MemoryTab {
 
             ui.vertical(|ui| {
                 if let Some(idx) = self.selected_sprite {
-                    let sprite = OamSprite::from_oam(&core.oam[..], idx);
+                    let sprite = &core.oam[idx];
 
-                    let (pixels, width, height) = decode_sprite(
+                    let (pixels, width, height) = render_sprite(
                         &sprite,
                         &core.vram[..],
                         &core.cgram[..],
-                        core.ppu_regs.obj_sprite_size,
                         core.ppu_regs.name_base_addr,
                         core.ppu_regs.name_secondary_base_addr,
+                        core.ppu_regs.obj_sprite_size,
                     );
 
                     // Load (or replace) an egui-managed texture sized exactly to this sprite.
@@ -335,7 +274,7 @@ impl MemoryTab {
                         val(ui, format!("{}x{}", width, height));
                         ui.add_space(12.0);
                         key(ui, "Tile: ");
-                        val(ui, format!("${:03X}", sprite.tile));
+                        val(ui, format!("${}{:02X}", sprite.use_second_obj_table as u8, sprite.tile_idx));
                     });
                     ui.horizontal(|ui| {
                         key(ui, "Palette: ");
@@ -350,12 +289,12 @@ impl MemoryTab {
                         ui.label(
                             egui::RichText::new("H")
                                 .monospace()
-                                .color(flip_color(sprite.h_flip)),
+                                .color(flip_color(sprite.flip_x)),
                         );
                         ui.label(
                             egui::RichText::new("V")
                                 .monospace()
-                                .color(flip_color(sprite.v_flip)),
+                                .color(flip_color(sprite.flip_y)),
                         );
                     });
                     ui.add_space(20.0);
@@ -523,41 +462,23 @@ impl MemoryTab {
     }
 }
 
-fn decode_sprite(
-    sprite: &OamSprite,
+fn render_sprite(
+    sprite: &OAMSprite,
     vram: &[u16],
-    cgram: &[Color], // Update this type name to match your codebase
-    obsel: ObjectSizeSelect,
+    cgram: &[Color],
     name_base: u16,
     name_second_base: u16,
+    obj_sprite_size: ObjectSizeSelect,
 ) -> (Vec<u8>, usize, usize) {
-    // 1. Determine physical dimensions
-    let (w, h) = match (obsel, sprite.size_large) {
-        (ObjectSizeSelect::Size8x8_16x16, false) => (8, 8),
-        (ObjectSizeSelect::Size8x8_16x16, true) => (16, 16),
-        (ObjectSizeSelect::Size8x8_32x32, false) => (8, 8),
-        (ObjectSizeSelect::Size8x8_32x32, true) => (32, 32),
-        (ObjectSizeSelect::Size8x8_64x64, false) => (8, 8),
-        (ObjectSizeSelect::Size8x8_64x64, true) => (64, 64),
-        (ObjectSizeSelect::Size16x16_32x32, false) => (16, 16),
-        (ObjectSizeSelect::Size16x16_32x32, true) => (32, 32),
-        (ObjectSizeSelect::Size16x16_64x64, false) => (16, 16),
-        (ObjectSizeSelect::Size16x16_64x64, true) => (64, 64),
-        (ObjectSizeSelect::Size32x32_64x64, false) => (32, 32),
-        (ObjectSizeSelect::Size32x32_64x64, true) => (64, 64),
-        (ObjectSizeSelect::Size16x32_32x64, false) => (16, 32),
-        (ObjectSizeSelect::Size16x32_32x64, true) => (32, 64),
-        (ObjectSizeSelect::Size16x32_32x32, false) => (16, 32),
-        (ObjectSizeSelect::Size16x32_32x32, true) => (32, 32),
-    };
+    let (w, h) = sprite.sprite_size(obj_sprite_size);
 
     let mut pixels = vec![0u8; w * h * 4];
 
     for y in 0..h {
         for x in 0..w {
             // Apply H/V flips
-            let src_x = if sprite.h_flip { w - 1 - x } else { x };
-            let src_y = if sprite.v_flip { h - 1 - y } else { y };
+            let src_x = if sprite.flip_x { w - 1 - x } else { x };
+            let src_y = if sprite.flip_y { h - 1 - y } else { y };
 
             let tile_x = src_x / 8;
             let tile_y = src_y / 8;
@@ -568,7 +489,7 @@ fn decode_sprite(
             let tile_offset = tile_x + (tile_y * 16);
 
             // The 9th bit (0x100) dictates the name table base, lower 8 bits wrap
-            let current_tile = (sprite.tile & 0x100) | ((sprite.tile + tile_offset as u16) & 0xFF);
+            let current_tile = (sprite.use_second_obj_table as u16) << 8 | ((sprite.tile_idx as u16 + tile_offset as u16) & 0xFF);
 
             let base_addr = if (current_tile & 0x100) == 0 {
                 name_base

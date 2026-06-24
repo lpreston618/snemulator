@@ -18,8 +18,8 @@ use rand::rngs::StdRng;
 use crate::controller::ControllerData;
 use crate::debug::DebugHarness;
 use crate::savestate::SaveState;
-use crate::sppu::VBLANK_START_SCANLINE;
-use crate::sysinfo::CLOCKS_BETWEEN_AUTOREAD_STEPS;
+use crate::sppu::{OAMSprite, VBLANK_START_SCANLINE};
+use crate::sysinfo::{CLOCKS_BETWEEN_AUTOREAD_STEPS, OAM_SPRITE_COUNT};
 
 pub mod cartridge;
 pub mod controller;
@@ -39,6 +39,7 @@ macro_rules! cpu_bus {
             vram: &mut $core.vram,
             cgram: &mut $core.cgram,
             oam: &mut $core.oam,
+            raw_oam: &mut $core.raw_oam,
             ppu_regs: &mut $core.ppu_regs,
             cpu_regs: &mut $core.cpu_regs,
             apu_ports: &mut $core.apu_ports,
@@ -64,6 +65,7 @@ macro_rules! dma_bus {
             vram: &mut $core.vram,
             cgram: &mut $core.cgram,
             oam: &mut $core.oam,
+            raw_oam: &mut $core.raw_oam,
             ppu_regs: &mut $core.ppu_regs,
             cpu_regs: &mut $core.cpu_regs,
             apu_ports: &mut $core.apu_ports,
@@ -114,7 +116,8 @@ pub struct Snemulator {
     pub wram: Box<[u8; WRAM_SIZE]>,
     pub vram: Box<[u16; VRAM_SIZE]>,
     pub cgram: Box<[Color; CGRAM_SIZE]>,
-    pub oam: Box<[u8; OAM_SIZE]>,
+    pub oam: Box<[OAMSprite; OAM_SPRITE_COUNT]>,
+    pub raw_oam: Box<[u8; OAM_SIZE]>,
     pub ppu_regs: PpuRegs,
     pub cpu_regs: CpuIoRegs,
     pub apu_ports: ApuIoPorts,
@@ -150,7 +153,8 @@ impl Snemulator {
             wram: Box::new([0u8; WRAM_SIZE]),
             vram: Box::new([0u16; VRAM_SIZE]),
             cgram: Box::new([Color::BLACK; CGRAM_SIZE]),
-            oam: Box::new([0u8; OAM_SIZE]),
+            oam: Box::new(std::array::repeat(OAMSprite::default())),
+            raw_oam: Box::new([0u8; OAM_SIZE]),
             ppu_regs: PpuRegs::default(),
             cpu_regs: CpuIoRegs::default(),
             apu_ports: ApuIoPorts::default(),
@@ -189,7 +193,7 @@ impl Snemulator {
             vram: self.vram.clone().to_vec(),
             aram: self.ssmp.aram.clone().to_vec(),
             cgram: self.cgram.clone().map(|c| c.to_rgba_bytes()).as_flattened().to_vec(),
-            oam: self.oam.clone().to_vec(),
+            oam: self.raw_oam.clone().to_vec(),
             cpu_open_bus: self.cpu_open_bus,
             apuio: [
                 self.apu_ports.apuio0,
@@ -240,13 +244,27 @@ impl Snemulator {
                         .collect::<Vec<Color>>()
                         .as_slice()
                 );
-                self.oam.copy_from_slice(&state.oam);
+                self.raw_oam.copy_from_slice(&state.oam);
                 self.cpu_open_bus = state.cpu_open_bus;
+
+                self.fill_oam_from_raw();
             },
             _ => unreachable!()
         }
 
         Ok(())
+    }
+
+    fn fill_oam_from_raw(&mut self) {
+        for i in 0..128 {
+            let bytes_idx = i * 4;
+            let sprite_bytes = &self.raw_oam[bytes_idx..bytes_idx + 4];
+            let high_byte = self.raw_oam[0x200 | (i / 4)];
+            let x_hi     = get_bit_n!(high_byte, 2 * (i % 4) + 0);
+            let size_sel = get_bit_n!(high_byte, 2 * (i % 4) + 1);
+
+            self.oam[i] = OAMSprite::from_raw(sprite_bytes, x_hi, size_sel);
+        }
     }
 
     pub fn set_random_seed(&mut self, seed: u64) {
@@ -268,7 +286,7 @@ impl Snemulator {
         self.wram.fill(0);
         self.vram.fill(0);
         self.cgram.fill(Color::BLACK);
-        self.oam.fill(0);
+        self.raw_oam.fill(0);
 
         self.ppu_regs.power_on(&mut self.rng);
         self.cpu_regs.power_on();
@@ -281,6 +299,8 @@ impl Snemulator {
 
         self.ssmp.power_on();
         self.ppu.power_on();
+
+        self.fill_oam_from_raw();
 
         if H::IS_DEBUGGING_HARNESS && H::TRACK_RESETS {
             harness.on_power(self);
@@ -309,6 +329,8 @@ impl Snemulator {
 
         self.ssmp.reset();
         self.ppu.reset();
+
+        self.fill_oam_from_raw();
 
         if H::IS_DEBUGGING_HARNESS && H::TRACK_RESETS {
             harness.on_reset(self);

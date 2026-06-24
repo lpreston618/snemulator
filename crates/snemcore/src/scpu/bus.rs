@@ -8,9 +8,9 @@ use crate::debug::DebugHarness;
 use crate::scpu::ioregs::CpuIoRegs;
 use crate::sppu::color::Color;
 use crate::sppu::regs::PpuRegs;
-use crate::sppu::{MasterSlave, VideoType, VramIncMode};
+use crate::sppu::{MasterSlave, OAMSprite, VideoType, VramIncMode};
 use crate::ssmp::ioports::ApuIoPorts;
-use crate::sysinfo::{CGRAM_SIZE, OAM_SIZE, VRAM_SIZE, WRAM_SIZE};
+use crate::sysinfo::{CGRAM_SIZE, OAM_SIZE, OAM_SPRITE_COUNT, VRAM_SIZE, WRAM_SIZE};
 use crate::{get_bit_n, get_byte_n, set_byte_n};
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
@@ -35,7 +35,8 @@ pub struct CpuBus<'a, H: DebugHarness> {
     pub wram: &'a mut [u8; WRAM_SIZE],
     pub vram: &'a mut [u16; VRAM_SIZE],
     pub cgram: &'a mut [Color; CGRAM_SIZE],
-    pub oam: &'a mut [u8; OAM_SIZE],
+    pub oam: &'a mut [OAMSprite; OAM_SPRITE_COUNT],
+    pub raw_oam: &'a mut [u8; OAM_SIZE],
 
     pub ppu_regs: &'a mut PpuRegs,
     pub cpu_regs: &'a mut CpuIoRegs,
@@ -219,7 +220,7 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
             }
 
             0x2138 => {
-                let data = self.oam[ppu_regs.internal_oam_addr as usize];
+                let data = self.raw_oam[ppu_regs.internal_oam_addr as usize];
                 
                 ppu_regs.internal_oam_addr += 1;
                 ppu_regs.internal_oam_addr %= OAM_SIZE as u16;
@@ -363,12 +364,47 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
                 if internal_oam_addr & 1 == 0 {
                     ppu_regs.oam_data_latch = value;
                 } else if !ppu_regs.oam_write_high_table {
-                    self.oam[internal_oam_addr - 1] = ppu_regs.oam_data_latch;
-                    self.oam[internal_oam_addr] = value;
+                    self.raw_oam[internal_oam_addr - 1] = ppu_regs.oam_data_latch;
+                    self.raw_oam[internal_oam_addr] = value;
+
+                    let sprite_idx = (internal_oam_addr - 1) >> 2;
+                    let sprite_byte = (internal_oam_addr - 1) & 3;
+                    let sprite = &mut self.oam[sprite_idx];
+
+                    match sprite_byte {
+                        0 => sprite.write_byte0(ppu_regs.oam_data_latch),
+                        1 => sprite.write_byte1(ppu_regs.oam_data_latch),
+                        2 => sprite.write_byte2(ppu_regs.oam_data_latch),
+                        3 => sprite.write_byte3(ppu_regs.oam_data_latch),
+                        _ => unreachable!(),
+                    }
+
+                    let sprite_idx = internal_oam_addr >> 2;
+                    let sprite_byte = internal_oam_addr & 3;
+                    let sprite = &mut self.oam[sprite_idx];
+
+                    match sprite_byte {
+                        0 => sprite.write_byte0(value),
+                        1 => sprite.write_byte1(value),
+                        2 => sprite.write_byte2(value),
+                        3 => sprite.write_byte3(value),
+                        _ => unreachable!(),
+                    }
                 }
 
                 if ppu_regs.oam_write_high_table {
-                    self.oam[0x200 | internal_oam_addr & 0x1F] = value;
+                    self.raw_oam[0x200 | internal_oam_addr & 0x1F] = value;
+
+                    let sprite_idx = (internal_oam_addr & 0x1F) << 2;
+                    
+                    for i in 0..4 {
+                        let sprite = &mut self.oam[sprite_idx + i];
+
+                        let x_hi     = get_bit_n!(value, 2*i + 0);
+                        let size_sel = get_bit_n!(value, 2*i + 1);
+
+                        sprite.write_high_table_data(x_hi, size_sel);
+                    }
                 }
 
                 ppu_regs.internal_oam_addr += 1;

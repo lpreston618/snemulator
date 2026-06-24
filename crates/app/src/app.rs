@@ -765,9 +765,13 @@ impl SnemulatorApp {
         self.settings.push_recent_rom(path);
         self.settings.save();
 
+        self.audio_manager.pause();
+        self.audio_manager.clear_playing_samples();
         self.audio_buffer.extend([0; AUDIO_SAMPLES_PER_FRAME]);
         self.render_audio();
         self.audio_manager.resume();
+
+        self.clear_frame_buf();
 
         let used_save_state_slots: [bool; MAX_SAVE_STATE_SLOTS] = std::array::from_fn(|slot| {
             rom_paths.state_path(slot as u32).exists()

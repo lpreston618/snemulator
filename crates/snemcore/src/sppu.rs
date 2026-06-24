@@ -21,6 +21,7 @@ const VBLANK_END_SCANLINE_NTSC: usize = 262;
 const VISIBLE_SCANLINE_START_DOT: usize = 22;
 pub const HBLANK_START_DOT: usize = 278;
 const SCANLINE_END_DOT: usize = 340;
+const VISIBLE_DOTS_PER_SCANLINE: usize = HBLANK_START_DOT - VISIBLE_SCANLINE_START_DOT;
 
 const TILE_CACHE_SIZE: usize = 1;
 
@@ -36,10 +37,11 @@ pub struct Ppu5C7x {
     in_w1: bool,
     in_w2: bool,
 
-    scanline_sprites: Vec<OAMSprite>,
-    scanline_spr_cnt: usize,
+    scanline_sprites: Vec<usize>,
 
     bg_tile_cache: [TileRowCache<TILE_CACHE_SIZE>; 4],
+
+    scanline_sprite_data: [Option<ObjColorData>; VISIBLE_DOTS_PER_SCANLINE],
 
     /// Number of master clocks until the next dot
     pub clocks: usize,
@@ -56,8 +58,8 @@ impl Ppu5C7x {
             in_w1: false,
             in_w2: false,
             scanline_sprites: Vec::new(),
-            scanline_spr_cnt: 0,
             bg_tile_cache: std::array::repeat(TileRowCache::new()),
+            scanline_sprite_data: [None; VISIBLE_DOTS_PER_SCANLINE],
             clocks: 0,
         };
 
@@ -240,7 +242,6 @@ impl Ppu5C7x {
         self.y = self.screen_y();
         self.frame = 0;
         self.scanline_sprites.clear();
-        self.scanline_spr_cnt = 0;
         self.clocks = 0;
         self.in_w1 = false;
         self.in_w2 = false;
@@ -414,109 +415,109 @@ impl Ppu5C7x {
     }
 
     /// Gets the color of the first visible sprite on the screen.
-    fn sprite_col<H: DebugHarness>(&self, bus: &mut PpuBus<H>) -> ObjColorData {
-        let regs = &bus.ppu_regs;
+    // fn sprite_col<H: DebugHarness>(&self, bus: &mut PpuBus<H>) -> ObjColorData {
+    //     let regs = &bus.ppu_regs;
 
-        let mut scanline_spr_cnt = self.scanline_spr_cnt;
+    //     let mut scanline_spr_cnt = self.scanline_spr_cnt;
 
-        if scanline_spr_cnt == 0 {
-            scanline_spr_cnt = 32;
-        }
+    //     if scanline_spr_cnt == 0 {
+    //         scanline_spr_cnt = 32;
+    //     }
 
-        for i in 0..self.scanline_sprites.len() {
-            scanline_spr_cnt -= 1;
+    //     for i in 0..self.scanline_sprites.len() {
+    //         scanline_spr_cnt -= 1;
 
-            let sprite = &self.scanline_sprites[scanline_spr_cnt];
+    //         let sprite = &self.scanline_sprites[scanline_spr_cnt];
 
-            if scanline_spr_cnt == 0 {
-                scanline_spr_cnt = 32;
-            }
+    //         if scanline_spr_cnt == 0 {
+    //             scanline_spr_cnt = 32;
+    //         }
 
-            if sprite.x as usize <= self.x && self.x < sprite.max_x as usize {
-                let sprite_col = self.x - sprite.x as usize;
-                let sprite_row = self.y - sprite.y as usize;
+    //         if sprite.x as usize <= self.x && self.x < sprite.max_x as usize {
+    //             let sprite_col = self.x - sprite.x as usize;
+    //             let sprite_row = self.y - sprite.y as usize;
 
-                let sprite_row = if regs.screen_interlace_en && regs.obj_interlace_en {
-                    2 * sprite_row + (self.frame & 1)
-                } else {
-                    sprite_row
-                };
+    //             let sprite_row = if regs.screen_interlace_en && regs.obj_interlace_en {
+    //                 2 * sprite_row + (self.frame & 1)
+    //             } else {
+    //                 sprite_row
+    //             };
 
-                let sprite_col = if sprite.flip_x {
-                    sprite.width - sprite_col - 1
-                } else {
-                    sprite_col
-                };
-                let sprite_row = if sprite.flip_y {
-                    sprite.height - sprite_row - 1
-                } else {
-                    sprite_row
-                };
+    //             let sprite_col = if sprite.flip_x {
+    //                 sprite.width - sprite_col as u8 - 1
+    //             } else {
+    //                 sprite_col as u8
+    //             };
+    //             let sprite_row = if sprite.flip_y {
+    //                 sprite.height - sprite_row as u8 - 1
+    //             } else {
+    //                 sprite_row as u8
+    //             };
 
-                let (tile_x, tile_col) = (sprite_col / 8, sprite_col % 8);
-                let (tile_y, tile_row) = (sprite_row / 8, sprite_row % 8);
+    //             let (tile_x, tile_col) = (sprite_col / 8, sprite_col % 8);
+    //             let (tile_y, tile_row) = (sprite_row / 8, sprite_row % 8);
 
-                let chr_idx = (tile_y << 4) + tile_x;
+    //             let chr_idx = (tile_y << 4) + tile_x;
 
-                let obj_table_base_addr = if sprite.use_second_obj_table {
-                    regs.name_secondary_base_addr
-                } else {
-                    regs.name_base_addr
-                };
+    //             let obj_table_base_addr = if sprite.use_second_obj_table {
+    //                 regs.name_secondary_base_addr
+    //             } else {
+    //                 regs.name_base_addr
+    //             };
 
-                let obj_table_base_addr = obj_table_base_addr; // No longer mutable
+    //             let obj_table_base_addr = obj_table_base_addr; // No longer mutable
 
-                let spr_tile_base_addr =
-                    (obj_table_base_addr as u16) + ((sprite.tile_idx as u16) << 4);
-                let spr_tile_addr = spr_tile_base_addr + ((chr_idx as u16) << 4);
-                let spr_tile_row_addr = spr_tile_addr + tile_row as u16;
+    //             let spr_tile_base_addr =
+    //                 (obj_table_base_addr as u16) + ((sprite.tile_idx as u16) << 4);
+    //             let spr_tile_addr = spr_tile_base_addr + ((chr_idx as u16) << 4);
+    //             let spr_tile_row_addr = spr_tile_addr + tile_row as u16;
 
-                let bp01 = bus.vram[((spr_tile_row_addr as usize) + 0) & 0x7FFF];
-                let bp23 = bus.vram[((spr_tile_row_addr as usize) + 8) & 0x7FFF];
+    //             let bp01 = bus.vram[((spr_tile_row_addr as usize) + 0) & 0x7FFF];
+    //             let bp23 = bus.vram[((spr_tile_row_addr as usize) + 8) & 0x7FFF];
 
-                let b0 = ((bp01 >> (7 - tile_col)) as u8) & 1;
-                let b1 = ((bp01 >> (15 - tile_col)) as u8) & 1;
-                let b2 = ((bp23 >> (7 - tile_col)) as u8) & 1;
-                let b3 = ((bp23 >> (15 - tile_col)) as u8) & 1;
+    //             let b0 = ((bp01 >> (7 - tile_col)) as u8) & 1;
+    //             let b1 = ((bp01 >> (15 - tile_col)) as u8) & 1;
+    //             let b2 = ((bp23 >> (7 - tile_col)) as u8) & 1;
+    //             let b3 = ((bp23 >> (15 - tile_col)) as u8) & 1;
 
-                let pal_idx = (b3 << 3) | (b2 << 2) | (b1 << 1) | b0;
+    //             let pal_idx = (b3 << 3) | (b2 << 2) | (b1 << 1) | b0;
 
-                // Transparent sprite
-                if pal_idx == 0 {
-                    // If it's the last sprite, all sprites were transparent
-                    if i == self.scanline_sprites.len() - 1 {
-                        return ObjColorData {
-                            color: Color::BLACK,
-                            palette: 0,
-                            priority: 0,
-                            transparent: true,
-                        };
-                    }
+    //             // Transparent sprite
+    //             if pal_idx == 0 {
+    //                 // If it's the last sprite, all sprites were transparent
+    //                 if i == self.scanline_sprites.len() - 1 {
+    //                     return ObjColorData {
+    //                         color: Color::BLACK,
+    //                         palette: 0,
+    //                         priority: 0,
+    //                         transparent: true,
+    //                     };
+    //                 }
 
-                    continue;
-                }
+    //                 continue;
+    //             }
 
-                let cgram_addr = 0x80 | (sprite.palette << 4) | pal_idx;
+    //             let cgram_addr = 0x80 | (sprite.palette << 4) | pal_idx;
 
-                let spr_col = bus.cgram[cgram_addr as usize];
+    //             let spr_col = bus.cgram[cgram_addr as usize];
 
-                return ObjColorData {
-                    color: spr_col,
-                    palette: sprite.palette,
-                    priority: sprite.priority,
-                    transparent: false,
-                };
-            }
-        }
+    //             return ObjColorData {
+    //                 color: spr_col,
+    //                 palette: sprite.palette,
+    //                 priority: sprite.priority,
+    //                 transparent: false,
+    //             };
+    //         }
+    //     }
 
-        // No sprites on this dot, return a transparent color
-        ObjColorData {
-            color: bus.cgram[0],
-            palette: 0,
-            priority: 0,
-            transparent: true,
-        }
-    }
+    //     // No sprites on this dot, return a transparent color
+    //     ObjColorData {
+    //         color: bus.cgram[0],
+    //         palette: 0,
+    //         priority: 0,
+    //         transparent: true,
+    //     }
+    // }
 
     fn bg_mode0_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
         const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
@@ -1398,19 +1399,18 @@ impl Ppu5C7x {
         let obj_win_main = bus.ppu_regs.obj_settings.window.main_en && win_en;
         let obj_win_sub = bus.ppu_regs.obj_settings.window.sub_en && win_en;
 
-        let mut obj_main_col = None;
-        let mut obj_sub_col = None;
-
-        if bus.ppu_regs.obj_settings.main_en && !obj_win_main {
-            obj_main_col = Some(self.sprite_col(bus));
+        let mut obj_main_col = self.transparent_obj_color_data(bus);
+        let mut obj_sub_col = self.transparent_obj_color_data(bus);
+        
+        if let Some(obj_col_data) = self.scanline_sprite_data[self.x] {
+            if bus.ppu_regs.obj_settings.main_en && !obj_win_main {
+                obj_main_col = obj_col_data;
+            }
+            
+            if bus.ppu_regs.obj_settings.sub_en && !obj_win_sub {
+                obj_sub_col = obj_col_data;
+            }
         }
-
-        if bus.ppu_regs.obj_settings.sub_en && !obj_win_sub {
-            obj_sub_col = Some(obj_main_col.unwrap_or(self.sprite_col(bus)));
-        }
-
-        let obj_main_col = obj_main_col.unwrap_or(self.transparent_obj_color_data(bus));
-        let obj_sub_col = obj_sub_col.unwrap_or(self.transparent_obj_color_data(bus));
 
         (obj_main_col, obj_sub_col)
     }
@@ -1456,6 +1456,8 @@ impl Ppu5C7x {
             cpu_regs.vblank_flag = false;
             cpu_regs.vblank_nmi_flag = false;
             *bus.vblank_end = true;
+            bus.ppu_regs.sprite_overflow = false;
+            bus.ppu_regs.sprite_tile_overflow = false;
         }
 
         // End of h-blank
@@ -1465,7 +1467,7 @@ impl Ppu5C7x {
 
             // Start of visible scanline
             if 0 < self.scanline && self.scanline < VBLANK_START_SCANLINE {
-                self.find_scanline_sprites(bus);
+                self.render_scanline_sprites(bus);
             }
         }
 
@@ -1518,9 +1520,10 @@ impl Ppu5C7x {
 
     /// Finds all possible sprites that could be rendered on the current scanline
     /// based on the y-positions of the sprites
-    fn find_scanline_sprites<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
+    fn render_scanline_sprites<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
         let regs = &mut bus.ppu_regs;
 
+        self.scanline_sprite_data.fill(None);
         self.scanline_sprites.clear();
 
         let true_y = if regs.screen_interlace_en && regs.obj_interlace_en {
@@ -1529,80 +1532,120 @@ impl Ppu5C7x {
             self.y
         };
 
-        self.scanline_spr_cnt = 0;
-        for (spr_idx, spr_data) in bus.oam[..0x200].chunks(4).enumerate().rev() {
-            // This bit munging is absolutely horrifying but works. We need to 1) get the packed byte containing
-            // our data, 2) create a mask to get the bits within the packed byte, and 3) or the byte with the
-            // mask to get the relevant bits. Each byte looks like DdCcBbAa, with each letter pair corresponding
-            // to a single sprite (32 bytes * 4 pairs = 128, matching # of sprites in OAM).
-            let spr_extra_data = (bus.oam[0x200 | (spr_idx >> 2)] >> ((spr_idx & 3) << 1)) & 3;
-            let spr_size_sel = (spr_extra_data & 2) != 0;
-            let spr_size = if spr_size_sel {
-                match regs.obj_sprite_size {
-                    ObjectSizeSelect::Size8x8_16x16 => ObjectSize::Size16x16,
-                    ObjectSizeSelect::Size8x8_32x32 => ObjectSize::Size32x32,
-                    ObjectSizeSelect::Size8x8_64x64 => ObjectSize::Size64x64,
-                    ObjectSizeSelect::Size16x16_32x32 => ObjectSize::Size32x32,
-                    ObjectSizeSelect::Size16x16_64x64 => ObjectSize::Size64x64,
-                    ObjectSizeSelect::Size32x32_64x64 => ObjectSize::Size64x64,
-                    ObjectSizeSelect::Size16x32_32x64 => ObjectSize::Size32x64,
-                    ObjectSizeSelect::Size16x32_32x32 => ObjectSize::Size32x32,
-                }
-            } else {
-                match regs.obj_sprite_size {
-                    ObjectSizeSelect::Size8x8_16x16 => ObjectSize::Size8x8,
-                    ObjectSizeSelect::Size8x8_32x32 => ObjectSize::Size8x8,
-                    ObjectSizeSelect::Size8x8_64x64 => ObjectSize::Size8x8,
-                    ObjectSizeSelect::Size16x16_32x32 => ObjectSize::Size16x16,
-                    ObjectSizeSelect::Size16x16_64x64 => ObjectSize::Size16x16,
-                    ObjectSizeSelect::Size32x32_64x64 => ObjectSize::Size32x32,
-                    ObjectSizeSelect::Size16x32_32x64 => ObjectSize::Size16x32,
-                    ObjectSizeSelect::Size16x32_32x32 => ObjectSize::Size16x32,
-                }
-            };
-            let (spr_w, spr_h) = match spr_size {
-                ObjectSize::Size8x8 => (8, 8),
-                ObjectSize::Size16x16 => (16, 16),
-                ObjectSize::Size16x32 => (16, 32),
-                ObjectSize::Size32x32 => (32, 32),
-                ObjectSize::Size32x64 => (32, 64),
-                ObjectSize::Size64x64 => (64, 64),
-            };
-            let spr_y = spr_data[1];
-            let spr_x = (((spr_extra_data as u16) & 1) << 8) | (spr_data[0] as u16);
-            let spr_x_max = spr_x + spr_w as u16;
-            let spr_y_max = spr_y as u16 + spr_h as u16;
+        'find_scanline_sprites: for (sprite_idx, sprite) in bus.oam.iter().enumerate() {
+            let (spr_w, spr_h) = sprite.sprite_size(regs.obj_sprite_size);
 
-            let in_y_range = if spr_y_max > 256 {
-                true_y >= spr_y as usize || true_y < (spr_y_max & 0xFF) as usize
+            let max_x = sprite.x as i16 + spr_w as i16;
+            let max_y = sprite.y as usize + spr_h;
+
+            let in_y_range = if max_y > 256 {
+                // If the sprite wraps around to top of screen, then we hit the sprite if it starts
+                // above this scanline OR it wraps to below this scanline.
+                sprite.y as usize <= true_y || true_y < (max_y & 0xFF)
             } else {
-                true_y >= spr_y as usize && true_y < spr_y_max as usize
+                sprite.y as usize <= true_y && true_y < max_y
             };
+
+            let in_x_range = max_x > 0;
 
             // Sprite should be on scanline
-            if in_y_range {
-                let sprite = OAMSprite {
-                    x: spr_x,
-                    max_x: spr_x_max,
-                    y: spr_y,
-                    tile_idx: spr_data[2],
-                    use_second_obj_table: (spr_data[3] & 1) != 0,
-                    palette: (spr_data[3] >> 1) & 7,
-                    priority: (spr_data[3] >> 4) & 3,
-                    flip_x: (spr_data[3] & 0x40) != 0,
-                    flip_y: (spr_data[3] & 0x80) != 0,
-                    width: spr_w,
-                    height: spr_h,
-                };
-
-                if self.scanline_sprites.len() < 32 {
-                    self.scanline_sprites.push(sprite);
-                } else {
-                    self.scanline_sprites[self.scanline_spr_cnt] = sprite;
+            if in_y_range && in_x_range {
+                if self.scanline_sprites.len() == 32 {
+                    regs.sprite_overflow = true;
+                    break 'find_scanline_sprites;
                 }
 
-                self.scanline_spr_cnt = (self.scanline_spr_cnt + 1) & 0x1F;
+                self.scanline_sprites.push(sprite_idx);
             }
+        }
+
+        let mut num_slivers = 0;
+
+        for &sprite_idx in self.scanline_sprites.iter().rev() {
+            let sprite = &bus.oam[sprite_idx];
+
+            let (spr_w, spr_h) = sprite.sprite_size(regs.obj_sprite_size);
+
+            let sprite_slivers = spr_w / 8;
+            num_slivers += sprite_slivers;
+
+            let sprite_row = self.y - sprite.y as usize;
+
+            let sprite_row = if regs.screen_interlace_en && regs.obj_interlace_en {
+                2 * sprite_row + (self.frame & 1)
+            } else {
+                sprite_row
+            };
+            
+            let sprite_row = if sprite.flip_y {
+                spr_h as u8 - sprite_row as u8 - 1
+            } else {
+                sprite_row as u8
+            };
+
+            let (tile_y, tile_row) = (sprite_row / 8, sprite_row % 8);
+
+            let obj_table_base_addr = if sprite.use_second_obj_table {
+                regs.name_secondary_base_addr
+            } else {
+                regs.name_base_addr
+            };
+            
+            let spr_tile_base_addr = (obj_table_base_addr as u16) + ((sprite.tile_idx as u16) << 4);
+            
+            'draw_sprite_slivers: for sliver in 0..sprite_slivers {
+                let tile_x = if sprite.flip_x {
+                    sprite_slivers - sliver - 1
+                } else {
+                    sliver
+                };
+
+                let chr_idx = (tile_y << 4) + tile_x as u8;
+                
+                let spr_tile_addr = spr_tile_base_addr + ((chr_idx as u16) << 4);
+                let spr_tile_row_addr = spr_tile_addr + tile_row as u16;
+
+                let bp10 = bus.vram[((spr_tile_row_addr as usize) + 0) & 0x7FFF];
+                let bp32 = bus.vram[((spr_tile_row_addr as usize) + 8) & 0x7FFF];
+
+                let bitplanes = interleave_4bpp(bp10, bp32);
+
+                for tile_col in 0..8 {
+                    let x = sprite.x + sliver as i16 * 8 + tile_col;
+    
+                    if x < 0 || x >= 256 {
+                        continue 'draw_sprite_slivers;
+                    }
+
+                    let tile_col = if sprite.flip_x {
+                        8 - tile_col - 1
+                    } else {
+                        tile_col
+                    };
+
+                    let pal_idx = (bitplanes >> ((7 - tile_col) * 4)) & 0xF;
+
+                    // Transparent sprite
+                    if pal_idx == 0 {
+                        continue;
+                    }
+
+                    let cgram_addr = 0x80 | (sprite.palette << 4) | pal_idx as u8;
+
+                    let spr_col = bus.cgram[cgram_addr as usize];
+
+                    self.scanline_sprite_data[x as usize] = Some(ObjColorData {
+                        color: spr_col,
+                        palette: sprite.palette,
+                        priority: sprite.priority,
+                        transparent: false,
+                    });
+                }
+            }
+        }
+
+        if num_slivers > 34 {
+            bus.ppu_regs.sprite_tile_overflow = true;
         }
     }
 

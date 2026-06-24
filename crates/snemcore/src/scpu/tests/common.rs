@@ -4,7 +4,7 @@
 // Test harness helpers
 // ---------------------------------------------------------------------------
 
-use crate::{cartridge::{Cartridge, MappingMode}, controller::ControllerData, debug::NullHarness, scpu::ioregs::CpuIoRegs, sppu::{Color, regs::PpuRegs}, ssmp::ioports::ApuIoPorts, sysinfo::{CGRAM_SIZE, OAM_SIZE, VRAM_SIZE, WRAM_SIZE}};
+use crate::{cartridge::{Cartridge, MappingMode}, controller::ControllerData, debug::NullHarness, scpu::ioregs::CpuIoRegs, sppu::{Color, OAMSprite, regs::PpuRegs}, ssmp::ioports::ApuIoPorts, sysinfo::{CGRAM_SIZE, OAM_SIZE, OAM_SPRITE_COUNT, VRAM_SIZE, WRAM_SIZE}};
 
 use crate::scpu::*;
 
@@ -24,7 +24,8 @@ pub(super) struct TestBacking {
     wram: Box<[u8; WRAM_SIZE]>,
     vram: Box<[u16; VRAM_SIZE]>,
     cgram: Box<[Color; CGRAM_SIZE]>,
-    oam: Box<[u8; OAM_SIZE]>,
+    oam: Box<[OAMSprite; OAM_SPRITE_COUNT]>,
+    raw_oam: Box<[u8; OAM_SIZE]>,
     ppu_regs: PpuRegs,
     cpu_regs: CpuIoRegs,
     apu_ports: ApuIoPorts,
@@ -38,7 +39,8 @@ impl TestBacking {
             wram: Box::new([0u8; WRAM_SIZE]),
             vram: Box::new([0u16; VRAM_SIZE]),
             cgram: Box::new([Color::default(); CGRAM_SIZE]),
-            oam: Box::new([0u8; OAM_SIZE]),
+            oam: Box::new(std::array::repeat(OAMSprite::default())),
+            raw_oam: Box::new([0u8; OAM_SIZE]),
             ppu_regs: PpuRegs::default(),
             cpu_regs: CpuIoRegs::default(),
             apu_ports: ApuIoPorts::default(),
@@ -53,6 +55,7 @@ impl TestBacking {
             vram: &mut self.vram,
             cgram: &mut self.cgram,
             oam: &mut self.oam,
+            raw_oam: &mut self.raw_oam,
             ppu_regs: &mut self.ppu_regs,
             cpu_regs: &mut self.cpu_regs,
             apu_ports: &mut self.apu_ports,
