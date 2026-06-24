@@ -50,7 +50,7 @@ impl MainWindow {
 
     pub fn rescan_library(&mut self, settings: &Settings) {
         self.library.scan(settings);
-        thumbnail_fetcher::resolve_thumbnails_for_library(&mut self.library.entries);
+        // thumbnail_fetcher::resolve_thumbnails_for_library(&mut self.library.entries);
     }
 
     pub fn set_theme(&mut self, app_theme: &AppTheme) {

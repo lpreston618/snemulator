@@ -1,11 +1,19 @@
 use std::path::PathBuf;
+use std::sync::mpsc::{self, Receiver};
 use egui::{Ui, Vec2};
 
 use crate::app::theme::AppTheme;
+use crate::app::thumbnail_fetcher::{self, ThumbnailResult};
 use crate::app::{AppAction, settings::Settings};
 use crate::app::rom_paths::{RomManifest, RomPaths};
 
 const MAX_ROM_DIR_SEARCH_DEPTH: usize = 3;
+
+pub enum ThumbnailState {
+    Loading,
+    Ready(PathBuf),
+    NotFound,
+}
 
 pub struct LibraryEntry {
     pub path: PathBuf,
@@ -14,17 +22,22 @@ pub struct LibraryEntry {
     pub used_slots: Vec<u32>, // slot indices that exist on disk
     pub last_played: Option<u64>,
     pub play_time_secs: u64,
-    pub thumbnail_path: Option<PathBuf>,
+    pub thumbnail: ThumbnailState,
 }
 
 pub struct LibraryView {
     pub entries: Vec<LibraryEntry>,
     selected: Option<usize>,
+    thumbnail_rx: Option<Receiver<ThumbnailResult>>,
 }
 
 impl LibraryView {
     pub fn new() -> Self {
-        Self { entries: Vec::new(), selected: None }
+        Self {
+            entries: Vec::new(),
+            selected: None,
+            thumbnail_rx: None,
+        }
     }
 
     pub fn update_entry(&mut self, path: &PathBuf, settings: &Settings) {
@@ -41,7 +54,10 @@ impl LibraryView {
                 .filter(|&slot| p.state_path(slot).exists())
                 .collect()
         }).unwrap_or_default();
-        entry.thumbnail_path = manifest.as_ref().and_then(|m| m.thumbnail_path.clone());
+        entry.thumbnail = match manifest.as_ref().and_then(|m| m.thumbnail_path.clone()) {
+            Some(p) => ThumbnailState::Ready(p),
+            None    => ThumbnailState::NotFound,
+        };
     }
 
     /// Re-scan the library folder. Call this when the folder changes or on startup.
@@ -51,6 +67,24 @@ impl LibraryView {
         let Some(lib_dir) = &settings.roms_library_dir else { return };
         Self::scan_dir(lib_dir, 0, settings, &mut self.entries);
         self.entries.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+
+        // Collect stems that need thumbnails (all Loading entries after scan)
+        let stems: Vec<(String, PathBuf)> = self.entries.iter()
+            .filter(|e| matches!(e.thumbnail, ThumbnailState::Loading))
+            .filter_map(|e| {
+                let stem = e.path.file_stem()?.to_str()?.to_string();
+                Some((stem, e.path.clone()))
+            })
+            .collect();
+
+        log::debug!("Stems found with no thumbnails: {}", stems.len());
+
+        if !stems.is_empty() {
+            let (tx, rx) = mpsc::channel();
+            self.thumbnail_rx = Some(rx);
+            thumbnail_fetcher::spawn_thumbnail_resolver(stems, tx);
+            log::debug!("Spawned thumbnail fetcher thread");
+        }
     }
 
     fn scan_dir(dir: &PathBuf, depth: usize, settings: &Settings, entries: &mut Vec<LibraryEntry>) {
@@ -111,12 +145,30 @@ impl LibraryView {
                 used_slots,
                 last_played: manifest.last_played,
                 play_time_secs: manifest.play_time_secs,
-                thumbnail_path: manifest.thumbnail_path.clone(),
+                thumbnail: match &manifest.thumbnail_path {
+                    Some(p) => ThumbnailState::Ready(p.clone()),
+                    None    => ThumbnailState::Loading,
+                },
             });
         }
     }
 
     pub fn render(&mut self, ui: &mut Ui, app_theme: &AppTheme) -> AppAction {
+        if let Some(rx) = &self.thumbnail_rx {
+            while let Ok(result) = rx.try_recv() {
+                log::debug!("Received thumbnail: found={}, path={:?}", result.path.is_some(), result.path);
+
+                if let Some(entry) = self.entries.iter_mut()
+                    .find(|e| e.path.file_stem().and_then(|s| s.to_str()) == Some(&result.stem))
+                {
+                    entry.thumbnail = match result.path {
+                        Some(p) => ThumbnailState::Ready(p),
+                        None    => ThumbnailState::NotFound,
+                    };
+                }
+            }
+        }
+
         let mut action = AppAction::Continue;
 
         Self::render_header(ui, app_theme);
@@ -243,25 +295,56 @@ impl LibraryView {
             egui::Stroke::new(1.0, theme.border),
             egui::StrokeKind::Outside,
         );
-        if let Some(thumb_path) = &entry.thumbnail_path {
-            let path_str = thumb_path.to_string_lossy().replace('\\', "/");
-            let uri = format!("file://{}", path_str);
-            
-            ui.put(thumb_rect, egui::Image::new(uri)
-                .fit_to_exact_size(Vec2::splat(THUMBNAIL_SIZE))
-                .corner_radius(cr));
-        } else {
-            let initial = entry.display_name.chars().next()
-                .and_then(|c| c.to_uppercase().next())
-                .unwrap_or('?');
+        match &entry.thumbnail {
+            ThumbnailState::Loading => {
+                // Spinning arc loader
+                let center = thumb_rect.center();
+                let radius = 14.0;
+                let t = ui.ctx().input(|i| i.time) as f32;
+                let start_angle = t * 2.5;
+                let sweep = std::f32::consts::PI * 1.4;
 
-            ui.painter().text(
-                thumb_rect.center(),
-                egui::Align2::CENTER_CENTER,
-                initial.to_string(),
-                egui::FontId::proportional(48.0),
-                theme.text_muted,
-            );
+                let steps = 32usize;
+                let points: Vec<egui::Pos2> = (0..=steps)
+                    .map(|i| {
+                        let angle = start_angle + (i as f32 / steps as f32) * sweep;
+                        egui::pos2(
+                            center.x + radius * angle.cos(),
+                            center.y + radius * angle.sin(),
+                        )
+                    })
+                    .collect();
+
+                for pair in points.windows(2) {
+                    let frac = pair[0].x; // just need a varying alpha
+                    let alpha = (pair[0].x - center.x + radius) / (2.0 * radius);
+                    painter.line_segment(
+                        [pair[0], pair[1]],
+                        egui::Stroke::new(2.5, theme.accent.linear_multiply(alpha.clamp(0.2, 1.0))),
+                    );
+                }
+
+                ui.ctx().request_repaint();
+            }
+            ThumbnailState::Ready(thumb_path) => {
+                let path_str = thumb_path.to_string_lossy().replace('\\', "/");
+                let uri = format!("file://{}", path_str);
+                ui.put(thumb_rect, egui::Image::new(uri)
+                    .fit_to_exact_size(Vec2::splat(THUMBNAIL_SIZE))
+                    .corner_radius(cr));
+            }
+            ThumbnailState::NotFound => {
+                let initial = entry.display_name.chars().next()
+                    .and_then(|c| c.to_uppercase().next())
+                    .unwrap_or('?');
+                painter.text(
+                    thumb_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    initial.to_string(),
+                    egui::FontId::proportional(48.0),
+                    theme.text_muted,
+                );
+            }
         }
 
         let painter = ui.painter();

@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use crate::app::library::LibraryEntry;
 use crate::app::rom_paths::RomPaths;
 use crate::app::settings::Settings;
+use std::sync::mpsc::{self, Sender, Receiver};
 
 const INDEX_FILENAME: &str = "thumbnail_index.txt";
 const GITHUB_TREE_URL: &str =
@@ -11,57 +12,62 @@ const RAW_BASE_URL: &str =
     "https://raw.githubusercontent.com/libretro-thumbnails/\
      Nintendo_-_Super_Nintendo_Entertainment_System/master/Named_Boxarts";
 
-pub fn resolve_thumbnails_for_library(entries: &mut Vec<LibraryEntry>) {
-    let index = match ensure_thumbnail_index() {
-        Some(idx) => idx,
-        None => {
-            log::warn!("Thumbnail index unavailable; skipping thumbnail fetch.");
-            return;
-        }
-    };
+pub struct ThumbnailResult {
+    pub stem: String,
+    pub path: Option<PathBuf>, // None = not found
+}
 
-    for entry in entries.iter_mut() {
-        // Already resolved
-        if entry.thumbnail_path.is_some() {
+pub fn spawn_thumbnail_resolver(
+    stems: Vec<(String, PathBuf)>, // (stem, rom_path) for each Loading entry
+    tx: Sender<ThumbnailResult>,
+) {
+    std::thread::spawn(move || {
+        let index = match ensure_thumbnail_index() {
+            Some(idx) => idx,
+            None => {
+                log::warn!("Thumbnail index unavailable; skipping thumbnail fetch.");
+                // Notify all entries so they don't spin forever
+                for (stem, _) in stems {
+                    let _ = tx.send(ThumbnailResult { stem, path: None });
+                }
+                return;
+            }
+        };
+
+        for (stem, _rom_path) in stems {
+            let result = try_fetch_thumbnail(&stem, &index);
+            let _ = tx.send(ThumbnailResult { stem, path: result });
+            // tx.send failing just means the receiver was dropped (app closed), safe to ignore
+        }
+
+        log::debug!("Finished fetching thumbnails, closing thread.");
+    });
+}
+
+/// Fetches and writes a single thumbnail. Returns the saved path on success.
+fn try_fetch_thumbnail(stem: &str, index: &[String]) -> Option<PathBuf> {
+    let rom_paths = RomPaths::new(stem)?;
+    let candidates = best_matches(stem, index, 3);
+
+    for candidate in candidates {
+        let Some(bytes) = fetch_valid_png_data(&candidate) else { continue };
+
+        let dest = rom_paths.thumbnail_path();
+        if std::fs::write(&dest, &bytes).is_err() {
+            log::warn!("Failed to write thumbnail for '{}'", stem);
             continue;
         }
 
-        let stem = entry.path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_string();
+        // Update manifest
+        let mut manifest = RomPaths::find_manifest_by_stem(stem).unwrap_or_default();
+        manifest.thumbnail_path = Some(dest.clone());
+        rom_paths.write_manifest(&manifest);
 
-        let Some(rom_paths) = RomPaths::new(&stem) else { continue };
-
-        let candidates = best_matches(&stem, &index, 3);
-
-        for candidate in candidates {
-            if let Some(bytes) = fetch_valid_png_data(&candidate) {
-                let dest = rom_paths.thumbnail_path();
-                
-                if std::fs::write(&dest, &bytes).is_ok() {
-                    // Update manifest
-                    let manifest_path = rom_paths.manifest_path();
-                    let stem_for_manifest = manifest_path.parent()
-                        .and_then(|p| p.file_name())
-                        .and_then(|n| n.to_str())
-                        .unwrap_or(&stem);
-
-                    let mut manifest = RomPaths::find_manifest_by_stem(stem_for_manifest)
-                        .unwrap_or_default();
-                    manifest.thumbnail_path = Some(dest.clone());
-                    rom_paths.write_manifest(&manifest);
-
-                    entry.thumbnail_path = Some(dest);
-                    log::info!("Fetched thumbnail for '{}' -> '{}'", stem, candidate);
-                } else {
-                    log::warn!("Failed to write thumbnail for '{}'", stem);
-                }
-                break;
-            }
-        }
+        log::info!("Fetched thumbnail for '{}' -> '{}'", stem, candidate);
+        return Some(dest);
     }
+
+    None
 }
 
 /// Returns path to the index file, downloading it first if absent.
