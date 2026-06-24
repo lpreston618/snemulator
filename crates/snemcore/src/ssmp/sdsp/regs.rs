@@ -32,6 +32,25 @@ pub struct SdspRegs {
 }
 
 impl SdspRegs {
+    pub fn power_on(&mut self) {
+        self.lmain_volume = 0;
+        self.rmain_volume = 0;
+        self.lecho_volume = 0;
+        self.recho_volume = 0;
+        self.key_on = 0;
+        self.key_off = 0;
+        self.soft_reset = false;
+        self.mute_all = true;
+        self.echo_en = false;
+        self.noise_freq = 0;
+        self.echo_feedback = 0;
+        self.unused = 0;
+        self.sample_directory_page = 0;
+        self.echo_page = 0;
+        self.echo_delay_time = 0;
+        self.fir_regs = [0; 8];
+    }
+
     pub fn reset(&mut self) {
         self.mute_all = true;
     }

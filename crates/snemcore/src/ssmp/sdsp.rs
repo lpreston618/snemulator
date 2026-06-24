@@ -163,6 +163,7 @@ impl SuperDSP {
         self.last_generated_echo_right = 0;
         self.last_generated_left = 0;
         self.last_generated_right = 0;
+        self.echo_ptr = 0;
     }
 
     pub fn reset(&mut self) {
@@ -172,6 +173,7 @@ impl SuperDSP {
         self.last_generated_echo_right = 0;
         self.last_generated_left = 0;
         self.last_generated_right = 0;
+        self.echo_ptr = 0;
     }
 
     fn should_do_envelope_op(&self, period_idx: usize) -> bool {

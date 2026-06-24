@@ -97,7 +97,7 @@ impl Ssmp {
         self.spc.power_on();
         self.spc_regs.power_on();
         self.sdsp.power_on();
-        self.sdsp_regs.reset();
+        self.sdsp_regs.power_on();
 
         self.aram.chunks_mut(32).enumerate().for_each(|(i, chunk)| {
             if i % 2 == 0 {
