@@ -101,7 +101,11 @@ impl Cartridge {
     /// length than how much RAM the cartridge expects.
     pub fn try_load_sram(&mut self, sram: Vec<u8>) -> anyhow::Result<()> {
         if sram.len() != self.ram_size {
-            return Err(anyhow::anyhow!("cartridge expects {} bytes of s-ram, got {}", self.ram_size, sram.len()));
+            return Err(anyhow::anyhow!(
+                "cartridge expects {} bytes of s-ram, got {}",
+                self.ram_size,
+                sram.len()
+            ));
         }
 
         self.ram = sram;
@@ -116,7 +120,7 @@ impl Cartridge {
             cart_rom.drain(0..512);
         }
 
-        let cart_rom = pad_rom(cart_rom)?;
+        let cart_rom = pad_rom(&cart_rom)?;
 
         Self::from_padded_rom(cart_rom, rom_hash)
     }
@@ -140,7 +144,10 @@ impl Cartridge {
             1 => MappingMode::HiROM,
             5 => MappingMode::ExHiROM,
             _ => {
-                return Err(format!("unimplemented mapping mode 0x{:02X}", header_bytes[0x15] & 0x0F));
+                return Err(format!(
+                    "unimplemented mapping mode 0x{:02X}",
+                    header_bytes[0x15] & 0x0F
+                ));
             }
         };
         (cart.extra_ram, cart.battery, cart.coprocessor) = match header_bytes[0x16] & 0x0F {
@@ -365,10 +372,10 @@ impl Cartridge {
 
 /// Pad the ROM data to a power of two size, correctly mirroring the smaller
 /// portion of ROM according to https://snes.nesdev.org/wiki/ROM_file_formats.
-fn pad_rom(rom: Vec<u8>) -> Result<Vec<u8>, String> {
+fn pad_rom(rom: &[u8]) -> Result<Vec<u8>, String> {
     match usize::count_ones(rom.len()) {
         0 => return Err(String::from("Empty ROM data")),
-        1 => return Ok(rom),
+        1 => return Ok(rom.to_vec()),
         2 => {
             // Get the width of the binary representation of ROM size.
             // Ex: if rom size is 1024 bytes, bitwidth = 10 (2^10 = 1024).
@@ -495,13 +502,13 @@ fn find_header(cart_rom: &[u8]) -> Result<usize, String> {
         return Err(String::from("No valid header found"));
     }
 
-    if lorom_score > hirom_score {
-        if lorom_score > exhirom_score {
+    if lorom_score >= hirom_score {
+        if lorom_score >= exhirom_score {
             Ok(LOROM_POS)
         } else {
             Ok(EXHIROM_POS)
         }
-    } else if hirom_score > exhirom_score {
+    } else if hirom_score >= exhirom_score {
         Ok(HIROM_POS)
     } else {
         Ok(EXHIROM_POS)
@@ -509,8 +516,12 @@ fn find_header(cart_rom: &[u8]) -> Result<usize, String> {
 }
 
 pub fn get_rom_title(rom: &[u8]) -> Option<String> {
-    let header_pos = find_header(rom).ok()?;
-    let title_bytes = &rom[header_pos..header_pos + 0x15];
+    let padded_rom = pad_rom(rom).ok()?;
+    let header_pos = find_header(&padded_rom).ok()?;
+    if header_pos + 0x15 >= padded_rom.len() {
+        return None;
+    }
+    let title_bytes = &padded_rom[header_pos..header_pos + 0x15];
     Some(String::from_utf8_lossy(title_bytes).to_string())
 }
 
