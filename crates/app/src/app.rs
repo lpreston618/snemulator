@@ -808,7 +808,7 @@ impl SnemulatorApp {
         };
 
         if let Err(e) = self.snem_core.load_save_ram(save_data) {
-            log::error!("Could not load previous save: {e}");
+            log::warn!("Could not load previous save: {e}");
         } else {
             log::info!("Loaded previous save from '{}'", path.to_string_lossy());
         }
