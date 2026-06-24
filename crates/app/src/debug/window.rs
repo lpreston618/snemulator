@@ -139,7 +139,7 @@ impl DebugWindow {
                     DebugTab::Dma => self.dma_tab.render(ui, core, harness, app_state, app_theme, &mut debug_action),
                     DebugTab::Memory => self.mem_tab.render(ui, core, app_theme),
                     DebugTab::Ppu => self.ppu_tab.render(ui, core, harness, app_theme),
-                    DebugTab::Sdsp => self.sdsp_tab.render(ui, core, harness, app_theme),
+                    DebugTab::Sdsp => self.sdsp_tab.render(ui, core, harness, app_state, app_theme, &mut debug_action),
                     DebugTab::Audio => self.audio_tab.render(ui, harness, audio_manager, app_state, app_theme),
                     DebugTab::Brr => self.brr_tab.render(ui, core, harness, app_theme, app_state, &mut debug_action),
                     // DebugTab::Watchpoints => {

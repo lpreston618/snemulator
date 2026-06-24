@@ -2,9 +2,11 @@ use egui::text::LayoutJob;
 use egui::{Color32, FontId, Pos2, Rect, Stroke, Vec2};
 use snemcore::ssmp::sdsp::{ADSRStage, GainMode};
 
+use crate::app::AppState;
 use crate::debug::harness::{ENVELOPE_HISTORY_LEN, MainDebugHarness};
 use crate::app::theme::AppTheme;
 use crate::debug::tabs::ssmp::{append, detail_heading, detail_row, fmt_bool, fmt_hex_u8, fmt_hex_u16, fmt_i16_signed, fmt_u8_dec};
+use crate::debug::window::DebugAction;
 use snemcore::Snemulator;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -31,7 +33,9 @@ impl SdspTab {
         ui: &mut egui::Ui,
         core: &mut Snemulator,
         harness: &mut MainDebugHarness,
+        app_state: &AppState,
         app_theme: &AppTheme,
+        debug_action: &mut Option<DebugAction>,
     ) {
         let regs = &core.ssmp.sdsp_regs;
         let voice_regs = &core.ssmp.voice_regs;
@@ -128,11 +132,6 @@ impl SdspTab {
                 let vr = &voice_regs[v];
                 let is_active = vr.envelope != 0;
 
-                if harness.voices_just_keyed_on[v] && !self.voice_open[v] {
-                    harness.voices_just_keyed_on[v] = false;
-                    self.voice_open[v] = true;
-                }
-
                 let header_job = self.format_voice_header(app_theme, v, vr, is_active);
 
                 let resp = egui::CollapsingHeader::new(header_job)
@@ -146,9 +145,16 @@ impl SdspTab {
                     self.voice_open[v] = !self.voice_open[v];
                 }
 
-                resp.header_response.context_menu(|ui| {
-                    self.render_voice_context_menu(ui, v);
-                });
+                if app_state.is_paused {
+                    resp.header_response.context_menu(|ui| {
+                        ui.label(format!("Voice {v}"));
+                        ui.separator();
+                        
+                        if super::voice_context_menu(ui, core, harness, v) {
+                            *debug_action = Some(DebugAction::TogglePause)
+                        }
+                    });
+                }
             }
 
             // ── Echo panel ───────────────────────────────────────────────────
@@ -547,13 +553,6 @@ impl SdspTab {
             Stroke::new(1.0, t.border), egui::StrokeKind::Outside);
     }
 
-    // ── Context menu ──────────────────────────────────────────────────────────
-
-    fn render_voice_context_menu(&mut self, ui: &mut egui::Ui, v: usize) {
-        ui.label(format!("Voice {v}"));
-        ui.separator();
-        // Add context menu items here
-    }
 
     // ── Global state helpers ──────────────────────────────────────────────────
 

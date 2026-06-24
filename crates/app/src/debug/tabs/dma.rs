@@ -53,13 +53,6 @@ impl DmaTab {
                 let hdma_active = regs.hdma_en; 
                 let is_active = regs.dma_en || regs.hdma_en;
 
-                // Auto-open active channels on first render, but respect user toggles.
-                // We use a sentinel: initialise all false, so any active channel gets
-                // opened the first frame it becomes active.
-                if is_active && !self.channel_open[ch] {
-                    self.channel_open[ch] = true;
-                }
-
                 let header_job = self.format_channel_header(app_theme, ch, regs, is_active);
 
                 let resp = egui::CollapsingHeader::new(header_job)

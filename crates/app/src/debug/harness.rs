@@ -50,11 +50,6 @@ pub struct MainDebugHarness {
 
     /// Per-voice ring buffer of recent envelope values for the live ADSR painter.
     pub envelope_history: [RingBuffer<ENVELOPE_HISTORY_LEN>; 8],
-
-    pub min_echo_left: i16,
-    pub min_echo_right: i16,
-    pub max_echo_left: i16,
-    pub max_echo_right: i16,
 }
 
 impl MainDebugHarness {
@@ -69,11 +64,6 @@ impl MainDebugHarness {
             envelope_history: std::array::from_fn(|_| RingBuffer::new()),
             mix_buffers: (RingBuffer::new(), RingBuffer::new()),
             echo_history: (RingBuffer::new(), RingBuffer::new()),
-
-            min_echo_left: i16::MAX,
-            min_echo_right: i16::MAX,
-            max_echo_left: i16::MIN,
-            max_echo_right: i16::MIN,
         }
     }
 }
@@ -142,11 +132,6 @@ impl DebugHarness for MainDebugHarness {
         if matches!(self.stop_condition, Some(StopCondition::SampleGenerated)) {
             self.stop_emulation = true;
         }
-
-        self.min_echo_left = self.min_echo_left.min(ssmp.sdsp.last_generated_echo_left);
-        self.min_echo_right = self.min_echo_right.min(ssmp.sdsp.last_generated_echo_right);
-        self.max_echo_left = self.max_echo_left.max(ssmp.sdsp.last_generated_echo_left);
-        self.max_echo_right = self.max_echo_right.max(ssmp.sdsp.last_generated_echo_right);
         
         self.echo_history.0.push(ssmp.sdsp.last_generated_echo_left);
         self.echo_history.1.push(ssmp.sdsp.last_generated_echo_right);
@@ -212,27 +197,6 @@ impl DebugHarness for MainDebugHarness {
     }
 
     fn on_vblank_start(&mut self, core: &mut snemcore::Snemulator) {
-        const I15_MIN: i16 = i16::MIN >> 1;
-        const I15_MAX: i16 = i16::MAX >> 1;
-
-        if self.min_echo_left < I15_MIN || self.min_echo_right < I15_MIN || self.max_echo_left > I15_MAX || self.max_echo_right > I15_MAX {
-            log::debug!("(min L/R, max L/R): ({}/{}, {}/{}), (15-bit range {} to {}, 16-bit {} to {})",
-                self.min_echo_left,
-                self.min_echo_right,
-                self.max_echo_left,
-                self.max_echo_right,
-                i16::MIN >> 1,
-                i16::MAX >> 1,
-                i16::MIN,
-                i16::MAX,
-            );
-        }
-
-        self.min_echo_left = i16::MAX;
-        self.min_echo_right = i16::MAX;
-        self.max_echo_left = i16::MIN;
-        self.max_echo_right = i16::MIN;
-
         for voice in 0..8usize {
             self.envelope_history[voice].push(core.ssmp.voice_regs[voice].envelope as i16);
         }
