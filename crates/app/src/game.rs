@@ -2,7 +2,7 @@ use anyhow::Result;
 use egui::TextureHandle;
 use sdl3::video::GLProfile;
 
-use crate::app::{self, thumbnail_fetcher};
+use crate::app;
 use crate::app::theme::AppTheme;
 use snemcore::sysinfo;
 use crate::menu::MainMenuBar;

@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::mpsc::{self, Receiver};
+use std::sync::mpsc::{self, Receiver, TryRecvError};
 use egui::{Ui, Vec2};
 
 use crate::app::theme::AppTheme;
@@ -155,17 +155,34 @@ impl LibraryView {
 
     pub fn render(&mut self, ui: &mut Ui, app_theme: &AppTheme) -> AppAction {
         if let Some(rx) = &self.thumbnail_rx {
-            while let Ok(result) = rx.try_recv() {
-                log::debug!("Received thumbnail: found={}, path={:?}", result.path.is_some(), result.path);
+            'receive_thumbnails: loop {
+                match rx.try_recv() {
+                    Ok(result) => {
+                        log::debug!("Received thumbnail: found={}, path={:?}", result.path.is_some(), result.path);
+        
+                        if let Some(entry) = self.entries.iter_mut()
+                            .find(|e| e.path.file_stem().and_then(|s| s.to_str()) == Some(&result.stem))
+                        {
+                            entry.thumbnail = match result.path {
+                                Some(p) => ThumbnailState::Ready(p),
+                                None    => ThumbnailState::NotFound,
+                            };
+                        }
+                    }
+                    Err(TryRecvError::Empty) => { break 'receive_thumbnails; }
+                    Err(TryRecvError::Disconnected) => {
+                        self.thumbnail_rx = None;
 
-                if let Some(entry) = self.entries.iter_mut()
-                    .find(|e| e.path.file_stem().and_then(|s| s.to_str()) == Some(&result.stem))
-                {
-                    entry.thumbnail = match result.path {
-                        Some(p) => ThumbnailState::Ready(p),
-                        None    => ThumbnailState::NotFound,
-                    };
+                        for entry in self.entries.iter_mut() {
+                            if matches!(entry.thumbnail, ThumbnailState::Loading) {
+                                entry.thumbnail = ThumbnailState::NotFound;
+                            }
+                        }
+
+                        break 'receive_thumbnails;
+                    }
                 }
+
             }
         }
 
@@ -316,7 +333,6 @@ impl LibraryView {
                     .collect();
 
                 for pair in points.windows(2) {
-                    let frac = pair[0].x; // just need a varying alpha
                     let alpha = (pair[0].x - center.x + radius) / (2.0 * radius);
                     painter.line_segment(
                         [pair[0], pair[1]],

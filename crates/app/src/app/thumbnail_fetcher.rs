@@ -1,8 +1,7 @@
 use std::path::PathBuf;
-use crate::app::library::LibraryEntry;
 use crate::app::rom_paths::RomPaths;
 use crate::app::settings::Settings;
-use std::sync::mpsc::{self, Sender, Receiver};
+use std::sync::mpsc::Sender;
 
 const INDEX_FILENAME: &str = "thumbnail_index.txt";
 const GITHUB_TREE_URL: &str =
@@ -11,6 +10,8 @@ const GITHUB_TREE_URL: &str =
 const RAW_BASE_URL: &str =
     "https://raw.githubusercontent.com/libretro-thumbnails/\
      Nintendo_-_Super_Nintendo_Entertainment_System/master/Named_Boxarts";
+
+const MIN_SIMILARITY: f64 = 0.35;
 
 pub struct ThumbnailResult {
     pub stem: String,
@@ -26,10 +27,6 @@ pub fn spawn_thumbnail_resolver(
             Some(idx) => idx,
             None => {
                 log::warn!("Thumbnail index unavailable; skipping thumbnail fetch.");
-                // Notify all entries so they don't spin forever
-                for (stem, _) in stems {
-                    let _ = tx.send(ThumbnailResult { stem, path: None });
-                }
                 return;
             }
         };
@@ -143,11 +140,11 @@ fn fetch_thumbnail_index() -> Option<Vec<String>> {
 }
 
 /// Returns up to `n` index entries whose names best match `stem`.
-/// Uses a simple normalized edit-distance score so no extra crate is needed.
+/// Returns empty vec if the best match score is below MIN_SIMILARITY.
 fn best_matches(stem: &str, index: &[String], n: usize) -> Vec<String> {
     let needle = normalize(stem);
 
-    let mut scored: Vec<(i64, &String)> = index
+    let mut scored: Vec<(f64, &String)> = index
         .iter()
         .filter(|s| s.ends_with(".png"))
         .map(|entry| {
@@ -159,7 +156,15 @@ fn best_matches(stem: &str, index: &[String], n: usize) -> Vec<String> {
         .collect();
 
     // Higher score = better match; sort descending
-    scored.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+    scored.sort_unstable_by(|a, b| {
+        b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    // Return empty if best match doesn't meet minimum similarity
+    if scored.first().map_or(true, |(score, _)| *score < MIN_SIMILARITY) {
+        return Vec::new();
+    }
+
     scored.into_iter().take(n).map(|(_, s)| s.clone()).collect()
 }
 
@@ -180,18 +185,21 @@ fn normalize(s: &str) -> String {
 }
 
 /// Bigram-overlap score: counts shared character bigrams (higher = more similar).
-fn fuzzy_score(a: &str, b: &str) -> i64 {
-    if a.is_empty() || b.is_empty() {
-        return 0;
+fn fuzzy_score(a: &str, b: &str) -> f64 {
+    if a.len() < 2 || b.len() < 2 {
+        return 0.0;
     }
-    let bigrams_a: std::collections::HashSet<(char, char)> = a.chars()
-        .zip(a.chars().skip(1))
-        .collect();
-    let bigrams_b: std::collections::HashSet<(char, char)> = b.chars()
-        .zip(b.chars().skip(1))
-        .collect();
 
-    bigrams_a.intersection(&bigrams_b).count() as i64
+    let bigrams_a: std::collections::HashSet<_> =
+        a.chars().zip(a.chars().skip(1)).collect();
+
+    let bigrams_b: std::collections::HashSet<_> =
+        b.chars().zip(b.chars().skip(1)).collect();
+
+    let intersection = bigrams_a.intersection(&bigrams_b).count() as f64;
+    let max_possible = bigrams_a.len().max(bigrams_b.len()) as f64;
+
+    intersection / max_possible
 }
 
 /// Fetches the PNG for `filename` from the raw GitHub URL.
