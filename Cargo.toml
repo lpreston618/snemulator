@@ -12,9 +12,9 @@ rfd        = "0.17.2"
 env_logger = "0.11.9"
 log        = "0.4.29"
 crc32fast = "1.5.0"
-egui       = { version = "0.33.3", features = ["serde"] }
 egui_glow  = "0.33.3"
-egui_extras = { version = "0.33.3", features = ["svg"] }
+egui       = { version = "0.33.3", features = ["serde"] }
+egui_extras = { version = "0.33.3", features = ["svg", "file", "image"] }
 glow       = "0.16.0"
 sdl3 = {version = "0.17.3", features = ["build-from-source"]}
 serde = {version = "1.0.228", features = ["derive"] }

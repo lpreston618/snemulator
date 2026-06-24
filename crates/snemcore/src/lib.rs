@@ -180,6 +180,10 @@ impl Snemulator {
         self.cart.as_ref().map_or(Vec::new(), |cart| cart.ram.clone())
     }
 
+    pub fn get_loaded_rom_title(&self) -> Option<String> {
+        self.cart.as_ref().map_or(None, |cart| Some(String::from_utf8_lossy(&cart.title).to_string()))
+    }
+
     pub fn save_state(&self) -> SaveState {
         SaveState {
             magic_str: *savestate::MAGIC_SAVE_STATE_STRING,

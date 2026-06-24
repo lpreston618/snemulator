@@ -411,7 +411,7 @@ fn pad_rom(rom: Vec<u8>) -> Result<Vec<u8>, String> {
 }
 
 /// Evaluate the likelihood of a ROM header being located at the given position
-fn score_header(cart_rom: &Vec<u8>, map: MappingMode, checksum: u16, complement: u16) -> i32 {
+fn score_header(cart_rom: &[u8], map: MappingMode, checksum: u16, complement: u16) -> i32 {
     let mut score = 0;
 
     let addr = match map {
@@ -476,7 +476,7 @@ fn score_header(cart_rom: &Vec<u8>, map: MappingMode, checksum: u16, complement:
 }
 
 /// Returns the address of the header in cartridge ROM
-fn find_header(cart_rom: &Vec<u8>) -> Result<usize, String> {
+fn find_header(cart_rom: &[u8]) -> Result<usize, String> {
     let checksum = compute_checksum(cart_rom);
     let complement = !checksum;
 
@@ -508,7 +508,13 @@ fn find_header(cart_rom: &Vec<u8>) -> Result<usize, String> {
     }
 }
 
+pub fn get_rom_title(rom: &[u8]) -> Option<String> {
+    let header_pos = find_header(rom).ok()?;
+    let title_bytes = &rom[header_pos..header_pos + 0x15];
+    Some(String::from_utf8_lossy(title_bytes).to_string())
+}
+
 // Compute the checksum of the cartridge using the proper mirroring
-fn compute_checksum(cart_rom: &Vec<u8>) -> u16 {
+fn compute_checksum(cart_rom: &[u8]) -> u16 {
     cart_rom.iter().fold(0u16, |acc, &x| acc + x as u16)
 }

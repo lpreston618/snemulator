@@ -33,9 +33,9 @@ pub struct Settings {
 
     #[serde(default)]
     pub recent_roms: Vec<PathBuf>,
-    
+
     #[serde(default)]
-    pub default_rom_dir: Option<PathBuf>,
+    pub roms_library_dir: Option<PathBuf>,
 }
 
 impl Settings {

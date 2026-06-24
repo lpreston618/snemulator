@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 pub struct RomPaths {
-    rom_dir: PathBuf,
+    rom_dir: PathBuf,  // Data directory for this ROM (where to store save states, thumbnail, metadata)
 }
 
 impl RomPaths {
@@ -45,17 +45,34 @@ impl RomPaths {
         self.rom_dir.join("manifest.json")
     }
 
+    pub fn thumbnail_path(&self) -> PathBuf {
+        self.rom_dir.join("thumbnail.png")
+    }
+
     pub fn write_manifest(&self, manifest: &RomManifest) {
         if let Ok(text) = serde_json::to_string_pretty(manifest) {
             let _ = std::fs::write(self.manifest_path(), text);
         }
     }
+
+    /// Finds a manifest by the sanitized ROM stem name (used during library scan).
+    pub fn find_manifest_by_stem(stem: &str) -> Option<RomManifest> {
+        let dir = crate::app::settings::Settings::data_dir()?.join(sanitize_name(stem));
+        let text = std::fs::read_to_string(dir.join("manifest.json")).ok()?;
+        serde_json::from_str(&text).ok()
+    }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 pub struct RomManifest {
     pub rom_crc: u32,
     pub display_name: String,
+    #[serde(default)]
+    pub last_played: Option<u64>,   // Unix timestamp (seconds)
+    #[serde(default)]
+    pub play_time_secs: u64,
+    #[serde(default)]
+    pub thumbnail_path: Option<PathBuf>,
 }
 
 fn sanitize_name(name: &str) -> String {

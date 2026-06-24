@@ -30,6 +30,10 @@ impl MainMenuBar {
                     ui.set_width(120.0);
                                         
                     ui.add_enabled_ui(!debug_active, |ui| {
+                        if ui.button("Select ROMs Folder").clicked() {
+                            app_action = AppAction::SelectRomsFolder;
+                            ui.close();
+                        }
                         if ui.button("Load ROM").clicked() {
                             app_action = AppAction::LoadRom;
                             ui.close();

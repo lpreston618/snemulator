@@ -29,15 +29,14 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 mod resampler;
+pub mod library;
 pub mod settings;
 pub mod theme;
 pub mod audio;
-mod rom_paths;
+pub mod rom_paths;
+pub mod thumbnail_fetcher;
 
 pub const FRAME_BUF_SIZE: usize = (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize;
-
-pub const WINDOW_WIDTH: u32 = 640;
-pub const WINDOW_HEIGHT: u32 = 480;
 
 const PREV_FPS_BUFFER_LEN: usize = FRAMES_PER_SECOND as usize * 1;
 const FRAMES_BEFORE_HIDE_MENU: u64 = (3.0 * FRAMES_PER_SECOND) as u64;
@@ -64,6 +63,7 @@ pub enum AppAction {
     Continue,
     TogglePause,
     ToggleFullscreen,
+    SelectRomsFolder,
     LoadRom,
     LoadRomFromPath(PathBuf),
     UnloadRom,
@@ -84,6 +84,9 @@ pub struct RomMetadata {
     pub crc32_hash: u32,
     pub paths: RomPaths,
     pub used_save_state_slots: [bool; MAX_SAVE_STATE_SLOTS],
+    pub last_load_time: u64,
+    pub rom_path: PathBuf,
+    pub title: String,
 }
 
 pub struct AppState {
@@ -165,8 +168,8 @@ impl SnemulatorApp {
 
         let main_egui_window = Self::create_window(
             "Snemulator",
-            WINDOW_WIDTH,
-            WINDOW_HEIGHT,
+            crate::game::WINDOW_WIDTH,
+            crate::game::WINDOW_HEIGHT,
             &video_subsystem,
             &fonts,
             &theme
@@ -242,6 +245,8 @@ impl SnemulatorApp {
         app.random_seed = app.snem_core.get_random_seed();
 
         log::trace!("Random Seed: {}", app.random_seed);
+
+        app.main_window.rescan_library(&app.settings);
 
         Ok(app)
     }
@@ -349,6 +354,7 @@ impl SnemulatorApp {
 
             let app_action = self.main_window.update_and_render(
                 &self.state,
+                &self.theme,
                 &mut self.settings,
                 &self.frame_buffer[..],
             );
@@ -368,17 +374,22 @@ impl SnemulatorApp {
             #[cfg(feature = "debug")]
             self.update_debug_window();
 
-            self.state.show_menu = self.settings.always_show_menu
-                || (self.state.frame_count - self.state.last_mouse_input_frame
-                    < FRAMES_BEFORE_HIDE_MENU);
-            self.state.show_mouse = match self.sdl_context.mouse().focused_window_id() {
-                Some(id) => {
-                    id != self.main_window.id()
-                        || (self.state.frame_count - self.state.last_mouse_input_frame
-                            < FRAMES_BEFORE_HIDE_MOUSE)
-                }
-                _ => true,
-            };
+            if self.state.loaded_rom_data.is_some() {
+                self.state.show_menu = self.settings.always_show_menu
+                    || (self.state.frame_count - self.state.last_mouse_input_frame
+                        < FRAMES_BEFORE_HIDE_MENU);
+                self.state.show_mouse = match self.sdl_context.mouse().focused_window_id() {
+                    Some(id) => {
+                        id != self.main_window.id()
+                            || (self.state.frame_count - self.state.last_mouse_input_frame
+                                < FRAMES_BEFORE_HIDE_MOUSE)
+                    }
+                    _ => true,
+                };
+            } else {
+                self.state.show_mouse = true;
+                self.state.show_menu = true;
+            }
 
             self.sdl_context.mouse().show_cursor(self.state.show_mouse);
 
@@ -411,7 +422,7 @@ impl SnemulatorApp {
             self.update_fps(frame_start.elapsed());
         }
 
-        self.save_cartridge_save_ram(false);
+        self.unload_rom();
 
         Ok(())
     }
@@ -547,6 +558,13 @@ impl SnemulatorApp {
 
     fn do_action(&mut self, app_action: AppAction) {
         match app_action {
+            AppAction::SelectRomsFolder => {
+                if let Some(folder) = FileDialog::new().pick_folder() {
+                    self.settings.roms_library_dir = Some(folder);
+                    self.settings.save();
+                    self.main_window.rescan_library(&self.settings);
+                }
+            }
             AppAction::LoadRom => self.load_rom(),
             AppAction::LoadRomFromPath(path) => {
                 if let Err(_) = self.try_load_rom_from_path(&path) {
@@ -562,17 +580,7 @@ impl SnemulatorApp {
                 }
             }
             AppAction::UnloadRom if self.state.loaded_rom_data.is_some() => {
-                self.save_cartridge_save_ram(false);
-                self.snem_core.unload_rom();
-                self.state.loaded_rom_data = None;
-                self.clear_frame_buf();
-                self.audio_manager.clear_playing_samples();
-                
-                if !self.state.is_paused {
-                    self.toggle_pause();
-                }
-
-                log::info!("Unloaded ROM");
+                self.unload_rom();
             }
             AppAction::LoadState { slot } => {
                 if let Err(e) = self.try_load_state(slot) {
@@ -704,6 +712,51 @@ impl SnemulatorApp {
         });
     }
 
+    fn unload_rom(&mut self) {
+        // Update manifest with session play time and last played timestamp
+        if let Some(rom_data) = &self.state.loaded_rom_data {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+
+            let session_secs = now.saturating_sub(rom_data.last_load_time);
+            let manifest_path = rom_data.paths.manifest_path();
+            let stem = manifest_path.parent()
+                .and_then(|p| p.file_name())
+                .and_then(|n| n.to_str())
+                .unwrap_or("");
+
+            if !stem.is_empty() {
+                let mut manifest = RomPaths::find_manifest_by_stem(stem)
+                    .unwrap_or_else(|| RomManifest {
+                        rom_crc: rom_data.crc32_hash,
+                        display_name: rom_data.title.clone(),
+                        ..Default::default()
+                    });
+    
+                manifest.last_played = Some(now);
+                manifest.play_time_secs += session_secs;
+                rom_data.paths.write_manifest(&manifest);
+                
+                self.main_window.library.update_entry(
+                    &rom_data.rom_path, // or however you get the path from loaded_rom_data
+                    &self.settings,
+                );
+            }
+        }
+
+
+        self.save_cartridge_save_ram(false);
+        self.snem_core.unload_rom();
+        self.state.loaded_rom_data = None;
+        self.clear_frame_buf();
+        self.audio_manager.clear_playing_samples();
+        self.audio_manager.pause();
+
+        log::info!("Unloaded ROM");
+    }
+
     fn load_rom(&mut self) {
         if let Err(e) = self.try_load_rom() {
             log::error!("Failed to load rom: {}", e);
@@ -711,9 +764,7 @@ impl SnemulatorApp {
     }
 
     fn try_load_rom(&mut self) -> Result<()> {
-        let start_dir = self.settings.default_rom_dir
-            .clone()
-            .unwrap_or_else(|| PathBuf::from("/"));
+        let start_dir = PathBuf::from("/");
 
         let romfile = FileDialog::new()
             .add_filter("ROM", &["sfc", "smc"])
@@ -753,10 +804,6 @@ impl SnemulatorApp {
             .ok_or_else(|| anyhow!("Could not resolve data directory"))?;
 
         rom_paths.ensure_dirs()?;
-        rom_paths.write_manifest(&RomManifest {
-            rom_crc: crc,
-            display_name: rom_name.to_string(),
-        });
 
         self.snem_core.load_rom(data, crc)?;
 
@@ -781,6 +828,9 @@ impl SnemulatorApp {
             crc32_hash: crc,
             paths: rom_paths,
             used_save_state_slots,
+            last_load_time: std::time::UNIX_EPOCH.elapsed().unwrap().as_secs(),
+            rom_path: path.clone(),
+            title: self.snem_core.get_loaded_rom_title().unwrap(),
         });
 
         log::info!("Loaded rom '{}'", rom_name);
@@ -819,10 +869,10 @@ impl SnemulatorApp {
         self.state.is_paused = !self.state.is_paused;
 
         if self.state.is_paused {
-            self.audio_stream.pause().unwrap();
+            self.audio_manager.pause();
             log::trace!("Paused emulation");
         } else {
-            self.audio_stream.resume().unwrap();
+            self.audio_manager.resume();
             log::trace!("Resumed emulation");
         }
     }
