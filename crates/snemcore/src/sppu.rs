@@ -41,6 +41,8 @@ pub struct Ppu5C7x {
 
     bg_tile_cache: [TileRowCache<TILE_CACHE_SIZE>; 4],
 
+    scanline_bg_data: [[Option<BgColorData>; VISIBLE_DOTS_PER_SCANLINE]; 4],
+    scanline_bg_counters: [usize; 4],
     scanline_sprite_data: [Option<ObjColorData>; VISIBLE_DOTS_PER_SCANLINE],
 
     /// Number of master clocks until the next dot
@@ -59,6 +61,8 @@ impl Ppu5C7x {
             in_w2: false,
             scanline_sprites: Vec::new(),
             bg_tile_cache: std::array::repeat(TileRowCache::new()),
+            scanline_bg_data: [[None; VISIBLE_DOTS_PER_SCANLINE]; 4],
+            scanline_bg_counters: [0; 4],
             scanline_sprite_data: [None; VISIBLE_DOTS_PER_SCANLINE],
             clocks: 0,
         };
@@ -293,42 +297,56 @@ impl Ppu5C7x {
         frame_buffer[pixel_idx + 3] = 255;
     }
 
-    fn draw_mode0_dot<H: DebugHarness>(&self, bus: &mut PpuBus<H>) {
-        let bg = &bus.ppu_regs.bg_settings[0];
+    fn draw_mode0_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
+        for bg in 0..4 {
+            if self.x == self.scanline_bg_counters[bg] {
+                let dots_rendered = self.render_mode0_tile(bus, bg);
 
-        let shifted_x = (self.x + bg.scroll_x as usize) & 0x3FF;
-        let shifted_y = (self.y + bg.scroll_y as usize) & 0x3FF;
+                debug_assert!(dots_rendered > 0);
 
-        let (playfield_x, playfield_y) = if bg.mosaic_en {
-            Self::apply_mosaic(shifted_x, shifted_y, bus.ppu_regs.mosaic_size as usize)
-        } else {
-            (shifted_x, shifted_y)
-        };
-        
-        let (size_x, size_y) = bg.chr_size.raw_size();
-        let tile_x = playfield_x / size_x;
-        let tile_y = playfield_y / size_y;
-
-        // Calculate offset into VRAM to find the tilemap given playfield position
-        // and background settings.
-        let tilemap_offset = match (bg.tilemap_cnt_x, bg.tilemap_cnt_y) {
-            (TilemapCount::One, TilemapCount::One) => 0,
-            (TilemapCount::One, TilemapCount::Two) => {
-                (tile_y & 0x20) << 5
-            },
-            (TilemapCount::Two, TilemapCount::One) => {
-                (tile_x & 0x20) << 5
-            },
-            (TilemapCount::Two, TilemapCount::Two) => {
-                ((tile_y & 0x20) << 6) + (tile_x & 0x20) << 5
+                self.scanline_bg_counters[bg] += dots_rendered;
             }
-        };
+        }
 
-        let tile_addr = bg.tilemap_base_addr as usize + ((tile_y & 0x1F) << 5) + (tile_x & 0x1F) + tilemap_offset;
+        let obj_main_en = bus.ppu_regs.obj_settings.main_en && Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.obj_settings.window);
+        let bg_main_en: [bool; 4] = std::array::from_fn(|bg| {
+            bus.ppu_regs.bg_settings[bg].main_en && Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.bg_settings[bg].window)
+        });
         
-        let tile_data = TilemapEntry::from_word(bus.vram[tile_addr]);
+        // None in this case means a transparent color.
+        let obj_main_col = if obj_main_en { self.scanline_sprite_data[self.x] } else { None };
+        let bg1_main_col = if bg_main_en[0] { self.scanline_bg_data[0][self.x] } else { None };
+        let bg2_main_col = if bg_main_en[1] { self.scanline_bg_data[1][self.x] } else { None };
+        let bg3_main_col = if bg_main_en[2] { self.scanline_bg_data[2][self.x] } else { None };
+        let bg4_main_col = if bg_main_en[3] { self.scanline_bg_data[3][self.x] } else { None };
 
-        let chr_addr = bg.chr_base_addr + tile_data.tile_num + 8 * 4; // using 4bpp
+        let (main_col, main_layer) = if obj_main_col.is_some() && obj_main_col.unwrap().priority == 3 {
+            (obj_main_col.unwrap().color, ColorLayer::Obj)
+        } else if bg1_main_col.is_some() && bg1_main_col.unwrap().priority {
+            (bg1_main_col.unwrap().color, ColorLayer::Bg1)
+        } else if bg2_main_col.is_some() && bg2_main_col.unwrap().priority {
+            (bg2_main_col.unwrap().color, ColorLayer::Bg2)
+        } else if obj_main_col.is_some() && obj_main_col.unwrap().priority == 2 {
+            (obj_main_col.unwrap().color, ColorLayer::Obj)
+        } else if bg1_main_col.is_some() {
+            (bg1_main_col.unwrap().color, ColorLayer::Bg1)
+        } else if bg2_main_col.is_some() {
+            (bg2_main_col.unwrap().color, ColorLayer::Bg2)
+        } else if obj_main_col.is_some() && obj_main_col.unwrap().priority == 1 {
+            (obj_main_col.unwrap().color, ColorLayer::Obj)
+        } else if bg3_main_col.is_some() && bg3_main_col.unwrap().priority {
+            (bg3_main_col.unwrap().color, ColorLayer::Bg3)
+        } else if bg4_main_col.is_some() && bg4_main_col.unwrap().priority {
+            (bg4_main_col.unwrap().color, ColorLayer::Bg4)
+        } else if obj_main_col.is_some() {
+            (obj_main_col.unwrap().color, ColorLayer::Obj)
+        } else if bg3_main_col.is_some() {
+            (bg3_main_col.unwrap().color, ColorLayer::Bg3)
+        } else if bg4_main_col.is_some() {
+            (bg4_main_col.unwrap().color, ColorLayer::Bg4)
+        } else {
+            (bus.cgram[0], ColorLayer::Back)
+        };
     }
 
     fn draw_mode1_dot<H: DebugHarness>(&self, bus: &mut PpuBus<H>) {
@@ -351,6 +369,142 @@ impl Ppu5C7x {
     }
     fn draw_mode7_dot<H: DebugHarness>(&self, bus: &mut PpuBus<H>) {
         
+    }
+
+    /// Renders a tile to a BG scanline buffer. Returns the number of dots rendered.
+    fn render_mode0_tile<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>, bg: usize) -> usize {
+        const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
+        const BG2_CGRAM_BASE_ADDR: u8 = 0x20;
+        const BG3_CGRAM_BASE_ADDR: u8 = 0x40;
+        const BG4_CGRAM_BASE_ADDR: u8 = 0x60;
+        const BG1_COLOR_DEPTH: ColorDepth = ColorDepth::Bpp2;
+        const BG2_COLOR_DEPTH: ColorDepth = ColorDepth::Bpp2;
+        const BG3_COLOR_DEPTH: ColorDepth = ColorDepth::Bpp2;
+        const BG4_COLOR_DEPTH: ColorDepth = ColorDepth::Bpp2;
+
+        let cgram_base = [
+            BG1_CGRAM_BASE_ADDR, BG2_CGRAM_BASE_ADDR,
+            BG3_CGRAM_BASE_ADDR, BG4_CGRAM_BASE_ADDR,
+        ][bg];
+
+        let col_depth = [
+            BG1_COLOR_DEPTH, BG2_COLOR_DEPTH,
+            BG3_COLOR_DEPTH, BG4_COLOR_DEPTH,
+        ][bg];
+
+        let bpp = col_depth.bits_per_pixel();
+
+        let bg_settings = &bus.ppu_regs.bg_settings[bg];
+
+        let shifted_x = (self.x as u16 + bg_settings.scroll_x) & 0x3FF;
+        let shifted_y = (self.y as u16 + bg_settings.scroll_y) & 0x3FF;
+
+        let (playfield_x, playfield_y) = if bg_settings.mosaic_en {
+            Self::apply_mosaic(shifted_x, shifted_y, bus.ppu_regs.mosaic_size as u16)
+        } else {
+            (shifted_x, shifted_y)
+        };
+        
+        let (size_x, size_y) = bg_settings.chr_size.raw_size();
+        let tile_x = playfield_x / size_x;
+        let tile_y = playfield_y / size_y;
+        let tile_col = playfield_x % size_x;
+        let tile_row = playfield_y % size_y;
+
+        // Calculate offset into VRAM to find the tilemap given playfield position
+        // and background settings.
+        let tilemap_offset = match (bg_settings.tilemap_cnt_x, bg_settings.tilemap_cnt_y) {
+            (TilemapCount::One, TilemapCount::One) => 0,
+            (TilemapCount::One, TilemapCount::Two) => {
+                (tile_y & 0x20) << 5
+            },
+            (TilemapCount::Two, TilemapCount::One) => {
+                (tile_x & 0x20) << 5
+            },
+            (TilemapCount::Two, TilemapCount::Two) => {
+                ((tile_y & 0x20) << 6) + (tile_x & 0x20) << 5
+            }
+        };
+
+        let tile_addr = bg_settings.tilemap_base_addr + ((tile_y & 0x1F) << 5) + (tile_x & 0x1F) + tilemap_offset;
+        let tile_data = TilemapEntry::from_word(bus.vram[tile_addr as usize]);
+
+        let tile_col = if tile_data.flip_x { size_x - tile_col - 1 } else { tile_col };
+        let tile_row = if tile_data.flip_y { size_y - tile_row - 1 } else { tile_row };
+
+        // tile_number = tile_number + 1 if tile_col >= 8, + 32 if tile_row >= 8
+        let tile_number = tile_data.tile_num + ((tile_row >> 3) << 5) + (tile_col >> 3);
+        // chr_addr will never be out of range when reading a chr 
+        let chr_addr = ((bg_settings.chr_base_addr + tile_number * 8 * (bpp >> 1)) & 0x7FFF) as usize;
+
+        let pal_indices: [u8; 8] = match col_depth {
+            ColorDepth::Bpp2 => {
+                let bp10 = bus.vram[chr_addr];
+
+                let interleaved = interleave_2bpp(bp10);
+
+                std::array::from_fn(|i| {
+                    ((interleaved >> (2 * i)) & 3) as u8
+                })
+            }
+            ColorDepth::Bpp4 => {
+                let bp10 = bus.vram[chr_addr];
+                let bp32 = bus.vram[chr_addr + 8];
+
+                let interleaved = interleave_4bpp(bp10, bp32);
+
+                std::array::from_fn(|i| {
+                    ((interleaved >> (4 * i)) & 0xF) as u8
+                })
+            }
+            ColorDepth::Bpp8 => {
+                if bus.ppu_regs.use_direct_col {
+                    // Store only the row base addr; vram must be read per dot
+                    (chr_addr as u64).to_le_bytes()
+                } else {
+                    let bp10 = bus.vram[chr_addr];
+                    let bp32 = bus.vram[chr_addr + 8];
+                    let bp54 = bus.vram[chr_addr + 16];
+                    let bp76 = bus.vram[chr_addr + 24];
+
+                    let interleaved = interleave_8bpp(bp10, bp32, bp54, bp76);
+
+                    interleaved.to_le_bytes()
+                }
+            }
+        };
+
+        let mut dots_rendered = 0;
+
+        for col in 0..8 {
+            if shifted_x + col >= 256 {
+                continue;
+            }
+
+            let pal_idx = if tile_data.flip_x {
+                pal_indices[col as usize]
+            } else {
+                pal_indices[7 - col as usize]
+            };
+
+            let color = if pal_idx == 0 {
+                None
+            } else {
+                let cgram_addr = cgram_base + (tile_data.palette << bpp) + pal_idx;
+
+                Some(BgColorData {
+                    color: bus.cgram[cgram_addr as usize],
+                    palette: tile_data.palette,
+                    priority: tile_data.priority,
+                })
+            };
+
+            self.scanline_bg_data[bg][self.x] = color;
+
+            dots_rendered += 1;
+        }
+
+        dots_rendered
     }
 
     fn draw_dot_modes_0to4<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
@@ -474,559 +628,455 @@ impl Ppu5C7x {
         }
     }
 
-    /// Gets the color of the first visible sprite on the screen.
-    // fn sprite_col<H: DebugHarness>(&self, bus: &mut PpuBus<H>) -> ObjColorData {
-    //     let regs = &bus.ppu_regs;
 
-    //     let mut scanline_spr_cnt = self.scanline_spr_cnt;
+    // fn bg_mode0_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
+    //     const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
+    //     const BG2_CGRAM_BASE_ADDR: u8 = 0x20;
+    //     const BG3_CGRAM_BASE_ADDR: u8 = 0x40;
+    //     const BG4_CGRAM_BASE_ADDR: u8 = 0x60;
+    //     const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
+    //     const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
+    //     const BG3_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
+    //     const BG4_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
 
-    //     if scanline_spr_cnt == 0 {
-    //         scanline_spr_cnt = 32;
-    //     }
+    //     let (obj_main_col, obj_sub_col) = self.obj_layer_colors(bus);
+    //     let (bg1_main_col, bg1_sub_col) = self.bg_layer_colors(
+    //         bus,
+    //         BG1_COL_DEPTH,
+    //         BG1_CGRAM_BASE_ADDR,
+    //         ColorLayer::Bg1
+    //     );
+    //     let (bg2_main_col, bg2_sub_col) = self.bg_layer_colors(
+    //         bus,
+    //         BG2_COL_DEPTH,
+    //         BG2_CGRAM_BASE_ADDR,
+    //         ColorLayer::Bg2
+    //     );
+    //     let (bg3_main_col, bg3_sub_col) = self.bg_layer_colors(
+    //         bus,
+    //         BG3_COL_DEPTH,
+    //         BG3_CGRAM_BASE_ADDR,
+    //         ColorLayer::Bg3
+    //     );
+    //     let (bg4_main_col, bg4_sub_col) = self.bg_layer_colors(
+    //         bus,
+    //         BG4_COL_DEPTH,
+    //         BG4_CGRAM_BASE_ADDR,
+    //         ColorLayer::Bg4
+    //     );
 
-    //     for i in 0..self.scanline_sprites.len() {
-    //         scanline_spr_cnt -= 1;
+    //     let (main_col, main_layer) = if obj_main_col.priority == 3 && !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if bg1_main_col.priority != 0 && !bg1_main_col.transparent {
+    //         (bg1_main_col.color, ColorLayer::Bg1)
+    //     } else if bg2_main_col.priority != 0 && !bg2_main_col.transparent {
+    //         (bg2_main_col.color, ColorLayer::Bg2)
+    //     } else if obj_main_col.priority == 2 && !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if !bg1_main_col.transparent {
+    //         (bg1_main_col.color, ColorLayer::Bg1)
+    //     } else if !bg2_main_col.transparent {
+    //         (bg2_main_col.color, ColorLayer::Bg2)
+    //     } else if obj_main_col.priority == 1 && !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if bg3_main_col.priority != 0 && !bg3_main_col.transparent {
+    //         (bg3_main_col.color, ColorLayer::Bg3)
+    //     } else if bg4_main_col.priority != 0 && !bg4_main_col.transparent {
+    //         (bg4_main_col.color, ColorLayer::Bg4)
+    //     } else if !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if !bg3_main_col.transparent {
+    //         (bg3_main_col.color, ColorLayer::Bg3)
+    //     } else if !bg4_main_col.transparent {
+    //         (bg4_main_col.color, ColorLayer::Bg4)
+    //     } else {
+    //         (bus.cgram[0], ColorLayer::Back)
+    //     };
 
-    //         let sprite = &self.scanline_sprites[scanline_spr_cnt];
+    //     let sub_col = if obj_sub_col.priority == 3 && !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if bg1_sub_col.priority != 0 && !bg1_sub_col.transparent {
+    //         bg1_sub_col.color
+    //     } else if bg2_sub_col.priority != 0 && !bg2_sub_col.transparent {
+    //         bg2_sub_col.color
+    //     } else if obj_sub_col.priority == 2 && !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if !bg1_sub_col.transparent {
+    //         bg1_sub_col.color
+    //     } else if !bg2_sub_col.transparent {
+    //         bg2_sub_col.color
+    //     } else if obj_sub_col.priority == 1 && !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if bg3_sub_col.priority != 0 && !bg3_sub_col.transparent {
+    //         bg3_sub_col.color
+    //     } else if bg4_sub_col.priority != 0 && !bg4_sub_col.transparent {
+    //         bg4_sub_col.color
+    //     } else if !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if !bg3_sub_col.transparent {
+    //         bg3_sub_col.color
+    //     } else if !bg4_sub_col.transparent {
+    //         bg4_sub_col.color
+    //     } else {
+    //         bus.ppu_regs.fixed_color
+    //     };
 
-    //         if scanline_spr_cnt == 0 {
-    //             scanline_spr_cnt = 32;
-    //         }
+    //     let cmath_en = match main_layer {
+    //         ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
+    //         ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
+    //         ColorLayer::Bg3 => bus.ppu_regs.bg_settings[2].cmath_en,
+    //         ColorLayer::Bg4 => bus.ppu_regs.bg_settings[3].cmath_en,
+    //         ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.palette >= 4,
+    //         ColorLayer::Back => bus.ppu_regs.back_cmath_en,
+    //     };
 
-    //         if sprite.x as usize <= self.x && self.x < sprite.max_x as usize {
-    //             let sprite_col = self.x - sprite.x as usize;
-    //             let sprite_row = self.y - sprite.y as usize;
-
-    //             let sprite_row = if regs.screen_interlace_en && regs.obj_interlace_en {
-    //                 2 * sprite_row + (self.frame & 1)
-    //             } else {
-    //                 sprite_row
-    //             };
-
-    //             let sprite_col = if sprite.flip_x {
-    //                 sprite.width - sprite_col as u8 - 1
-    //             } else {
-    //                 sprite_col as u8
-    //             };
-    //             let sprite_row = if sprite.flip_y {
-    //                 sprite.height - sprite_row as u8 - 1
-    //             } else {
-    //                 sprite_row as u8
-    //             };
-
-    //             let (tile_x, tile_col) = (sprite_col / 8, sprite_col % 8);
-    //             let (tile_y, tile_row) = (sprite_row / 8, sprite_row % 8);
-
-    //             let chr_idx = (tile_y << 4) + tile_x;
-
-    //             let obj_table_base_addr = if sprite.use_second_obj_table {
-    //                 regs.name_secondary_base_addr
-    //             } else {
-    //                 regs.name_base_addr
-    //             };
-
-    //             let obj_table_base_addr = obj_table_base_addr; // No longer mutable
-
-    //             let spr_tile_base_addr =
-    //                 (obj_table_base_addr as u16) + ((sprite.tile_idx as u16) << 4);
-    //             let spr_tile_addr = spr_tile_base_addr + ((chr_idx as u16) << 4);
-    //             let spr_tile_row_addr = spr_tile_addr + tile_row as u16;
-
-    //             let bp01 = bus.vram[((spr_tile_row_addr as usize) + 0) & 0x7FFF];
-    //             let bp23 = bus.vram[((spr_tile_row_addr as usize) + 8) & 0x7FFF];
-
-    //             let b0 = ((bp01 >> (7 - tile_col)) as u8) & 1;
-    //             let b1 = ((bp01 >> (15 - tile_col)) as u8) & 1;
-    //             let b2 = ((bp23 >> (7 - tile_col)) as u8) & 1;
-    //             let b3 = ((bp23 >> (15 - tile_col)) as u8) & 1;
-
-    //             let pal_idx = (b3 << 3) | (b2 << 2) | (b1 << 1) | b0;
-
-    //             // Transparent sprite
-    //             if pal_idx == 0 {
-    //                 // If it's the last sprite, all sprites were transparent
-    //                 if i == self.scanline_sprites.len() - 1 {
-    //                     return ObjColorData {
-    //                         color: Color::BLACK,
-    //                         palette: 0,
-    //                         priority: 0,
-    //                         transparent: true,
-    //                     };
-    //                 }
-
-    //                 continue;
-    //             }
-
-    //             let cgram_addr = 0x80 | (sprite.palette << 4) | pal_idx;
-
-    //             let spr_col = bus.cgram[cgram_addr as usize];
-
-    //             return ObjColorData {
-    //                 color: spr_col,
-    //                 palette: sprite.palette,
-    //                 priority: sprite.priority,
-    //                 transparent: false,
-    //             };
-    //         }
-    //     }
-
-    //     // No sprites on this dot, return a transparent color
-    //     ObjColorData {
-    //         color: bus.cgram[0],
-    //         palette: 0,
-    //         priority: 0,
-    //         transparent: true,
+    //     DotColorData {
+    //         main_col,
+    //         sub_col,
+    //         cmath_en,
     //     }
     // }
 
-    fn bg_mode0_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
-        const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG2_CGRAM_BASE_ADDR: u8 = 0x20;
-        const BG3_CGRAM_BASE_ADDR: u8 = 0x40;
-        const BG4_CGRAM_BASE_ADDR: u8 = 0x60;
-        const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
-        const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
-        const BG3_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
-        const BG4_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
+    // fn bg_mode1_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
+    //     const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
+    //     const BG2_CGRAM_BASE_ADDR: u8 = 0x00;
+    //     const BG3_CGRAM_BASE_ADDR: u8 = 0x00;
+    //     const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
+    //     const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
+    //     const BG3_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
 
-        let (obj_main_col, obj_sub_col) = self.obj_layer_colors(bus);
-        let (bg1_main_col, bg1_sub_col) = self.bg_layer_colors(
-            bus,
-            BG1_COL_DEPTH,
-            BG1_CGRAM_BASE_ADDR,
-            ColorLayer::Bg1
-        );
-        let (bg2_main_col, bg2_sub_col) = self.bg_layer_colors(
-            bus,
-            BG2_COL_DEPTH,
-            BG2_CGRAM_BASE_ADDR,
-            ColorLayer::Bg2
-        );
-        let (bg3_main_col, bg3_sub_col) = self.bg_layer_colors(
-            bus,
-            BG3_COL_DEPTH,
-            BG3_CGRAM_BASE_ADDR,
-            ColorLayer::Bg3
-        );
-        let (bg4_main_col, bg4_sub_col) = self.bg_layer_colors(
-            bus,
-            BG4_COL_DEPTH,
-            BG4_CGRAM_BASE_ADDR,
-            ColorLayer::Bg4
-        );
+    //     let (obj_main_col, obj_sub_col) = self.obj_layer_colors(bus);
+    //     let (bg1_main_col, bg1_sub_col) = self.bg_layer_colors(
+    //         bus,
+    //         BG1_COL_DEPTH,
+    //         BG1_CGRAM_BASE_ADDR,
+    //         ColorLayer::Bg1
+    //     );
+    //     let (bg2_main_col, bg2_sub_col) = self.bg_layer_colors(
+    //         bus,
+    //         BG2_COL_DEPTH,
+    //         BG2_CGRAM_BASE_ADDR,
+    //         ColorLayer::Bg2
+    //     );
+    //     let (bg3_main_col, bg3_sub_col) = self.bg_layer_colors(
+    //         bus,
+    //         BG3_COL_DEPTH,
+    //         BG3_CGRAM_BASE_ADDR,
+    //         ColorLayer::Bg3
+    //     );
 
-        let (main_col, main_layer) = if obj_main_col.priority == 3 && !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if bg1_main_col.priority != 0 && !bg1_main_col.transparent {
-            (bg1_main_col.color, ColorLayer::Bg1)
-        } else if bg2_main_col.priority != 0 && !bg2_main_col.transparent {
-            (bg2_main_col.color, ColorLayer::Bg2)
-        } else if obj_main_col.priority == 2 && !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if !bg1_main_col.transparent {
-            (bg1_main_col.color, ColorLayer::Bg1)
-        } else if !bg2_main_col.transparent {
-            (bg2_main_col.color, ColorLayer::Bg2)
-        } else if obj_main_col.priority == 1 && !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if bg3_main_col.priority != 0 && !bg3_main_col.transparent {
-            (bg3_main_col.color, ColorLayer::Bg3)
-        } else if bg4_main_col.priority != 0 && !bg4_main_col.transparent {
-            (bg4_main_col.color, ColorLayer::Bg4)
-        } else if !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if !bg3_main_col.transparent {
-            (bg3_main_col.color, ColorLayer::Bg3)
-        } else if !bg4_main_col.transparent {
-            (bg4_main_col.color, ColorLayer::Bg4)
-        } else {
-            (bus.cgram[0], ColorLayer::Back)
-        };
+    //     let (main_col, main_layer) = if bus.ppu_regs.bg3_mode1_priority
+    //         && bg3_main_col.priority != 0
+    //         && !bg3_main_col.transparent
+    //     {
+    //         (bg3_main_col.color, ColorLayer::Bg3)
+    //     } else if obj_main_col.priority == 3 && !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if bg1_main_col.priority != 0 && !bg1_main_col.transparent {
+    //         (bg1_main_col.color, ColorLayer::Bg1)
+    //     } else if bg2_main_col.priority != 0 && !bg2_main_col.transparent {
+    //         (bg2_main_col.color, ColorLayer::Bg2)
+    //     } else if obj_main_col.priority == 2 && !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if !bg1_main_col.transparent {
+    //         (bg1_main_col.color, ColorLayer::Bg1)
+    //     } else if !bg2_main_col.transparent {
+    //         (bg2_main_col.color, ColorLayer::Bg2)
+    //     } else if obj_main_col.priority == 1 && !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if bg3_main_col.priority != 0 && !bg3_main_col.transparent {
+    //         (bg3_main_col.color, ColorLayer::Bg3)
+    //     } else if !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if !bg3_main_col.transparent {
+    //         (bg3_main_col.color, ColorLayer::Bg3)
+    //     } else {
+    //         (bus.cgram[0], ColorLayer::Back)
+    //     };
 
-        let sub_col = if obj_sub_col.priority == 3 && !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if bg1_sub_col.priority != 0 && !bg1_sub_col.transparent {
-            bg1_sub_col.color
-        } else if bg2_sub_col.priority != 0 && !bg2_sub_col.transparent {
-            bg2_sub_col.color
-        } else if obj_sub_col.priority == 2 && !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if !bg1_sub_col.transparent {
-            bg1_sub_col.color
-        } else if !bg2_sub_col.transparent {
-            bg2_sub_col.color
-        } else if obj_sub_col.priority == 1 && !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if bg3_sub_col.priority != 0 && !bg3_sub_col.transparent {
-            bg3_sub_col.color
-        } else if bg4_sub_col.priority != 0 && !bg4_sub_col.transparent {
-            bg4_sub_col.color
-        } else if !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if !bg3_sub_col.transparent {
-            bg3_sub_col.color
-        } else if !bg4_sub_col.transparent {
-            bg4_sub_col.color
-        } else {
-            bus.ppu_regs.fixed_color
-        };
+    //     let sub_col = if bus.ppu_regs.sub_color_fixed {
+    //         bus.ppu_regs.fixed_color
+    //     } else if bus.ppu_regs.bg3_mode1_priority
+    //         && bg3_sub_col.priority != 0
+    //         && !bg3_sub_col.transparent
+    //     {
+    //         bg3_sub_col.color
+    //     } else if obj_sub_col.priority == 3 && !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if bg1_sub_col.priority != 0 && !bg1_sub_col.transparent {
+    //         bg1_sub_col.color
+    //     } else if bg2_sub_col.priority != 0 && !bg2_sub_col.transparent {
+    //         bg2_sub_col.color
+    //     } else if obj_sub_col.priority == 2 && !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if !bg1_sub_col.transparent {
+    //         bg1_sub_col.color
+    //     } else if !bg2_sub_col.transparent {
+    //         bg2_sub_col.color
+    //     } else if obj_sub_col.priority == 1 && !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if bg3_sub_col.priority != 0 && !bg3_sub_col.transparent {
+    //         bg3_sub_col.color
+    //     } else if !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if !bg3_sub_col.transparent {
+    //         bg3_sub_col.color
+    //     } else {
+    //         bus.ppu_regs.fixed_color
+    //     };
 
-        let cmath_en = match main_layer {
-            ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
-            ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
-            ColorLayer::Bg3 => bus.ppu_regs.bg_settings[2].cmath_en,
-            ColorLayer::Bg4 => bus.ppu_regs.bg_settings[3].cmath_en,
-            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.palette >= 4,
-            ColorLayer::Back => bus.ppu_regs.back_cmath_en,
-        };
+    //     let cmath_en = match main_layer {
+    //         ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
+    //         ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
+    //         ColorLayer::Bg3 => bus.ppu_regs.bg_settings[2].cmath_en,
+    //         ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.palette >= 4,
+    //         ColorLayer::Back => bus.ppu_regs.back_cmath_en,
+    //         _ => unreachable!(), // No other layers considered in Mode 1
+    //     };
 
-        DotColorData {
-            main_col,
-            sub_col,
-            cmath_en,
-        }
-    }
+    //     DotColorData {
+    //         main_col,
+    //         sub_col,
+    //         cmath_en,
+    //     }
+    // }
 
-    fn bg_mode1_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
-        const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG2_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG3_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
-        const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
-        const BG3_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
+    // fn bg_mode2_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
+    //     const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
+    //     const BG2_CGRAM_BASE_ADDR: u8 = 0x00;
+    //     const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
+    //     const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
 
-        let (obj_main_col, obj_sub_col) = self.obj_layer_colors(bus);
-        let (bg1_main_col, bg1_sub_col) = self.bg_layer_colors(
-            bus,
-            BG1_COL_DEPTH,
-            BG1_CGRAM_BASE_ADDR,
-            ColorLayer::Bg1
-        );
-        let (bg2_main_col, bg2_sub_col) = self.bg_layer_colors(
-            bus,
-            BG2_COL_DEPTH,
-            BG2_CGRAM_BASE_ADDR,
-            ColorLayer::Bg2
-        );
-        let (bg3_main_col, bg3_sub_col) = self.bg_layer_colors(
-            bus,
-            BG3_COL_DEPTH,
-            BG3_CGRAM_BASE_ADDR,
-            ColorLayer::Bg3
-        );
+    //     let (obj_main_col, obj_sub_col) = self.obj_layer_colors(bus);
+    //     let (bg1_main_col, bg1_sub_col) = self.bg_layer_colors(
+    //         bus,
+    //         BG1_COL_DEPTH,
+    //         BG1_CGRAM_BASE_ADDR,
+    //         ColorLayer::Bg1
+    //     );
+    //     let (bg2_main_col, bg2_sub_col) = self.bg_layer_colors(
+    //         bus,
+    //         BG2_COL_DEPTH,
+    //         BG2_CGRAM_BASE_ADDR,
+    //         ColorLayer::Bg2
+    //     );
 
-        let (main_col, main_layer) = if bus.ppu_regs.bg3_mode1_priority
-            && bg3_main_col.priority != 0
-            && !bg3_main_col.transparent
-        {
-            (bg3_main_col.color, ColorLayer::Bg3)
-        } else if obj_main_col.priority == 3 && !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if bg1_main_col.priority != 0 && !bg1_main_col.transparent {
-            (bg1_main_col.color, ColorLayer::Bg1)
-        } else if bg2_main_col.priority != 0 && !bg2_main_col.transparent {
-            (bg2_main_col.color, ColorLayer::Bg2)
-        } else if obj_main_col.priority == 2 && !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if !bg1_main_col.transparent {
-            (bg1_main_col.color, ColorLayer::Bg1)
-        } else if !bg2_main_col.transparent {
-            (bg2_main_col.color, ColorLayer::Bg2)
-        } else if obj_main_col.priority == 1 && !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if bg3_main_col.priority != 0 && !bg3_main_col.transparent {
-            (bg3_main_col.color, ColorLayer::Bg3)
-        } else if !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if !bg3_main_col.transparent {
-            (bg3_main_col.color, ColorLayer::Bg3)
-        } else {
-            (bus.cgram[0], ColorLayer::Back)
-        };
+    //     let (main_col, main_layer) = if obj_main_col.priority == 3 && !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if bg1_main_col.priority != 0 && !bg1_main_col.transparent {
+    //         (bg1_main_col.color, ColorLayer::Bg1)
+    //     } else if obj_main_col.priority == 2 && !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if bg2_main_col.priority != 0 && !bg2_main_col.transparent {
+    //         (bg2_main_col.color, ColorLayer::Bg2)
+    //     } else if obj_main_col.priority == 1 && !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if !bg1_main_col.transparent {
+    //         (bg1_main_col.color, ColorLayer::Bg1)
+    //     } else if !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if !bg2_main_col.transparent {
+    //         (bg2_main_col.color, ColorLayer::Bg2)
+    //     } else {
+    //         (bus.cgram[0], ColorLayer::Back)
+    //     };
 
-        let sub_col = if bus.ppu_regs.sub_color_fixed {
-            bus.ppu_regs.fixed_color
-        } else if bus.ppu_regs.bg3_mode1_priority
-            && bg3_sub_col.priority != 0
-            && !bg3_sub_col.transparent
-        {
-            bg3_sub_col.color
-        } else if obj_sub_col.priority == 3 && !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if bg1_sub_col.priority != 0 && !bg1_sub_col.transparent {
-            bg1_sub_col.color
-        } else if bg2_sub_col.priority != 0 && !bg2_sub_col.transparent {
-            bg2_sub_col.color
-        } else if obj_sub_col.priority == 2 && !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if !bg1_sub_col.transparent {
-            bg1_sub_col.color
-        } else if !bg2_sub_col.transparent {
-            bg2_sub_col.color
-        } else if obj_sub_col.priority == 1 && !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if bg3_sub_col.priority != 0 && !bg3_sub_col.transparent {
-            bg3_sub_col.color
-        } else if !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if !bg3_sub_col.transparent {
-            bg3_sub_col.color
-        } else {
-            bus.ppu_regs.fixed_color
-        };
+    //     let sub_col = if obj_sub_col.priority == 3 && !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if bg1_sub_col.priority != 0 && !bg1_sub_col.transparent {
+    //         bg1_sub_col.color
+    //     } else if obj_sub_col.priority == 2 && !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if bg2_sub_col.priority != 0 && !bg2_sub_col.transparent {
+    //         bg2_sub_col.color
+    //     } else if obj_sub_col.priority == 1 && !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if !bg1_sub_col.transparent {
+    //         bg1_sub_col.color
+    //     } else if !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if !bg2_sub_col.transparent {
+    //         bg2_sub_col.color
+    //     } else {
+    //         bus.cgram[0]
+    //     };
 
-        let cmath_en = match main_layer {
-            ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
-            ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
-            ColorLayer::Bg3 => bus.ppu_regs.bg_settings[2].cmath_en,
-            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.palette >= 4,
-            ColorLayer::Back => bus.ppu_regs.back_cmath_en,
-            _ => unreachable!(), // No other layers considered in Mode 1
-        };
+    //     let cmath_en = match main_layer {
+    //         ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
+    //         ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
+    //         ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.palette >= 4,
+    //         ColorLayer::Back => bus.ppu_regs.back_cmath_en,
+    //         _ => unreachable!(), // No other layers considered in Mode 2
+    //     };
 
-        DotColorData {
-            main_col,
-            sub_col,
-            cmath_en,
-        }
-    }
+    //     DotColorData {
+    //         main_col,
+    //         sub_col,
+    //         cmath_en,
+    //     }
+    // }
 
-    fn bg_mode2_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
-        const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG2_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
-        const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
+    // fn bg_mode3_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
+    //     const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
+    //     const BG2_CGRAM_BASE_ADDR: u8 = 0x00;
+    //     const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp8;
+    //     const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
 
-        let (obj_main_col, obj_sub_col) = self.obj_layer_colors(bus);
-        let (bg1_main_col, bg1_sub_col) = self.bg_layer_colors(
-            bus,
-            BG1_COL_DEPTH,
-            BG1_CGRAM_BASE_ADDR,
-            ColorLayer::Bg1
-        );
-        let (bg2_main_col, bg2_sub_col) = self.bg_layer_colors(
-            bus,
-            BG2_COL_DEPTH,
-            BG2_CGRAM_BASE_ADDR,
-            ColorLayer::Bg2
-        );
+    //     let (obj_main_col, obj_sub_col) = self.obj_layer_colors(bus);
+    //     let (bg1_main_col, bg1_sub_col) = self.bg_layer_colors(
+    //         bus,
+    //         BG1_COL_DEPTH,
+    //         BG1_CGRAM_BASE_ADDR,
+    //         ColorLayer::Bg1
+    //     );
+    //     let (bg2_main_col, bg2_sub_col) = self.bg_layer_colors(
+    //         bus,
+    //         BG2_COL_DEPTH,
+    //         BG2_CGRAM_BASE_ADDR,
+    //         ColorLayer::Bg2
+    //     );
 
-        let (main_col, main_layer) = if obj_main_col.priority == 3 && !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if bg1_main_col.priority != 0 && !bg1_main_col.transparent {
-            (bg1_main_col.color, ColorLayer::Bg1)
-        } else if obj_main_col.priority == 2 && !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if bg2_main_col.priority != 0 && !bg2_main_col.transparent {
-            (bg2_main_col.color, ColorLayer::Bg2)
-        } else if obj_main_col.priority == 1 && !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if !bg1_main_col.transparent {
-            (bg1_main_col.color, ColorLayer::Bg1)
-        } else if !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if !bg2_main_col.transparent {
-            (bg2_main_col.color, ColorLayer::Bg2)
-        } else {
-            (bus.cgram[0], ColorLayer::Back)
-        };
+    //     let (main_col, main_layer) = if obj_main_col.priority == 3 && !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if bg1_main_col.priority != 0 && !bg1_main_col.transparent {
+    //         (bg1_main_col.color, ColorLayer::Bg1)
+    //     } else if obj_main_col.priority == 2 && !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if bg2_main_col.priority != 0 && !bg2_main_col.transparent {
+    //         (bg2_main_col.color, ColorLayer::Bg2)
+    //     } else if obj_main_col.priority == 1 && !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if !bg1_main_col.transparent {
+    //         (bg1_main_col.color, ColorLayer::Bg1)
+    //     } else if !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if !bg2_main_col.transparent {
+    //         (bg2_main_col.color, ColorLayer::Bg2)
+    //     } else {
+    //         (bus.cgram[0], ColorLayer::Back)
+    //     };
 
-        let sub_col = if obj_sub_col.priority == 3 && !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if bg1_sub_col.priority != 0 && !bg1_sub_col.transparent {
-            bg1_sub_col.color
-        } else if obj_sub_col.priority == 2 && !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if bg2_sub_col.priority != 0 && !bg2_sub_col.transparent {
-            bg2_sub_col.color
-        } else if obj_sub_col.priority == 1 && !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if !bg1_sub_col.transparent {
-            bg1_sub_col.color
-        } else if !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if !bg2_sub_col.transparent {
-            bg2_sub_col.color
-        } else {
-            bus.cgram[0]
-        };
+    //     let sub_col = if obj_sub_col.priority == 3 && !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if bg1_sub_col.priority != 0 && !bg1_sub_col.transparent {
+    //         bg1_sub_col.color
+    //     } else if obj_sub_col.priority == 2 && !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if bg2_sub_col.priority != 0 && !bg2_sub_col.transparent {
+    //         bg2_sub_col.color
+    //     } else if obj_sub_col.priority == 1 && !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if !bg1_sub_col.transparent {
+    //         bg1_sub_col.color
+    //     } else if !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if !bg2_sub_col.transparent {
+    //         bg2_sub_col.color
+    //     } else {
+    //         bus.cgram[0]
+    //     };
 
-        let cmath_en = match main_layer {
-            ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
-            ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
-            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.palette >= 4,
-            ColorLayer::Back => bus.ppu_regs.back_cmath_en,
-            _ => unreachable!(), // No other layers considered in Mode 2
-        };
+    //     let cmath_en = match main_layer {
+    //         ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
+    //         ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
+    //         ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.palette >= 4,
+    //         ColorLayer::Back => bus.ppu_regs.back_cmath_en,
+    //         _ => unreachable!(), // No other layers considered in Mode 2
+    //     };
 
-        DotColorData {
-            main_col,
-            sub_col,
-            cmath_en,
-        }
-    }
+    //     DotColorData {
+    //         main_col,
+    //         sub_col,
+    //         cmath_en,
+    //     }
+    // }
 
-    fn bg_mode3_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
-        const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG2_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp8;
-        const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
+    // fn bg_mode4_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
+    //     const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
+    //     const BG2_CGRAM_BASE_ADDR: u8 = 0x00;
+    //     const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp8;
+    //     const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
 
-        let (obj_main_col, obj_sub_col) = self.obj_layer_colors(bus);
-        let (bg1_main_col, bg1_sub_col) = self.bg_layer_colors(
-            bus,
-            BG1_COL_DEPTH,
-            BG1_CGRAM_BASE_ADDR,
-            ColorLayer::Bg1
-        );
-        let (bg2_main_col, bg2_sub_col) = self.bg_layer_colors(
-            bus,
-            BG2_COL_DEPTH,
-            BG2_CGRAM_BASE_ADDR,
-            ColorLayer::Bg2
-        );
+    //     let (obj_main_col, obj_sub_col) = self.obj_layer_colors(bus);
+    //     let (bg1_main_col, bg1_sub_col) = self.bg_layer_colors(
+    //         bus,
+    //         BG1_COL_DEPTH,
+    //         BG1_CGRAM_BASE_ADDR,
+    //         ColorLayer::Bg1
+    //     );
+    //     let (bg2_main_col, bg2_sub_col) = self.bg_layer_colors(
+    //         bus,
+    //         BG2_COL_DEPTH,
+    //         BG2_CGRAM_BASE_ADDR,
+    //         ColorLayer::Bg2
+    //     );
 
-        let (main_col, main_layer) = if obj_main_col.priority == 3 && !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if bg1_main_col.priority != 0 && !bg1_main_col.transparent {
-            (bg1_main_col.color, ColorLayer::Bg1)
-        } else if obj_main_col.priority == 2 && !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if bg2_main_col.priority != 0 && !bg2_main_col.transparent {
-            (bg2_main_col.color, ColorLayer::Bg2)
-        } else if obj_main_col.priority == 1 && !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if !bg1_main_col.transparent {
-            (bg1_main_col.color, ColorLayer::Bg1)
-        } else if !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if !bg2_main_col.transparent {
-            (bg2_main_col.color, ColorLayer::Bg2)
-        } else {
-            (bus.cgram[0], ColorLayer::Back)
-        };
+    //     let (main_col, main_layer) = if obj_main_col.priority == 3 && !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if bg1_main_col.priority != 0 && !bg1_main_col.transparent {
+    //         (bg1_main_col.color, ColorLayer::Bg1)
+    //     } else if obj_main_col.priority == 2 && !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if bg2_main_col.priority != 0 && !bg2_main_col.transparent {
+    //         (bg2_main_col.color, ColorLayer::Bg2)
+    //     } else if obj_main_col.priority == 1 && !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if !bg1_main_col.transparent {
+    //         (bg1_main_col.color, ColorLayer::Bg1)
+    //     } else if !obj_main_col.transparent {
+    //         (obj_main_col.color, ColorLayer::Obj)
+    //     } else if !bg2_main_col.transparent {
+    //         (bg2_main_col.color, ColorLayer::Bg2)
+    //     } else {
+    //         (bus.cgram[0], ColorLayer::Back)
+    //     };
 
-        let sub_col = if obj_sub_col.priority == 3 && !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if bg1_sub_col.priority != 0 && !bg1_sub_col.transparent {
-            bg1_sub_col.color
-        } else if obj_sub_col.priority == 2 && !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if bg2_sub_col.priority != 0 && !bg2_sub_col.transparent {
-            bg2_sub_col.color
-        } else if obj_sub_col.priority == 1 && !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if !bg1_sub_col.transparent {
-            bg1_sub_col.color
-        } else if !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if !bg2_sub_col.transparent {
-            bg2_sub_col.color
-        } else {
-            bus.cgram[0]
-        };
+    //     let sub_col = if obj_sub_col.priority == 3 && !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if bg1_sub_col.priority != 0 && !bg1_sub_col.transparent {
+    //         bg1_sub_col.color
+    //     } else if obj_sub_col.priority == 2 && !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if bg2_sub_col.priority != 0 && !bg2_sub_col.transparent {
+    //         bg2_sub_col.color
+    //     } else if obj_sub_col.priority == 1 && !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if !bg1_sub_col.transparent {
+    //         bg1_sub_col.color
+    //     } else if !obj_sub_col.transparent {
+    //         obj_sub_col.color
+    //     } else if !bg2_sub_col.transparent {
+    //         bg2_sub_col.color
+    //     } else {
+    //         bus.cgram[0]
+    //     };
 
-        let cmath_en = match main_layer {
-            ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
-            ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
-            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.palette >= 4,
-            ColorLayer::Back => bus.ppu_regs.back_cmath_en,
-            _ => unreachable!(), // No other layers considered in Mode 2
-        };
+    //     let cmath_en = match main_layer {
+    //         ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
+    //         ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
+    //         ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.palette >= 4,
+    //         ColorLayer::Back => bus.ppu_regs.back_cmath_en,
+    //         _ => unreachable!(), // No other layers considered in Mode 2
+    //     };
 
-        DotColorData {
-            main_col,
-            sub_col,
-            cmath_en,
-        }
-    }
+    //     DotColorData {
+    //         main_col,
+    //         sub_col,
+    //         cmath_en,
+    //     }
+    // }
 
-    fn bg_mode4_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
-        const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG2_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp8;
-        const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
+    // fn bg_mode5_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
+    //     todo!()
+    // }
 
-        let (obj_main_col, obj_sub_col) = self.obj_layer_colors(bus);
-        let (bg1_main_col, bg1_sub_col) = self.bg_layer_colors(
-            bus,
-            BG1_COL_DEPTH,
-            BG1_CGRAM_BASE_ADDR,
-            ColorLayer::Bg1
-        );
-        let (bg2_main_col, bg2_sub_col) = self.bg_layer_colors(
-            bus,
-            BG2_COL_DEPTH,
-            BG2_CGRAM_BASE_ADDR,
-            ColorLayer::Bg2
-        );
+    // fn bg_mode6_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
+    //     todo!()
+    // }
 
-        let (main_col, main_layer) = if obj_main_col.priority == 3 && !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if bg1_main_col.priority != 0 && !bg1_main_col.transparent {
-            (bg1_main_col.color, ColorLayer::Bg1)
-        } else if obj_main_col.priority == 2 && !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if bg2_main_col.priority != 0 && !bg2_main_col.transparent {
-            (bg2_main_col.color, ColorLayer::Bg2)
-        } else if obj_main_col.priority == 1 && !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if !bg1_main_col.transparent {
-            (bg1_main_col.color, ColorLayer::Bg1)
-        } else if !obj_main_col.transparent {
-            (obj_main_col.color, ColorLayer::Obj)
-        } else if !bg2_main_col.transparent {
-            (bg2_main_col.color, ColorLayer::Bg2)
-        } else {
-            (bus.cgram[0], ColorLayer::Back)
-        };
-
-        let sub_col = if obj_sub_col.priority == 3 && !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if bg1_sub_col.priority != 0 && !bg1_sub_col.transparent {
-            bg1_sub_col.color
-        } else if obj_sub_col.priority == 2 && !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if bg2_sub_col.priority != 0 && !bg2_sub_col.transparent {
-            bg2_sub_col.color
-        } else if obj_sub_col.priority == 1 && !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if !bg1_sub_col.transparent {
-            bg1_sub_col.color
-        } else if !obj_sub_col.transparent {
-            obj_sub_col.color
-        } else if !bg2_sub_col.transparent {
-            bg2_sub_col.color
-        } else {
-            bus.cgram[0]
-        };
-
-        let cmath_en = match main_layer {
-            ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
-            ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
-            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.palette >= 4,
-            ColorLayer::Back => bus.ppu_regs.back_cmath_en,
-            _ => unreachable!(), // No other layers considered in Mode 2
-        };
-
-        DotColorData {
-            main_col,
-            sub_col,
-            cmath_en,
-        }
-    }
-
-    fn bg_mode5_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
-        todo!()
-    }
-
-    fn bg_mode6_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
-        todo!()
-    }
-
-    fn bg_mode7_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
-        todo!()
-    }
+    // fn bg_mode7_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
+    //     todo!()
+    // }
 
     fn bg_col<H: DebugHarness>(
         &mut self,
@@ -1163,7 +1213,7 @@ impl Ppu5C7x {
         }
     }
 
-    fn apply_mosaic(x: usize, y: usize, m: usize) -> (usize, usize) {
+    fn apply_mosaic(x: u16, y: u16, m: u16) -> (u16, u16) {
         if m == 0 {
             return (x, y);
         }

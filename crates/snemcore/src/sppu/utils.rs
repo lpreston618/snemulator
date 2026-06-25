@@ -59,9 +59,9 @@ const fn generate_morton_lookup() -> [u16; 256] {
 const MORTON_LOOKUP: [u16; 256] = generate_morton_lookup();
 
 pub fn interleave_2bpp(bp10: u16) -> u16 {
-    let bp1 = (bp10 >> 8) as u8;
-    let bp0 = bp10 as u8;
-    fast_interleave_u8(bp0 , bp1)
+    let bp1 = (bp10 >> 8) as u8; // 11111111
+    let bp0 = bp10 as u8;        // 00000000
+    fast_interleave_u8(bp0 , bp1) // 10101010 10101010
 }
 
 pub fn interleave_4bpp(bp10: u16, bp32: u16) -> u32 {

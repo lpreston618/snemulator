@@ -33,7 +33,7 @@ pub enum TileSize {
 }
 
 impl TileSize {
-    pub fn raw_size(self) -> (usize, usize) {
+    pub fn raw_size(self) -> (u16, u16) {
         match self {
             TileSize::Size8x8 => (8, 8),
             TileSize::Size16x16 => (16, 16)
@@ -84,6 +84,16 @@ pub enum ColorDepth {
     Bpp4,
     Bpp8,
     // Direct,
+}
+
+impl ColorDepth {
+    pub fn bits_per_pixel(self) -> u16 {
+        match self {
+            ColorDepth::Bpp2 => 2,
+            ColorDepth::Bpp4 => 4,
+            ColorDepth::Bpp8 => 8,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
@@ -255,7 +265,13 @@ pub struct ObjColorData {
     pub color: Color,
     pub palette: u8,
     pub priority: u8,
-    pub transparent: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct BgColorData {
+    pub color: Color,
+    pub palette: u8,
+    pub priority: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
