@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{get_bit_n, sppu::Color};
+use crate::{get_bit_n, sppu::{Color, ObjectSize::Size8x8}};
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 pub enum ObjectSizeSelect {
@@ -30,6 +30,15 @@ pub enum TileSize {
     #[default]
     Size8x8,
     Size16x16,
+}
+
+impl TileSize {
+    pub fn raw_size(self) -> (usize, usize) {
+        match self {
+            TileSize::Size8x8 => (8, 8),
+            TileSize::Size16x16 => (16, 16)
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -261,6 +270,26 @@ pub struct TileData {
     pub tile_row: u8,
     pub tile_col: u8,
     pub tile_size: TileSize,
+}
+
+pub struct TilemapEntry {
+    pub flip_y: bool,
+    pub flip_x: bool,
+    pub priority: bool,
+    pub palette: u8,
+    pub tile_num: u16,
+}
+
+impl TilemapEntry {
+    pub fn from_word(w: u16) -> Self {
+        Self {
+            flip_y: get_bit_n!(w, 15),
+            flip_x: get_bit_n!(w, 14),
+            priority: get_bit_n!(w, 13),
+            palette: ((w >> 10) & 0x7) as u8,
+            tile_num: w & 0x3FF,
+        }
+    }
 }
 
 #[derive(Default, Clone, Copy, Debug)]

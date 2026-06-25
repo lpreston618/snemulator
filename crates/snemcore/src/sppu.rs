@@ -275,14 +275,14 @@ impl Ppu5C7x {
 
     fn draw_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
         match bus.ppu_regs.bg_mode {
-            BgMode::Mode0 | BgMode::Mode1 | BgMode::Mode2 | BgMode::Mode3 | BgMode::Mode4 => {
-                self.draw_dot_modes_0to4(bus)
-            }
-
-            // BgMode::Mode5 | BgMode::Mode6 => self.draw_dot_modes_5to6(bus),
-
-            // BgMode::Mode7 => self.bg_mode7_dot(self.x, self.y, spr_col),
-            _ => {}
+            BgMode::Mode0 => self.draw_mode0_dot(bus),
+            BgMode::Mode1 => self.draw_mode1_dot(bus),
+            BgMode::Mode2 => self.draw_mode2_dot(bus),
+            BgMode::Mode3 => self.draw_mode3_dot(bus),
+            BgMode::Mode4 => self.draw_mode4_dot(bus),
+            BgMode::Mode5 => self.draw_mode5_dot(bus),
+            BgMode::Mode6 => self.draw_mode6_dot(bus),
+            BgMode::Mode7 => self.draw_mode7_dot(bus),
         };
     }
 
@@ -291,6 +291,66 @@ impl Ppu5C7x {
         frame_buffer[pixel_idx + 1] = col.g;
         frame_buffer[pixel_idx + 2] = col.b;
         frame_buffer[pixel_idx + 3] = 255;
+    }
+
+    fn draw_mode0_dot<H: DebugHarness>(&self, bus: &mut PpuBus<H>) {
+        let bg = &bus.ppu_regs.bg_settings[0];
+
+        let shifted_x = (self.x + bg.scroll_x as usize) & 0x3FF;
+        let shifted_y = (self.y + bg.scroll_y as usize) & 0x3FF;
+
+        let (playfield_x, playfield_y) = if bg.mosaic_en {
+            Self::apply_mosaic(shifted_x, shifted_y, bus.ppu_regs.mosaic_size as usize)
+        } else {
+            (shifted_x, shifted_y)
+        };
+        
+        let (size_x, size_y) = bg.chr_size.raw_size();
+        let tile_x = playfield_x / size_x;
+        let tile_y = playfield_y / size_y;
+
+        // Calculate offset into VRAM to find the tilemap given playfield position
+        // and background settings.
+        let tilemap_offset = match (bg.tilemap_cnt_x, bg.tilemap_cnt_y) {
+            (TilemapCount::One, TilemapCount::One) => 0,
+            (TilemapCount::One, TilemapCount::Two) => {
+                (tile_y & 0x20) << 5
+            },
+            (TilemapCount::Two, TilemapCount::One) => {
+                (tile_x & 0x20) << 5
+            },
+            (TilemapCount::Two, TilemapCount::Two) => {
+                ((tile_y & 0x20) << 6) + (tile_x & 0x20) << 5
+            }
+        };
+
+        let tile_addr = bg.tilemap_base_addr as usize + ((tile_y & 0x1F) << 5) + (tile_x & 0x1F) + tilemap_offset;
+        
+        let tile_data = TilemapEntry::from_word(bus.vram[tile_addr]);
+
+        let chr_addr = bg.chr_base_addr + tile_data.tile_num + 8 * 4; // using 4bpp
+    }
+
+    fn draw_mode1_dot<H: DebugHarness>(&self, bus: &mut PpuBus<H>) {
+        
+    }
+    fn draw_mode2_dot<H: DebugHarness>(&self, bus: &mut PpuBus<H>) {
+        
+    }
+    fn draw_mode3_dot<H: DebugHarness>(&self, bus: &mut PpuBus<H>) {
+        
+    }
+    fn draw_mode4_dot<H: DebugHarness>(&self, bus: &mut PpuBus<H>) {
+        
+    }
+    fn draw_mode5_dot<H: DebugHarness>(&self, bus: &mut PpuBus<H>) {
+        
+    }
+    fn draw_mode6_dot<H: DebugHarness>(&self, bus: &mut PpuBus<H>) {
+        
+    }
+    fn draw_mode7_dot<H: DebugHarness>(&self, bus: &mut PpuBus<H>) {
+        
     }
 
     fn draw_dot_modes_0to4<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
@@ -1108,8 +1168,9 @@ impl Ppu5C7x {
             return (x, y);
         }
 
+        // If m+1 is power of 2
         if (m + 1) & m == 0 {
-            return (x & !m, y & !m);
+            return (x & !m, y & !m); // Same as x - x & m, which is same as x - (x % (m+1)) for powers of 2
         }
 
         (
