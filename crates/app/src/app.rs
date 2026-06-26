@@ -77,7 +77,7 @@ pub enum AppAction {
     #[cfg(feature = "debug")]
     CloseDebug,
     #[cfg(feature = "debug")]
-    OpenDebug,
+    OpenDebug(Option<PathBuf>),
 }
 
 pub struct RomMetadata {
@@ -360,10 +360,17 @@ impl SnemulatorApp {
             );
 
             match app_action {
-                AppAction::Continue => {}
-                AppAction::Exit => break 'running,
-                _ => {
-                    self.do_action(app_action);
+                None => {}
+                Some(AppAction::Exit) => {
+                    #[cfg(feature = "debug")]
+                    {
+                        self.debug_window = None;
+                    }
+                
+                    break 'running
+                },
+                Some(action) => {
+                    self.do_action(action);
                 }
             }
 
@@ -598,7 +605,15 @@ impl SnemulatorApp {
             AppAction::ToggleFullscreen => self.toggle_fullscreen(),
             AppAction::TogglePause => self.toggle_pause(),
             #[cfg(feature = "debug")]
-            AppAction::OpenDebug => self.show_debug(),
+            AppAction::OpenDebug(rom) => {
+                if let Some(rom_path) = rom {
+                    if let Err(e) = self.try_load_rom_from_path(&rom_path) {
+                        log::warn!("Could not load rom '{}': {e}", rom_path.to_string_lossy());
+                    }
+                }
+
+                self.show_debug()
+            },
             #[cfg(feature = "debug")]
             AppAction::CloseDebug => { self.debug_window = None; }
             

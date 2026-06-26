@@ -49,6 +49,10 @@ pub struct Ppu5C7x {
     bg2_extra_data: [Option<BgColorData>; VISIBLE_DOTS_PER_SCANLINE],
     scanline_sprite_data: [Option<ObjColorData>; VISIBLE_DOTS_PER_SCANLINE],
 
+    last_main_screen_color: Color,
+    last_sub_screen_color: Color,
+    last_main_screen_pixel_did_cmath: bool,
+
     /// Number of master clocks until the next dot
     pub clocks: usize,
 }
@@ -65,9 +69,14 @@ impl Ppu5C7x {
             in_w2: false,
             scanline_sprites: Vec::new(),
             bg_tile_cache: std::array::repeat(TileRowCache::new()),
-            scanline_bg_data: [[None; VISIBLE_DOTS_PER_SCANLINE]; 4],
             scanline_bg_counters: [0; 4],
+            scanline_bg_data: [[None; VISIBLE_DOTS_PER_SCANLINE]; 4],
+            bg1_extra_data: [None; VISIBLE_DOTS_PER_SCANLINE],
+            bg2_extra_data: [None; VISIBLE_DOTS_PER_SCANLINE],
             scanline_sprite_data: [None; VISIBLE_DOTS_PER_SCANLINE],
+            last_main_screen_color: Color::BLACK,
+            last_sub_screen_color: Color::BLACK,
+            last_main_screen_pixel_did_cmath: false,
             clocks: 0,
         };
 
@@ -98,7 +107,7 @@ impl Ppu5C7x {
             mosaic_size: regs.mosaic_size,
             bg_settings: regs.bg_settings.clone(),
             obj_settings: regs.obj_settings.clone(),
-            col_settings: regs.col_settings.clone(),
+            col_window: regs.col_window.clone(),
             m7_latch: regs.m7_latch,
             bg_offset_latch: regs.bg_offset_latch,
             bg_offset_x_latch: regs.bg_offset_x_latch,
@@ -181,7 +190,7 @@ impl Ppu5C7x {
         regs.mosaic_size = state.mosaic_size;
         regs.bg_settings = state.bg_settings.clone();
         regs.obj_settings = state.obj_settings.clone();
-        regs.col_settings = state.col_settings.clone();
+        regs.col_window = state.col_window.clone();
         regs.m7_latch = state.m7_latch;
         regs.bg_offset_latch = state.bg_offset_latch;
         regs.bg_offset_x_latch = state.bg_offset_x_latch;
@@ -294,17 +303,112 @@ impl Ppu5C7x {
         };
     }
 
-    fn set_pixel(frame_buffer: &mut [u8], pixel_idx: usize, col: Color) {
-        frame_buffer[pixel_idx + 0] = col.r;
-        frame_buffer[pixel_idx + 1] = col.g;
-        frame_buffer[pixel_idx + 2] = col.b;
-        frame_buffer[pixel_idx + 3] = 255;
+    #[inline]
+    fn set_pixel<H: DebugHarness>(
+        &self, 
+        bus: &mut PpuBus<H>, 
+        main_color: Color,
+        sub_color: Color,
+        cmath_en: bool,
+    ) {
+        const BYTES_PER_PIXEL: usize = 4;
+        const PIXELS_PER_ROW: usize = 512;
+        
+        let true_hi_res = matches!(bus.ppu_regs.bg_mode, BgMode::Mode5 | BgMode::Mode6);
+        let hi_res = bus.ppu_regs.hi_res_en || true_hi_res;
+        let interlace = bus.ppu_regs.screen_interlace_en;
+        let x = self.x;
+        let y = self.y;
+        let field = self.frame & 1;
+
+        let main_color = if cmath_en {
+            self.apply_cmath(bus, main_color, sub_color)
+        } else {
+            main_color
+        };
+        let sub_color = if hi_res {
+            if self.last_main_screen_pixel_did_cmath {
+                if self.last_sub_screen_color == bus.ppu_regs.fixed_color {
+                    self.apply_cmath(bus, sub_color, bus.ppu_regs.fixed_color)
+                } else {
+                    self.apply_cmath(bus, sub_color, self.last_main_screen_color)
+                }
+            } else {
+                sub_color
+            }
+        } else {
+            sub_color
+        };
+
+        let main_color = Self::apply_brightness(main_color, bus.ppu_regs.screen_brightness);
+        let sub_color  = Self::apply_brightness(sub_color,  bus.ppu_regs.screen_brightness);
+
+        if interlace && hi_res {
+            let row = 2 * y + field;
+            let col = 2 * x;
+            let idx1 = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * row) + (col + 0));
+            let idx2 = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * row) + (col + 1));
+
+            bus.frame_buffer[idx1..idx1+4].copy_from_slice(&sub_color.to_rgba_bytes());
+            bus.frame_buffer[idx2..idx2+4].copy_from_slice(&main_color.to_rgba_bytes());
+        } else if interlace {
+            let row = 2 * y + field;
+            let col = 2 * x;
+            let idx1 = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * row) + (col + 0));
+            let idx2 = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * row) + (col + 1));
+
+            bus.frame_buffer[idx1..idx1+4].copy_from_slice(&main_color.to_rgba_bytes());
+            bus.frame_buffer[idx2..idx2+4].copy_from_slice(&main_color.to_rgba_bytes());
+        } else if hi_res {
+            let row = 2 * y;
+            let col = 2 * x;
+            let sub1  = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * (row + 0)) + (col + 0));
+            let sub2  = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * (row + 1)) + (col + 0));
+            let main1 = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * (row + 0)) + (col + 1));
+            let main2 = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * (row + 1)) + (col + 1));
+
+            bus.frame_buffer[sub1..sub1+4].copy_from_slice(&sub_color.to_rgba_bytes());
+            bus.frame_buffer[sub2..sub2+4].copy_from_slice(&sub_color.to_rgba_bytes());
+            bus.frame_buffer[main1..main1+4].copy_from_slice(&main_color.to_rgba_bytes());
+            bus.frame_buffer[main2..main2+4].copy_from_slice(&main_color.to_rgba_bytes());
+        } else {
+            let row = 2 * y;
+            let col = 2 * x;
+            let idx1 = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * (row + 0)) + (col + 0));
+            let idx2 = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * (row + 0)) + (col + 1));
+            let idx3 = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * (row + 1)) + (col + 0));
+            let idx4 = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * (row + 1)) + (col + 1));
+
+            bus.frame_buffer[idx1..idx1+4].copy_from_slice(&main_color.to_rgba_bytes());
+            bus.frame_buffer[idx2..idx2+4].copy_from_slice(&main_color.to_rgba_bytes());
+            bus.frame_buffer[idx3..idx3+4].copy_from_slice(&main_color.to_rgba_bytes());
+            bus.frame_buffer[idx4..idx4+4].copy_from_slice(&main_color.to_rgba_bytes());
+        }
     }
 
     fn draw_mode0_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
+        const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
+        const BG2_CGRAM_BASE_ADDR: u8 = 0x20;
+        const BG3_CGRAM_BASE_ADDR: u8 = 0x40;
+        const BG4_CGRAM_BASE_ADDR: u8 = 0x60;
+        const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
+        const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
+        const BG3_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
+        const BG4_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
+
         for bg in 0..4 {
             if self.x == self.scanline_bg_counters[bg] {
-                let dots_rendered = self.render_tile(bus, bg);
+                let cgram_base = [
+                    BG1_CGRAM_BASE_ADDR, BG2_CGRAM_BASE_ADDR, 
+                    BG3_CGRAM_BASE_ADDR, BG4_CGRAM_BASE_ADDR
+                ][bg];
+                
+                let color_depth = [
+                    BG1_COL_DEPTH, BG2_COL_DEPTH, 
+                    BG3_COL_DEPTH, BG4_COL_DEPTH,
+                ][bg];
+
+                let dots_rendered = self.render_tile(bus, bg, cgram_base, color_depth);
 
                 debug_assert!(dots_rendered > 0);
 
@@ -316,6 +420,18 @@ impl Ppu5C7x {
         let bg_main_en: [bool; 4] = std::array::from_fn(|bg| {
             bus.ppu_regs.bg_settings[bg].main_en && Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.bg_settings[bg].window)
         });
+
+        let obj_sub_en = bus.ppu_regs.obj_settings.sub_en && Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.obj_settings.window);
+        let bg_sub_en: [bool; 4] = std::array::from_fn(|bg| {
+            bus.ppu_regs.bg_settings[bg].sub_en && Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.bg_settings[bg].window)
+        });
+
+        let (main_color_en, sub_color_en) = Self::color_window_signals(
+            self.in_w1, self.in_w2,
+            &bus.ppu_regs.col_window,
+            bus.ppu_regs.col_win_main_region,
+            bus.ppu_regs.col_win_sub_region,
+        );
 
         let obj_main_col = if obj_main_en { self.scanline_sprite_data[self.x] } else { None };
         let bg1_main_col = if bg_main_en[0] { self.scanline_bg_data[0][self.x] } else { None };
@@ -331,6 +447,31 @@ impl Ppu5C7x {
             bg4_main_col,
         ).unwrap_or((bus.cgram[0], ColorLayer::Back));
 
+        let main_col = if main_color_en { Color::BLACK } else { main_col };
+
+        let obj_sub_col = if obj_sub_en { self.scanline_sprite_data[self.x] } else { None };
+        let bg1_sub_col = if bg_sub_en[0] { self.scanline_bg_data[0][self.x] } else { None };
+        let bg2_sub_col = if bg_sub_en[1] { self.scanline_bg_data[1][self.x] } else { None };
+        let bg3_sub_col = if bg_sub_en[2] { self.scanline_bg_data[2][self.x] } else { None };
+        let bg4_sub_col = if bg_sub_en[3] { self.scanline_bg_data[3][self.x] } else { None };
+
+        let sub_col = if bus.ppu_regs.sub_color_fixed {
+            bus.ppu_regs.fixed_color
+        } else {
+            Self::bg_mode0_choose_priority_color(
+                obj_sub_col, 
+                bg1_sub_col, 
+                bg2_sub_col, 
+                bg3_sub_col, 
+                bg4_sub_col
+            ).map_or(
+                bus.ppu_regs.fixed_color, 
+                |pair| pair.0
+            )
+        };
+
+        let sub_col = if sub_color_en { bus.cgram[0] } else { sub_col };
+
         let cmath_en = match main_col_layer {
             ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
             ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
@@ -340,19 +481,115 @@ impl Ppu5C7x {
             ColorLayer::Back => bus.ppu_regs.back_cmath_en,
         };
 
-        // interlace (modes 0-4 & 7): Display on field 1 for even frames, field 2 for odd frames. Image looks shakey.
-        //   Implementation: Draw to every other line of frame buf, use frame # parity to choose field
-        // interlace (modes 5 & 6): 
+        self.set_pixel(
+            bus,
+            main_col,
+            sub_col,
+            cmath_en,
+        );
 
-        // psuedo-hi-res, hi-res (bg_mode == 5 || bg_mode == 6), interlace, obj-interlace
-        if bus.ppu_regs.hi_res_en {
+        self.last_main_screen_color = main_col;
+        self.last_sub_screen_color = sub_col;
+        self.last_main_screen_pixel_did_cmath = cmath_en;
+    }
 
+    fn draw_mode1_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
+        const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
+        const BG2_CGRAM_BASE_ADDR: u8 = 0x00;
+        const BG3_CGRAM_BASE_ADDR: u8 = 0x00;
+        const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
+        const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
+        const BG3_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
+
+        for (bg, (cgram_base, color_depth)) in [
+            (BG1_CGRAM_BASE_ADDR, BG1_COL_DEPTH),
+            (BG2_CGRAM_BASE_ADDR, BG2_COL_DEPTH),
+            (BG3_CGRAM_BASE_ADDR, BG3_COL_DEPTH),
+        ].into_iter().enumerate() {
+            if self.x == self.scanline_bg_counters[bg] {
+                let dots_rendered = self.render_tile(bus, bg, cgram_base, color_depth);
+
+                debug_assert!(dots_rendered > 0, "{} {:?} {} {}", bg, bus.ppu_regs.bg_mode, self.x, self.y);
+
+                self.scanline_bg_counters[bg] += dots_rendered;
+            }
         }
-    }
 
-    fn draw_mode1_dot<H: DebugHarness>(&self, bus: &mut PpuBus<H>) {
-        
+        let obj_main_en = bus.ppu_regs.obj_settings.main_en && !Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.obj_settings.window);
+        let bg_main_en: [bool; 3] = std::array::from_fn(|bg| {
+            bus.ppu_regs.bg_settings[bg].main_en && !Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.bg_settings[bg].window)
+        });
+
+        let obj_sub_en = bus.ppu_regs.obj_settings.sub_en && !Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.obj_settings.window);
+        let bg_sub_en: [bool; 3] = std::array::from_fn(|bg| {
+            bus.ppu_regs.bg_settings[bg].sub_en && !Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.bg_settings[bg].window)
+        });
+
+        let (disable_main_col, disable_cmath) = Self::color_window_signals(
+            self.in_w1, self.in_w2,
+            &bus.ppu_regs.col_window,
+            bus.ppu_regs.col_win_main_region,
+            bus.ppu_regs.col_win_sub_region,
+        );
+
+        let obj_main_col = if obj_main_en { self.scanline_sprite_data[self.x] } else { None };
+        let bg1_main_col = if bg_main_en[0] { self.scanline_bg_data[0][self.x] } else { None };
+        let bg2_main_col = if bg_main_en[1] { self.scanline_bg_data[1][self.x] } else { None };
+        let bg3_main_col = if bg_main_en[2] { self.scanline_bg_data[2][self.x] } else { None };
+
+        let (main_col, main_col_layer) = Self::bg_mode1_choose_priority_color(
+            obj_main_col,
+            bg1_main_col,
+            bg2_main_col,
+            bg3_main_col,
+            bus.ppu_regs.bg3_mode1_priority,
+        ).unwrap_or((bus.cgram[0], ColorLayer::Back));
+
+        let main_col = if disable_main_col { Color::BLACK } else { main_col };
+
+        let obj_sub_col = if obj_sub_en { self.scanline_sprite_data[self.x] } else { None };
+        let bg1_sub_col = if bg_sub_en[0] { self.scanline_bg_data[0][self.x] } else { None };
+        let bg2_sub_col = if bg_sub_en[1] { self.scanline_bg_data[1][self.x] } else { None };
+        let bg3_sub_col = if bg_sub_en[2] { self.scanline_bg_data[2][self.x] } else { None };
+
+        let sub_col = if bus.ppu_regs.sub_color_fixed {
+            bus.ppu_regs.fixed_color
+        } else {
+            Self::bg_mode1_choose_priority_color(
+                obj_sub_col, 
+                bg1_sub_col, 
+                bg2_sub_col, 
+                bg3_sub_col,
+                bus.ppu_regs.bg3_mode1_priority,
+            ).map_or(
+                bus.ppu_regs.fixed_color, 
+                |pair| pair.0
+            )
+        };
+
+        let sub_col = if disable_cmath { bus.cgram[0] } else { sub_col };
+
+        let cmath_en = match main_col_layer {
+            ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
+            ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
+            ColorLayer::Bg3 => bus.ppu_regs.bg_settings[2].cmath_en,
+            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.unwrap().palette >= 4,
+            ColorLayer::Back => bus.ppu_regs.back_cmath_en,
+            _ => unreachable!(),
+        } && sub_col != bus.cgram[0];
+
+        self.set_pixel(
+            bus,
+            main_col,
+            sub_col,
+            cmath_en,
+        );
+
+        self.last_main_screen_color = main_col;
+        self.last_sub_screen_color = sub_col;
+        self.last_main_screen_pixel_did_cmath = cmath_en;
     }
+    
     fn draw_mode2_dot<H: DebugHarness>(&self, bus: &mut PpuBus<H>) {
         
     }
@@ -373,13 +610,19 @@ impl Ppu5C7x {
     }
 
     /// Renders a tile to a BG scanline buffer. Returns the number of dots rendered.
+    #[inline]
     fn render_tile<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>, bg: usize, cgram_base: u8, col_depth: ColorDepth) -> usize {
         let bpp = col_depth.bits_per_pixel();
 
         let bg_settings = &bus.ppu_regs.bg_settings[bg];
 
-        let shifted_x = (self.x as u16 + bg_settings.scroll_x) & 0x3FF;
-        let shifted_y = (self.y as u16 + bg_settings.scroll_y) & 0x3FF;
+        let scroll_range = match bg_settings.chr_size {
+            ChrSize::Size8x8 => 0x1FF,
+            ChrSize::Size16x16 => 0x3FF,
+        };
+
+        let shifted_x = (self.x as u16 + bg_settings.scroll_x) & scroll_range;
+        let shifted_y = (self.y as u16 + bg_settings.scroll_y) & scroll_range;
     
         let m = bus.ppu_regs.mosaic_size as u16;
 
@@ -390,8 +633,8 @@ impl Ppu5C7x {
         };
         
         let (size_x, size_y) = bg_settings.chr_size.raw_size();
-        let tile_x = playfield_x / size_x;
-        let tile_y = playfield_y / size_y;
+        let tilemap_x = playfield_x / size_x;
+        let tilemap_y = playfield_y / size_y;
         let tile_col = playfield_x % size_x;
         let tile_row = playfield_y % size_y;
 
@@ -400,107 +643,150 @@ impl Ppu5C7x {
         let tilemap_offset = match (bg_settings.tilemap_cnt_x, bg_settings.tilemap_cnt_y) {
             (TilemapCount::One, TilemapCount::One) => 0,
             (TilemapCount::One, TilemapCount::Two) => {
-                (tile_y & 0x20) << 5
+                (tilemap_y & 0x20) << 5
             },
             (TilemapCount::Two, TilemapCount::One) => {
-                (tile_x & 0x20) << 5
+                (tilemap_x & 0x20) << 5
             },
             (TilemapCount::Two, TilemapCount::Two) => {
-                ((tile_y & 0x20) << 6) + (tile_x & 0x20) << 5
+                ((tilemap_y & 0x20) << 6) + ((tilemap_x & 0x20) << 5)
             }
         };
 
-        let tile_addr = bg_settings.tilemap_base_addr + ((tile_y & 0x1F) << 5) + (tile_x & 0x1F) + tilemap_offset;
-        let tile_data = TilemapEntry::from_word(bus.vram[tile_addr as usize]);
+        let tilemap_entry_addr = bg_settings.tilemap_base_addr + ((tilemap_y & 0x1F) << 5) + (tilemap_x & 0x1F) + tilemap_offset;
+        let tilemap_entry = TilemapEntry::from_word(bus.vram[tilemap_entry_addr as usize]);
 
-        let tile_col = if tile_data.flip_x { size_x - tile_col - 1 } else { tile_col };
-        let tile_row = if tile_data.flip_y { size_y - tile_row - 1 } else { tile_row };
+        let tile_col = if tilemap_entry.flip_x { size_x - tile_col - 1 } else { tile_col };
+        let tile_row = if tilemap_entry.flip_y { size_y - tile_row - 1 } else { tile_row };
 
         // tile_number = tile_number + 1 if tile_col >= 8, + 32 if tile_row >= 8
-        let tile_number = tile_data.tile_num + ((tile_row >> 3) << 5) + (tile_col >> 3);
+        let chr_x = tilemap_entry.chr_num & 0x1F;
+        let chr_y = tilemap_entry.chr_num >> 5;
+        let tile_x = (chr_x << (size_x >> 4)) + (tile_col >> 3);
+        let tile_y = (chr_y << (size_y >> 4)) + (tile_row >> 3);
+        let tile_number = (tile_y << (5 + (size_y >> 4))) + tile_x;
         // chr_addr will never be out of range when reading a chr
-        let chr_addr = ((bg_settings.chr_base_addr + tile_number * 8 * (bpp >> 1)) & 0x7FFF) as usize;
+        let tile_addr = ((bg_settings.chr_base_addr + tile_number * 4 * bpp) & 0x7FFF) as usize;
+        let tile_row_addr = tile_addr + (tile_row as usize % 8);
 
         let pal_indices: [u8; 8] = match col_depth {
             ColorDepth::Bpp2 => {
-                let bp10 = bus.vram[chr_addr];
-
-                let interleaved = interleave_2bpp(bp10);
+                let bp10 = bus.vram[tile_row_addr];
 
                 std::array::from_fn(|i| {
-                    ((interleaved >> (2 * i)) & 3) as u8
+                    let bp1 = ((bp10 >> (15 - i)) & 1) as u8;
+                    let bp0 = ((bp10 >> (7 - i)) & 1) as u8;
+                    (bp1 << 1) | bp0
                 })
             }
             ColorDepth::Bpp4 => {
-                let bp10 = bus.vram[chr_addr];
-                let bp32 = bus.vram[chr_addr + 8];
+                let bp10 = bus.vram[tile_row_addr];
+                let bp32 = bus.vram[tile_row_addr + 8];
+                
+                let indices = std::array::from_fn(|i| {
+                    let bp0 = ((bp10 >> ( 7 - i)) & 1) as u8;
+                    let bp1 = ((bp10 >> (15 - i)) & 1) as u8;
+                    let bp2 = ((bp32 >> ( 7 - i)) & 1) as u8;
+                    let bp3 = ((bp32 >> (15 - i)) & 1) as u8;
+                    (bp3 << 3) | (bp2 << 2) | (bp1 << 1) | bp0
+                });
 
-                let interleaved = interleave_4bpp(bp10, bp32);
+                // if bg == 0 && self.x == 0 && self.y >= 216 {
+                //     log::debug!("Colors at ({}, {}): scroll=({}, {}), tmap_base=${:04X}, TMap Cnt: ({:?}, {:?}), TMap Offs={:03X}, TMap: ({}, {}), tmap_entry=${:04X}, chr_base=${:04X}, chr#={}, Tile ({}, {}), tile=${:04X}, tile_row=${:04X}, bp10={:04X}, bp32={:04X}, pal_indices = {:?}",
+                //         self.x, self.y,
+                //         bg_settings.scroll_x, bg_settings.scroll_y,
+                //         bg_settings.tilemap_base_addr,
+                //         bg_settings.tilemap_cnt_x, bg_settings.tilemap_cnt_y,
+                //         tilemap_offset,
+                //         tilemap_x, tilemap_y,
+                //         tilemap_entry_addr,
+                //         bg_settings.chr_base_addr,
+                //         tilemap_entry.chr_num,
+                //         tile_x, tile_y,
+                //         tile_addr,
+                //         tile_row_addr,
+                //         bp10,
+                //         bp32,
+                //         indices, 
+                //     );
+                // }
 
-                std::array::from_fn(|i| {
-                    ((interleaved >> (4 * i)) & 0xF) as u8
-                })
+                indices
             }
             ColorDepth::Bpp8 => {
                 if bus.ppu_regs.use_direct_col {
                     // Store only the row base addr; vram must be read per dot
-                    (chr_addr as u64).to_le_bytes()
+                    (tile_row_addr as u64).to_le_bytes()
                 } else {
-                    let bp10 = bus.vram[chr_addr];
-                    let bp32 = bus.vram[chr_addr + 8];
-                    let bp54 = bus.vram[chr_addr + 16];
-                    let bp76 = bus.vram[chr_addr + 24];
+                    let bp10 = bus.vram[tile_row_addr];
+                    let bp32 = bus.vram[tile_row_addr + 8];
+                    let bp54 = bus.vram[tile_row_addr + 16];
+                    let bp76 = bus.vram[tile_row_addr + 24];
 
-                    let interleaved = interleave_8bpp(bp10, bp32, bp54, bp76);
-
-                    interleaved.to_le_bytes()
+                    std::array::from_fn(|i| {
+                        let bp0 = ((bp10 >> (7 - i)) & 1) as u8;
+                        let bp1 = ((bp10 >> (15 - i)) & 1) as u8;
+                        let bp2 = ((bp32 >> (7 - i)) & 1) as u8;
+                        let bp3 = ((bp32 >> (15 - i)) & 1) as u8;
+                        let bp4 = ((bp54 >> (7 - i)) & 1) as u8;
+                        let bp5 = ((bp54 >> (15 - i)) & 1) as u8;
+                        let bp6 = ((bp76 >> (7 - i)) & 1) as u8;
+                        let bp7 = ((bp76 >> (15 - i)) & 1) as u8;
+                        (bp7 << 7) | (bp6 << 6) | (bp5 << 5) | (bp4 << 4) | (bp3 << 3) | (bp2 << 2) | (bp1 << 1) | bp0
+                    })
                 }
             }
         };
 
         let mut dots_rendered = 0;
 
-        for col in 0..8 {
-            if shifted_x + col >= 256 {
-                continue;
-            }
+        // Cut off the ends of the tile if we are close to the edge of the screen
+        let col_start = if self.x == 0 { bg_settings.scroll_x % 8 } else { 0 };
+        let col_end = if self.x > 256 - 8 { 256 - self.x as u16 } else { 8 };
 
-            let playfield_x = Self::apply_mosaic(shifted_x + col, m);
+        let mut i = 0;
 
-            // When doing mosaic, if the playfield_x < x, then we are rendering a part of a mosaic tile
-            // that is not the first dot in the mosaic tile, so we can grab the color from the prev dot
-            // and repeat it for the whole mosaic tile. We can only do this trick per-scanline, however,
-            // as mosaic may have changed between scanlines. If we are on the first pixel of a mosaic
-            // tile, then playfield_x will be equal to x, so we render the color as normal. Since x is
-            // unsigned, then x == 0 will always cause playfield_x < x to be false, so it is guaranteed
-            // that we will render the first pixel of each scanline as normal.
-            if playfield_x < self.x as u16 {
-                self.scanline_bg_data[bg][self.x] = self.scanline_bg_data[bg][self.x - 1];
+        for col in col_start..col_end {
+            let mosaiced_x = Self::apply_mosaic(shifted_x + col, m);
+
+            let idx = self.x + i as usize;
+            i += 1;
+
+            // TODO: Move this check before the tile recalculation somehow to avoid all of the math.
+            // 
+            // When doing mosaic, if the mosaiced x < scrolled x, then we are rendering a part of a mosaic
+            // tile that is not the first dot in the mosaic tile, so we can grab the color from the prev dot
+            // and repeat it for the whole mosaic tile. We can only do this trick per-scanline, however, as 
+            // mosaic may have changed between scanlines. If we are on the first pixel of a mosaic tile, then
+            // mosaiced_x will be equal to scrolled x, so we render the color as normal. We cannot use this 
+            // trick on the first pixel of the background, obviously, as there is no previous color to extend.
+            if idx > 0 && mosaiced_x < shifted_x + col {
+                self.scanline_bg_data[bg][idx] = self.scanline_bg_data[bg][idx - 1];
 
                 dots_rendered += 1;
 
                 continue;
             }
 
-            let pal_idx = if tile_data.flip_x {
-                pal_indices[col as usize]
-            } else {
+            let pal_idx = if tilemap_entry.flip_x {
                 pal_indices[7 - col as usize]
+            } else {
+                pal_indices[col as usize]
             };
 
             let color = if pal_idx == 0 {
                 None
             } else {
-                let cgram_addr = cgram_base + (tile_data.palette << bpp) + pal_idx;
+                let cgram_addr = cgram_base + (tilemap_entry.palette << bpp) + pal_idx;
 
                 Some(BgColorData {
                     color: bus.cgram[cgram_addr as usize],
-                    palette: tile_data.palette,
-                    priority: tile_data.priority,
+                    palette: tilemap_entry.palette,
+                    priority: tilemap_entry.priority,
                 })
             };
 
-            self.scanline_bg_data[bg][self.x] = color;
+            self.scanline_bg_data[bg][idx] = color;
 
             dots_rendered += 1;
         }
@@ -525,11 +811,9 @@ impl Ppu5C7x {
         let shifted_field = field ^ (bg_settings.scroll_y as usize & 1);
 
         let m = bus.ppu_regs.mosaic_size as u16;
-        let m_x = 2 * m;
-        let m_y = if interlace { 2 * m } else { m };
 
         let (playfield_x, playfield_y) = if bg_settings.mosaic_en {
-            (Self::apply_mosaic(shifted_x, m_x), Self::apply_mosaic(shifted_y, m_y))
+            (Self::apply_mosaic(shifted_x, m), Self::apply_mosaic(shifted_y, m))
         } else {
             (shifted_x, shifted_y)
         };
@@ -540,7 +824,6 @@ impl Ppu5C7x {
         let size_y = if interlace { size_y / 2 } else { size_y };
         let tile_x = playfield_x / size_x;
         let tile_y = playfield_y / size_y;
-        let tile_col = playfield_x % size_x;
         let tile_row = playfield_y % size_y;
 
         // Calculate offset into VRAM to find the tilemap given playfield position
@@ -561,46 +844,51 @@ impl Ppu5C7x {
         let tile_addr = bg_settings.tilemap_base_addr + ((tile_y & 0x1F) << 5) + (tile_x & 0x1F) + tilemap_offset;
         let tile_data = TilemapEntry::from_word(bus.vram[tile_addr as usize]);
 
-        let tile_col = if tile_data.flip_x { size_x - tile_col - 1 } else { tile_col };
         let tile_row = if tile_data.flip_y { size_y - tile_row - 1 } else { tile_row };
 
         // tile_number = tile_number + 1 if tile_col >= 8, +16 if tile_row >= 8
-        let tile_number = tile_data.tile_num + (((tile_row << interlace as u8) >> 3) << 4);
+        let tile_number = tile_data.chr_num + (((tile_row << interlace as u8) >> 3) << 4);
         // chr_addr will never be out of range when reading a chr
         let chr_addr = ((bg_settings.chr_base_addr + tile_number * 16 * (bpp >> 1)) & 0x7FFF) as usize;
+        let chr_addr = if interlace {
+            chr_addr + (2 * tile_row as usize + shifted_field as usize) << (bpp / 2)
+        } else {
+            chr_addr + (tile_row as usize) << (bpp / 2)
+        };
 
-        let (main_pal_indices, sub_pal_indices): ([u8; 8], [u8; 8]) = match col_depth {
+        // Organized as [S, M, S, M, ...] where S = sub color, M = main color
+        let pal_indices: [u8; 16] = match col_depth {
             ColorDepth::Bpp2 => {
-                let offset_into_tile = 2 * tile_row as usize + shifted_field as usize;
-
-                let bp1 = bus.vram[chr_addr + offset_into_tile + 0];
-                let bp0 = bus.vram[chr_addr + offset_into_tile + 8]; // maybe +1?;
-
-                let [bp1_lo, bp1_hi] = bp1.to_le_bytes();
-                let [bp0_lo, bp0_hi] = bp0.to_le_bytes();
-
-                let bp10_hi = u16::from_le_bytes([bp0_hi, bp1_hi]);
-                let bp10_lo = u16::from_le_bytes([bp0_lo, bp1_lo]);
-
-                let interleaved_hi = interleave_2bpp(bp10_hi);
-                let interleaved_lo = interleave_2bpp(bp10_lo);
-
-                (
-                    std::array::from_fn(|i| { ((interleaved_hi >> (2 * i)) & 3) as u8 }),
-                    std::array::from_fn(|i| { ((interleaved_lo >> (2 * i)) & 3) as u8 })
-                )
-            }
-            ColorDepth::Bpp4 => {
-                let bp10 = bus.vram[chr_addr];
-                let bp32 = bus.vram[chr_addr + 8];
-
-                let interleaved = interleave_4bpp(bp10, bp32);
+                let bp1_all = bus.vram[chr_addr + 0];
+                let bp0_all = bus.vram[chr_addr + 8]; // maybe +1 here and tile_row << bpp in final chr_addr calculation?;
 
                 std::array::from_fn(|i| {
-                    ((interleaved >> (4 * i)) & 0xF) as u8
+                    let bp1 = ((bp1_all >> (15 - i)) & 1) as u8;
+                    let bp0 = ((bp0_all >> (15 - i)) & 1) as u8;
+                    (bp1 << 1) | bp0
+                })
+            }
+            ColorDepth::Bpp4 => {
+                let bp1_all = bus.vram[chr_addr + 0];
+                let bp0_all = bus.vram[chr_addr + 8];
+                let bp3_all = bus.vram[chr_addr + 16];
+                let bp2_all = bus.vram[chr_addr + 24];
+
+                std::array::from_fn(|i| {
+                    let bp1 = ((bp1_all >> (15 - i)) & 1) as u8;
+                    let bp0 = ((bp0_all >> (15 - i)) & 1) as u8;
+                    let bp3 = ((bp3_all >> (15 - i)) & 1) as u8;
+                    let bp2 = ((bp2_all >> (15 - i)) & 1) as u8;
+                    (bp3 << 3) | (bp2 << 2) | (bp1 << 1) | bp0
                 })
             }
             _ => unreachable!(),
+        };
+
+        let extra_buffer = if bg == 0 {
+            &mut self.bg1_extra_data
+        } else {
+            &mut self.bg2_extra_data
         };
 
         let mut dots_rendered = 0;
@@ -621,22 +909,27 @@ impl Ppu5C7x {
             // that we will render the first pixel of each scanline as normal.
             if playfield_x < self.x as u16 {
                 self.scanline_bg_data[bg][self.x] = self.scanline_bg_data[bg][self.x - 1];
+                extra_buffer[self.x] = extra_buffer[self.x - 1];
 
                 dots_rendered += 1;
 
                 continue;
             }
 
-            let pal_idx = if tile_data.flip_x {
-                pal_indices[col as usize]
+            let (sub_pal_idx, main_pal_idx) = if tile_data.flip_x {
+                let sub = 2 * col;
+                let main = 2 * col + 1; 
+                (pal_indices[sub as usize], pal_indices[main as usize])
             } else {
-                pal_indices[7 - col as usize]
+                let sub = 14 - 2 * col;
+                let main = 15 - 2 * col;
+                (pal_indices[sub as usize], pal_indices[main as usize])
             };
 
-            let color = if pal_idx == 0 {
+            let sub_color = if sub_pal_idx == 0 {
                 None
             } else {
-                let cgram_addr = cgram_base + (tile_data.palette << bpp) + pal_idx;
+                let cgram_addr = cgram_base + (tile_data.palette << bpp) + sub_pal_idx;
 
                 Some(BgColorData {
                     color: bus.cgram[cgram_addr as usize],
@@ -645,7 +938,20 @@ impl Ppu5C7x {
                 })
             };
 
-            self.scanline_bg_data[bg][self.x] = color;
+            let main_color = if main_pal_idx == 0 {
+                None
+            } else {
+                let cgram_addr = cgram_base + (tile_data.palette << bpp) + main_pal_idx;
+
+                Some(BgColorData {
+                    color: bus.cgram[cgram_addr as usize],
+                    palette: tile_data.palette,
+                    priority: tile_data.priority,
+                })
+            };
+
+            self.scanline_bg_data[bg][self.x] = main_color;
+            extra_buffer[self.x] = sub_color;
 
             dots_rendered += 1;
         }
@@ -689,113 +995,41 @@ impl Ppu5C7x {
         }
     }
 
-    fn draw_dot_modes_0to4<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
-        let dot_col_data = if bus.ppu_regs.in_fblank {
-            DotColorData {
-                main_col: Color::BLACK,
-                sub_col: Color::BLACK,
-                cmath_en: false,
-            }
+    fn bg_mode1_choose_priority_color(
+        obj_col: Option<ObjColorData>,
+        bg1_col: Option<BgColorData>,
+        bg2_col: Option<BgColorData>,
+        bg3_col: Option<BgColorData>,
+        bg3_priority: bool,
+    ) -> Option<(Color, ColorLayer)> {
+        if bg3_col.is_some() && bg3_priority && bg3_col.unwrap().priority {
+            Some((bg3_col.unwrap().color, ColorLayer::Bg3))
+        } else if obj_col.is_some() && obj_col.unwrap().priority == 3 {
+            Some((obj_col.unwrap().color, ColorLayer::Obj))
+        } else if bg1_col.is_some() && bg1_col.unwrap().priority {
+            Some((bg1_col.unwrap().color, ColorLayer::Bg1))
+        } else if bg2_col.is_some() && bg2_col.unwrap().priority {
+            Some((bg2_col.unwrap().color, ColorLayer::Bg2))
+        } else if obj_col.is_some() && obj_col.unwrap().priority == 2 {
+            Some((obj_col.unwrap().color, ColorLayer::Obj))
+        } else if bg1_col.is_some() {
+            Some((bg1_col.unwrap().color, ColorLayer::Bg1))
+        } else if bg2_col.is_some() {
+            Some((bg2_col.unwrap().color, ColorLayer::Bg2))
+        } else if obj_col.is_some() && obj_col.unwrap().priority == 1 {
+            Some((obj_col.unwrap().color, ColorLayer::Obj))
+        } else if bg3_col.is_some() && bg3_col.unwrap().priority {
+            Some((bg3_col.unwrap().color, ColorLayer::Bg3))
+        } else if obj_col.is_some() {
+            Some((obj_col.unwrap().color, ColorLayer::Obj))
+        } else if bg3_col.is_some() {
+            Some((bg3_col.unwrap().color, ColorLayer::Bg3))
         } else {
-            match bus.ppu_regs.bg_mode {
-                BgMode::Mode0 => self.bg_mode0_dot(bus),
-                BgMode::Mode1 => self.bg_mode1_dot(bus),
-                BgMode::Mode2 => self.bg_mode2_dot(bus),
-                BgMode::Mode3 => self.bg_mode3_dot(bus),
-                BgMode::Mode4 => self.bg_mode4_dot(bus),
-                _ => DotColorData {
-                    main_col: Color::BLACK,
-                    sub_col: Color::BLACK,
-                    cmath_en: false,
-                },
-            }
-        };
-
-        let regs = &bus.ppu_regs;
-
-        let main_col = dot_col_data.main_col;
-        let sub_col = dot_col_data.sub_col;
-        let cmath_en = dot_col_data.cmath_en;
-
-        let brightness = regs.screen_brightness;
-        let p = self.frame & 1;
-
-        if regs.screen_interlace_en && regs.hi_res_en {
-            let main_col = if cmath_en {
-                self.apply_cmath(bus, main_col, regs.fixed_color)
-            } else {
-                main_col
-            };
-            let sub_col = if cmath_en {
-                self.apply_cmath(bus, sub_col, regs.fixed_color)
-            } else {
-                sub_col
-            };
-            let main_col = self.apply_brightness(main_col, brightness);
-            let sub_col = self.apply_brightness(sub_col, brightness);
-
-            let main_pixel_idx = 4 * ((2 * self.y + p) * 512 + (2 * self.x + 0));
-            let sub_pixel_idx = 4 * ((2 * self.y + p) * 512 + (2 * self.x + 1));
-
-            Ppu5C7x::set_pixel(bus.frame_buffer, main_pixel_idx, main_col);
-            Ppu5C7x::set_pixel(bus.frame_buffer, sub_pixel_idx, sub_col);
-        } else if regs.screen_interlace_en {
-            let dot_col = if cmath_en {
-                self.apply_cmath(bus, main_col, sub_col)
-            } else {
-                main_col
-            };
-            let dot_col = self.apply_brightness(dot_col, brightness);
-
-            let left_pixel_idx = 4 * ((2 * self.y + p) * 512 + (2 * self.x + 0));
-            let right_pixel_idx = 4 * ((2 * self.y + p) * 512 + (2 * self.x + 1));
-
-            Ppu5C7x::set_pixel(bus.frame_buffer, left_pixel_idx, dot_col);
-            Ppu5C7x::set_pixel(bus.frame_buffer, right_pixel_idx, dot_col);
-        } else if regs.hi_res_en {
-            let main_col = if cmath_en {
-                self.apply_cmath(bus, main_col, regs.fixed_color)
-            } else {
-                main_col
-            };
-            let sub_col = if cmath_en {
-                self.apply_cmath(bus, sub_col, regs.fixed_color)
-            } else {
-                sub_col
-            };
-            let main_col = self.apply_brightness(main_col, brightness);
-            let sub_col = self.apply_brightness(sub_col, brightness);
-
-            let main_pixel_idx = 4 * ((2 * self.y + p) * 512 + (2 * self.x + 0));
-            let sub_pixel_idx = 4 * ((2 * self.y + p) * 512 + (2 * self.x + 1));
-
-            Ppu5C7x::set_pixel(bus.frame_buffer, main_pixel_idx, main_col);
-            Ppu5C7x::set_pixel(bus.frame_buffer, sub_pixel_idx, sub_col);
-        } else {
-            let dot_col = if cmath_en {
-                self.apply_cmath(bus, main_col, sub_col)
-            } else {
-                main_col
-            };
-            let dot_col = self.apply_brightness(dot_col, brightness);
-
-            let top_left_pixel_idx = 4 * ((2 * self.y + 0) * 512 + (2 * self.x + 0));
-            let top_right_pixel_idx = 4 * ((2 * self.y + 0) * 512 + (2 * self.x + 1));
-            let bottom_left_pixel_idx = 4 * ((2 * self.y + 1) * 512 + (2 * self.x + 0));
-            let bottom_right_pixel_idx = 4 * ((2 * self.y + 1) * 512 + (2 * self.x + 1));
-
-            Ppu5C7x::set_pixel(bus.frame_buffer, top_left_pixel_idx, dot_col);
-            Ppu5C7x::set_pixel(bus.frame_buffer, top_right_pixel_idx, dot_col);
-            Ppu5C7x::set_pixel(bus.frame_buffer, bottom_left_pixel_idx, dot_col);
-            Ppu5C7x::set_pixel(bus.frame_buffer, bottom_right_pixel_idx, dot_col);
+            None
         }
     }
 
-    fn draw_dot_modes_5to6<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
-        todo!();
-    }
-
-    fn apply_brightness(&self, col: Color, brightness: u8) -> Color {
+    fn apply_brightness(col: Color, brightness: u8) -> Color {
         if brightness == 0 {
             return Color::BLACK;
         }
@@ -809,115 +1043,6 @@ impl Ppu5C7x {
             b: (((col.b as u16) * (brightness as u16)) / 15) as u8,
         }
     }
-
-
-    // fn bg_mode0_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
-    //     const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
-    //     const BG2_CGRAM_BASE_ADDR: u8 = 0x20;
-    //     const BG3_CGRAM_BASE_ADDR: u8 = 0x40;
-    //     const BG4_CGRAM_BASE_ADDR: u8 = 0x60;
-    //     const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
-    //     const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
-    //     const BG3_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
-    //     const BG4_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
-
-    //     let (obj_main_col, obj_sub_col) = self.obj_layer_colors(bus);
-    //     let (bg1_main_col, bg1_sub_col) = self.bg_layer_colors(
-    //         bus,
-    //         BG1_COL_DEPTH,
-    //         BG1_CGRAM_BASE_ADDR,
-    //         ColorLayer::Bg1
-    //     );
-    //     let (bg2_main_col, bg2_sub_col) = self.bg_layer_colors(
-    //         bus,
-    //         BG2_COL_DEPTH,
-    //         BG2_CGRAM_BASE_ADDR,
-    //         ColorLayer::Bg2
-    //     );
-    //     let (bg3_main_col, bg3_sub_col) = self.bg_layer_colors(
-    //         bus,
-    //         BG3_COL_DEPTH,
-    //         BG3_CGRAM_BASE_ADDR,
-    //         ColorLayer::Bg3
-    //     );
-    //     let (bg4_main_col, bg4_sub_col) = self.bg_layer_colors(
-    //         bus,
-    //         BG4_COL_DEPTH,
-    //         BG4_CGRAM_BASE_ADDR,
-    //         ColorLayer::Bg4
-    //     );
-
-    //     let (main_col, main_layer) = if obj_main_col.priority == 3 && !obj_main_col.transparent {
-    //         (obj_main_col.color, ColorLayer::Obj)
-    //     } else if bg1_main_col.priority != 0 && !bg1_main_col.transparent {
-    //         (bg1_main_col.color, ColorLayer::Bg1)
-    //     } else if bg2_main_col.priority != 0 && !bg2_main_col.transparent {
-    //         (bg2_main_col.color, ColorLayer::Bg2)
-    //     } else if obj_main_col.priority == 2 && !obj_main_col.transparent {
-    //         (obj_main_col.color, ColorLayer::Obj)
-    //     } else if !bg1_main_col.transparent {
-    //         (bg1_main_col.color, ColorLayer::Bg1)
-    //     } else if !bg2_main_col.transparent {
-    //         (bg2_main_col.color, ColorLayer::Bg2)
-    //     } else if obj_main_col.priority == 1 && !obj_main_col.transparent {
-    //         (obj_main_col.color, ColorLayer::Obj)
-    //     } else if bg3_main_col.priority != 0 && !bg3_main_col.transparent {
-    //         (bg3_main_col.color, ColorLayer::Bg3)
-    //     } else if bg4_main_col.priority != 0 && !bg4_main_col.transparent {
-    //         (bg4_main_col.color, ColorLayer::Bg4)
-    //     } else if !obj_main_col.transparent {
-    //         (obj_main_col.color, ColorLayer::Obj)
-    //     } else if !bg3_main_col.transparent {
-    //         (bg3_main_col.color, ColorLayer::Bg3)
-    //     } else if !bg4_main_col.transparent {
-    //         (bg4_main_col.color, ColorLayer::Bg4)
-    //     } else {
-    //         (bus.cgram[0], ColorLayer::Back)
-    //     };
-
-    //     let sub_col = if obj_sub_col.priority == 3 && !obj_sub_col.transparent {
-    //         obj_sub_col.color
-    //     } else if bg1_sub_col.priority != 0 && !bg1_sub_col.transparent {
-    //         bg1_sub_col.color
-    //     } else if bg2_sub_col.priority != 0 && !bg2_sub_col.transparent {
-    //         bg2_sub_col.color
-    //     } else if obj_sub_col.priority == 2 && !obj_sub_col.transparent {
-    //         obj_sub_col.color
-    //     } else if !bg1_sub_col.transparent {
-    //         bg1_sub_col.color
-    //     } else if !bg2_sub_col.transparent {
-    //         bg2_sub_col.color
-    //     } else if obj_sub_col.priority == 1 && !obj_sub_col.transparent {
-    //         obj_sub_col.color
-    //     } else if bg3_sub_col.priority != 0 && !bg3_sub_col.transparent {
-    //         bg3_sub_col.color
-    //     } else if bg4_sub_col.priority != 0 && !bg4_sub_col.transparent {
-    //         bg4_sub_col.color
-    //     } else if !obj_sub_col.transparent {
-    //         obj_sub_col.color
-    //     } else if !bg3_sub_col.transparent {
-    //         bg3_sub_col.color
-    //     } else if !bg4_sub_col.transparent {
-    //         bg4_sub_col.color
-    //     } else {
-    //         bus.ppu_regs.fixed_color
-    //     };
-
-    //     let cmath_en = match main_layer {
-    //         ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
-    //         ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
-    //         ColorLayer::Bg3 => bus.ppu_regs.bg_settings[2].cmath_en,
-    //         ColorLayer::Bg4 => bus.ppu_regs.bg_settings[3].cmath_en,
-    //         ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.palette >= 4,
-    //         ColorLayer::Back => bus.ppu_regs.back_cmath_en,
-    //     };
-
-    //     DotColorData {
-    //         main_col,
-    //         sub_col,
-    //         cmath_en,
-    //     }
-    // }
 
     // fn bg_mode1_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> DotColorData {
     //     const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
@@ -1260,140 +1385,140 @@ impl Ppu5C7x {
     //     todo!()
     // }
 
-    fn bg_col<H: DebugHarness>(
-        &mut self,
-        bus: &mut PpuBus<H>,
-        bg_layer: ColorLayer,
-        color_depth: ColorDepth,
-        bg_cgram_base_addr: u8,
-    ) -> ColorData {
-        let bg_data = Self::fetch_bg_data(bus.ppu_regs, bg_layer);
+    // fn bg_col<H: DebugHarness>(
+    //     &mut self,
+    //     bus: &mut PpuBus<H>,
+    //     bg_layer: ColorLayer,
+    //     color_depth: ColorDepth,
+    //     bg_cgram_base_addr: u8,
+    // ) -> ColorData {
+    //     let bg_data = Self::fetch_bg_data(bus.ppu_regs, bg_layer);
 
-        let tile_data = match bus.ppu_regs.bg_mode {
-            BgMode::Mode0 | BgMode::Mode1 | BgMode::Mode2 | BgMode::Mode3 | BgMode::Mode4 => {
-                self.bg_tile_idx(bus.ppu_regs, bg_data, self.x, self.y)
-            }
-            BgMode::Mode5 | BgMode::Mode6 => todo!(),
-            BgMode::Mode7 => todo!(),
-        };
+    //     let tile_data = match bus.ppu_regs.bg_mode {
+    //         BgMode::Mode0 | BgMode::Mode1 | BgMode::Mode2 | BgMode::Mode3 | BgMode::Mode4 => {
+    //             self.bg_tile_idx(bus.ppu_regs, bg_data, self.x, self.y)
+    //         }
+    //         BgMode::Mode5 | BgMode::Mode6 => todo!(),
+    //         BgMode::Mode7 => todo!(),
+    //     };
 
-        let bg_idx = match bg_layer {
-            ColorLayer::Bg1 => 0,
-            ColorLayer::Bg2 => 1,
-            ColorLayer::Bg3 => 2,
-            ColorLayer::Bg4 => 3,
-            _ => unreachable!(),
-        };
+    //     let bg_idx = match bg_layer {
+    //         ColorLayer::Bg1 => 0,
+    //         ColorLayer::Bg2 => 1,
+    //         ColorLayer::Bg3 => 2,
+    //         ColorLayer::Bg4 => 3,
+    //         _ => unreachable!(),
+    //     };
 
-        let cache_hit = self.bg_tile_cache[bg_idx].get_entry_idx(&tile_data);
+    //     let cache_hit = self.bg_tile_cache[bg_idx].get_entry_idx(&tile_data);
 
-        let cache_idx = if let Some(idx) = cache_hit {
-            idx
-        } else {
-            let chr_data = self.fetch_chr_data(bus.ppu_regs, bus.vram, tile_data.clone());
+    //     let cache_idx = if let Some(idx) = cache_hit {
+    //         idx
+    //     } else {
+    //         let chr_data = self.fetch_chr_data(bus.ppu_regs, bus.vram, tile_data.clone());
 
-            let chr_base = bg_data.chr_base_addr;
+    //         let chr_base = bg_data.chr_base_addr;
 
-            let pal_indices = match color_depth {
-                ColorDepth::Bpp2 => {
-                    let addr = chr_base + (chr_data.chr_idx << 3) + chr_data.chr_row as u16;
-                    let bp10 = bus.vram[(addr & 0x7FFF) as usize];
+    //         let pal_indices = match color_depth {
+    //             ColorDepth::Bpp2 => {
+    //                 let addr = chr_base + (chr_data.chr_idx << 3) + chr_data.chr_row as u16;
+    //                 let bp10 = bus.vram[(addr & 0x7FFF) as usize];
 
-                    interleave_2bpp(bp10) as u64
-                }
-                ColorDepth::Bpp4 => {
-                    let addr = chr_base + (chr_data.chr_idx << 4) + chr_data.chr_row as u16;
-                    let bp10 = bus.vram[(addr & 0x7FFF) as usize];
-                    let bp32 = bus.vram[((addr + 8) & 0x7FFF) as usize];
+    //                 interleave_2bpp(bp10) as u64
+    //             }
+    //             ColorDepth::Bpp4 => {
+    //                 let addr = chr_base + (chr_data.chr_idx << 4) + chr_data.chr_row as u16;
+    //                 let bp10 = bus.vram[(addr & 0x7FFF) as usize];
+    //                 let bp32 = bus.vram[((addr + 8) & 0x7FFF) as usize];
 
-                    interleave_4bpp(bp10, bp32) as u64
-                }
-                ColorDepth::Bpp8 => {
-                    let addr = chr_base + (chr_data.chr_idx << 5) + chr_data.chr_row as u16;
-                    if bus.ppu_regs.use_direct_col {
-                        // Store only the row base addr; vram must be read per dot
-                        addr as u64
-                    } else {
-                        let bp10 = bus.vram[(addr & 0x7FFF) as usize];
-                        let bp32 = bus.vram[((addr + 8) & 0x7FFF) as usize];
-                        let bp54 = bus.vram[((addr + 16) & 0x7FFF) as usize];
-                        let bp76 = bus.vram[((addr + 24) & 0x7FFF) as usize];
+    //                 interleave_4bpp(bp10, bp32) as u64
+    //             }
+    //             ColorDepth::Bpp8 => {
+    //                 let addr = chr_base + (chr_data.chr_idx << 5) + chr_data.chr_row as u16;
+    //                 if bus.ppu_regs.use_direct_col {
+    //                     // Store only the row base addr; vram must be read per dot
+    //                     addr as u64
+    //                 } else {
+    //                     let bp10 = bus.vram[(addr & 0x7FFF) as usize];
+    //                     let bp32 = bus.vram[((addr + 8) & 0x7FFF) as usize];
+    //                     let bp54 = bus.vram[((addr + 16) & 0x7FFF) as usize];
+    //                     let bp76 = bus.vram[((addr + 24) & 0x7FFF) as usize];
 
-                        interleave_8bpp(bp10, bp32, bp54, bp76)
-                    }
-                }
-            };
+    //                     interleave_8bpp(bp10, bp32, bp54, bp76)
+    //                 }
+    //             }
+    //         };
 
-            self.bg_tile_cache[bg_idx].cache_tile(
-                TileRowCacheEntry {
-                    valid: true,
-                    tile_addr: tile_data.tile_addr,
-                    tile_row_key: tile_data.tile_row,
-                    tile_col_block: tile_data.tile_col / 8,
-                    chr_data,
-                    pal_indices,
-                }
-            )
-        };
+    //         self.bg_tile_cache[bg_idx].cache_tile(
+    //             TileRowCacheEntry {
+    //                 valid: true,
+    //                 tile_addr: tile_data.tile_addr,
+    //                 tile_row_key: tile_data.tile_row,
+    //                 tile_col_block: tile_data.tile_col / 8,
+    //                 chr_data,
+    //                 pal_indices,
+    //             }
+    //         )
+    //     };
 
-        // Recompute chr_col for this dot using cached flip_x and tile_width.
-        // We cannot use c.chr_data.chr_col — it was computed for the tile_col at fill time.
-        let t = &self.bg_tile_cache[bg_idx].entries[cache_idx];
-        let raw_col = tile_data.tile_col; // 0..tile_width, pre-flip
-        let flipped_col = if t.chr_data.flip_x {
-            t.chr_data.tile_width - raw_col - 1
-        } else {
-            raw_col
-        };
-        let chr_col = flipped_col % 8; // sub-tile column within the 8px bitplane word
+    //     // Recompute chr_col for this dot using cached flip_x and tile_width.
+    //     // We cannot use c.chr_data.chr_col — it was computed for the tile_col at fill time.
+    //     let t = &self.bg_tile_cache[bg_idx].entries[cache_idx];
+    //     let raw_col = tile_data.tile_col; // 0..tile_width, pre-flip
+    //     let flipped_col = if t.chr_data.flip_x {
+    //         t.chr_data.tile_width - raw_col - 1
+    //     } else {
+    //         raw_col
+    //     };
+    //     let chr_col = flipped_col % 8; // sub-tile column within the 8px bitplane word
 
-        match color_depth {
-            ColorDepth::Bpp2 => Self::extract_2bpp(t, chr_col, bus.cgram, bg_cgram_base_addr),
-            ColorDepth::Bpp4 => Self::extract_4bpp(t, chr_col, bus.cgram, bg_cgram_base_addr),
-            ColorDepth::Bpp8 => Self::extract_8bpp(t, chr_col, bus.cgram, bus.ppu_regs, bus.vram),
-        }
-    }
+    //     match color_depth {
+    //         ColorDepth::Bpp2 => Self::extract_2bpp(t, chr_col, bus.cgram, bg_cgram_base_addr),
+    //         ColorDepth::Bpp4 => Self::extract_4bpp(t, chr_col, bus.cgram, bg_cgram_base_addr),
+    //         ColorDepth::Bpp8 => Self::extract_8bpp(t, chr_col, bus.cgram, bus.ppu_regs, bus.vram),
+    //     }
+    // }
 
     /// For modes 0-4
-    pub fn bg_tile_idx(
-        &self,
-        regs: &PpuRegs,
-        bg_data: &BgSettings,
-        x: usize,
-        y: usize,
-    ) -> TileData {
-        let (mosaic_x, mosaic_y) = Self::apply_mosaic(x, y, regs.mosaic_size as usize);
+    // pub fn bg_tile_idx(
+    //     &self,
+    //     regs: &PpuRegs,
+    //     bg_data: &BgSettings,
+    //     x: usize,
+    //     y: usize,
+    // ) -> TileData {
+    //     let (mosaic_x, mosaic_y) = Self::apply_mosaic(x, y, regs.mosaic_size as usize);
 
-        let scroll_range = match bg_data.chr_size {
-            TileSize::Size8x8 => 0x1FF,
-            TileSize::Size16x16 => 0x3FF,
-        };
+    //     let scroll_range = match bg_data.chr_size {
+    //         TileSize::Size8x8 => 0x1FF,
+    //         TileSize::Size16x16 => 0x3FF,
+    //     };
 
-        let shifted_x = ((mosaic_x as u16) + bg_data.scroll_x) & scroll_range;
-        let shifted_y = ((mosaic_y as u16) + bg_data.scroll_y) & scroll_range;
+    //     let shifted_x = ((mosaic_x as u16) + bg_data.scroll_x) & scroll_range;
+    //     let shifted_y = ((mosaic_y as u16) + bg_data.scroll_y) & scroll_range;
 
-        let tilemap_offset = Self::tm_offset(shifted_x, shifted_y, bg_data.tilemap_cnt_x, bg_data.tilemap_cnt_y);
+    //     let tilemap_offset = Self::tm_offset(shifted_x, shifted_y, bg_data.tilemap_cnt_x, bg_data.tilemap_cnt_y);
 
-        let x = shifted_x & 0xFF;
-        let y = shifted_y & 0xFF;
+    //     let x = shifted_x & 0xFF;
+    //     let y = shifted_y & 0xFF;
 
-        let tile_idx = match bg_data.chr_size {
-            TileSize::Size8x8 => ((y >> 3) << 5) | (x >> 3),
-            TileSize::Size16x16 => ((y >> 4) << 5) | (x >> 4),
-        };
+    //     let tile_idx = match bg_data.chr_size {
+    //         TileSize::Size8x8 => ((y >> 3) << 5) | (x >> 3),
+    //         TileSize::Size16x16 => ((y >> 4) << 5) | (x >> 4),
+    //     };
 
-        let (tile_col, tile_row) = match bg_data.chr_size {
-            TileSize::Size8x8 => (x & 7, y & 7),
-            TileSize::Size16x16 => (x & 0xF, y & 0xF),
-        };
+    //     let (tile_col, tile_row) = match bg_data.chr_size {
+    //         TileSize::Size8x8 => (x & 7, y & 7),
+    //         TileSize::Size16x16 => (x & 0xF, y & 0xF),
+    //     };
 
-        TileData {
-            tile_addr: bg_data.tilemap_base_addr + tilemap_offset + tile_idx,
-            tile_row: tile_row as u8,
-            tile_col: tile_col as u8,
-            tile_size: bg_data.chr_size,
-        }
-    }
+    //     TileData {
+    //         tile_addr: bg_data.tilemap_base_addr + tilemap_offset + tile_idx,
+    //         tile_row: tile_row as u8,
+    //         tile_col: tile_col as u8,
+    //         tile_size: bg_data.chr_size,
+    //     }
+    // }
 
     fn apply_mosaic(value: u16, mosaic: u16) -> u16 {
         if mosaic == 0 {
@@ -1445,8 +1570,8 @@ impl Ppu5C7x {
         let in_true_hi_res_mode = matches!(regs.bg_mode, BgMode::Mode5 | BgMode::Mode6);
 
         let (tile_height, tile_width) = match tile_data.tile_size {
-            TileSize::Size8x8 => (8u8, if in_true_hi_res_mode { 16u8 } else { 8u8 }),
-            TileSize::Size16x16 => (16u8, 16u8),
+            ChrSize::Size8x8 => (8u8, if in_true_hi_res_mode { 16u8 } else { 8u8 }),
+            ChrSize::Size16x16 => (16u8, 16u8),
         };
 
         let tile_chr_idx = tile_word & 0x3FF;
@@ -1545,52 +1670,42 @@ impl Ppu5C7x {
         }
     }
 
+    fn color_window_signals(
+        in_w1: bool, 
+        in_w2: bool, 
+        col_window: &WindowSettings, 
+        main_region: WindowColorRegion, 
+        sub_region: WindowColorRegion
+    ) -> (bool, bool) {
+        let col_win_en = Self::win_active_signal(in_w1, in_w2, &col_window);
+
+        let main_col_win = match main_region {
+            WindowColorRegion::Nowhere => false,
+            WindowColorRegion::Outside => {
+                !col_win_en
+            }
+            WindowColorRegion::Inside => {
+                col_win_en
+            }
+            WindowColorRegion::Everywhere => true,
+        };
+
+        let sub_col_win = match sub_region {
+            WindowColorRegion::Nowhere => false,
+            WindowColorRegion::Outside => {
+                !col_win_en
+            }
+            WindowColorRegion::Inside => {
+                col_win_en
+            }
+            WindowColorRegion::Everywhere => true,
+        };
+
+        (main_col_win, sub_col_win)
+    }
+
+    #[inline]
     fn apply_cmath<H: DebugHarness>(&self, bus: &PpuBus<H>, main_col: Color, sub_col: Color) -> Color {
-        let col_win_en = Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.col_settings.window);
-
-        let main_col = match bus.ppu_regs.col_win_main_region {
-            WindowColorRegion::Nowhere => main_col,
-            WindowColorRegion::Outside => {
-                if col_win_en {
-                    main_col
-                } else {
-                    Color::BLACK
-                }
-            }
-            WindowColorRegion::Inside => {
-                if col_win_en {
-                    Color::BLACK
-                } else {
-                    main_col
-                }
-            }
-            WindowColorRegion::Everywhere => Color::BLACK,
-        };
-        let sub_col = match bus.ppu_regs.col_win_sub_region {
-            WindowColorRegion::Nowhere => sub_col,
-            WindowColorRegion::Outside => {
-                if col_win_en {
-                    sub_col
-                } else {
-                    bus.cgram[0]
-                }
-            }
-            WindowColorRegion::Inside => {
-                if col_win_en {
-                    bus.cgram[0]
-                } else {
-                    sub_col
-                }
-            }
-            WindowColorRegion::Everywhere => bus.cgram[0],
-        };
-
-        let sub_col = if bus.ppu_regs.sub_color_fixed {
-            bus.ppu_regs.fixed_color
-        } else {
-            sub_col
-        };
-
         let mut color = match bus.ppu_regs.cmath_operator {
             CMathOperator::Add => Color {
                 r: main_col.r.saturating_add(sub_col.r) & 0xF8, // 5-bit color max
@@ -1618,8 +1733,8 @@ impl Ppu5C7x {
         in_w2: bool,
         win_settings: &WindowSettings,
     ) -> bool {
-        let w1_en = (win_settings.w1_en && in_w1) ^ win_settings.w1_inv;
-        let w2_en = (win_settings.w2_en && in_w2) ^ win_settings.w2_inv;
+        let w1_en = win_settings.w1_en && (in_w1 ^ win_settings.w1_inv);
+        let w2_en = win_settings.w2_en && (in_w2 ^ win_settings.w2_inv);
 
         let win_en = if win_settings.w1_en && win_settings.w2_en {
             match win_settings.logic {
@@ -1639,71 +1754,71 @@ impl Ppu5C7x {
         win_en
     }
 
-    fn bg_layer_colors<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>, col_depth: ColorDepth, cgram_base_addr: u8, bg_layer: ColorLayer) -> (ColorData, ColorData) {
-        let bg_data = Self::fetch_bg_data(bus.ppu_regs, bg_layer);
+    // fn bg_layer_colors<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>, col_depth: ColorDepth, cgram_base_addr: u8, bg_layer: ColorLayer) -> (ColorData, ColorData) {
+    //     let bg_data = Self::fetch_bg_data(bus.ppu_regs, bg_layer);
 
-        let win_en = Self::win_active_signal(self.in_w1, self.in_w2, &bg_data.window);
+    //     let win_en = Self::win_active_signal(self.in_w1, self.in_w2, &bg_data.window);
         
-        let win_main = bg_data.window.main_en && win_en;
-        let win_sub = bg_data.window.sub_en && win_en;
+    //     let win_main = bg_data.window.main_en && win_en;
+    //     let win_sub = bg_data.window.sub_en && win_en;
 
-        let mut bg_main_col = None;
-        let mut bg_sub_col = None;
+    //     let mut bg_main_col = None;
+    //     let mut bg_sub_col = None;
 
-        if bg_data.main_en && !win_main {
-            bg_main_col = Some(self.bg_col(
-                bus,
-                bg_layer, col_depth,
-                cgram_base_addr
-            ));
-        }
+    //     if bg_data.main_en && !win_main {
+    //         bg_main_col = Some(self.bg_col(
+    //             bus,
+    //             bg_layer, col_depth,
+    //             cgram_base_addr
+    //         ));
+    //     }
 
-        let bg_data = Self::fetch_bg_data(bus.ppu_regs, bg_layer);
+    //     let bg_data = Self::fetch_bg_data(bus.ppu_regs, bg_layer);
 
-        if bg_data.sub_en && !win_sub {
-            bg_sub_col = Some(match bg_main_col {
-                    Some(c) => c,
-                    None => self.bg_col(
-                        bus,
-                        bg_layer, col_depth,
-                        cgram_base_addr
-                    ),
-                });
-        }
+    //     if bg_data.sub_en && !win_sub {
+    //         bg_sub_col = Some(match bg_main_col {
+    //                 Some(c) => c,
+    //                 None => self.bg_col(
+    //                     bus,
+    //                     bg_layer, col_depth,
+    //                     cgram_base_addr
+    //                 ),
+    //             });
+    //     }
 
-        let bg_main_col = match bg_main_col {
-            Some(c) => c,
-            None => self.transparent_color_data(bus),
-        };
-        let bg_sub_col = match bg_sub_col {
-            Some(c) => c,
-            None => self.transparent_color_data(bus),
-        };
+    //     let bg_main_col = match bg_main_col {
+    //         Some(c) => c,
+    //         None => self.transparent_color_data(bus),
+    //     };
+    //     let bg_sub_col = match bg_sub_col {
+    //         Some(c) => c,
+    //         None => self.transparent_color_data(bus),
+    //     };
 
-        (bg_main_col, bg_sub_col)
-    }
+    //     (bg_main_col, bg_sub_col)
+    // }
 
-    fn obj_layer_colors<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> (ObjColorData, ObjColorData) {
-        let win_en = Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.obj_settings.window);
+    // fn obj_layer_colors<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) -> (ObjColorData, ObjColorData) {
+    //     let win_en = Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.obj_settings.window);
 
-        let obj_win_main = bus.ppu_regs.obj_settings.window.main_en && win_en;
-        let obj_win_sub = bus.ppu_regs.obj_settings.window.sub_en && win_en;
+    //     let obj_win_main = bus.ppu_regs.obj_settings.window.main_en && win_en;
+    //     let obj_win_sub = bus.ppu_regs.obj_settings.window.sub_en && win_en;
 
-        let mut obj_main_col = self.transparent_obj_color_data(bus);
-        let mut obj_sub_col = self.transparent_obj_color_data(bus);
+    //     let mut obj_main_col = self.transparent_obj_color_data(bus);
+    //     let mut obj_sub_col = self.transparent_obj_color_data(bus);
         
-        if let Some(obj_col_data) = self.scanline_sprite_data[self.x] {
-            if bus.ppu_regs.obj_settings.main_en && !obj_win_main {
-                obj_main_col = obj_col_data;
-            }
+    //     if let Some(obj_col_data) = self.scanline_sprite_data[self.x] {
+    //         if bus.ppu_regs.obj_settings.main_en && !obj_win_main {
+    //             obj_main_col = obj_col_data;
+    //         }
             
-            if bus.ppu_regs.obj_settings.sub_en && !obj_win_sub {
-                obj_sub_col = obj_col_data;
-            }
-        }
+    //         if bus.ppu_regs.obj_settings.sub_en && !obj_win_sub {
+    //             obj_sub_col = obj_col_data;
+    //         }
+    //     }
 
-        (obj_main_col, obj_sub_col)
-    }
+    //     (obj_main_col, obj_sub_col)
+    // }
 
     fn transparent_color_data<H: DebugHarness>(&self, bus: &mut PpuBus<H>) -> ColorData {
         ColorData {
@@ -1932,7 +2047,6 @@ impl Ppu5C7x {
                         color: spr_col,
                         palette: sprite.palette,
                         priority: sprite.priority,
-                        transparent: false,
                     });
                 }
             }

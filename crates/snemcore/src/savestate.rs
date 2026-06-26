@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{scpu::Address, sppu::{AddressRemapping, BgMode, BgSettings, CMathOperator, Color, IncrSize, LayerSettings, M7FillMode, MasterSlave, ObjectSizeSelect, VideoType, VramIncMode, WindowColorRegion}, ssmp::sdsp::{ADSRStage, GainMode}};
+use crate::{scpu::Address, sppu::{AddressRemapping, BgMode, BgSettings, CMathOperator, Color, IncrSize, LayerSettings, M7FillMode, MasterSlave, ObjectSizeSelect, VideoType, VramIncMode, WindowColorRegion, WindowSettings}, ssmp::sdsp::{ADSRStage, GainMode}};
 
 pub const MAGIC_SAVE_STATE_STRING: &[u8; 16] = b"SnemulatorSave:)"; 
 pub const SAVE_STATE_VERSION: u32 = 0;
@@ -64,7 +64,7 @@ pub struct PpuState {
     pub mosaic_size: u8,
     pub bg_settings: [BgSettings; 4],
     pub obj_settings: LayerSettings,
-    pub col_settings: LayerSettings,
+    pub col_window: WindowSettings,
     pub m7_latch: u8,
     pub bg_offset_latch: u8,
     pub bg_offset_x_latch: u8,

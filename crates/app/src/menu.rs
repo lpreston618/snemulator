@@ -9,8 +9,8 @@ pub struct MainMenuBar;
 impl MainMenuBar {
     pub fn new() -> Self { Self {} }
 
-    pub fn render(&self, ctx: &egui::Context, app_state: &AppState, app_settings: &mut Settings) -> AppAction {
-        let mut app_action = AppAction::Continue;
+    pub fn render(&self, ctx: &egui::Context, app_state: &AppState, app_settings: &mut Settings) -> Option<AppAction> {
+        let mut app_action: Option<AppAction> = None;
 
         let debug_active;
 
@@ -31,11 +31,11 @@ impl MainMenuBar {
                                         
                     ui.add_enabled_ui(!debug_active, |ui| {
                         if ui.button("Select ROMs Folder").clicked() {
-                            app_action = AppAction::SelectRomsFolder;
+                            app_action = Some(AppAction::SelectRomsFolder);
                             ui.close();
                         }
                         if ui.button("Load ROM").clicked() {
-                            app_action = AppAction::LoadRom;
+                            app_action = Some(AppAction::LoadRom);
                             ui.close();
                         }
                         ui.menu_button("Recent ROMs", |ui| {
@@ -44,7 +44,7 @@ impl MainMenuBar {
                                     .and_then(|n| n.to_str())
                                     .unwrap_or("Unknown");
                                 if ui.button(label).clicked() {
-                                    app_action = AppAction::LoadRomFromPath(path.clone());
+                                    app_action = Some(AppAction::LoadRomFromPath(path.clone()));
                                     ui.close();
                                 }
                             }
@@ -53,7 +53,7 @@ impl MainMenuBar {
                             }
                         });
                         if ui.button("Unload ROM").clicked() {
-                            app_action = AppAction::UnloadRom;
+                            app_action = Some(AppAction::UnloadRom);
                             ui.close();
                         }
                     });
@@ -64,7 +64,7 @@ impl MainMenuBar {
                         ui.menu_button("Save State", |ui| {
                             for slot in 0..MAX_SAVE_STATE_SLOTS {
                                 if ui.button(format!("Slot {}", slot)).clicked() {
-                                    app_action = AppAction::SaveState { slot };
+                                    app_action = Some(AppAction::SaveState { slot });
                                     ui.close();
                                 }
                             }
@@ -78,7 +78,7 @@ impl MainMenuBar {
                                 }).inner;
     
                                 if resp.clicked() {
-                                    app_action = AppAction::LoadState { slot };
+                                    app_action = Some(AppAction::LoadState { slot });
                                     ui.close();
                                 }
                             }
@@ -88,7 +88,7 @@ impl MainMenuBar {
                     ui.separator();
                     
                     if ui.button("Settings").clicked() {
-                        app_action = AppAction::OpenSettings;
+                        app_action = Some(AppAction::OpenSettings);
                         ui.close();
                     }
                     
@@ -97,7 +97,7 @@ impl MainMenuBar {
                     if button_with_shortcut(ui, "Exit", "Ctrl + Q").clicked() {
                         log::info!("Exit button clicked, exiting");
                         
-                        app_action = AppAction::Exit;
+                        app_action = Some(AppAction::Exit);
                         ui.close();
                     }
                 });
@@ -108,15 +108,15 @@ impl MainMenuBar {
                     ui.add_enabled_ui(!debug_active, |ui| {
                         let pause_text = if app_state.is_paused { "Resume" } else { "Pause" };
                         if ui.button(pause_text).clicked() {
-                            app_action = AppAction::TogglePause;
+                            app_action = Some(AppAction::TogglePause);
                             ui.close();
                         }
                         if ui.button("Reset").clicked() {
-                            app_action = AppAction::ResetCore;
+                            app_action = Some(AppAction::ResetCore);
                             ui.close();
                         }
                         if ui.button("Hard Reset").clicked() {
-                            app_action = AppAction::PowerOnCore;
+                            app_action = Some(AppAction::PowerOnCore);
                             ui.close();
                         }
                     });
@@ -127,12 +127,12 @@ impl MainMenuBar {
                         
                         if app_state.debug_active {
                             if ui.button("Stop Debug").clicked() {
-                                app_action = AppAction::CloseDebug;
+                                app_action = Some(AppAction::CloseDebug);
                                 ui.close();
                             }
                         } else {
                             if ui.button("Debug").clicked() {
-                                app_action = AppAction::OpenDebug;
+                                app_action = Some(AppAction::OpenDebug(None));
                                 ui.close();
                             }
                         }
@@ -144,7 +144,7 @@ impl MainMenuBar {
                     
                     let window_size_text = if app_state.is_fullscreen { "Windowed" } else { "Fullscreen" };
                     if button_with_shortcut(ui, window_size_text, "F11").clicked() {
-                        app_action = AppAction::ToggleFullscreen;
+                        app_action = Some(AppAction::ToggleFullscreen);
                         ui.close();
                     }
 

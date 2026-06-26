@@ -1,4 +1,4 @@
-use snemcore::{Snemulator, sppu::{self, BgMode, BgSettings, Color, TileSize, TilemapCount}, sysinfo::VRAM_SIZE};
+use snemcore::{Snemulator, sppu::{self, BgMode, BgSettings, Color, ChrSize, TilemapCount}, sysinfo::VRAM_SIZE};
 
 use crate::{debug::harness::MainDebugHarness, app::theme::AppTheme};
 use egui::{Color32, ColorImage, TextureHandle, TextureOptions, Vec2};
@@ -689,7 +689,7 @@ impl BgRenderer {
         let output_x = tilemap_x * 8;
         let output_y = tilemap_y * 8;
 
-        if matches!(bg.chr_size, TileSize::Size16x16) {
+        if matches!(bg.chr_size, ChrSize::Size16x16) {
             // A 16x16 tile occupies 2x2 tilemap entries. Only render the full 2x2 block
             // when we are at the top-left entry of the group (even tile coordinates).
             // Odd entries are covered by the previous even entry's render, so skip them.
@@ -765,7 +765,7 @@ impl BgRenderer {
     /// Calculate character data word address
     pub(super) fn calc_chr_addr(&self, bg: &BgSettings, tile_num: u16, sub_x: u32, sub_y: u32, color_depth: u8) -> u16 {
         // For 16x16 tiles, sub_x and sub_y select which 8x8 quadrant (0 or 1)
-        let effective_tile = if matches!(bg.chr_size, TileSize::Size16x16) {
+        let effective_tile = if matches!(bg.chr_size, ChrSize::Size16x16) {
             // 16x16 tiles are arranged as:
             // [tile+0 ] [tile+1 ]
             // [tile+16] [tile+17]

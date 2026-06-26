@@ -26,17 +26,17 @@ pub enum ObjectSize {
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
-pub enum TileSize {
+pub enum ChrSize {
     #[default]
     Size8x8,
     Size16x16,
 }
 
-impl TileSize {
-    pub fn raw_size(self) -> (u16, u16) {
+impl ChrSize {
+    pub const fn raw_size(self) -> (u16, u16) {
         match self {
-            TileSize::Size8x8 => (8, 8),
-            TileSize::Size16x16 => (16, 16)
+            ChrSize::Size8x8 => (8, 8),
+            ChrSize::Size16x16 => (16, 16)
         }
     }
 }
@@ -285,7 +285,7 @@ pub struct TileData {
     pub tile_addr: u16,
     pub tile_row: u8,
     pub tile_col: u8,
-    pub tile_size: TileSize,
+    pub tile_size: ChrSize,
 }
 
 pub struct TilemapEntry {
@@ -293,7 +293,7 @@ pub struct TilemapEntry {
     pub flip_x: bool,
     pub priority: bool,
     pub palette: u8,
-    pub tile_num: u16,
+    pub chr_num: u16,
 }
 
 impl TilemapEntry {
@@ -302,8 +302,8 @@ impl TilemapEntry {
             flip_y: get_bit_n!(w, 15),
             flip_x: get_bit_n!(w, 14),
             priority: get_bit_n!(w, 13),
-            palette: ((w >> 10) & 0x7) as u8,
-            tile_num: w & 0x3FF,
+            palette: ((w >> 10) & 7) as u8,
+            chr_num: w & 0x3FF,
         }
     }
 }
@@ -347,7 +347,7 @@ pub struct BgSettings {
     pub scroll_y: u16,
     pub tilemap_cnt_x: TilemapCount,
     pub tilemap_cnt_y: TilemapCount,
-    pub chr_size: TileSize,
+    pub chr_size: ChrSize,
     pub chr_base_addr: u16,
     pub tilemap_base_addr: u16,
     pub mosaic_en: bool,

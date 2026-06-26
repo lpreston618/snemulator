@@ -2,7 +2,7 @@ use anyhow::Result;
 use egui::TextureHandle;
 use sdl3::video::GLProfile;
 
-use crate::app;
+use crate::app::{self, AppAction};
 use crate::app::theme::AppTheme;
 use snemcore::sysinfo;
 use crate::menu::MainMenuBar;
@@ -10,8 +10,8 @@ use crate::app::settings::Settings;
 use crate::ui_window::UiWindow;
 use crate::app::library::LibraryView;
 
-pub const WINDOW_WIDTH: u32 = 1200;
-pub const WINDOW_HEIGHT: u32 = 900;
+pub const WINDOW_WIDTH: u32 = 900;
+pub const WINDOW_HEIGHT: u32 = 675;
 
 pub struct MainWindow {
     egui_window: UiWindow,
@@ -75,15 +75,25 @@ impl MainWindow {
         }
     }
 
-    pub fn update_and_render(&mut self, app_state: &app::AppState, app_theme: &AppTheme, app_settings: &mut Settings, frame_buffer: &[u8]) -> app::AppAction {
-        let mut app_action = app::AppAction::Continue;
+    pub fn update_and_render(
+        &mut self, 
+        app_state:
+        &app::AppState,
+        app_theme:
+        &AppTheme, 
+        app_settings:
+        &mut Settings,
+        frame_buffer: &[u8]
+    ) -> Option<AppAction> {
+        let mut menu_action: Option<AppAction> = None;
+        let mut library_action: Option<AppAction> = None;
 
         // Upload texture inside the ui closure so we have access to ctx
         self.update_game_texture(frame_buffer);
 
         let full_output = self.egui_window.update_ui(|ctx| {
             if app_state.show_menu {
-                app_action = self.menu.render(ctx, app_state, app_settings);
+                menu_action = self.menu.render(ctx, app_state, app_settings);
             }
 
             let game_aspect = sysinfo::SCREEN_WIDTH as f32 / sysinfo::SCREEN_HEIGHT as f32;
@@ -110,10 +120,10 @@ impl MainWindow {
                         // Library mode
                         match &app_settings.roms_library_dir {
                             Some(_) => {
-                                app_action = self.library.render(ui, app_theme);
+                                library_action = self.library.render(ui, app_theme);
                             }
                             None => {
-                                Self::render_empty_state(ui, &mut app_action, app_theme);
+                                Self::render_empty_state(ui, &mut library_action, app_theme);
                             }
                         }
                     }
@@ -138,6 +148,10 @@ impl MainWindow {
             }
         });
 
+        // Use library action if there is one, else menu action. Should only ever
+        // be one at a time anyways.
+        let app_action = library_action.map_or(menu_action, |action| Some(action));
+
         self.egui_window.clear();
         self.egui_window.render(full_output);
 
@@ -158,7 +172,7 @@ impl MainWindow {
         self.egui_window.window_mut().set_fullscreen(fullscreen).map_err(|e| e.into())
     }
 
-    fn render_empty_state(ui: &mut egui::Ui, app_action: &mut app::AppAction, theme: &AppTheme) {
+    fn render_empty_state(ui: &mut egui::Ui, app_action: &mut Option<AppAction>, theme: &AppTheme) {
         let available = ui.available_size();
 
         // Allocate the entire panel as a single click target
@@ -201,7 +215,7 @@ impl MainWindow {
         );
 
         if response.clicked() {
-            *app_action = app::AppAction::SelectRomsFolder;
+            *app_action = Some(AppAction::SelectRomsFolder);
         }
     }
 

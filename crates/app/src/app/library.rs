@@ -153,7 +153,7 @@ impl LibraryView {
         }
     }
 
-    pub fn render(&mut self, ui: &mut Ui, app_theme: &AppTheme) -> AppAction {
+    pub fn render(&mut self, ui: &mut Ui, app_theme: &AppTheme) -> Option<AppAction> {
         if let Some(rx) = &self.thumbnail_rx {
             'receive_thumbnails: loop {
                 match rx.try_recv() {
@@ -186,7 +186,7 @@ impl LibraryView {
             }
         }
 
-        let mut action = AppAction::Continue;
+        let mut action: Option<AppAction> = None;
 
         Self::render_header(ui, app_theme);
 
@@ -199,10 +199,18 @@ impl LibraryView {
                 let response = Self::render_entry(ui, entry, is_selected, app_theme);
                 
                 if response.double_clicked() {
-                    action = AppAction::LoadRomFromPath(entry.path.clone());
+                    action = Some(AppAction::LoadRomFromPath(entry.path.clone()));
                 } else if response.clicked() {
                     self.selected = Some(i);
                 }
+
+                #[cfg(feature = "debug")]
+                response.context_menu(|ui| {
+                    if ui.button("Debug").clicked() {
+                        action = Some(AppAction::OpenDebug(Some(entry.path.clone())));
+                        ui.close();
+                    }
+                });
             }
         });
         action

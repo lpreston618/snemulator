@@ -56,7 +56,7 @@ pub struct PpuRegs {
 
     pub bg_settings: [BgSettings; 4],
     pub obj_settings: LayerSettings,
-    pub col_settings: LayerSettings,
+    pub col_window: WindowSettings,
 
     // Used for many registers affecting mode 7 behavior
     pub m7_latch: u8,
@@ -361,24 +361,24 @@ impl PpuRegs {
 
     pub fn write_2105(&mut self, value: u8) {
         self.bg_settings[3].chr_size = if get_bit_n!(value, 7) {
-            TileSize::Size16x16
+            ChrSize::Size16x16
         } else {
-            TileSize::Size8x8
+            ChrSize::Size8x8
         };
         self.bg_settings[2].chr_size = if get_bit_n!(value, 6) {
-            TileSize::Size16x16
+            ChrSize::Size16x16
         } else {
-            TileSize::Size8x8
+            ChrSize::Size8x8
         };
         self.bg_settings[1].chr_size = if get_bit_n!(value, 5) {
-            TileSize::Size16x16
+            ChrSize::Size16x16
         } else {
-            TileSize::Size8x8
+            ChrSize::Size8x8
         };
         self.bg_settings[0].chr_size = if get_bit_n!(value, 4) {
-            TileSize::Size16x16
+            ChrSize::Size16x16
         } else {
-            TileSize::Size8x8
+            ChrSize::Size8x8
         };
         self.bg3_mode1_priority = get_bit_n!(value, 3);
         self.bg_mode = match value & 7 {
@@ -467,8 +467,8 @@ impl PpuRegs {
 
     #[allow(non_snake_case)]
     pub fn write_210C(&mut self, value: u8) {
-        self.bg_settings[2].chr_base_addr = ((value as u16) >> 0) << 13;
-        self.bg_settings[3].chr_base_addr = ((value as u16) >> 4) << 13;
+        self.bg_settings[2].chr_base_addr = (((value as u16) >> 0) << 12) & 0x7FFF;
+        self.bg_settings[3].chr_base_addr = (((value as u16) >> 4) << 12) & 0x7FFF;
     }
 
     #[allow(non_snake_case)]
@@ -662,10 +662,10 @@ impl PpuRegs {
     }
 
     pub fn write_2125(&mut self, value: u8) {
-        self.col_settings.window.w2_en = get_bit_n!(value, 7);
-        self.col_settings.window.w2_inv = get_bit_n!(value, 6);
-        self.col_settings.window.w1_en = get_bit_n!(value, 5);
-        self.col_settings.window.w1_inv = get_bit_n!(value, 4);
+        self.col_window.w2_en = get_bit_n!(value, 7);
+        self.col_window.w2_inv = get_bit_n!(value, 6);
+        self.col_window.w1_en = get_bit_n!(value, 5);
+        self.col_window.w1_inv = get_bit_n!(value, 4);
         self.obj_settings.window.w2_en = get_bit_n!(value, 3);
         self.obj_settings.window.w2_inv = get_bit_n!(value, 2);
         self.obj_settings.window.w1_en = get_bit_n!(value, 1);
@@ -722,7 +722,7 @@ impl PpuRegs {
 
     #[allow(non_snake_case)]
     pub fn write_212B(&mut self, value: u8) {
-        self.col_settings.window.logic = match (value >> 2) & 3 {
+        self.col_window.logic = match (value >> 2) & 3 {
             0 => WindowLogic::Or,
             1 => WindowLogic::And,
             2 => WindowLogic::Xor,
