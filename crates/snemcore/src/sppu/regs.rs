@@ -392,13 +392,6 @@ impl PpuRegs {
             7 => BgMode::Mode7,
             _ => unreachable!(),
         };
-
-        match self.bg_mode {
-            BgMode::Mode5 | BgMode::Mode6 => {
-                self.hi_res_en = true;
-            }
-            _ => {}
-        };
     }
 
     pub fn write_2106(&mut self, value: u8) {
