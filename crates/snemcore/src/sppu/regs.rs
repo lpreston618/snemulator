@@ -57,6 +57,13 @@ pub struct PpuRegs {
     pub bg_settings: [BgSettings; 4],
     pub obj_settings: LayerSettings,
     pub col_window: WindowSettings,
+    // Whether the current dot is within the bounds of w1/2 left and right
+    pub in_w1: bool,
+    pub in_w2: bool,
+    // Cached signals for whether each layer is inside the window under their current settings
+    pub bg_apply_window_signals: [bool; 4],
+    pub obj_apply_window_signal: bool,
+    pub col_apply_window_signal: bool,
 
     // Used for many registers affecting mode 7 behavior
     pub m7_latch: u8,
@@ -319,6 +326,8 @@ impl PpuRegs {
         self.multiply_result = 0x000001;
         self.h_counter_latch = 0x01FF;
         self.v_counter_latch = 0x01FF;
+        self.in_w1 = false;
+        self.in_w2 = false;
     }
 
     pub fn reset(&mut self) {
@@ -648,6 +657,9 @@ impl PpuRegs {
         self.bg_settings[0].window.w2_inv = get_bit_n!(value, 2);
         self.bg_settings[0].window.w1_en = get_bit_n!(value, 1);
         self.bg_settings[0].window.w1_inv = get_bit_n!(value, 0);
+
+        self.bg_apply_window_signals[0] = self.apply_window_signal(&self.bg_settings[0].window);
+        self.bg_apply_window_signals[1] = self.apply_window_signal(&self.bg_settings[1].window);
     }
 
     pub fn write_2124(&mut self, value: u8) {
@@ -659,6 +671,9 @@ impl PpuRegs {
         self.bg_settings[2].window.w2_inv = get_bit_n!(value, 2);
         self.bg_settings[2].window.w1_en = get_bit_n!(value, 1);
         self.bg_settings[2].window.w1_inv = get_bit_n!(value, 0);
+
+        self.bg_apply_window_signals[2] = self.apply_window_signal(&self.bg_settings[2].window);
+        self.bg_apply_window_signals[3] = self.apply_window_signal(&self.bg_settings[3].window);
     }
 
     pub fn write_2125(&mut self, value: u8) {
@@ -670,6 +685,9 @@ impl PpuRegs {
         self.obj_settings.window.w2_inv = get_bit_n!(value, 2);
         self.obj_settings.window.w1_en = get_bit_n!(value, 1);
         self.obj_settings.window.w1_inv = get_bit_n!(value, 0);
+
+        self.col_apply_window_signal = self.apply_window_signal(&self.col_window);
+        self.obj_apply_window_signal = self.apply_window_signal(&self.obj_settings.window);
     }
 
     pub fn write_2126(&mut self, value: u8) {
@@ -718,6 +736,10 @@ impl PpuRegs {
             3 => WindowLogic::Xnor,
             _ => unreachable!(),
         };
+
+        for i in 0..4 {
+            self.bg_apply_window_signals[i] = self.apply_window_signal(&self.bg_settings[i].window);
+        }
     }
 
     #[allow(non_snake_case)]
@@ -736,6 +758,9 @@ impl PpuRegs {
             3 => WindowLogic::Xnor,
             _ => unreachable!(),
         };
+
+        self.col_apply_window_signal = self.apply_window_signal(&self.col_window);
+        self.obj_apply_window_signal = self.apply_window_signal(&self.obj_settings.window);
     }
 
     #[allow(non_snake_case)]
@@ -877,5 +902,30 @@ impl PpuRegs {
         };
 
         self.vram_addr += inc;
+    }
+
+    pub fn apply_window_signal(&self, win_settings: &WindowSettings) -> bool {
+        let in_w1 = win_settings.w1_en && (self.in_w1 ^ win_settings.w1_inv);
+        let in_w2 = win_settings.w2_en && (self.in_w2 ^ win_settings.w2_inv);
+
+        if win_settings.w1_en && win_settings.w2_en {
+            match win_settings.logic {
+                WindowLogic::Or => in_w1 || in_w2,
+                WindowLogic::And => in_w1 && in_w2,
+                WindowLogic::Xor => in_w1 ^ in_w2,
+                WindowLogic::Xnor => !(in_w1 ^ in_w2),
+            }
+        } else {
+            in_w1 || in_w2
+        }
+    }
+
+    pub fn update_all_in_window_signals(&mut self) {
+        for i in 0..4 {
+            self.bg_apply_window_signals[i] = self.apply_window_signal(&self.bg_settings[i].window);
+        }
+        
+        self.col_apply_window_signal = self.apply_window_signal(&self.col_window);
+        self.obj_apply_window_signal = self.apply_window_signal(&self.obj_settings.window);
     }
 }

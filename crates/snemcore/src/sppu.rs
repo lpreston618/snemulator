@@ -34,9 +34,6 @@ pub struct Ppu5C7x {
     pub y: usize,
     pub frame: usize,
 
-    in_w1: bool,
-    in_w2: bool,
-
     scanline_sprites: Vec<usize>,
 
     bg_tile_cache: [TileRowCache<TILE_CACHE_SIZE>; 4],
@@ -65,8 +62,6 @@ impl Ppu5C7x {
             x: 0,
             y: 0,
             frame: 0,
-            in_w1: false,
-            in_w2: false,
             scanline_sprites: Vec::new(),
             bg_tile_cache: std::array::repeat(TileRowCache::new()),
             scanline_bg_counters: [0; 4],
@@ -248,8 +243,8 @@ impl Ppu5C7x {
         regs.video_type = state.video_type;
         regs.ppu2_version = state.ppu2_version;
 
-        self.in_w1 = regs.w1_left_pos as usize <= self.x && self.x <= regs.w1_right_pos as usize;
-        self.in_w2 = regs.w2_left_pos as usize <= self.x && self.x <= regs.w2_right_pos as usize;
+        regs.in_w1 = regs.w1_left_pos as usize <= self.x && self.x <= regs.w1_right_pos as usize;
+        regs.in_w2 = regs.w2_left_pos as usize <= self.x && self.x <= regs.w2_right_pos as usize;
     }
 
     pub fn power_on(&mut self) {
@@ -260,8 +255,6 @@ impl Ppu5C7x {
         self.frame = 0;
         self.scanline_sprites.clear();
         self.clocks = 0;
-        self.in_w1 = false;
-        self.in_w2 = false;
 
         for c in self.bg_tile_cache.iter_mut() {
             for t in c.entries.iter_mut() {
@@ -387,110 +380,110 @@ impl Ppu5C7x {
     }
 
     fn draw_mode0_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
-        const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG2_CGRAM_BASE_ADDR: u8 = 0x20;
-        const BG3_CGRAM_BASE_ADDR: u8 = 0x40;
-        const BG4_CGRAM_BASE_ADDR: u8 = 0x60;
-        const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
-        const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
-        const BG3_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
-        const BG4_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
+        // const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
+        // const BG2_CGRAM_BASE_ADDR: u8 = 0x20;
+        // const BG3_CGRAM_BASE_ADDR: u8 = 0x40;
+        // const BG4_CGRAM_BASE_ADDR: u8 = 0x60;
+        // const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
+        // const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
+        // const BG3_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
+        // const BG4_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
 
-        for bg in 0..4 {
-            if self.x == self.scanline_bg_counters[bg] {
-                let cgram_base = [
-                    BG1_CGRAM_BASE_ADDR, BG2_CGRAM_BASE_ADDR, 
-                    BG3_CGRAM_BASE_ADDR, BG4_CGRAM_BASE_ADDR
-                ][bg];
+        // for bg in 0..4 {
+        //     if self.x == self.scanline_bg_counters[bg] {
+        //         let cgram_base = [
+        //             BG1_CGRAM_BASE_ADDR, BG2_CGRAM_BASE_ADDR, 
+        //             BG3_CGRAM_BASE_ADDR, BG4_CGRAM_BASE_ADDR
+        //         ][bg];
                 
-                let color_depth = [
-                    BG1_COL_DEPTH, BG2_COL_DEPTH, 
-                    BG3_COL_DEPTH, BG4_COL_DEPTH,
-                ][bg];
+        //         let color_depth = [
+        //             BG1_COL_DEPTH, BG2_COL_DEPTH, 
+        //             BG3_COL_DEPTH, BG4_COL_DEPTH,
+        //         ][bg];
 
-                let dots_rendered = self.render_tile(bus, bg, cgram_base, color_depth);
+        //         let dots_rendered = self.render_tile(bus, bg, cgram_base, color_depth);
 
-                debug_assert!(dots_rendered > 0);
+        //         debug_assert!(dots_rendered > 0);
 
-                self.scanline_bg_counters[bg] += dots_rendered;
-            }
-        }
+        //         self.scanline_bg_counters[bg] += dots_rendered;
+        //     }
+        // }
 
-        let obj_main_en = bus.ppu_regs.obj_settings.main_en && Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.obj_settings.window);
-        let bg_main_en: [bool; 4] = std::array::from_fn(|bg| {
-            bus.ppu_regs.bg_settings[bg].main_en && Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.bg_settings[bg].window)
-        });
+        // let obj_main_en = bus.ppu_regs.obj_settings.main_en && Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.obj_settings.window);
+        // let bg_main_en: [bool; 4] = std::array::from_fn(|bg| {
+        //     bus.ppu_regs.bg_settings[bg].main_en && Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.bg_settings[bg].window)
+        // });
 
-        let obj_sub_en = bus.ppu_regs.obj_settings.sub_en && Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.obj_settings.window);
-        let bg_sub_en: [bool; 4] = std::array::from_fn(|bg| {
-            bus.ppu_regs.bg_settings[bg].sub_en && Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.bg_settings[bg].window)
-        });
+        // let obj_sub_en = bus.ppu_regs.obj_settings.sub_en && Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.obj_settings.window);
+        // let bg_sub_en: [bool; 4] = std::array::from_fn(|bg| {
+        //     bus.ppu_regs.bg_settings[bg].sub_en && Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.bg_settings[bg].window)
+        // });
 
-        let (main_color_en, sub_color_en) = Self::color_window_signals(
-            self.in_w1, self.in_w2,
-            &bus.ppu_regs.col_window,
-            bus.ppu_regs.col_win_main_region,
-            bus.ppu_regs.col_win_sub_region,
-        );
+        // let (main_color_en, sub_color_en) = Self::color_window_signals(
+        //     self.in_w1, self.in_w2,
+        //     &bus.ppu_regs.col_window,
+        //     bus.ppu_regs.col_win_main_region,
+        //     bus.ppu_regs.col_win_sub_region,
+        // );
 
-        let obj_main_col = if obj_main_en { self.scanline_sprite_data[self.x] } else { None };
-        let bg1_main_col = if bg_main_en[0] { self.scanline_bg_data[0][self.x] } else { None };
-        let bg2_main_col = if bg_main_en[1] { self.scanline_bg_data[1][self.x] } else { None };
-        let bg3_main_col = if bg_main_en[2] { self.scanline_bg_data[2][self.x] } else { None };
-        let bg4_main_col = if bg_main_en[3] { self.scanline_bg_data[3][self.x] } else { None };
+        // let obj_main_col = if obj_main_en { self.scanline_sprite_data[self.x] } else { None };
+        // let bg1_main_col = if bg_main_en[0] { self.scanline_bg_data[0][self.x] } else { None };
+        // let bg2_main_col = if bg_main_en[1] { self.scanline_bg_data[1][self.x] } else { None };
+        // let bg3_main_col = if bg_main_en[2] { self.scanline_bg_data[2][self.x] } else { None };
+        // let bg4_main_col = if bg_main_en[3] { self.scanline_bg_data[3][self.x] } else { None };
 
-        let (main_col, main_col_layer) = Self::bg_mode0_choose_priority_color(
-            obj_main_col,
-            bg1_main_col,
-            bg2_main_col,
-            bg3_main_col,
-            bg4_main_col,
-        ).unwrap_or((bus.cgram[0], ColorLayer::Back));
+        // let (main_col, main_col_layer) = Self::bg_mode0_choose_priority_color(
+        //     obj_main_col,
+        //     bg1_main_col,
+        //     bg2_main_col,
+        //     bg3_main_col,
+        //     bg4_main_col,
+        // ).unwrap_or((bus.cgram[0], ColorLayer::Back));
 
-        let main_col = if main_color_en { Color::BLACK } else { main_col };
+        // let main_col = if main_color_en { Color::BLACK } else { main_col };
 
-        let obj_sub_col = if obj_sub_en { self.scanline_sprite_data[self.x] } else { None };
-        let bg1_sub_col = if bg_sub_en[0] { self.scanline_bg_data[0][self.x] } else { None };
-        let bg2_sub_col = if bg_sub_en[1] { self.scanline_bg_data[1][self.x] } else { None };
-        let bg3_sub_col = if bg_sub_en[2] { self.scanline_bg_data[2][self.x] } else { None };
-        let bg4_sub_col = if bg_sub_en[3] { self.scanline_bg_data[3][self.x] } else { None };
+        // let obj_sub_col = if obj_sub_en { self.scanline_sprite_data[self.x] } else { None };
+        // let bg1_sub_col = if bg_sub_en[0] { self.scanline_bg_data[0][self.x] } else { None };
+        // let bg2_sub_col = if bg_sub_en[1] { self.scanline_bg_data[1][self.x] } else { None };
+        // let bg3_sub_col = if bg_sub_en[2] { self.scanline_bg_data[2][self.x] } else { None };
+        // let bg4_sub_col = if bg_sub_en[3] { self.scanline_bg_data[3][self.x] } else { None };
 
-        let sub_col = if bus.ppu_regs.sub_color_fixed {
-            bus.ppu_regs.fixed_color
-        } else {
-            Self::bg_mode0_choose_priority_color(
-                obj_sub_col, 
-                bg1_sub_col, 
-                bg2_sub_col, 
-                bg3_sub_col, 
-                bg4_sub_col
-            ).map_or(
-                bus.ppu_regs.fixed_color, 
-                |pair| pair.0
-            )
-        };
+        // let sub_col = if bus.ppu_regs.sub_color_fixed {
+        //     bus.ppu_regs.fixed_color
+        // } else {
+        //     Self::bg_mode0_choose_priority_color(
+        //         obj_sub_col, 
+        //         bg1_sub_col, 
+        //         bg2_sub_col, 
+        //         bg3_sub_col, 
+        //         bg4_sub_col
+        //     ).map_or(
+        //         bus.ppu_regs.fixed_color, 
+        //         |pair| pair.0
+        //     )
+        // };
 
-        let sub_col = if sub_color_en { bus.cgram[0] } else { sub_col };
+        // let sub_col = if sub_color_en { bus.cgram[0] } else { sub_col };
 
-        let cmath_en = match main_col_layer {
-            ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
-            ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
-            ColorLayer::Bg3 => bus.ppu_regs.bg_settings[2].cmath_en,
-            ColorLayer::Bg4 => bus.ppu_regs.bg_settings[3].cmath_en,
-            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.unwrap().palette >= 4,
-            ColorLayer::Back => bus.ppu_regs.back_cmath_en,
-        };
+        // let cmath_en = match main_col_layer {
+        //     ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
+        //     ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
+        //     ColorLayer::Bg3 => bus.ppu_regs.bg_settings[2].cmath_en,
+        //     ColorLayer::Bg4 => bus.ppu_regs.bg_settings[3].cmath_en,
+        //     ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.unwrap().palette >= 4,
+        //     ColorLayer::Back => bus.ppu_regs.back_cmath_en,
+        // };
 
-        self.set_pixel(
-            bus,
-            main_col,
-            sub_col,
-            cmath_en,
-        );
+        // self.set_pixel(
+        //     bus,
+        //     main_col,
+        //     sub_col,
+        //     cmath_en,
+        // );
 
-        self.last_main_screen_color = main_col;
-        self.last_sub_screen_color = sub_col;
-        self.last_main_screen_pixel_did_cmath = cmath_en;
+        // self.last_main_screen_color = main_col;
+        // self.last_sub_screen_color = sub_col;
+        // self.last_main_screen_pixel_did_cmath = cmath_en;
     }
 
     fn draw_mode1_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
@@ -515,22 +508,19 @@ impl Ppu5C7x {
             }
         }
 
-        let obj_main_en = bus.ppu_regs.obj_settings.main_en && !Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.obj_settings.window);
+        let regs = &bus.ppu_regs;
+
+        let obj_main_en = regs.obj_settings.main_en && (!regs.obj_settings.window.main_en || !regs.obj_apply_window_signal);
         let bg_main_en: [bool; 3] = std::array::from_fn(|bg| {
-            bus.ppu_regs.bg_settings[bg].main_en && !Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.bg_settings[bg].window)
+            bus.ppu_regs.bg_settings[bg].main_en && (!regs.bg_settings[bg].window.main_en || !regs.bg_apply_window_signals[bg])
         });
 
-        let obj_sub_en = bus.ppu_regs.obj_settings.sub_en && !Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.obj_settings.window);
+        let obj_sub_en = regs.obj_settings.sub_en && (!regs.obj_settings.window.sub_en || !regs.obj_apply_window_signal);
         let bg_sub_en: [bool; 3] = std::array::from_fn(|bg| {
-            bus.ppu_regs.bg_settings[bg].sub_en && !Self::win_active_signal(self.in_w1, self.in_w2, &bus.ppu_regs.bg_settings[bg].window)
+            bus.ppu_regs.bg_settings[bg].sub_en && (!regs.bg_settings[bg].window.sub_en || !regs.bg_apply_window_signals[bg])
         });
 
-        let (disable_main_col, disable_cmath) = Self::color_window_signals(
-            self.in_w1, self.in_w2,
-            &bus.ppu_regs.col_window,
-            bus.ppu_regs.col_win_main_region,
-            bus.ppu_regs.col_win_sub_region,
-        );
+        let (apply_col_win_main, apply_col_win_sub) = Self::color_window_signals(regs);
 
         let obj_main_col = if obj_main_en { self.scanline_sprite_data[self.x] } else { None };
         let bg1_main_col = if bg_main_en[0] { self.scanline_bg_data[0][self.x] } else { None };
@@ -545,7 +535,7 @@ impl Ppu5C7x {
             bus.ppu_regs.bg3_mode1_priority,
         ).unwrap_or((bus.cgram[0], ColorLayer::Back));
 
-        let main_col = if disable_main_col { Color::BLACK } else { main_col };
+        let main_col = if apply_col_win_main { Color::BLACK } else { main_col };
 
         let obj_sub_col = if obj_sub_en { self.scanline_sprite_data[self.x] } else { None };
         let bg1_sub_col = if bg_sub_en[0] { self.scanline_bg_data[0][self.x] } else { None };
@@ -567,7 +557,7 @@ impl Ppu5C7x {
             )
         };
 
-        let sub_col = if disable_cmath { bus.cgram[0] } else { sub_col };
+        let sub_col = if apply_col_win_sub { bus.cgram[0] } else { sub_col };
 
         let cmath_en = match main_col_layer {
             ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
@@ -1594,38 +1584,26 @@ impl Ppu5C7x {
         }
     }
 
-    fn color_window_signals(
-        in_w1: bool, 
-        in_w2: bool, 
-        col_window: &WindowSettings, 
-        main_region: WindowColorRegion, 
-        sub_region: WindowColorRegion
-    ) -> (bool, bool) {
-        let col_win_en = Self::win_active_signal(in_w1, in_w2, &col_window);
+    fn color_window_signals(regs: &PpuRegs) -> (bool, bool) {        
+        let apply_col_window = regs.col_apply_window_signal;
+        let main_region = regs.col_win_main_region;
+        let sub_region = regs.col_win_sub_region;
 
-        let main_col_win = match main_region {
+        let apply_col_win_main = match main_region {
             WindowColorRegion::Nowhere => false,
-            WindowColorRegion::Outside => {
-                !col_win_en
-            }
-            WindowColorRegion::Inside => {
-                col_win_en
-            }
+            WindowColorRegion::Inside => apply_col_window,
+            WindowColorRegion::Outside => !apply_col_window,
             WindowColorRegion::Everywhere => true,
         };
 
-        let sub_col_win = match sub_region {
+        let apply_col_win_sub = match sub_region {
             WindowColorRegion::Nowhere => false,
-            WindowColorRegion::Outside => {
-                !col_win_en
-            }
-            WindowColorRegion::Inside => {
-                col_win_en
-            }
+            WindowColorRegion::Inside => apply_col_window,
+            WindowColorRegion::Outside => !apply_col_window,
             WindowColorRegion::Everywhere => true,
         };
 
-        (main_col_win, sub_col_win)
+        (apply_col_win_main, apply_col_win_sub)
     }
 
     #[inline]
@@ -1652,31 +1630,31 @@ impl Ppu5C7x {
         color
     }
 
-    fn win_active_signal(
-        in_w1: bool,
-        in_w2: bool,
-        win_settings: &WindowSettings,
-    ) -> bool {
-        let w1_en = win_settings.w1_en && (in_w1 ^ win_settings.w1_inv);
-        let w2_en = win_settings.w2_en && (in_w2 ^ win_settings.w2_inv);
+    // fn win_active_signal(
+    //     in_w1: bool,
+    //     in_w2: bool,
+    //     win_settings: &WindowSettings,
+    // ) -> bool {
+    //     let w1_en = win_settings.w1_en && (in_w1 ^ win_settings.w1_inv);
+    //     let w2_en = win_settings.w2_en && (in_w2 ^ win_settings.w2_inv);
 
-        let win_en = if win_settings.w1_en && win_settings.w2_en {
-            match win_settings.logic {
-                WindowLogic::Or => w1_en || w2_en,
-                WindowLogic::And => w1_en && w2_en,
-                WindowLogic::Xor => w1_en ^ w2_en,
-                WindowLogic::Xnor => !(w1_en ^ w2_en),
-            }
-        } else if win_settings.w1_en {
-            w1_en
-        } else if win_settings.w2_en {
-            w2_en
-        } else {
-            false
-        };
+    //     let win_en = if win_settings.w1_en && win_settings.w2_en {
+    //         match win_settings.logic {
+    //             WindowLogic::Or => w1_en || w2_en,
+    //             WindowLogic::And => w1_en && w2_en,
+    //             WindowLogic::Xor => w1_en ^ w2_en,
+    //             WindowLogic::Xnor => !(w1_en ^ w2_en),
+    //         }
+    //     } else if win_settings.w1_en {
+    //         w1_en
+    //     } else if win_settings.w2_en {
+    //         w2_en
+    //     } else {
+    //         false
+    //     };
 
-        win_en
-    }
+    //     win_en
+    // }
 
     // fn bg_layer_colors<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>, col_depth: ColorDepth, cgram_base_addr: u8, bg_layer: ColorLayer) -> (ColorData, ColorData) {
     //     let bg_data = Self::fetch_bg_data(bus.ppu_regs, bg_layer);
@@ -1771,8 +1749,15 @@ impl Ppu5C7x {
             self.scanline_bg_counters.fill(0);
         }
 
-        self.in_w1 = bus.ppu_regs.w1_left_pos as usize <= self.x && self.x <= bus.ppu_regs.w1_right_pos as usize;
-        self.in_w2 = bus.ppu_regs.w2_left_pos as usize <= self.x && self.x <= bus.ppu_regs.w2_right_pos as usize;
+        let in_w1_old = bus.ppu_regs.in_w1;
+        let in_w2_old = bus.ppu_regs.in_w2;
+
+        bus.ppu_regs.in_w1 = bus.ppu_regs.w1_left_pos as usize <= self.x && self.x <= bus.ppu_regs.w1_right_pos as usize;
+        bus.ppu_regs.in_w2 = bus.ppu_regs.w2_left_pos as usize <= self.x && self.x <= bus.ppu_regs.w2_right_pos as usize;
+
+        if (in_w1_old != bus.ppu_regs.in_w1) || (in_w2_old != bus.ppu_regs.in_w2) {
+            bus.ppu_regs.update_all_in_window_signals();
+        }
 
         if self.dot == SCANLINE_END_DOT {
             self.dot = 0;
