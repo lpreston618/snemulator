@@ -22,7 +22,7 @@ impl DmaTab {
     pub fn render(
         &mut self,
         ui: &mut egui::Ui,
-        core: &mut Snemulator,
+        core: &Snemulator,
         harness: &mut MainDebugHarness,
         app_state: &AppState,
         app_theme: &AppTheme,
@@ -32,6 +32,17 @@ impl DmaTab {
 
         // ── Global status bar ────────────────────────────────────────────────
         ui.horizontal(|ui| {
+            ui.add_enabled_ui(app_state.is_paused, |ui| {
+                if ui.button("Run Until DMA").clicked() {
+                    *debug_action = Some(DebugAction::TogglePause);
+                    harness.stop_condition = Some(StopCondition::DmaStart { ch: None });
+                }
+
+                if ui.button("Run Until H-DMA").clicked() {
+                    *debug_action = Some(DebugAction::TogglePause);
+                    harness.stop_condition = Some(StopCondition::HdmaStart { ch: None });
+                }
+            });
             self.render_status_badge(ui, app_theme, "DMA", dma.dma_en,
                 Some(format!("CH{}", dma.dma_active_ch)));
             ui.add_space(8.0);
@@ -53,7 +64,7 @@ impl DmaTab {
                 let hdma_active = regs.hdma_en; 
                 let is_active = regs.dma_en || regs.hdma_en;
 
-                let header_job = self.format_channel_header(app_theme, ch, regs, is_active);
+                let header_job = self.format_channel_header(core, app_theme, ch, is_active);
 
                 let resp = egui::CollapsingHeader::new(header_job)
                     .id_salt(format!("dma_ch_{ch}"))
@@ -71,13 +82,13 @@ impl DmaTab {
                         if dma_active {
                             if ui.button(format!("Run Until DMA{} Ends", ch)).clicked() {
                                 *debug_action = Some(DebugAction::TogglePause);
-                                harness.stop_condition = Some(StopCondition::DmaEnd { ch: ch as u8 });
+                                harness.stop_condition = Some(StopCondition::DmaEnd { ch: Some(ch as u8) });
                                 ui.close()
                             }
                         } else {
                             if ui.button(format!("Run Until DMA{} Begins", ch)).clicked() {
                                 *debug_action = Some(DebugAction::TogglePause);
-                                harness.stop_condition = Some(StopCondition::DmaStart { ch: ch as u8 });
+                                harness.stop_condition = Some(StopCondition::DmaStart { ch: Some(ch as u8) });
                                 ui.close()
                             }
                         }
@@ -85,13 +96,13 @@ impl DmaTab {
                         if hdma_active {
                             if ui.button(format!("Run Until H-DMA{} Ends", ch)).clicked() {
                                 *debug_action = Some(DebugAction::TogglePause);
-                                harness.stop_condition = Some(StopCondition::HdmaEnd { ch: ch as u8 });
+                                harness.stop_condition = Some(StopCondition::HdmaEnd { ch: Some(ch as u8) });
                                 ui.close()
                             }
                         } else {
                             if ui.button(format!("Run Until H-DMA{} Begins", ch)).clicked() {
                                 *debug_action = Some(DebugAction::TogglePause);
-                                harness.stop_condition = Some(StopCondition::HdmaStart { ch: ch as u8 });
+                                harness.stop_condition = Some(StopCondition::HdmaStart { ch: Some(ch as u8) });
                                 ui.close()
                             }
                         }
@@ -105,11 +116,13 @@ impl DmaTab {
 
     fn format_channel_header(
         &self,
+        core: &Snemulator,
         t: &AppTheme,
         ch: usize,
-        regs: &snemcore::dma::DmaRegs,
         is_active: bool,
     ) -> LayoutJob {
+        let regs = &core.dma.regs[ch];
+
         let mut job = LayoutJob::default();
         let mono = FontId::monospace(13.0);
 
@@ -134,8 +147,14 @@ impl DmaTab {
         // A-bus → B-bus
         append(&mut job, &format!("${:02X}:{:04X}", regs.a_bus_addr.bank, regs.a_bus_addr.offset),
             mono.clone(), t.syntax_address);
-        append(&mut job, " → ", mono.clone(), t.text_muted);
-        append(&mut job, &format!("$21{:02X}", regs.b_bus_addr), mono.clone(), t.syntax_address);
+        append(&mut job, " - ", mono.clone(), t.text_muted);
+        
+        if regs.b_bus_addr == 0x18 || regs.b_bus_addr == 0x19 {
+            append(&mut job, &format!("VRAM[${:04X}]", core.ppu_regs.vram_addr), mono.clone(), t.syntax_address);
+        } else {
+            append(&mut job, &format!("$21{:02X}", regs.b_bus_addr), mono.clone(), t.syntax_address);
+        }
+
         append(&mut job, "  ", mono.clone(), t.text_muted);
 
         // Transfer pattern

@@ -653,7 +653,7 @@ impl Ppu5C7x {
             }
         };
 
-        let tilemap_entry_addr = bg_settings.tilemap_base_addr + ((tilemap_y & 0x1F) << 5) + (tilemap_x & 0x1F) + tilemap_offset;
+        let tilemap_entry_addr = (bg_settings.tilemap_base_addr + ((tilemap_y & 0x1F) << 5) + (tilemap_x & 0x1F) + tilemap_offset) & 0x7FFF;
         let tilemap_entry = TilemapEntry::from_word(bus.vram[tilemap_entry_addr as usize]);
 
         let tile_col = if tilemap_entry.flip_x { size_x - tile_col - 1 } else { tile_col };
@@ -690,26 +690,6 @@ impl Ppu5C7x {
                     let bp3 = ((bp32 >> (15 - i)) & 1) as u8;
                     (bp3 << 3) | (bp2 << 2) | (bp1 << 1) | bp0
                 });
-
-                // if bg == 0 && self.x == 0 && self.y >= 216 {
-                //     log::debug!("Colors at ({}, {}): scroll=({}, {}), tmap_base=${:04X}, TMap Cnt: ({:?}, {:?}), TMap Offs={:03X}, TMap: ({}, {}), tmap_entry=${:04X}, chr_base=${:04X}, chr#={}, Tile ({}, {}), tile=${:04X}, tile_row=${:04X}, bp10={:04X}, bp32={:04X}, pal_indices = {:?}",
-                //         self.x, self.y,
-                //         bg_settings.scroll_x, bg_settings.scroll_y,
-                //         bg_settings.tilemap_base_addr,
-                //         bg_settings.tilemap_cnt_x, bg_settings.tilemap_cnt_y,
-                //         tilemap_offset,
-                //         tilemap_x, tilemap_y,
-                //         tilemap_entry_addr,
-                //         bg_settings.chr_base_addr,
-                //         tilemap_entry.chr_num,
-                //         tile_x, tile_y,
-                //         tile_addr,
-                //         tile_row_addr,
-                //         bp10,
-                //         bp32,
-                //         indices, 
-                //     );
-                // }
 
                 indices
             }
@@ -1614,62 +1594,6 @@ impl Ppu5C7x {
         }
     }
 
-    fn extract_2bpp(t: &TileRowCacheEntry, chr_col: u8, cgram: &[Color], bg_cgram_base_addr: u8) -> ColorData {
-        let pal_idx = ((t.pal_indices >> (2 * (7 - chr_col))) & 3) as u8;
-        let cgram_addr = bg_cgram_base_addr | (t.chr_data.chr_pal << 2) | pal_idx;
-
-        ColorData {
-            color: if pal_idx == 0 { cgram[0] } else { cgram[cgram_addr as usize] },
-            priority: t.chr_data.chr_priority,
-            transparent: pal_idx == 0,
-        }
-    }
-
-    fn extract_4bpp(t: &TileRowCacheEntry, chr_col: u8, cgram: &[Color], bg_cgram_base_addr: u8) -> ColorData {
-        let pal_idx = ((t.pal_indices >> (4 * (7 - chr_col))) & 15) as u8;
-        let cgram_addr = bg_cgram_base_addr | (t.chr_data.chr_pal << 4) | pal_idx;
-        
-        ColorData {
-            color: if pal_idx == 0 { cgram[0] } else { cgram[cgram_addr as usize] },
-            priority: t.chr_data.chr_priority,
-            transparent: pal_idx == 0,
-        }
-    }
-
-    fn extract_8bpp(t: &TileRowCacheEntry, chr_col: u8, cgram: &[Color], regs: &PpuRegs, vram: &[u16]) -> ColorData {
-        if !regs.use_direct_col {
-            let cgram_addr = (t.pal_indices >> (8 * (7 - chr_col))) as u8;
-
-            ColorData {
-                color: cgram[cgram_addr as usize],
-                priority: t.chr_data.chr_priority,
-                transparent: cgram_addr == 0,
-            }
-        } else {
-            // Direct color: one vram word per dot column; bp_words[0] is the cached row base addr.
-            // This path is inherently per-dot, so vram must be accessed here.
-            let r_ext = (t.chr_data.chr_pal & 0x04) >> 1;
-            let g_ext = (t.chr_data.chr_pal & 0x08) >> 2;
-            let b_ext = (t.chr_data.chr_pal & 0x10) >> 2;
-
-            // let row_base = t.bp_words[0];
-            let row_base = t.pal_indices as u16;
-            let rgb_data = vram[((row_base + chr_col as u16) & 0x7FFF) as usize] as u8;
-
-            let r = ((rgb_data & 0x07) << 2) | r_ext;
-            let g = ((rgb_data & 0x38) >> 1) | g_ext;
-            let b = ((rgb_data & 0xC0) >> 3) | b_ext;
-
-            let color = Color::new(r, g, b);
-
-            ColorData {
-                color,
-                priority: t.chr_data.chr_priority,
-                transparent: (r == 0) && (g == 0) && (b == 0),
-            }
-        }
-    }
-
     fn color_window_signals(
         in_w1: bool, 
         in_w2: bool, 
@@ -1944,10 +1868,10 @@ impl Ppu5C7x {
         'find_scanline_sprites: for (sprite_idx, sprite) in bus.oam.iter().enumerate() {
             let (spr_w, spr_h) = sprite.sprite_size(regs.obj_sprite_size);
 
-            let max_x = sprite.x as i16 + spr_w as i16;
+            let max_x = sprite.x + spr_w as i16;
             let max_y = sprite.y as usize + spr_h;
 
-            let in_y_range = if max_y > 256 {
+            let in_y_range = if max_y >= 256 {
                 // If the sprite wraps around to top of screen, then we hit the sprite if it starts
                 // above this scanline OR it wraps to below this scanline.
                 sprite.y as usize <= true_y || true_y < (max_y & 0xFF)
@@ -1955,7 +1879,7 @@ impl Ppu5C7x {
                 sprite.y as usize <= true_y && true_y < max_y
             };
 
-            let in_x_range = max_x > 0;
+            let in_x_range = 0 < max_x;
 
             // Sprite should be on scanline
             if in_y_range && in_x_range {
@@ -1980,7 +1904,7 @@ impl Ppu5C7x {
 
             let sprite_row = self.y - sprite.y as usize;
 
-            let sprite_row = if regs.screen_interlace_en && regs.obj_interlace_en {
+            let sprite_row = if regs.obj_interlace_en {
                 2 * sprite_row + (self.frame & 1)
             } else {
                 sprite_row
@@ -2011,11 +1935,11 @@ impl Ppu5C7x {
 
                 let chr_idx = (tile_y << 4) + tile_x as u8;
                 
-                let spr_tile_addr = spr_tile_base_addr + ((chr_idx as u16) << 4);
+                let spr_tile_addr = (spr_tile_base_addr + ((chr_idx as u16) << 4)) & 0x7FFF;
                 let spr_tile_row_addr = spr_tile_addr + tile_row as u16;
 
-                let bp10 = bus.vram[((spr_tile_row_addr as usize) + 0) & 0x7FFF];
-                let bp32 = bus.vram[((spr_tile_row_addr as usize) + 8) & 0x7FFF];
+                let bp10 = bus.vram[(spr_tile_row_addr as usize) + 0];
+                let bp32 = bus.vram[(spr_tile_row_addr as usize) + 8];
 
                 let bitplanes = interleave_4bpp(bp10, bp32);
 
@@ -2027,7 +1951,7 @@ impl Ppu5C7x {
                     }
 
                     let tile_col = if sprite.flip_x {
-                        8 - tile_col - 1
+                        7 - tile_col
                     } else {
                         tile_col
                     };

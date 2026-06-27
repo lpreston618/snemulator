@@ -156,6 +156,7 @@ impl MemoryTab {
                                     };
                                     header(ui, "Idx");
                                     header(ui, "X, Y");
+                                    header(ui, "Base");
                                     header(ui, "Tile");
                                     header(ui, "Pal");
                                     header(ui, "Pri");
@@ -201,7 +202,18 @@ impl MemoryTab {
                                         );
                                         ui.colored_label(
                                             color,
-                                            egui::RichText::new(format!("${}{:02X}", sprite.use_second_obj_table as u8, sprite.tile_idx))
+                                            egui::RichText::new(format!("${:04X}", 
+                                                if sprite.use_second_obj_table {
+                                                    core.ppu_regs.name_secondary_base_addr
+                                                } else {
+                                                    core.ppu_regs.name_base_addr
+                                                }
+                                            ))
+                                            .monospace()
+                                        );
+                                        ui.colored_label(
+                                            color,
+                                            egui::RichText::new(format!("${:02X}", sprite.tile_idx))
                                                 .monospace(),
                                         );
                                         ui.colored_label(

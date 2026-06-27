@@ -3,7 +3,7 @@ use snemcore::Snemulator;
 use crate::debug::harness::MainDebugHarness;
 use crate::app::theme::AppTheme;
 
-// mod chr;
+mod chr;
 mod layers;
 
 #[derive(PartialEq, Clone, Copy)]
@@ -30,7 +30,7 @@ impl PpuSubTab {
 }
 
 pub struct PpuTab {
-    // chr_viewer: chr::ChrViewer,
+    chr_viewer: chr::ChrViewer,
     // layer_viewer: layers::LayerView,
     bg1_viewer: layers::BgDebugView<0>,
     bg2_viewer: layers::BgDebugView<1>,
@@ -44,7 +44,7 @@ pub struct PpuTab {
 impl PpuTab {
     pub fn new() -> Self {
         Self {
-            // chr_viewer: chr::ChrViewer::new(painter),
+            chr_viewer: chr::ChrViewer::new(),
             bg1_viewer: layers::BgDebugView::new(),
             bg2_viewer: layers::BgDebugView::new(),
             bg3_viewer: layers::BgDebugView::new(),
@@ -76,7 +76,7 @@ impl PpuTab {
             ui.separator();
             
             match self.selected_tab {
-                // PpuSubTab::Chr => self.chr_viewer.render(ui, core),
+                PpuSubTab::Chr => self.chr_viewer.render(ui, core, app_theme),
                 PpuSubTab::Bg1 => {
                     self.bg1_viewer.update(core, harness);
                     self.bg1_viewer.render(ui, core, app_theme, &mut self.bg_view_settings);

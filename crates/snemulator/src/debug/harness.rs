@@ -25,10 +25,10 @@ pub enum StopCondition {
     Interrupt,
     Frame,
     StepOverSubroutine { depth: usize },
-    DmaStart { ch: u8 },
-    DmaEnd { ch: u8 },
-    HdmaStart { ch: u8 },
-    HdmaEnd { ch: u8 },
+    DmaStart { ch: Option<u8> },
+    DmaEnd { ch: Option<u8> },
+    HdmaStart { ch: Option<u8> },
+    HdmaEnd { ch: Option<u8> },
     SampleGenerated,
     SpcInstruction,
     KeyOn { v: u8 },
@@ -88,10 +88,13 @@ impl DebugHarness for MainDebugHarness {
         }
     }
 
-    fn on_dma_start(&mut self, _dma: &mut snemcore::dma::DmaController, channel: usize) {
+    fn on_dma_start(&mut self, _dma: &mut snemcore::dma::DmaController, channel: usize) {        
         match self.stop_condition {
-            Some(StopCondition::DmaStart { ch }) => {
+            Some(StopCondition::DmaStart { ch: Some(ch) }) => {
                 self.stop_emulation |= channel == ch as usize;
+            }
+            Some(StopCondition::DmaStart { ch: None }) => {
+                self.stop_emulation = _dma.regs.iter().any(|ch| ch.hdma_indirect_table_addr.offset == 2048);
             }
             _ => {}
         }
@@ -99,8 +102,11 @@ impl DebugHarness for MainDebugHarness {
 
     fn on_dma_end(&mut self, _dma: &mut snemcore::dma::DmaController, channel: usize) {
         match self.stop_condition {
-            Some(StopCondition::DmaEnd { ch }) => {
+            Some(StopCondition::DmaEnd { ch: Some(ch) }) => {
                 self.stop_emulation |= channel == ch as usize;
+            }
+            Some(StopCondition::DmaEnd { ch: None }) => {
+                self.stop_emulation = true;
             }
             _ => {}
         }

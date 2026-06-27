@@ -598,7 +598,7 @@ impl PpuRegs {
         self.m7_latch = value;
 
         self.m7_matrix_b = ((value as u16) << 8) | latched_val;
-        self.mult_factor_8 = latched_val as u8;
+        self.mult_factor_8 = value as u8;
 
         self.update_multiply_result();
     }
