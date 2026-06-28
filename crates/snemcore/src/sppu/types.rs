@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{get_bit_n, sppu::{Color, ObjectSize::Size8x8}};
+use crate::{get_bit_n, sppu::Color};
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 pub enum ObjectSizeSelect {

@@ -217,9 +217,6 @@ pub struct TimerState {
 
 #[derive(Serialize, Deserialize)]
 pub struct DmaState {
-    pub dma_en: bool,
-    pub hdma_en: bool,
-    pub hdma_pending: bool,
     pub hdma_needs_init: bool,
     pub dma_active_ch: usize,
     pub hdma_active_ch: usize,

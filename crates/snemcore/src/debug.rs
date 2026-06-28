@@ -70,14 +70,14 @@ pub trait DebugHarness {
     /// Called after a DMA transfer completes on the given channel.
     fn on_dma_end(&mut self, dma: &mut DmaController, channel: usize) {}
 
-    // /// Called after at the start of h-blank if H-DMA is enabled for the given channel.
-    // fn on_hdma_start(&mut self, dma: &mut DmaController, channel: usize) {}
-    // /// Called after a single byte is transferred from `src_addr` to `dst_addr` over the given H-DMA channel.
-    // fn on_hdma_transfer(&mut self, dma: &mut DmaController, channel: usize, src_addr: Address, dst_addr: Address, value: u8) {}
-    // /// Called after a single multi-byte transfer completes for the given channel. An H-DMA transfer may consist of 1 to 4 bytes each scanline.
-    // fn on_hdma_scanline_end(&mut self, dma: &mut DmaController, channel: usize) {}
-    // /// Called after an H-DMA transfer completes on the given channel (when all table entries have been processed)
-    // fn on_hdma_end(&mut self, dma: &mut DmaController, channel: usize) {}
+    /// Called after an H-DMA channel is initialized (Each channel can be initialized at most once per frame).
+    fn on_hdma_init(&mut self, dma: &mut DmaController, channel: usize) {}
+    /// Called after and H-DMA channel starts a new entry in its table
+    fn on_hdma_load_entry(&mut self, dma: &mut DmaController, channel: usize) {}
+    /// Called after a single byte is transferred from `src_addr` to `dst_addr` over the given H-DMA channel.
+    fn on_hdma_transfer(&mut self, dma: &mut DmaController, channel: usize, src_addr: Address, dst_addr: Address, value: u8) {}
+    /// Called after an H-DMA transfer completes on the given channel (when all table entries have been processed)
+    fn on_hdma_end(&mut self, dma: &mut DmaController, channel: usize) {}
 
     /// Called on the first dot of v-blank. Can be used to perform operations once per frame.
     fn on_vblank_start(&mut self, core: &mut Snemulator) {}

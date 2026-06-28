@@ -33,23 +33,23 @@ impl DmaTab {
         // ── Global status bar ────────────────────────────────────────────────
         ui.horizontal(|ui| {
             ui.add_enabled_ui(app_state.is_paused, |ui| {
-                if ui.button("Run Until DMA").clicked() {
+                if ui.button("Run Until DMA Start").clicked() {
                     *debug_action = Some(DebugAction::TogglePause);
                     harness.stop_condition = Some(StopCondition::DmaStart { ch: None });
                 }
 
-                if ui.button("Run Until H-DMA").clicked() {
+                if ui.button("Run Until H-DMA Init").clicked() {
                     *debug_action = Some(DebugAction::TogglePause);
-                    harness.stop_condition = Some(StopCondition::HdmaStart { ch: None });
+                    harness.stop_condition = Some(StopCondition::HdmaInit { ch: None });
                 }
             });
-            self.render_status_badge(ui, app_theme, "DMA", dma.dma_en,
+            self.render_status_badge(ui, app_theme, "DMA", dma.dma_active_ch < 8,
                 Some(format!("CH{}", dma.dma_active_ch)));
             ui.add_space(8.0);
-            self.render_status_badge(ui, app_theme, "HDMA", dma.hdma_en,
+            self.render_status_badge(ui, app_theme, "HDMA", dma.hdma_active_ch < 8,
                 Some(format!("CH{}", dma.hdma_active_ch)));
             ui.add_space(8.0);
-            self.render_flag_badge(ui, app_theme, "HDMA PENDING", dma.hdma_pending, app_theme.warning);
+            self.render_flag_badge(ui, app_theme, "HDMA PENDING", dma.regs.iter().any(|ch| ch.hdma_en) && !core.cpu_regs.hblank_flag, app_theme.warning);
             ui.add_space(4.0);
             self.render_flag_badge(ui, app_theme, "NEEDS INIT", dma.hdma_needs_init, app_theme.info);
         });
@@ -99,12 +99,24 @@ impl DmaTab {
                                 harness.stop_condition = Some(StopCondition::HdmaEnd { ch: Some(ch as u8) });
                                 ui.close()
                             }
-                        } else {
-                            if ui.button(format!("Run Until H-DMA{} Begins", ch)).clicked() {
+
+                            if ui.button(format!("Run Until H-DMA{} Entry", ch)).clicked() {
                                 *debug_action = Some(DebugAction::TogglePause);
-                                harness.stop_condition = Some(StopCondition::HdmaStart { ch: Some(ch as u8) });
+                                harness.stop_condition = Some(StopCondition::HdmaEntry { ch: Some(ch as u8) });
                                 ui.close()
                             }
+                        } else {
+                            if ui.button(format!("Run Until H-DMA{} Init", ch)).clicked() {
+                                *debug_action = Some(DebugAction::TogglePause);
+                                harness.stop_condition = Some(StopCondition::HdmaInit { ch: Some(ch as u8) });
+                                ui.close()
+                            }
+                        }
+
+                        if ui.button(format!("Run Until H-DMA{} Transfer", ch)).clicked() {
+                            *debug_action = Some(DebugAction::TogglePause);
+                            harness.stop_condition = Some(StopCondition::HdmaScanline { ch: Some(ch as u8) });
+                            ui.close();
                         }
                     });
                 }
@@ -160,6 +172,10 @@ impl DmaTab {
         // Transfer pattern
         append(&mut job, &format_pattern(regs.transfer_pattern), mono.clone(), t.syntax_directive);
 
+        append(&mut job, " ", mono.clone(), t.text_muted);
+
+        append(&mut job, &format!("({} Bytes)", regs.transfer_pattern_length()), mono.clone(), t.syntax_directive);
+
         job
     }
 
@@ -196,7 +212,7 @@ impl DmaTab {
 
             detail_row(ui, t, "HDMA En",      &format_bool(regs.hdma_en, t));
             detail_row(ui, t, "Indirect",     &format_bool(regs.indirect_hdma, t));
-            detail_row(ui, t, "Table Addr",   &format_addr(regs.hdma_indirect_table_addr, t));
+            detail_row(ui, t, "Ind. Addr",    &format_addr(regs.hdma_indirect_table_addr, t));
             detail_row(ui, t, "Table Offset", &format_hex_u16(regs.hdma_table_offset, t));
             detail_row(ui, t, "Entry Lines",  &format_usize_dec(regs.entry_scanline_count as usize, t));
             detail_row(ui, t, "Lines Left",   &format_scanlines_left(regs.scanlines_left, t));

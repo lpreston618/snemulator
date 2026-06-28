@@ -457,17 +457,29 @@ impl Snemulator {
             self.dma.hdma_init_channels(&mut bus);
         }
 
-        if self.dma.hdma_en {
+        if self.ppu.scanline < sppu::VBLANK_START_SCANLINE &&
+            self.ppu.dot == sppu::HBLANK_START_DOT {
+            self.dma.seek_hdma(0);
+        }
+        
+        let mut did_hdma = false;
+        let mut did_dma = false;
+
+        if self.dma.hdma_active_ch < 8 {
+            self.cpu.stopped = true;
+
+            let mut bus = dma_bus!(self, harness, fblank_start_flag, fblank_end_flag);
+            
+            did_hdma = self.dma.do_hdma(&mut bus)
+        }
+        
+        if !did_hdma && self.dma.dma_active_ch < 8 {
             self.cpu.stopped = true;
             let mut bus = dma_bus!(self, harness, fblank_start_flag, fblank_end_flag);
-            self.dma.do_hdma(&mut bus, &mut self.cpu.stopped);
+            did_dma = self.dma.do_dma(&mut bus);
         }
 
-        if !self.dma.hdma_en && self.dma.dma_en {
-            self.cpu.stopped = true;
-            let mut bus = dma_bus!(self, harness, fblank_start_flag, fblank_end_flag);
-            self.dma.do_dma(&mut bus, &mut self.cpu.stopped);
-        }
+        self.cpu.stopped = did_hdma || did_dma;
 
         let mut bus = cpu_bus!(self, harness, fblank_start_flag, fblank_end_flag);
         self.cpu.cycle(&mut bus);
@@ -536,17 +548,6 @@ impl Snemulator {
                 harness.on_hblank_start(self);
             } else if hblank_end_flag {
                 harness.on_hblank_end(self);
-            }
-        }
-
-        if self.dma.hdma_pending
-            && self.ppu.scanline < sppu::VBLANK_START_SCANLINE
-            && self.ppu.dot == sppu::HBLANK_START_DOT
-        {
-            self.dma.hdma_en = self.dma.hdma_active_ch < 8;
-
-            if self.dma.hdma_active_ch < 8 {
-                self.dma.regs[self.dma.hdma_active_ch].hdma_do_transfer = true;
             }
         }
     }

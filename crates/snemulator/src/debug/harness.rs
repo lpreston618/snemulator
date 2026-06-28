@@ -27,7 +27,9 @@ pub enum StopCondition {
     StepOverSubroutine { depth: usize },
     DmaStart { ch: Option<u8> },
     DmaEnd { ch: Option<u8> },
-    HdmaStart { ch: Option<u8> },
+    HdmaInit { ch: Option<u8> },
+    HdmaScanline { ch: Option<u8> },
+    HdmaEntry { ch: Option<u8> },
     HdmaEnd { ch: Option<u8> },
     SampleGenerated,
     SpcInstruction,
@@ -94,7 +96,7 @@ impl DebugHarness for MainDebugHarness {
                 self.stop_emulation |= channel == ch as usize;
             }
             Some(StopCondition::DmaStart { ch: None }) => {
-                self.stop_emulation = _dma.regs.iter().any(|ch| ch.hdma_indirect_table_addr.offset == 2048);
+                self.stop_emulation = true;
             }
             _ => {}
         }
@@ -110,6 +112,133 @@ impl DebugHarness for MainDebugHarness {
             }
             _ => {}
         }
+    }
+
+    fn on_hdma_init(&mut self, _dma: &mut snemcore::dma::DmaController, channel: usize) {
+        match self.stop_condition {
+            Some(StopCondition::HdmaInit { ch: Some(ch) }) => {
+                self.stop_emulation |= channel == ch as usize;
+            }
+            Some(StopCondition::HdmaInit { ch: None }) => {
+                self.stop_emulation = true;
+            }
+            _ => {}
+        }
+    }
+
+    fn on_hdma_transfer(
+        &mut self,
+        _dma: &mut snemcore::dma::DmaController,
+        _channel: usize,
+        _src_addr: snemcore::scpu::Address,
+        _dst_addr: snemcore::scpu::Address,
+        _value: u8
+    ) {
+        if matches!(self.stop_condition, Some(StopCondition::AnyScpuCycle)) {
+            self.stop_emulation = true;
+        }
+    }
+
+    fn on_hdma_load_entry(&mut self, _dma: &mut snemcore::dma::DmaController, channel: usize) {
+        match self.stop_condition {
+            Some(StopCondition::HdmaEntry { ch: Some(ch) }) => {
+                self.stop_emulation |= channel == ch as usize;
+            }
+            Some(StopCondition::HdmaEntry { ch: None }) => {
+                self.stop_emulation = true;
+            }
+            _ => {}
+        }
+    }
+
+    fn on_hdma_end(&mut self, _dma: &mut snemcore::dma::DmaController, channel: usize) {
+        match self.stop_condition {
+            Some(StopCondition::HdmaEnd { ch: Some(ch) }) => {
+                self.stop_emulation |= channel == ch as usize;
+            }
+            Some(StopCondition::HdmaEnd { ch: None }) => {
+                self.stop_emulation = true;
+            }
+            _ => {}
+        }
+    }
+
+    fn on_instruction(&mut self, cpu: &mut snemcore::scpu::Cpu65c816, prg_bytes: &[u8]) {
+        self.stack_tracker.on_instruction(cpu, prg_bytes);
+
+        if let Some(stop_cond) = self.stop_condition {
+            match stop_cond {
+                StopCondition::ScpuInstruction | StopCondition::AnyScpuCycle => self.stop_emulation = true,
+                StopCondition::StepOverSubroutine { depth } => {
+                    let opcode = prg_bytes[0];
+
+                    if opcode == JSL_OPCODE || opcode == JSR_OPCODE || opcode == JSR_INDIRECT_OPCODE {
+                        self.stop_condition = Some(StopCondition::StepOverSubroutine { depth: depth + 1 });
+                    } else if opcode == RTL_OPCODE || opcode == RTS_OPCODE {
+                        // If step over clicked on a return instruction, depth will be 0 and instr will be return.
+                        if depth <= 1 {
+                            self.stop_emulation = true;
+                        }
+
+                        self.stop_condition = Some(StopCondition::StepOverSubroutine { depth: depth - 1 });
+                    } else {
+                        self.stop_emulation = depth == 0;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let full_pc = (cpu.pb as u32) << 16 | cpu.pc as u32;
+        if self.breakpoints.contains(&full_pc) {
+            self.stop_emulation = true;
+        }
+    }
+
+    fn on_hblank_start(&mut self, core: &mut snemcore::Snemulator) {
+        match self.stop_condition {
+            Some(StopCondition::HdmaScanline { ch: Some(ch) }) => {
+                self.stop_emulation |= (0..8).find(|&ch| core.dma.regs[ch].hdma_en).unwrap_or(8) == ch as usize;
+            }
+            Some(StopCondition::HdmaScanline { ch: None }) => {
+                self.stop_emulation |= core.dma.regs.iter().any(|ch| ch.hdma_en);
+            }
+            _ => {}
+        }
+    }
+
+    fn on_vblank_start(&mut self, core: &mut snemcore::Snemulator) {
+        for voice in 0..8usize {
+            self.envelope_history[voice].push(core.ssmp.voice_regs[voice].envelope as i16);
+        }
+
+        if matches!(self.stop_condition, Some(StopCondition::Frame)) {
+            self.stop_emulation = true;
+        }
+    }
+
+    fn on_interrupt(&mut self, cpu: &mut snemcore::scpu::Cpu65c816, kind: snemcore::scpu::CpuInterrupt) {
+        self.stack_tracker.on_interrupt(cpu, kind);
+
+        if matches!(self.stop_condition, Some(StopCondition::Interrupt)) {
+            self.stop_emulation = true;
+        }
+    }
+
+    fn on_stack_push(&mut self, cpu: &mut snemcore::scpu::Cpu65c816, value: u8) {
+        self.stack_tracker.on_stack_push(cpu, value);
+    }
+
+    fn on_stack_pop(&mut self, cpu: &mut snemcore::scpu::Cpu65c816, value: u8) {
+        self.stack_tracker.on_stack_pop(cpu, value);
+    }
+
+    fn on_power(&mut self, _core: &mut snemcore::Snemulator) {
+        self.stack_tracker.clear();
+    }
+
+    fn on_reset(&mut self, _core: &mut snemcore::Snemulator) {
+        self.stack_tracker.clear();
     }
 
     fn on_voice_key_on(&mut self, _voice_regs: &mut snemcore::ssmp::sdsp::voices::VoiceRegs, voice: usize) {
@@ -155,84 +284,5 @@ impl DebugHarness for MainDebugHarness {
             self.voice_buffers[voice].0.push(left_sample);
             self.voice_buffers[voice].1.push(right_sample);
         }
-    }
-
-    // fn on_hdma_transfer(
-    //     &mut self,
-    //     _dma: &mut snemcore::dma::DmaController,
-    //     _channel: usize,
-    //     _src_addr: snemcore::scpu::Address,
-    //     _dst_addr: snemcore::scpu::Address,
-    //     _value: u8
-    // ) {
-    //     if matches!(self.stop_condition, Some(StopCondition::AnyCpuCycle)) {
-    //         self.stop_emulation = true;
-    //     }
-    // }
-
-    fn on_instruction(&mut self, cpu: &mut snemcore::scpu::Cpu65c816, prg_bytes: &[u8]) {
-        self.stack_tracker.on_instruction(cpu, prg_bytes);
-
-        if let Some(stop_cond) = self.stop_condition {
-            match stop_cond {
-                StopCondition::ScpuInstruction | StopCondition::AnyScpuCycle => self.stop_emulation = true,
-                StopCondition::StepOverSubroutine { depth } => {
-                    let opcode = prg_bytes[0];
-
-                    if opcode == JSL_OPCODE || opcode == JSR_OPCODE || opcode == JSR_INDIRECT_OPCODE {
-                        self.stop_condition = Some(StopCondition::StepOverSubroutine { depth: depth + 1 });
-                    } else if opcode == RTL_OPCODE || opcode == RTS_OPCODE {
-                        // If step over clicked on a return instruction, depth will be 0 and instr will be return.
-                        if depth <= 1 {
-                            self.stop_emulation = true;
-                        }
-
-                        self.stop_condition = Some(StopCondition::StepOverSubroutine { depth: depth - 1 });
-                    } else {
-                        self.stop_emulation = depth == 0;
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        let full_pc = (cpu.pb as u32) << 16 | cpu.pc as u32;
-        if self.breakpoints.contains(&full_pc) {
-            self.stop_emulation = true;
-        }
-    }
-
-    fn on_vblank_start(&mut self, core: &mut snemcore::Snemulator) {
-        for voice in 0..8usize {
-            self.envelope_history[voice].push(core.ssmp.voice_regs[voice].envelope as i16);
-        }
-
-        if matches!(self.stop_condition, Some(StopCondition::Frame)) {
-            self.stop_emulation = true;
-        }
-    }
-
-    fn on_interrupt(&mut self, cpu: &mut snemcore::scpu::Cpu65c816, kind: snemcore::scpu::CpuInterrupt) {
-        self.stack_tracker.on_interrupt(cpu, kind);
-
-        if matches!(self.stop_condition, Some(StopCondition::Interrupt)) {
-            self.stop_emulation = true;
-        }
-    }
-
-    fn on_stack_push(&mut self, cpu: &mut snemcore::scpu::Cpu65c816, value: u8) {
-        self.stack_tracker.on_stack_push(cpu, value);
-    }
-
-    fn on_stack_pop(&mut self, cpu: &mut snemcore::scpu::Cpu65c816, value: u8) {
-        self.stack_tracker.on_stack_pop(cpu, value);
-    }
-
-    fn on_power(&mut self, _core: &mut snemcore::Snemulator) {
-        self.stack_tracker.clear();
-    }
-
-    fn on_reset(&mut self, _core: &mut snemcore::Snemulator) {
-        self.stack_tracker.clear();
     }
 }
