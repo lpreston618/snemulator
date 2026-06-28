@@ -70,7 +70,7 @@ pub fn speed_test(emulated_seconds: u64, snem_core: &mut snemcore::Snemulator, h
     
     let elapsed = pb.elapsed().as_secs_f32();
     let emulation_speedup = (emulated_seconds as f32) / elapsed;
-    pb.finish_with_message(format!("Emulated {} frames in {:.2} seconds ({:.4}x real time speed)", emulated_seconds, elapsed, emulation_speedup));
+    pb.finish_with_message(format!("Ran {} emulated seconds in {:.2} real seconds ({:.4}x real time speed)", emulated_seconds, elapsed, emulation_speedup));
 
     emulation_speedup
 }
