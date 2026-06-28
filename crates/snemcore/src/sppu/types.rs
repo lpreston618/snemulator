@@ -2,6 +2,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::{get_bit_n, sppu::Color};
 
+pub struct WindowSignals {
+    pub bg_main: [bool; 4],
+    pub bg_sub: [bool; 4],
+    pub obj_main: bool,
+    pub obj_sub: bool,
+    pub color_main: bool,
+    pub color_sub: bool,
+}
+
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 pub enum ObjectSizeSelect {
     #[default]

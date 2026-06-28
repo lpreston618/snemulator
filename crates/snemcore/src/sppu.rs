@@ -379,6 +379,42 @@ impl Ppu5C7x {
         }
     }
 
+    #[inline]
+    fn render_bg_tiles<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>, mode_bg_settings: &[(u8, ColorDepth)]) {
+        for (bg, &(cgram_base, color_depth)) in mode_bg_settings.into_iter().enumerate() {
+            if self.x == self.scanline_bg_counters[bg] {
+                let dots_rendered = self.render_tile(bus, bg, cgram_base, color_depth);
+
+                debug_assert!(dots_rendered > 0, "{} {:?} {} {}", bg, bus.ppu_regs.bg_mode, self.x, self.y);
+
+                self.scanline_bg_counters[bg] += dots_rendered;
+            }
+        }
+    }
+
+    fn layer_window_signals(regs: &PpuRegs) -> WindowSignals {
+        let bg_main: [bool; 4] = std::array::from_fn(|bg| {
+            regs.bg_settings[bg].main_en && (!regs.bg_settings[bg].window.main_en || !regs.bg_apply_window_signals[bg])
+        });
+        let bg_sub: [bool; 4] = std::array::from_fn(|bg| {
+            regs.bg_settings[bg].sub_en && (!regs.bg_settings[bg].window.sub_en || !regs.bg_apply_window_signals[bg])
+        });
+
+        let obj_main = regs.obj_settings.main_en && (!regs.obj_settings.window.main_en || !regs.obj_apply_window_signal);
+        let obj_sub = regs.obj_settings.sub_en && (!regs.obj_settings.window.sub_en || !regs.obj_apply_window_signal);
+
+        let (col_main, col_sub) = Self::color_window_signals(regs);
+
+        WindowSignals {
+            bg_main,
+            bg_sub,
+            obj_main,
+            obj_sub,
+            color_main: col_main,
+            color_sub: col_sub,
+        }
+    }
+
     fn draw_mode0_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
         // const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
         // const BG2_CGRAM_BASE_ADDR: u8 = 0x20;
@@ -494,38 +530,22 @@ impl Ppu5C7x {
         const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
         const BG3_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
 
-        for (bg, (cgram_base, color_depth)) in [
+        const MODE1_BG_SETTINGS: &[(u8, ColorDepth)] = &[
             (BG1_CGRAM_BASE_ADDR, BG1_COL_DEPTH),
             (BG2_CGRAM_BASE_ADDR, BG2_COL_DEPTH),
             (BG3_CGRAM_BASE_ADDR, BG3_COL_DEPTH),
-        ].into_iter().enumerate() {
-            if self.x == self.scanline_bg_counters[bg] {
-                let dots_rendered = self.render_tile(bus, bg, cgram_base, color_depth);
+        ];
 
-                debug_assert!(dots_rendered > 0, "{} {:?} {} {}", bg, bus.ppu_regs.bg_mode, self.x, self.y);
-
-                self.scanline_bg_counters[bg] += dots_rendered;
-            }
-        }
+        self.render_bg_tiles(bus, MODE1_BG_SETTINGS);
 
         let regs = &bus.ppu_regs;
 
-        let obj_main_en = regs.obj_settings.main_en && (!regs.obj_settings.window.main_en || !regs.obj_apply_window_signal);
-        let bg_main_en: [bool; 3] = std::array::from_fn(|bg| {
-            bus.ppu_regs.bg_settings[bg].main_en && (!regs.bg_settings[bg].window.main_en || !regs.bg_apply_window_signals[bg])
-        });
+        let win_signals = Self::layer_window_signals(regs);
 
-        let obj_sub_en = regs.obj_settings.sub_en && (!regs.obj_settings.window.sub_en || !regs.obj_apply_window_signal);
-        let bg_sub_en: [bool; 3] = std::array::from_fn(|bg| {
-            bus.ppu_regs.bg_settings[bg].sub_en && (!regs.bg_settings[bg].window.sub_en || !regs.bg_apply_window_signals[bg])
-        });
-
-        let (apply_col_win_main, apply_col_win_sub) = Self::color_window_signals(regs);
-
-        let obj_main_col = if obj_main_en { self.scanline_sprite_data[self.x] } else { None };
-        let bg1_main_col = if bg_main_en[0] { self.scanline_bg_data[0][self.x] } else { None };
-        let bg2_main_col = if bg_main_en[1] { self.scanline_bg_data[1][self.x] } else { None };
-        let bg3_main_col = if bg_main_en[2] { self.scanline_bg_data[2][self.x] } else { None };
+        let obj_main_col = if win_signals.obj_main { self.scanline_sprite_data[self.x] } else { None };
+        let bg1_main_col = if win_signals.bg_main[0] { self.scanline_bg_data[0][self.x] } else { None };
+        let bg2_main_col = if win_signals.bg_main[1] { self.scanline_bg_data[1][self.x] } else { None };
+        let bg3_main_col = if win_signals.bg_main[2] { self.scanline_bg_data[2][self.x] } else { None };
 
         let (main_col, main_col_layer) = Self::bg_mode1_choose_priority_color(
             obj_main_col,
@@ -535,12 +555,12 @@ impl Ppu5C7x {
             bus.ppu_regs.bg3_mode1_priority,
         ).unwrap_or((bus.cgram[0], ColorLayer::Back));
 
-        let main_col = if apply_col_win_main { Color::BLACK } else { main_col };
+        let main_col = if win_signals.color_main { Color::BLACK } else { main_col };
 
-        let obj_sub_col = if obj_sub_en { self.scanline_sprite_data[self.x] } else { None };
-        let bg1_sub_col = if bg_sub_en[0] { self.scanline_bg_data[0][self.x] } else { None };
-        let bg2_sub_col = if bg_sub_en[1] { self.scanline_bg_data[1][self.x] } else { None };
-        let bg3_sub_col = if bg_sub_en[2] { self.scanline_bg_data[2][self.x] } else { None };
+        let obj_sub_col = if win_signals.obj_sub { self.scanline_sprite_data[self.x] } else { None };
+        let bg1_sub_col = if win_signals.bg_sub[0] { self.scanline_bg_data[0][self.x] } else { None };
+        let bg2_sub_col = if win_signals.bg_sub[1] { self.scanline_bg_data[1][self.x] } else { None };
+        let bg3_sub_col = if win_signals.bg_sub[2] { self.scanline_bg_data[2][self.x] } else { None };
 
         let sub_col = if bus.ppu_regs.sub_color_fixed {
             bus.ppu_regs.fixed_color
@@ -557,7 +577,7 @@ impl Ppu5C7x {
             )
         };
 
-        let sub_col = if apply_col_win_sub { bus.cgram[0] } else { sub_col };
+        let sub_col = if win_signals.color_sub { bus.cgram[0] } else { sub_col };
 
         let cmath_en = match main_col_layer {
             ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
