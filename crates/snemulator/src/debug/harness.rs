@@ -205,6 +205,10 @@ impl DebugHarness for MainDebugHarness {
             }
             _ => {}
         }
+
+        if self.stop_emulation {
+            log::debug!("h-blank start w/ 1st active hdma_ch = {}", (0..8).find(|&ch| core.dma.regs[ch].hdma_en).unwrap_or(8));
+        }
     }
 
     fn on_vblank_start(&mut self, core: &mut snemcore::Snemulator) {

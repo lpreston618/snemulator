@@ -231,17 +231,9 @@ impl DmaController {
 
         src_addr.offset += hdma_ch_regs.transfer_pattern_step as u16;
 
-        log::debug!("Transfer Pattern: {:?}, Len: {}, Step: {}",
-            hdma_ch_regs.transfer_pattern, hdma_ch_regs.transfer_pattern_length(), hdma_ch_regs.transfer_pattern_step,
-        );
-
         if hdma_ch_regs.hdma_do_transfer {
             let value = bus.read(src_addr);
             bus.write(dst_addr, value);
-    
-            log::debug!("H-DMA Transfer on ch. {} from ${:06X} -> ${:06X} w/ val: 0x{:02X}",
-                self.hdma_active_ch, src_addr.to_u32(), dst_addr.to_u32(), value,
-            );
     
             if H::IS_DEBUGGING_HARNESS && H::TRACK_HDMA {
                 bus.harness.on_hdma_transfer(self, self.hdma_active_ch, src_addr, dst_addr, value);
@@ -254,10 +246,6 @@ impl DmaController {
         hdma_ch_regs.transfer_pattern_step %= hdma_ch_regs.transfer_pattern_length();
 
         if hdma_ch_regs.transfer_pattern_step == 0 {
-            // if hdma_ch_regs.hdma_entry_just_loaded {
-            //     hdma_ch_regs.hdma_entry_just_loaded = false;
-            // } else {
-            // }
             hdma_ch_regs.scanlines_left -= 1;
         
             if !hdma_ch_regs.hdma_repeat_flag {
@@ -305,7 +293,7 @@ impl DmaController {
     pub fn hdma_load_entry<H: DebugHarness>(&mut self, ch: usize, bus: &mut CpuBus<H>) -> bool {
         let regs = &mut self.regs[ch];
         
-        if regs.hdma_initialized {
+        if regs.hdma_initialized && !regs.indirect_hdma {
             regs.hdma_table_offset += regs.transfer_pattern_length() as u16;
         }
 
@@ -315,35 +303,35 @@ impl DmaController {
         };
 
         let scanline_count = bus.read(table_addr);
-        self.regs[ch].hdma_table_offset += 1;
+        regs.hdma_table_offset += 1;
 
         if scanline_count == 0 {
-            self.regs[ch].hdma_en = false;
+            regs.hdma_en = false;
             return false;
         }
 
-        self.regs[ch].entry_scanline_count = scanline_count & 0x7F;
-        self.regs[ch].scanlines_left = scanline_count & 0x7F;
-        self.regs[ch].hdma_repeat_flag = get_bit_n!(scanline_count, 7);
-        self.regs[ch].hdma_entry_just_loaded = true;
-        self.regs[ch].transfer_pattern_step = 0;
-        self.regs[ch].hdma_do_transfer = true;
+        regs.entry_scanline_count = scanline_count & 0x7F;
+        regs.scanlines_left = scanline_count & 0x7F;
+        regs.hdma_repeat_flag = get_bit_n!(scanline_count, 7);
+        regs.hdma_entry_just_loaded = true;
+        regs.transfer_pattern_step = 0;
+        regs.hdma_do_transfer = true;
 
-        if self.regs[ch].indirect_hdma {
+        if regs.indirect_hdma {
             let lo_addr = Address {
-                bank: self.regs[ch].a_bus_addr.bank,
-                offset: self.regs[ch].hdma_table_offset,
+                bank: regs.a_bus_addr.bank,
+                offset: regs.hdma_table_offset,
             };
             let lo = bus.read(lo_addr);
 
             let hi_addr = Address { offset: lo_addr.offset + 1, ..lo_addr };
             let hi = bus.read(hi_addr);
 
-            self.regs[ch].hdma_table_offset += 2;
+            regs.hdma_table_offset += 2;
 
             // Bank byte comes from $43n7, already stored in hdma_indirect_table_addr.bank
-            let indirect_bank = self.regs[ch].hdma_indirect_table_addr.bank;
-            self.regs[ch].hdma_indirect_table_addr = Address {
+            let indirect_bank = regs.hdma_indirect_table_addr.bank;
+            regs.hdma_indirect_table_addr = Address {
                 bank: indirect_bank,
                 offset: u16::from_le_bytes([lo, hi]),
             };

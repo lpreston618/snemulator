@@ -456,25 +456,17 @@ impl Snemulator {
             let mut bus = dma_bus!(self, harness, fblank_start_flag, fblank_end_flag);
             self.dma.hdma_init_channels(&mut bus);
         }
-
-        if self.ppu.scanline < sppu::VBLANK_START_SCANLINE &&
-            self.ppu.dot == sppu::HBLANK_START_DOT {
-            self.dma.seek_hdma(0);
-        }
         
         let mut did_hdma = false;
         let mut did_dma = false;
 
         if self.dma.hdma_active_ch < 8 {
-            self.cpu.stopped = true;
-
             let mut bus = dma_bus!(self, harness, fblank_start_flag, fblank_end_flag);
             
             did_hdma = self.dma.do_hdma(&mut bus)
         }
         
         if !did_hdma && self.dma.dma_active_ch < 8 {
-            self.cpu.stopped = true;
             let mut bus = dma_bus!(self, harness, fblank_start_flag, fblank_end_flag);
             did_dma = self.dma.do_dma(&mut bus);
         }
@@ -530,6 +522,11 @@ impl Snemulator {
             hblank_end_flag
         );
         self.ppu.cycle(&mut bus);
+
+        if self.ppu.scanline < sppu::VBLANK_START_SCANLINE &&
+            self.ppu.dot == sppu::HBLANK_START_DOT {
+            self.dma.seek_hdma(0);
+        }
 
         if H::IS_DEBUGGING_HARNESS && H::TRACK_PPU_STEP {
             harness.on_ppu_step(self);
