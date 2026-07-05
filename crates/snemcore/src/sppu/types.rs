@@ -2,6 +2,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{get_bit_n, sppu::Color};
 
+#[derive(Clone, Copy)]
+pub struct BgRenderSettings {
+    pub cgram_base: u8,
+    pub color_depth: ColorDepth,
+    pub use_offset_per_tile: bool,
+}
+
 pub struct WindowSignals {
     pub bg_main: [bool; 4],
     pub bg_sub: [bool; 4],
@@ -313,6 +320,31 @@ impl TilemapEntry {
             priority: get_bit_n!(w, 13),
             palette: ((w >> 10) & 7) as u8,
             chr_num: w & 0x3FF,
+        }
+    }
+}
+
+pub struct TilemapScrollEntry {
+        // V21. ..SS   SSSS Ssss
+        // |||    ||   |||| ||||
+        // |||    ++---++++-++++- New scroll value for this tile. For horizontal values, the bottom three bits are ignored
+        // ||+------------------- Override scroll value for layer 1
+        // |+-------------------- Override scroll value for layer 2
+        // +--------------------- Mode 4 only: Scroll direction (0 = horizontal, 1 = vertical)
+    pub scroll: u16,
+    pub bg1_offset_en: bool,
+    pub bg2_offset_en: bool,
+    /// 0 = horizontal, 1 = vertical
+    pub mode4_dir: bool,
+}
+
+impl TilemapScrollEntry {
+    pub fn from_word(w: u16) -> Self {
+        Self {
+            scroll: w & 0x03FF,
+            bg1_offset_en: get_bit_n!(w, 13),
+            bg2_offset_en: get_bit_n!(w, 14),
+            mode4_dir: get_bit_n!(w, 15),
         }
     }
 }

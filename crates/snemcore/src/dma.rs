@@ -209,9 +209,7 @@ impl DmaController {
             a_bus_addr = hdma_ch_regs.hdma_indirect_table_addr;
             b_bus_addr = hdma_ch_regs.get_b_with_offset();
 
-            if hdma_ch_regs.hdma_repeat_flag {
-                hdma_ch_regs.hdma_indirect_table_addr.offset += 1;
-            }
+            hdma_ch_regs.hdma_indirect_table_addr.offset += 1;
         } else {
             a_bus_addr = Address {
                 bank: hdma_ch_regs.a_bus_addr.bank,
@@ -219,17 +217,13 @@ impl DmaController {
             };
             b_bus_addr = hdma_ch_regs.get_b_with_offset();
 
-            if hdma_ch_regs.hdma_repeat_flag {
-                hdma_ch_regs.hdma_table_offset += 1;
-            }
+            hdma_ch_regs.hdma_table_offset += 1;
         }
-
-        let (mut src_addr, dst_addr) = match hdma_ch_regs.direction {
+        
+        let (src_addr, dst_addr) = match hdma_ch_regs.direction {
             Direction::AtoB => (a_bus_addr, b_bus_addr),
             Direction::BtoA => (b_bus_addr, a_bus_addr),
         };
-
-        src_addr.offset += hdma_ch_regs.transfer_pattern_step as u16;
 
         if hdma_ch_regs.hdma_do_transfer {
             let value = bus.read(src_addr);
@@ -293,10 +287,6 @@ impl DmaController {
     pub fn hdma_load_entry<H: DebugHarness>(&mut self, ch: usize, bus: &mut CpuBus<H>) -> bool {
         let regs = &mut self.regs[ch];
         
-        if regs.hdma_initialized && !regs.indirect_hdma {
-            regs.hdma_table_offset += regs.transfer_pattern_length() as u16;
-        }
-
         let table_addr = Address {
             bank: regs.a_bus_addr.bank,
             offset: regs.hdma_table_offset,

@@ -242,7 +242,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
     /// Render the background image with viewport overlay
     fn render_scrolling_background(&mut self, ui: &mut egui::Ui, core: &Snemulator, app_theme: &AppTheme, render_settings: &BgDebugViewSettings) {
         let Some(texture) = &self.texture else {
-            let text = format!("Background {} not rendered in mode {}", BG_LAYER + 1, core.ppu_regs.bg_mode as usize + 1);
+            let text = format!("Background {} not rendered in mode {:?}", BG_LAYER + 1, core.ppu_regs.bg_mode);
 
             ui.label(
                 egui::RichText::new(text)
