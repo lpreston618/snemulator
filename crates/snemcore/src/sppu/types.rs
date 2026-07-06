@@ -99,7 +99,6 @@ pub enum ColorDepth {
     Bpp2,
     Bpp4,
     Bpp8,
-    // Direct,
 }
 
 impl ColorDepth {

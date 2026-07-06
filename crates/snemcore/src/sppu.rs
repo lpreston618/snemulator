@@ -324,7 +324,7 @@ impl Ppu5C7x {
         } else {
             main_color
         };
-        let sub_color = if hi_res {
+        let sub_color = if hi_res && !true_hi_res {
             if self.last_main_screen_pixel_did_cmath {
                 if self.last_sub_screen_color == bus.ppu_regs.fixed_color {
                     self.apply_cmath(bus, sub_color, bus.ppu_regs.fixed_color)
@@ -401,6 +401,9 @@ impl Ppu5C7x {
     fn render_hires_bg_tiles<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>, mode_bg_settings: &[BgRenderSettings]) {
         for (bg, &bg_render_settings) in mode_bg_settings.into_iter().enumerate() {
             if self.x == self.scanline_bg_counters[bg] {
+                // self.render_hires_tile(bus, bg, bg_render_settings, true);
+                // let dots_rendered = self.render_hires_tile(bus, bg, bg_render_settings, false);
+
                 let dots_rendered = self.render_hires_tile(bus, bg, bg_render_settings);
 
                 debug_assert!(dots_rendered > 0, "{} {:?} {} {}", bg, bus.ppu_regs.bg_mode, self.x, self.y);
@@ -755,7 +758,7 @@ impl Ppu5C7x {
         let bg1_main_col = if win_signals.bg_main[0] { self.scanline_bg_data[0][self.x] } else { None };
         let bg2_main_col = if win_signals.bg_main[1] { self.scanline_bg_data[1][self.x] } else { None };
 
-        let (main_col, main_col_layer) = Self::bg_modes2thru5_choose_priority_color(
+        let (main_col, _) = Self::bg_modes2thru5_choose_priority_color(
             obj_main_col,
             bg1_main_col,
             bg2_main_col,
@@ -764,8 +767,8 @@ impl Ppu5C7x {
         let main_col = if win_signals.color_main { Color::BLACK } else { main_col };
 
         let obj_sub_col = if win_signals.obj_sub { self.scanline_sprite_data[self.x] } else { None };
-        let bg1_sub_col = if win_signals.bg_sub[0] { self.scanline_bg_data[0][self.x] } else { None };
-        let bg2_sub_col = if win_signals.bg_sub[1] { self.scanline_bg_data[1][self.x] } else { None };
+        let bg1_sub_col = if win_signals.bg_sub[0] { self.bg1_extra_data[self.x] } else { None };
+        let bg2_sub_col = if win_signals.bg_sub[1] { self.bg2_extra_data[self.x] } else { None };
 
         let sub_col = if bus.ppu_regs.sub_color_fixed {
             bus.ppu_regs.fixed_color
@@ -782,13 +785,7 @@ impl Ppu5C7x {
 
         let sub_col = if win_signals.color_sub { bus.cgram[0] } else { sub_col };
 
-        let cmath_en = match main_col_layer {
-            ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
-            ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
-            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.unwrap().palette >= 4,
-            ColorLayer::Back => bus.ppu_regs.back_cmath_en,
-            _ => unreachable!(),
-        } && sub_col != bus.cgram[0];
+        let cmath_en = false; // Mode 5 has no color math
 
         self.set_pixel(
             bus,
@@ -1079,139 +1076,299 @@ impl Ppu5C7x {
         dots_rendered
     }
 
-    fn render_hires_tile<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>, bg: usize, bg_render_settings: BgRenderSettings) -> usize {
+    // fn render_hires_tile<H: DebugHarness>(
+    //     &mut self,
+    //     bus: &mut PpuBus<H>,
+    //     bg: usize,
+    //     bg_render_settings: BgRenderSettings,
+    //     render_sub: bool,
+    // ) -> usize {
+    //     let bg_settings = &bus.ppu_regs.bg_settings[bg];
+    //     let interlace = bus.ppu_regs.screen_interlace_en;
+    //     let field = (self.frame & 1) as u16;
+    //     let bpp = bg_render_settings.color_depth.bits_per_pixel();
+    //     let m = bus.ppu_regs.mosaic_size as u16;
+
+    //     // Vertical, hires-pixel units (0-1023): interlace doubles y and ORs in
+    //     // the field bit before adding scroll_y (unscaled -- vertical scroll is
+    //     // already fine-grained for hires per the docs).
+    //     let vpixel = if interlace { (self.y as u16) << 1 | field } else { self.y as u16 };
+    //     let shifted_y = (vpixel + bg_settings.scroll_y) & 0x3FF;
+
+    //     // Horizontal, hires-pixel units: self.x and scroll_x both doubled to
+    //     // reach hires space. Sub uses this offset directly; main is the
+    //     // adjacent 8-wide half, +8 further along.
+    //     let hpixel = (self.x as u16) << 1;
+    //     let hscroll = bg_settings.scroll_x << 1;
+    //     let hoffset = hpixel + hscroll + if render_sub { 0 } else { 8 };
+
+    //     // Mosaic block size (per docs): hires width is always 2X; height is X
+    //     // normally but 2X when interlaced, since y is already doubled there.
+    //     let m_x = m << 1;
+    //     let m_y = if interlace { m << 1 } else { m };
+
+    //     let (_, size_y) = bg_settings.chr_size.raw_size();
+    //     let playfield_x = if bg_settings.mosaic_en { Self::apply_mosaic(hoffset, m_x) } else { hoffset };
+    //     let playfield_y = if bg_settings.mosaic_en { Self::apply_mosaic(shifted_y, m_y) } else { shifted_y };
+
+    //     // 16-px-wide macro-tile -> one tilemap entry. Sub and main each fetch
+    //     // their own entry (called separately), since they can land in different
+    //     // macro-tiles once scroll is nonzero.
+    //     let tilemap_x = playfield_x / 16;
+    //     let tilemap_y = playfield_y / size_y;
+    //     let tile_col = playfield_x % 16;
+    //     let tile_row = playfield_y % size_y;
+
+    //     let tilemap_offset = match (bg_settings.tilemap_cnt_x, bg_settings.tilemap_cnt_y) {
+    //         (TilemapCount::One, TilemapCount::One) => 0,
+    //         (TilemapCount::One, TilemapCount::Two) => (tilemap_y & 0x20) << 5,
+    //         (TilemapCount::Two, TilemapCount::One) => (tilemap_x & 0x20) << 5,
+    //         (TilemapCount::Two, TilemapCount::Two) => ((tilemap_y & 0x20) << 6) + ((tilemap_x & 0x20) << 5),
+    //     };
+
+    //     // Entry address: 32x32-tile page (row*32 + col) plus page-select offset
+    //     // for larger screens -- same layout as any other bg mode.
+    //     let entry_addr = bg_settings.tilemap_base_addr
+    //         + ((tilemap_y & 0x1F) << 5) + (tilemap_x & 0x1F) + tilemap_offset;
+    //     let entry = TilemapEntry::from_word(bus.vram[entry_addr as usize]);
+
+    //     let row = if entry.flip_y { size_y - tile_row - 1 } else { tile_row };
+    //     let col = if entry.flip_x { 15 - tile_col } else { tile_col };
+
+    //     // col>>3 picks which of the two adjacent VRAM characters forms this
+    //     // half of the 16-wide macro-tile.
+    //     let chr_x = entry.chr_num & 0x1F;
+    //     let chr_y = entry.chr_num >> 5;
+    //     let tile_x = (chr_x << 1) + (col >> 3);
+    //     let tile_y = (chr_y << (size_y >> 4)) + (row >> 3);
+    //     let tile_number = (tile_y << (5 + (size_y >> 4))) + tile_x;
+
+    //     // Character address: base + tile_number * (8 rows * bpp words/row),
+    //     // stepped to the row within the character (row % 8).
+    //     let tile_addr = ((bg_settings.chr_base_addr + tile_number * 8 * bpp) & 0x7FFF) as usize;
+    //     let row_addr = tile_addr + (row as usize % 8);
+
+    //     // Standard planar fetch: one word holds bitplanes 0+1 for all 8 pixels
+    //     // (bit 15/7 = leftmost). Bpp4 adds a second word, 8 rows further into
+    //     // the character, holding planes 2+3. (Replaces the old even/odd-bit
+    //     // interleave decode, which read sub+main from one word -- that doesn't
+    //     // match how mode 5/6 storage actually works: adjacent characters, not
+    //     // interleaved planes.)
+    //     let bp10 = bus.vram[row_addr];
+    //     let bp32 = (bpp == 4).then(|| bus.vram[row_addr + 8]);
+
+    //     let extra_buffer = if bg == 0 { &mut self.bg1_extra_data } else { &mut self.bg2_extra_data };
+    //     let col_end = if self.x > 256 - 8 { 256 - self.x as u16 } else { 8 };
+    //     let mut dots_rendered = 0;
+
+    //     for i in 0..col_end {
+    //         let idx = self.x + i as usize;
+    //         let bit = if entry.flip_x { i } else { 7 - i };
+
+    //         let bp0 = ((bp10 >> (7 - bit)) & 1) as u8;
+    //         let bp1 = ((bp10 >> (15 - bit)) & 1) as u8;
+    //         let pal_idx = match bp32 {
+    //             Some(w) => {
+    //                 let bp2 = ((w >> (7 - bit)) & 1) as u8;
+    //                 let bp3 = ((w >> (15 - bit)) & 1) as u8;
+    //                 (bp3 << 3) | (bp2 << 2) | (bp1 << 1) | bp0
+    //             }
+    //             None => (bp1 << 1) | bp0,
+    //         };
+
+    //         let color = (pal_idx != 0).then(|| {
+    //             let addr = bg_render_settings.cgram_base + (entry.palette << bpp) + pal_idx;
+    //             BgColorData { color: bus.cgram[addr as usize], palette: entry.palette, priority: entry.priority }
+    //         });
+
+    //         if render_sub { extra_buffer[idx] = color; } else { self.scanline_bg_data[bg][idx] = color; }
+    //         dots_rendered += 1;
+    //     }
+
+    //     dots_rendered
+    // }
+
+    fn render_hires_tile<H: DebugHarness>(
+        &mut self,
+        bus: &mut PpuBus<H>,
+        bg: usize,
+        bg_render_settings: BgRenderSettings,
+    ) -> usize {
         let interlace = bus.ppu_regs.screen_interlace_en;
-        let field = self.frame & 1;
-
+        let field = (self.frame & 1) as u16;
         let bpp = bg_render_settings.color_depth.bits_per_pixel();
-
         let bg_settings = &bus.ppu_regs.bg_settings[bg];
 
-        let shifted_x = (self.x as u16 + bg_settings.scroll_x) & 0x3FF;
-        let shifted_y = if interlace {
-            (self.y as u16 + (bg_settings.scroll_y >> 1)) & 0x3FF
+        // ---- Step 1: Coordinates in HI-RES space ----------------------------
+        //
+        // bsnes works in hi-res pixel space throughout: hpixel is doubled, and
+        // scroll registers are shifted left by 1 so all math is consistent.
+        //
+        //   hpixel  = self.x * 2                     [in 0..512]
+        //   hscroll = scroll_x * 2                   [in 0..1024]
+        //   hoffset = (hpixel + hscroll) & (hsize-1)
+        let hpixel = (self.x as u16) << 1;
+        let hscroll = bg_settings.scroll_x << 1;
+
+        // ---- Step 2: Vertical coordinate ------------------------------------
+        //
+        // In interlace, the vertical is doubled and the field bit selects a
+        // half-line. Per bsnes: `vpixel = vpixel << 1 | (field && !mosaic.enable)`.
+        let mosaic_en = bg_settings.mosaic_en;
+        let vpixel_base = self.y as u16;
+        let vpixel = if interlace {
+            (vpixel_base << 1) | if !mosaic_en { field } else { 0 }
         } else {
-            (self.y as u16 + bg_settings.scroll_y) & 0x3FF
+            vpixel_base
         };
-        let shifted_field = field ^ (bg_settings.scroll_y as usize & 1);
+        let vscroll = bg_settings.scroll_y;
 
-        let m = bus.ppu_regs.mosaic_size as u16;
+        // Note: I'm skipping mosaic vertical offset adjustment for brevity; add
+        // `vpixel -= mosaic.voffset() << (hires && interlace)` if you support it.
 
-        let (playfield_x, playfield_y) = if bg_settings.mosaic_en {
-            (Self::apply_mosaic(shifted_x, m), Self::apply_mosaic(shifted_y, m))
+        // ---- Step 3: Playfield offsets and sizes ----------------------------
+        //
+        // hsize/vsize are in hi-res pixel units.
+        //   width = 256 << 1 = 512
+        //   hsize = width << tileSize << screenSize.bit(0)
+        //   vsize = width << tileSize << screenSize.bit(1)
+        let (_, tile_h_native) = bg_settings.chr_size.raw_size(); // 8 or 16
+        let tile_size_bit = if tile_h_native == 16 { 1u16 } else { 0u16 };
+
+        let width_hires: u16 = 512;
+        let screen_size_x_bit = matches!(bg_settings.tilemap_cnt_x, TilemapCount::Two) as u16;
+        let screen_size_y_bit = matches!(bg_settings.tilemap_cnt_y, TilemapCount::Two) as u16;
+
+        let hsize = width_hires << tile_size_bit << screen_size_x_bit;
+        let vsize = width_hires << tile_size_bit << screen_size_y_bit;
+
+        let hoffset = hpixel.wrapping_add(hscroll) & (hsize - 1);
+        let voffset = vpixel.wrapping_add(vscroll) & (vsize - 1);
+
+        // ---- Step 4: Tile indices -------------------------------------------
+        //
+        // htiles = 4 in hi-res  (each tilemap entry covers 16 hi-res pixels wide)
+        // vtiles = 3 + tileSize (8 or 16 tall)
+        let htiles = 4u16;
+        let vtiles = 3u16 + tile_size_bit;
+
+        let htile = hoffset >> htiles;   // tilemap x index (in tile grid)
+        let vtile = voffset >> vtiles;   // tilemap y index
+
+        // ---- Step 5: Tilemap address ----------------------------------------
+        let hscreen: u16 = if screen_size_x_bit == 1 { 32 << 5 } else { 0 };
+        let vscreen: u16 = if screen_size_y_bit == 1 {
+            32u16 << (5 + screen_size_x_bit)
         } else {
-            (shifted_x, shifted_y)
-        };
-        
-        let shifted_x = shifted_x * 2;
-
-        let size_x = 16;
-        let (_, size_y) = bg_settings.chr_size.raw_size();
-        let tilemap_x = playfield_x / size_x;
-        let tilemap_y = playfield_y / size_y;
-        let tile_col = playfield_x % size_x;
-        let tile_row = playfield_y % size_y;
-
-        // Calculate offset into VRAM to find the tilemap given playfield position
-        // and background settings.
-        let tilemap_offset = match (bg_settings.tilemap_cnt_x, bg_settings.tilemap_cnt_y) {
-            (TilemapCount::One, TilemapCount::One) => 0,
-            (TilemapCount::One, TilemapCount::Two) => {
-                (tilemap_y & 0x20) << 5
-            },
-            (TilemapCount::Two, TilemapCount::One) => {
-                (tilemap_x & 0x20) << 5
-            },
-            (TilemapCount::Two, TilemapCount::Two) => {
-                ((tilemap_y & 0x20) << 6) + (tilemap_x & 0x20) << 5
-            }
+            0
         };
 
-        let tilemap_entry_addr = bg_settings.tilemap_base_addr + ((tilemap_y & 0x1F) << 5) + (tilemap_x & 0x1F) + tilemap_offset;
-        let tilemap_entry = TilemapEntry::from_word(bus.vram[tilemap_entry_addr as usize]);
+        let mut tilemap_offset = ((htile & 0x1F) << 0) | ((vtile & 0x1F) << 5);
+        if htile & 0x20 != 0 { tilemap_offset = tilemap_offset.wrapping_add(hscreen); }
+        if vtile & 0x20 != 0 { tilemap_offset = tilemap_offset.wrapping_add(vscreen); }
 
-        let tile_row = if tilemap_entry.flip_y { size_y - tile_row - 1 } else { tile_row };
-        let tile_col = if tilemap_entry.flip_x { size_x - tile_col - 1 } else { tile_col };
+        let tilemap_addr = bg_settings.tilemap_base_addr.wrapping_add(tilemap_offset);
+        let tilemap_entry = TilemapEntry::from_word(bus.vram[tilemap_addr as usize]);
 
-        let chr_x = tilemap_entry.chr_num & 0x1F;
-        let chr_y = tilemap_entry.chr_num >> 5;
-        let tile_x = (chr_x << 1) + (tile_col >> 3);
-        let tile_y = (chr_y << (size_y >> 4)) + (tile_row >> 3);
-        let tile_number = (tile_y << (5 + (size_y >> 4))) + tile_x;
-
-        let tile_addr = ((bg_settings.chr_base_addr + tile_number * 8 * bpp) & 0x7FFF) as usize;
-        let sub_tile_row_addr = if interlace {
-            tile_addr + (((tile_row as usize) % 4) << 1) | shifted_field
+        // ---- Step 6: Determine CHR numbers for the two halves ---------------
+        //
+        // In hi-res, one tilemap entry gives TWO adjacent CHR tiles:
+        //   - Left half  (hi-res cols 0..8 within span)
+        //   - Right half (hi-res cols 8..16 within span)
+        //
+        // bsnes adjusts by +1 for the half where (hoffset & 8) != hmirror:
+        //   left half:  hoffset & 8 == 0  =>  +1 if hmirror
+        //   right half: hoffset & 8 == 8  =>  +1 if !hmirror
+        //
+        // We are rendering an entire 16-hi-res-pixel span this call, so we fetch
+        // BOTH characters explicitly.
+        let char_base = tilemap_entry.chr_num;
+        let (char_left, char_right) = if tilemap_entry.flip_x {
+            // hmirror set: left half uses char+1, right half uses char+0
+            ((char_base + 1) & 0x3FF, char_base)
         } else {
-            tile_addr + (tile_row as usize % 8)
+            (char_base, (char_base + 1) & 0x3FF)
         };
 
-        let words_per_tile = (bpp << 2) as usize;
-
-        let mut sub_pal_indices  = [0u8; 8];
-        let mut main_pal_indices = [0u8; 8];
-
-        match bg_render_settings.color_depth {
-            ColorDepth::Bpp2 => {
-                let bp10_left  = bus.vram[sub_tile_row_addr];
-                let bp10_right = bus.vram[sub_tile_row_addr + words_per_tile];
-
-                for i in 0..4 {
-                    let bp1 = ((bp10_left >> (15 - 2*i - 0)) & 1) as u8;
-                    let bp0 = ((bp10_left >> ( 7 - 2*i - 0)) & 1) as u8;
-                    sub_pal_indices[i] = (bp1 << 1) | bp0;
-
-                    let bp1 = ((bp10_left >> (15 - 2*i - 1)) & 1) as u8;
-                    let bp0 = ((bp10_left >> ( 7 - 2*i - 1)) & 1) as u8;
-                    main_pal_indices[i] = (bp1 << 1) | bp0;
+        // ---- Step 7: Row within tile (with vertical mirror) -----------------
+        //
+        // Handle 16-tall tiles: pick the correct 8x8 sub-tile via +16 to chr_num
+        // when in the lower half.
+        let row_in_tile = (voffset as u16) & ((1 << vtiles) - 1); // 0..tile_h
+        let (row_adjust_char, row_in_8x8_pre_flip) = if vtiles == 4 {
+            // 16-tall tile
+            if (row_in_tile & 8) != 0 {
+                // lower half
+                if tilemap_entry.flip_y {
+                    (0u16, row_in_tile & 7)
+                } else {
+                    (16u16, row_in_tile & 7)
                 }
-
-                for i in 0..4 {
-                    let bp1 = ((bp10_right >> (15 - 2*i - 0)) & 1) as u8;
-                    let bp0 = ((bp10_right >> ( 7 - 2*i - 0)) & 1) as u8;
-                    sub_pal_indices[i + 4] = (bp1 << 1) | bp0;
-
-                    let bp1 = ((bp10_right >> (15 - 2*i - 1)) & 1) as u8;
-                    let bp0 = ((bp10_right >> ( 7 - 2*i - 1)) & 1) as u8;
-                    main_pal_indices[i + 4] = (bp1 << 1) | bp0;
-                }
-            }
-            ColorDepth::Bpp4 => {
-                let bp10_left  = bus.vram[sub_tile_row_addr];
-                let bp10_right = bus.vram[sub_tile_row_addr + words_per_tile];
-                let bp32_left  = bus.vram[sub_tile_row_addr + 8];
-                let bp32_right = bus.vram[sub_tile_row_addr + words_per_tile + 8];
-                
-                for i in 0..4 {
-                    let bp0 = ((bp10_left >> ( 7 - 2*i - 0)) & 1) as u8;
-                    let bp1 = ((bp10_left >> (15 - 2*i - 0)) & 1) as u8;
-                    let bp2 = ((bp32_left >> ( 7 - 2*i - 0)) & 1) as u8;
-                    let bp3 = ((bp32_left >> (15 - 2*i - 0)) & 1) as u8;
-                    sub_pal_indices[i] = (bp3 << 3) | (bp2 << 2) | (bp1 << 1) | bp0;
-
-                    let bp0 = ((bp10_left >> ( 7 - 2*i - 1)) & 1) as u8;
-                    let bp1 = ((bp10_left >> (15 - 2*i - 1)) & 1) as u8;
-                    let bp2 = ((bp32_left >> ( 7 - 2*i - 1)) & 1) as u8;
-                    let bp3 = ((bp32_left >> (15 - 2*i - 1)) & 1) as u8;
-                    main_pal_indices[i] = (bp3 << 3) | (bp2 << 2) | (bp1 << 1) | bp0;
-                }
-
-                for i in 0..4 {
-                    let bp0 = ((bp10_right >> ( 7 - 2*i - 0)) & 1) as u8;
-                    let bp1 = ((bp10_right >> (15 - 2*i - 0)) & 1) as u8;
-                    let bp2 = ((bp32_right >> ( 7 - 2*i - 0)) & 1) as u8;
-                    let bp3 = ((bp32_right >> (15 - 2*i - 0)) & 1) as u8;
-                    sub_pal_indices[i + 4] = (bp3 << 3) | (bp2 << 2) | (bp1 << 1) | bp0;
-
-                    let bp0 = ((bp10_right >> ( 7 - 2*i - 1)) & 1) as u8;
-                    let bp1 = ((bp10_right >> (15 - 2*i - 1)) & 1) as u8;
-                    let bp2 = ((bp32_right >> ( 7 - 2*i - 1)) & 1) as u8;
-                    let bp3 = ((bp32_right >> (15 - 2*i - 1)) & 1) as u8;
-                    main_pal_indices[i + 4] = (bp3 << 3) | (bp2 << 2) | (bp1 << 1) | bp0;
+            } else {
+                // upper half
+                if tilemap_entry.flip_y {
+                    (16u16, row_in_tile & 7)
+                } else {
+                    (0u16, row_in_tile & 7)
                 }
             }
-            ColorDepth::Bpp8 => unreachable!(),
+        } else {
+            (0u16, row_in_tile & 7)
         };
+        let row_in_8x8 = if tilemap_entry.flip_y {
+            7 - row_in_8x8_pre_flip
+        } else {
+            row_in_8x8_pre_flip
+        };
+
+        // ---- Step 8: Fetch both tile rows -----------------------------------
+        //
+        // words_per_tile = 8 * bpp   (16 for 4bpp, 8 for 2bpp)
+        // Left tile row addr  = chr_base_addr + (char_left  + row_adjust) * words_per_tile + row_in_8x8
+        // Right tile row addr = chr_base_addr + (char_right + row_adjust) * words_per_tile + row_in_8x8
+        let words_per_tile = (bpp << 2) as u16;
+        let addr_left = bg_settings.chr_base_addr
+            .wrapping_add(((char_left  + row_adjust_char) & 0x3FF) * words_per_tile)
+            .wrapping_add(row_in_8x8)
+            & 0x7FFF;
+        let addr_right = bg_settings.chr_base_addr
+            .wrapping_add(((char_right + row_adjust_char) & 0x3FF) * words_per_tile)
+            .wrapping_add(row_in_8x8)
+            & 0x7FFF;
+
+        // ---- Step 9: Decode 16 palette indices (8 from each CHR tile) -------
+        //
+        // Left tile provides hi-res columns 0..8 of the span,
+        // Right tile provides hi-res columns 8..16.
+        // Within each tile, apply hmirror to column order.
+        let mut pal_indices = [0u8; 16];
+        self.decode_tile_row_into(bus, addr_left as usize,  bpp, tilemap_entry.flip_x, &mut pal_indices[0..8]);
+        self.decode_tile_row_into(bus, addr_right as usize, bpp, tilemap_entry.flip_x, &mut pal_indices[8..16]);
+
+            // ---- Step 10: Emit pixels into both buffers -------------------------
+        //
+        // The 16 hi-res columns of this span map to native slots as follows:
+        //   hi-res col 2k    -> native slot (self.x + k), sub-screen  (even col)
+        //   hi-res col 2k+1  -> native slot (self.x + k), main-screen (odd col)
+        //
+        // We just decoded 16 palette indices in playfield hi-res col order
+        // (pal_indices[0] = leftmost). Since we started at native x = self.x,
+        // and the tilemap fetch aligns to a 16-hi-res-pixel boundary in
+        // playfield space, we may need to skip some columns at the start if
+        // hscroll causes a mid-span start.
+        //
+        // The number of hi-res columns to skip at the start:
+        //   skip = hoffset & 15    (playfield offset within the 16-px span)
+        //
+        // But note: `hoffset` here is the playfield offset for `hpixel = self.x*2`.
+        // Since scroll is coarse (2-hires-pixel granularity per the docs), the
+        // low bit is always 0, so skip is always even. That means we always start
+        // on a sub-screen column, which is what we want.
+        let skip = (hoffset & 15) as usize;
+
+        // How many hi-res cols we can still emit before running off the screen:
+        let hires_available = 16usize - skip;
+        let hires_remaining_scanline = (512 - hpixel as usize).min(hires_available);
 
         let extra_buffer = if bg == 0 {
             &mut self.bg1_extra_data
@@ -1219,63 +1376,21 @@ impl Ppu5C7x {
             &mut self.bg2_extra_data
         };
 
-        let mut dots_rendered = 0;
+        let mut dots_rendered = 0usize;
+        let mut last_native_x: Option<usize> = None;
 
-        // Cut off the ends of the tile if we are close to the edge of the screen
-        let col_start = if self.x == 0 { bg_settings.scroll_x % 8 } else { 0 };
-        let col_end = if self.x > 256 - 8 { 256 - self.x as u16 } else { 8 };
+        for k in 0..hires_remaining_scanline {
+            let pal_idx = pal_indices[skip + k];
+            let hires_col_relative = k;  // 0 = sub, 1 = main, 2 = sub, ...
+            let native_slot = self.x + (hires_col_relative >> 1);
+            let is_main_col = (hires_col_relative & 1) == 1;
 
-        let mut i = 0;
-
-        for col in col_start..col_end {
-            let mosaiced_x = Self::apply_mosaic(shifted_x + col, m);
-
-            let idx = self.x + i as usize;
-            i += 1;
-
-            // TODO: Move this check before the tile recalculation somehow to avoid all of the math.
-            // 
-            // When doing mosaic, if the mosaiced x < scrolled x, then we are rendering a part of a mosaic
-            // tile that is not the first dot in the mosaic tile, so we can grab the color from the prev dot
-            // and repeat it for the whole mosaic tile. We can only do this trick per-scanline, however, as 
-            // mosaic may have changed between scanlines. If we are on the first pixel of a mosaic tile, then
-            // mosaiced_x will be equal to scrolled x, so we render the color as normal. We cannot use this 
-            // trick on the first pixel of the background, obviously, as there is no previous color to extend.
-            if idx > 0 && mosaiced_x < shifted_x + col {
-                self.scanline_bg_data[bg][idx] = self.scanline_bg_data[bg][idx - 1];
-
-                dots_rendered += 1;
-
-                continue;
-            }
-
-            // When doing mosaic, if the playfield_x < x, then we are rendering a part of a mosaic tile
-            // that is not the first dot in the mosaic tile, so we can grab the color from the prev dot
-            // and repeat it for the whole mosaic tile. We can only do this trick per-scanline, however,
-            // as mosaic may have changed between scanlines. If we are on the first pixel of a mosaic
-            // tile, then playfield_x will be equal to x, so we render the color as normal. Since x is
-            // unsigned, then x == 0 will always cause playfield_x < x to be false, so it is guaranteed
-            // that we will render the first pixel of each scanline as normal.
-            if playfield_x < self.x as u16 {
-                self.scanline_bg_data[bg][self.x] = self.scanline_bg_data[bg][self.x - 1];
-                extra_buffer[self.x] = extra_buffer[self.x - 1];
-
-                dots_rendered += 1;
-
-                continue;
-            }
-
-            let (sub_pal_idx, main_pal_idx) = if tilemap_entry.flip_x {
-                (sub_pal_indices[col as usize], main_pal_indices[col as usize])
-            } else {
-                (sub_pal_indices[7 - col as usize], main_pal_indices[7 - col as usize])
-            };
-
-            let sub_color = if sub_pal_idx == 0 {
+            let color = if pal_idx == 0 {
                 None
             } else {
-                let cgram_addr = bg_render_settings.cgram_base + (tilemap_entry.palette << bpp) + sub_pal_idx;
-
+                let cgram_addr = bg_render_settings.cgram_base
+                    + (tilemap_entry.palette << bpp)
+                    + pal_idx;
                 Some(BgColorData {
                     color: bus.cgram[cgram_addr as usize],
                     palette: tilemap_entry.palette,
@@ -1283,25 +1398,55 @@ impl Ppu5C7x {
                 })
             };
 
-            let main_color = if main_pal_idx == 0 {
-                None
+            if is_main_col {
+                self.scanline_bg_data[bg][native_slot] = color;
             } else {
-                let cgram_addr = bg_render_settings.cgram_base + (tilemap_entry.palette << bpp) + main_pal_idx;
+                extra_buffer[native_slot] = color;
+            }
 
-                Some(BgColorData {
-                    color: bus.cgram[cgram_addr as usize],
-                    palette: tilemap_entry.palette,
-                    priority: tilemap_entry.priority,
-                })
-            };
-
-            self.scanline_bg_data[bg][idx] = main_color;
-            extra_buffer[idx] = sub_color;
-
-            dots_rendered += 1;
+            if last_native_x != Some(native_slot) {
+                dots_rendered += 1;
+                last_native_x = Some(native_slot);
+            }
         }
 
         dots_rendered
+    }
+
+    // Helper: decode 8 palette indices from one CHR tile row into `out`.
+    fn decode_tile_row_into<H: DebugHarness>(
+        &self,
+        bus: &PpuBus<H>,
+        row_addr: usize,
+        bpp: u16,
+        hmirror: bool,
+        out: &mut [u8],
+    ) {
+        debug_assert_eq!(out.len(), 8);
+        match bpp {
+            2 => {
+                let bp10 = bus.vram[row_addr];
+                for i in 0..8 {
+                    let src_bit = if hmirror { i } else { 7 - i };
+                    let bp0 = ((bp10 >> src_bit)       & 1) as u8;
+                    let bp1 = ((bp10 >> (8 + src_bit)) & 1) as u8;
+                    out[i] = (bp1 << 1) | bp0;
+                }
+            }
+            4 => {
+                let bp10 = bus.vram[row_addr];
+                let bp32 = bus.vram[row_addr + 8];
+                for i in 0..8 {
+                    let src_bit = if hmirror { i } else { 7 - i };
+                    let bp0 = ((bp10 >> src_bit)       & 1) as u8;
+                    let bp1 = ((bp10 >> (8 + src_bit)) & 1) as u8;
+                    let bp2 = ((bp32 >> src_bit)       & 1) as u8;
+                    let bp3 = ((bp32 >> (8 + src_bit)) & 1) as u8;
+                    out[i] = (bp3 << 3) | (bp2 << 2) | (bp1 << 1) | bp0;
+                }
+            }
+            _ => unreachable!("Mode 5/6 use 2bpp or 4bpp only"),
+        }
     }
 
     #[inline]
