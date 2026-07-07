@@ -2281,6 +2281,10 @@ impl Ppu5C7x {
 
             let in_x_range = 0 < max_x;
 
+            if self.y == 0 && !in_x_range {
+                log::debug!("Sprite {sprite_idx} out of bounds at x={}, w={}, max_x={}", sprite.x, spr_w, max_x);
+            }
+
             // Sprite should be on scanline
             if in_y_range && in_x_range {
                 if self.scanline_sprites.len() == 32 {
@@ -2327,6 +2331,14 @@ impl Ppu5C7x {
             let spr_tile_base_addr = (obj_table_base_addr as u16) + ((sprite.tile_idx as u16) << 4);
             
             'draw_sprite_slivers: for sliver in 0..sprite_slivers {
+                let first_pixel_of_sliver = sprite.x + sliver as i16 * 8;
+                let last_pixel_of_sliver = first_pixel_of_sliver + 7;
+
+                if last_pixel_of_sliver < 0 || first_pixel_of_sliver >= 256 {
+                    // No part of this sliver will be drawn, skip
+                    continue 'draw_sprite_slivers;
+                } 
+
                 let tile_x = if sprite.flip_x {
                     sprite_slivers - sliver - 1
                 } else {
@@ -2343,11 +2355,12 @@ impl Ppu5C7x {
 
                 let bitplanes = interleave_4bpp(bp10, bp32);
 
-                for tile_col in 0..8 {
+                'draw_sprite_pixel: for tile_col in 0..8 {
                     let x = sprite.x + sliver as i16 * 8 + tile_col;
     
                     if x < 0 || x >= 256 {
-                        continue 'draw_sprite_slivers;
+                        // Pixel not drawn, skip
+                        continue 'draw_sprite_pixel;
                     }
 
                     let tile_col = if sprite.flip_x {

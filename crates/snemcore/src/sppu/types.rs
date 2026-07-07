@@ -197,7 +197,7 @@ impl OAMSprite {
     }
 
     pub fn write_byte0(&mut self, value: u8) {
-        self.x = ((self.x >> 8) << 8) | value as i16;
+        self.x = ((self.x >> 8) << 8) | (value as u16) as i16;
     }
 
     pub fn write_byte1(&mut self, value: u8) {
