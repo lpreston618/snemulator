@@ -34,3 +34,9 @@ pub const AUDIO_SAMPLE_HZ: usize = 32000;
 pub const CLOCKS_BETWEEN_AUTOREAD_STEPS: usize = 4224/16 * 4;
 
 pub const FRAMES_PER_SECOND: f32 = 60.0;
+
+/// A pure guess at where the system might start DRAM refresh, which pauses the CPU
+/// for 40 master clocks.
+pub const DRAM_REFRESH_START_DOT: usize = 100;
+/// The number of master clocks the CPU is paused for during DRAM refresh.
+pub const DRAM_REFRESH_CLOCKS: usize = 40;

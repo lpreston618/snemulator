@@ -171,35 +171,41 @@ impl CpuTab {
         let available_height = ui.available_height();
 
         const SIDEBAR_WIDTH: f32 = 220.0;
-        const BP_SECTION_HEIGHT: f32 = 140.0;
+        // Fraction of the available height reserved for BP section
+        const BP_SECTION_FRACTION: f32 = 0.30;
 
-        ui.horizontal(|ui| {
-            self.disasm_section(ui, core, harness, app_theme, available_height - BP_SECTION_HEIGHT);
-
-            ui.vertical(|ui| {
-                ui.set_width(SIDEBAR_WIDTH);
-
-                egui::CollapsingHeader::new("Registers")
-                    .default_open(true)
-                    .show(ui, |ui| {
-                        self.cpu_state_section(ui, core, app_theme);
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                self.disasm_section(ui, core, harness, app_theme, available_height * (1.0 - BP_SECTION_FRACTION));
+    
+                egui::ScrollArea::vertical().id_salt("cpu_info_scroll").show(ui, |ui| {
+                    ui.vertical(|ui| {
+                        ui.set_width(SIDEBAR_WIDTH);
+        
+                        egui::CollapsingHeader::new("Registers")
+                            .default_open(true)
+                            .show(ui, |ui| {
+                                self.cpu_state_section(ui, core, app_theme);
+                            });
+        
+                        ui.add_space(5.0);
+        
+                        egui::CollapsingHeader::new("Stack")
+                            .default_open(true)
+                            .show(ui, |ui| {
+                                self.stack_section(ui, core, harness, app_theme);
+                            });
                     });
-
-                ui.add_space(5.0);
-
-                egui::CollapsingHeader::new("Stack")
-                    .default_open(true)
-                    .show(ui, |ui| {
-                        self.stack_section(ui, core, harness, app_theme);
-                    });
+                });
             });
+    
+            ui.add_space(5.0);
+    
+            self.breakpoints_section(ui, core, harness);
+    
+            self.label_edit_popup(ui.ctx());
+
         });
-
-        ui.add_space(5.0);
-
-        self.breakpoints_section(ui, core, harness);
-
-        self.label_edit_popup(ui.ctx());
     }
     
     fn label_edit_popup(&mut self, ctx: &egui::Context) {

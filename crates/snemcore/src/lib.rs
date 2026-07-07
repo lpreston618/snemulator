@@ -19,7 +19,7 @@ use crate::controller::ControllerData;
 use crate::debug::DebugHarness;
 use crate::savestate::SaveState;
 use crate::sppu::{OAMSprite, VBLANK_START_SCANLINE};
-use crate::sysinfo::{CLOCKS_BETWEEN_AUTOREAD_STEPS, OAM_SPRITE_COUNT};
+use crate::sysinfo::{CLOCKS_BETWEEN_AUTOREAD_STEPS, DRAM_REFRESH_CLOCKS, DRAM_REFRESH_START_DOT, OAM_SPRITE_COUNT};
 
 pub mod cartridge;
 pub mod controller;
@@ -424,6 +424,12 @@ impl Snemulator {
 
         if self.ppu.clocks == 0 {
             self.cycle_ppu(frame_buffer, harness);
+
+            // Pause the CPU for 40 master clocks during the middle of each
+            // scanline, effectively reducing its execution speed by ~3%. 
+            if self.ppu.dot == DRAM_REFRESH_START_DOT {
+                self.cpu.clocks += DRAM_REFRESH_CLOCKS;
+            }
         }
 
         self.ssmp.cycle(clocks, audio_buffer, &mut self.apu_ports, harness);
