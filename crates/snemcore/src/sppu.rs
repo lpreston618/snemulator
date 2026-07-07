@@ -47,7 +47,7 @@ pub struct Ppu5C7x {
     scanline_sprite_data: [Option<ObjColorData>; VISIBLE_DOTS_PER_SCANLINE],
 
     last_main_screen_color: Color,
-    last_sub_screen_color: Color,
+    last_sub_screen_color: Option<Color>,
     last_main_screen_pixel_did_cmath: bool,
 
     /// Number of master clocks until the next dot
@@ -70,7 +70,7 @@ impl Ppu5C7x {
             bg2_extra_data: [None; VISIBLE_DOTS_PER_SCANLINE],
             scanline_sprite_data: [None; VISIBLE_DOTS_PER_SCANLINE],
             last_main_screen_color: Color::BLACK,
-            last_sub_screen_color: Color::BLACK,
+            last_sub_screen_color: None,
             last_main_screen_pixel_did_cmath: false,
             clocks: 0,
         };
@@ -285,7 +285,7 @@ impl Ppu5C7x {
 
     fn draw_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
         if bus.ppu_regs.in_fblank{
-            self.set_pixel(bus, Color::BLACK, Color::BLACK, false);
+            self.set_pixel(bus, Color::BLACK, Some(Color::BLACK), false);
             return;        
         }
 
@@ -306,7 +306,7 @@ impl Ppu5C7x {
         &self, 
         bus: &mut PpuBus<H>, 
         main_color: Color,
-        sub_color: Color,
+        sub_color: Option<Color>,
         cmath_en: bool,
     ) {
         const BYTES_PER_PIXEL: usize = 4;
@@ -324,12 +324,14 @@ impl Ppu5C7x {
         } else {
             main_color
         };
-        let sub_color = if hi_res && !true_hi_res {
+
+        let sub_color = sub_color.unwrap_or(bus.cgram[0]);
+        let sub_color = if hi_res {
             if self.last_main_screen_pixel_did_cmath {
-                if self.last_sub_screen_color == bus.ppu_regs.fixed_color {
-                    self.apply_cmath(bus, sub_color, bus.ppu_regs.fixed_color)
+                if self.last_sub_screen_color == Some(bus.ppu_regs.fixed_color) {
+                    self.apply_cmath(bus, sub_color, Some(bus.ppu_regs.fixed_color))
                 } else {
-                    self.apply_cmath(bus, sub_color, self.last_main_screen_color)
+                    self.apply_cmath(bus, sub_color, Some(self.last_main_screen_color))
                 }
             } else {
                 sub_color
@@ -481,22 +483,10 @@ impl Ppu5C7x {
         let bg3_sub_col = if win_signals.bg_sub[2] { self.scanline_bg_data[2][self.x] } else { None };
         let bg4_sub_col = if win_signals.bg_sub[3] { self.scanline_bg_data[3][self.x] } else { None };
 
-        let sub_col = if bus.ppu_regs.sub_color_fixed {
-            bus.ppu_regs.fixed_color
-        } else {
-            Self::bg_mode0_choose_priority_color(
-                obj_sub_col, 
-                bg1_sub_col, 
-                bg2_sub_col, 
-                bg3_sub_col,
-                bg4_sub_col,
-            ).map_or(
-                bus.ppu_regs.fixed_color, 
-                |pair| pair.0
-            )
-        };
-
-        let sub_col = if win_signals.color_sub { bus.cgram[0] } else { sub_col };
+        let sub_col = Self::bg_mode0_choose_priority_color(
+            obj_sub_col,  bg1_sub_col,  bg2_sub_col, 
+            bg3_sub_col, bg4_sub_col,
+        ).map(|pair| pair.0);
 
         let cmath_en = match main_col_layer {
             ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
@@ -505,7 +495,7 @@ impl Ppu5C7x {
             ColorLayer::Bg4 => bus.ppu_regs.bg_settings[3].cmath_en,
             ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.unwrap().palette >= 4,
             ColorLayer::Back => bus.ppu_regs.back_cmath_en,
-        } && sub_col != bus.cgram[0];
+        } && !win_signals.color_sub;
 
         self.set_pixel(
             bus,
@@ -559,22 +549,23 @@ impl Ppu5C7x {
         let bg2_sub_col = if win_signals.bg_sub[1] { self.scanline_bg_data[1][self.x] } else { None };
         let bg3_sub_col = if win_signals.bg_sub[2] { self.scanline_bg_data[2][self.x] } else { None };
 
-        let sub_col = if bus.ppu_regs.sub_color_fixed {
-            bus.ppu_regs.fixed_color
-        } else {
-            Self::bg_mode1_choose_priority_color(
-                obj_sub_col, 
-                bg1_sub_col, 
-                bg2_sub_col, 
-                bg3_sub_col,
-                bus.ppu_regs.bg3_mode1_priority,
-            ).map_or(
-                bus.ppu_regs.fixed_color, 
-                |pair| pair.0
-            )
-        };
+        // let sub_col = if bus.ppu_regs.sub_color_fixed {
+        //     Some(bus.ppu_regs.fixed_color)
+        // } else {
+        //     Self::bg_mode1_choose_priority_color(
+        //         obj_sub_col, bg1_sub_col, 
+        //         bg2_sub_col, bg3_sub_col,
+        //         bus.ppu_regs.bg3_mode1_priority,
+        //     ).map(|pair| pair.0)
+        // };
 
-        let sub_col = if win_signals.color_sub { bus.cgram[0] } else { sub_col };
+        let sub_col = Self::bg_mode1_choose_priority_color(
+            obj_sub_col, bg1_sub_col, 
+            bg2_sub_col, bg3_sub_col,
+            bus.ppu_regs.bg3_mode1_priority,
+        ).map_or(Some(bus.ppu_regs.fixed_color), |pair| Some(pair.0));
+
+        // let sub_col = if win_signals.color_sub { None } else { sub_col };
 
         let cmath_en = match main_col_layer {
             ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
@@ -583,7 +574,7 @@ impl Ppu5C7x {
             ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.unwrap().palette >= 4,
             ColorLayer::Back => bus.ppu_regs.back_cmath_en,
             _ => unreachable!(),
-        } && sub_col != bus.cgram[0];
+        } && !win_signals.color_sub;
 
         self.set_pixel(
             bus,
@@ -630,20 +621,9 @@ impl Ppu5C7x {
         let bg1_sub_col = if win_signals.bg_sub[0] { self.scanline_bg_data[0][self.x] } else { None };
         let bg2_sub_col = if win_signals.bg_sub[1] { self.scanline_bg_data[1][self.x] } else { None };
 
-        let sub_col = if bus.ppu_regs.sub_color_fixed {
-            bus.ppu_regs.fixed_color
-        } else {
-            Self::bg_modes2thru5_choose_priority_color(
-                obj_sub_col, 
-                bg1_sub_col, 
-                bg2_sub_col,
-            ).map_or(
-                bus.ppu_regs.fixed_color, 
-                |pair| pair.0
-            )
-        };
-
-        let sub_col = if win_signals.color_sub { bus.cgram[0] } else { sub_col };
+        let sub_col = Self::bg_modes2thru5_choose_priority_color(
+            obj_sub_col, bg1_sub_col, bg2_sub_col,
+        ).map(|pair| pair.0);
 
         let cmath_en = match main_col_layer {
             ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
@@ -651,7 +631,7 @@ impl Ppu5C7x {
             ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.unwrap().palette >= 4,
             ColorLayer::Back => bus.ppu_regs.back_cmath_en,
             _ => unreachable!(),
-        } && sub_col != bus.cgram[0];
+        } && !win_signals.color_sub;
 
         self.set_pixel(
             bus,
@@ -698,20 +678,9 @@ impl Ppu5C7x {
         let bg1_sub_col = if win_signals.bg_sub[0] { self.scanline_bg_data[0][self.x] } else { None };
         let bg2_sub_col = if win_signals.bg_sub[1] { self.scanline_bg_data[1][self.x] } else { None };
 
-        let sub_col = if bus.ppu_regs.sub_color_fixed {
-            bus.ppu_regs.fixed_color
-        } else {
-            Self::bg_modes2thru5_choose_priority_color(
-                obj_sub_col, 
-                bg1_sub_col, 
-                bg2_sub_col,
-            ).map_or(
-                bus.ppu_regs.fixed_color, 
-                |pair| pair.0
-            )
-        };
-
-        let sub_col = if win_signals.color_sub { bus.cgram[0] } else { sub_col };
+        let sub_col = Self::bg_modes2thru5_choose_priority_color(
+            obj_sub_col, bg1_sub_col, bg2_sub_col,
+        ).map(|pair| pair.0);
 
         let cmath_en = match main_col_layer {
             ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
@@ -719,7 +688,7 @@ impl Ppu5C7x {
             ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.unwrap().palette >= 4,
             ColorLayer::Back => bus.ppu_regs.back_cmath_en,
             _ => unreachable!(),
-        } && sub_col != bus.cgram[0];
+        } && !win_signals.color_sub;
 
         self.set_pixel(
             bus,
@@ -758,7 +727,7 @@ impl Ppu5C7x {
         let bg1_main_col = if win_signals.bg_main[0] { self.scanline_bg_data[0][self.x] } else { None };
         let bg2_main_col = if win_signals.bg_main[1] { self.scanline_bg_data[1][self.x] } else { None };
 
-        let (main_col, _) = Self::bg_modes2thru5_choose_priority_color(
+        let (main_col, main_col_layer) = Self::bg_modes2thru5_choose_priority_color(
             obj_main_col,
             bg1_main_col,
             bg2_main_col,
@@ -770,22 +739,30 @@ impl Ppu5C7x {
         let bg1_sub_col = if win_signals.bg_sub[0] { self.bg1_extra_data[self.x] } else { None };
         let bg2_sub_col = if win_signals.bg_sub[1] { self.bg2_extra_data[self.x] } else { None };
 
-        let sub_col = if bus.ppu_regs.sub_color_fixed {
-            bus.ppu_regs.fixed_color
-        } else {
-            Self::bg_modes2thru5_choose_priority_color(
-                obj_sub_col, 
-                bg1_sub_col, 
-                bg2_sub_col,
-            ).map_or(
-                bus.ppu_regs.fixed_color, 
-                |pair| pair.0
-            )
-        };
+        // let sub_col = if bus.ppu_regs.sub_color_fixed {
+        //     bus.ppu_regs.fixed_color
+        // } else {
+        //     Self::bg_modes2thru5_choose_priority_color(
+        //         obj_sub_col, 
+        //         bg1_sub_col, 
+        //         bg2_sub_col,
+        //     ).map_or(
+        //         bus.ppu_regs.fixed_color, 
+        //         |pair| pair.0
+        //     )
+        // };
 
-        let sub_col = if win_signals.color_sub { bus.cgram[0] } else { sub_col };
+        let sub_col = Self::bg_modes2thru5_choose_priority_color(
+            obj_sub_col, bg1_sub_col, bg2_sub_col,
+        ).map(|pair| pair.0);
 
-        let cmath_en = false; // Mode 5 has no color math
+        let cmath_en = match main_col_layer {
+            ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
+            ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
+            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.unwrap().palette >= 4,
+            ColorLayer::Back => bus.ppu_regs.back_cmath_en,
+            _ => unreachable!("BGs 3 & 4 not used in mode 5"),
+        } && !win_signals.color_sub;
 
         self.set_pixel(
             bus,
@@ -871,18 +848,6 @@ impl Ppu5C7x {
 
             if do_y_scroll {
                 shifted_y = self.y as u16 + scroll_y_entry.scroll;
-            }
-
-            if self.x == 128 && self.y == 128 {
-                log::debug!("BG{}: Do scroll x,y ({}, {}), Hofs addr: ${:04X}, Vofs addr: ${:04X}, Vals = ({:04X}, {:04X})",
-                    bg+1,
-                    do_x_scroll,
-                    do_y_scroll,
-                    bg3_entry_addr_x,
-                    bg3_entry_addr_y,
-                    scroll_x_entry.scroll,
-                    scroll_y_entry.scroll,
-                )
             }
 
             shifted_x &= scroll_range;
@@ -1076,118 +1041,6 @@ impl Ppu5C7x {
         dots_rendered
     }
 
-    // fn render_hires_tile<H: DebugHarness>(
-    //     &mut self,
-    //     bus: &mut PpuBus<H>,
-    //     bg: usize,
-    //     bg_render_settings: BgRenderSettings,
-    //     render_sub: bool,
-    // ) -> usize {
-    //     let bg_settings = &bus.ppu_regs.bg_settings[bg];
-    //     let interlace = bus.ppu_regs.screen_interlace_en;
-    //     let field = (self.frame & 1) as u16;
-    //     let bpp = bg_render_settings.color_depth.bits_per_pixel();
-    //     let m = bus.ppu_regs.mosaic_size as u16;
-
-    //     // Vertical, hires-pixel units (0-1023): interlace doubles y and ORs in
-    //     // the field bit before adding scroll_y (unscaled -- vertical scroll is
-    //     // already fine-grained for hires per the docs).
-    //     let vpixel = if interlace { (self.y as u16) << 1 | field } else { self.y as u16 };
-    //     let shifted_y = (vpixel + bg_settings.scroll_y) & 0x3FF;
-
-    //     // Horizontal, hires-pixel units: self.x and scroll_x both doubled to
-    //     // reach hires space. Sub uses this offset directly; main is the
-    //     // adjacent 8-wide half, +8 further along.
-    //     let hpixel = (self.x as u16) << 1;
-    //     let hscroll = bg_settings.scroll_x << 1;
-    //     let hoffset = hpixel + hscroll + if render_sub { 0 } else { 8 };
-
-    //     // Mosaic block size (per docs): hires width is always 2X; height is X
-    //     // normally but 2X when interlaced, since y is already doubled there.
-    //     let m_x = m << 1;
-    //     let m_y = if interlace { m << 1 } else { m };
-
-    //     let (_, size_y) = bg_settings.chr_size.raw_size();
-    //     let playfield_x = if bg_settings.mosaic_en { Self::apply_mosaic(hoffset, m_x) } else { hoffset };
-    //     let playfield_y = if bg_settings.mosaic_en { Self::apply_mosaic(shifted_y, m_y) } else { shifted_y };
-
-    //     // 16-px-wide macro-tile -> one tilemap entry. Sub and main each fetch
-    //     // their own entry (called separately), since they can land in different
-    //     // macro-tiles once scroll is nonzero.
-    //     let tilemap_x = playfield_x / 16;
-    //     let tilemap_y = playfield_y / size_y;
-    //     let tile_col = playfield_x % 16;
-    //     let tile_row = playfield_y % size_y;
-
-    //     let tilemap_offset = match (bg_settings.tilemap_cnt_x, bg_settings.tilemap_cnt_y) {
-    //         (TilemapCount::One, TilemapCount::One) => 0,
-    //         (TilemapCount::One, TilemapCount::Two) => (tilemap_y & 0x20) << 5,
-    //         (TilemapCount::Two, TilemapCount::One) => (tilemap_x & 0x20) << 5,
-    //         (TilemapCount::Two, TilemapCount::Two) => ((tilemap_y & 0x20) << 6) + ((tilemap_x & 0x20) << 5),
-    //     };
-
-    //     // Entry address: 32x32-tile page (row*32 + col) plus page-select offset
-    //     // for larger screens -- same layout as any other bg mode.
-    //     let entry_addr = bg_settings.tilemap_base_addr
-    //         + ((tilemap_y & 0x1F) << 5) + (tilemap_x & 0x1F) + tilemap_offset;
-    //     let entry = TilemapEntry::from_word(bus.vram[entry_addr as usize]);
-
-    //     let row = if entry.flip_y { size_y - tile_row - 1 } else { tile_row };
-    //     let col = if entry.flip_x { 15 - tile_col } else { tile_col };
-
-    //     // col>>3 picks which of the two adjacent VRAM characters forms this
-    //     // half of the 16-wide macro-tile.
-    //     let chr_x = entry.chr_num & 0x1F;
-    //     let chr_y = entry.chr_num >> 5;
-    //     let tile_x = (chr_x << 1) + (col >> 3);
-    //     let tile_y = (chr_y << (size_y >> 4)) + (row >> 3);
-    //     let tile_number = (tile_y << (5 + (size_y >> 4))) + tile_x;
-
-    //     // Character address: base + tile_number * (8 rows * bpp words/row),
-    //     // stepped to the row within the character (row % 8).
-    //     let tile_addr = ((bg_settings.chr_base_addr + tile_number * 8 * bpp) & 0x7FFF) as usize;
-    //     let row_addr = tile_addr + (row as usize % 8);
-
-    //     // Standard planar fetch: one word holds bitplanes 0+1 for all 8 pixels
-    //     // (bit 15/7 = leftmost). Bpp4 adds a second word, 8 rows further into
-    //     // the character, holding planes 2+3. (Replaces the old even/odd-bit
-    //     // interleave decode, which read sub+main from one word -- that doesn't
-    //     // match how mode 5/6 storage actually works: adjacent characters, not
-    //     // interleaved planes.)
-    //     let bp10 = bus.vram[row_addr];
-    //     let bp32 = (bpp == 4).then(|| bus.vram[row_addr + 8]);
-
-    //     let extra_buffer = if bg == 0 { &mut self.bg1_extra_data } else { &mut self.bg2_extra_data };
-    //     let col_end = if self.x > 256 - 8 { 256 - self.x as u16 } else { 8 };
-    //     let mut dots_rendered = 0;
-
-    //     for i in 0..col_end {
-    //         let idx = self.x + i as usize;
-    //         let bit = if entry.flip_x { i } else { 7 - i };
-
-    //         let bp0 = ((bp10 >> (7 - bit)) & 1) as u8;
-    //         let bp1 = ((bp10 >> (15 - bit)) & 1) as u8;
-    //         let pal_idx = match bp32 {
-    //             Some(w) => {
-    //                 let bp2 = ((w >> (7 - bit)) & 1) as u8;
-    //                 let bp3 = ((w >> (15 - bit)) & 1) as u8;
-    //                 (bp3 << 3) | (bp2 << 2) | (bp1 << 1) | bp0
-    //             }
-    //             None => (bp1 << 1) | bp0,
-    //         };
-
-    //         let color = (pal_idx != 0).then(|| {
-    //             let addr = bg_render_settings.cgram_base + (entry.palette << bpp) + pal_idx;
-    //             BgColorData { color: bus.cgram[addr as usize], palette: entry.palette, priority: entry.priority }
-    //         });
-
-    //         if render_sub { extra_buffer[idx] = color; } else { self.scanline_bg_data[bg][idx] = color; }
-    //         dots_rendered += 1;
-    //     }
-
-    //     dots_rendered
-    // }
-
     fn render_hires_tile<H: DebugHarness>(
         &mut self,
         bus: &mut PpuBus<H>,
@@ -1270,69 +1123,69 @@ impl Ppu5C7x {
         let tilemap_addr = bg_settings.tilemap_base_addr.wrapping_add(tilemap_offset);
         let tilemap_entry = TilemapEntry::from_word(bus.vram[tilemap_addr as usize]);
 
-        // ---- Step 6: Determine CHR numbers for the two halves ---------------
+        // ---- Step 6: Compute CHR numbers for the two halves ----------------
         //
-        // In hi-res, one tilemap entry gives TWO adjacent CHR tiles:
-        //   - Left half  (hi-res cols 0..8 within span)
-        //   - Right half (hi-res cols 8..16 within span)
+        // bsnes performs two nametable fetches per 16-hi-res-pixel span, with
+        // hpixel differing by 8 between them. For EACH fetch, it applies:
+        //   if (htiles == 4 && bool(hoffset & 8) != hmirror) character += 1;
+        //   if (vtiles == 4 && bool(voffset & 8) != vmirror) character += 16;
         //
-        // bsnes adjusts by +1 for the half where (hoffset & 8) != hmirror:
-        //   left half:  hoffset & 8 == 0  =>  +1 if hmirror
-        //   right half: hoffset & 8 == 8  =>  +1 if !hmirror
+        // We replicate this per-half so that the left tile and right tile each
+        // get the correct character number. This matters even at scanline start
+        // because scroll can put us at any hoffset value.
         //
-        // We are rendering an entire 16-hi-res-pixel span this call, so we fetch
-        // BOTH characters explicitly.
-        let char_base = tilemap_entry.chr_num;
-        let (char_left, char_right) = if tilemap_entry.flip_x {
-            // hmirror set: left half uses char+1, right half uses char+0
-            ((char_base + 1) & 0x3FF, char_base)
-        } else {
-            (char_base, (char_base + 1) & 0x3FF)
-        };
+        // Note: `hoffset` and `voffset` here are the SAME values computed in
+        // Step 3 (masked to hsize/vsize).
 
-        // ---- Step 7: Row within tile (with vertical mirror) -----------------
+        let left_hoffset = hoffset;
+        let right_hoffset = (hoffset.wrapping_add(8)) & (hsize - 1);
+
+        let char_base = tilemap_entry.chr_num;
+
+        let mut char_left = char_base;
+        if (left_hoffset & 8 != 0) != tilemap_entry.flip_x {
+            char_left = char_left.wrapping_add(1);
+        }
+        if vtiles == 4 && (voffset & 8 != 0) != tilemap_entry.flip_y {
+            char_left = char_left.wrapping_add(16);
+        }
+        char_left &= 0x3FF;
+
+        let mut char_right = char_base;
+        if (right_hoffset & 8 != 0) != tilemap_entry.flip_x {
+            char_right = char_right.wrapping_add(1);
+        }
+        if vtiles == 4 && (voffset & 8 != 0) != tilemap_entry.flip_y {
+            char_right = char_right.wrapping_add(16);
+        }
+        char_right &= 0x3FF;
+
+        // ---- Step 7 (revised): Row within the 8x8 tile ---------------------
         //
-        // Handle 16-tall tiles: pick the correct 8x8 sub-tile via +16 to chr_num
-        // when in the lower half.
-        let row_in_tile = (voffset as u16) & ((1 << vtiles) - 1); // 0..tile_h
-        let (row_adjust_char, row_in_8x8_pre_flip) = if vtiles == 4 {
-            // 16-tall tile
-            if (row_in_tile & 8) != 0 {
-                // lower half
-                if tilemap_entry.flip_y {
-                    (0u16, row_in_tile & 7)
-                } else {
-                    (16u16, row_in_tile & 7)
-                }
-            } else {
-                // upper half
-                if tilemap_entry.flip_y {
-                    (16u16, row_in_tile & 7)
-                } else {
-                    (0u16, row_in_tile & 7)
-                }
-            }
-        } else {
-            (0u16, row_in_tile & 7)
-        };
+        // The +16 for the lower half of a 16-tall tile is already applied in
+        // char_left/char_right. Here we just extract which row within the
+        // selected 8x8 tile to use, applying vertical flip.
+        // let row_in_tile = (voffset as u16) & ((1 << vtiles) - 1); // 0..tile_h
+        let row_in_8x8_pre_flip = (voffset & 7) as u16;
         let row_in_8x8 = if tilemap_entry.flip_y {
             7 - row_in_8x8_pre_flip
         } else {
             row_in_8x8_pre_flip
         };
 
-        // ---- Step 8: Fetch both tile rows -----------------------------------
+        // ---- Step 8 (revised): Fetch both tile row addresses ---------------
         //
-        // words_per_tile = 8 * bpp   (16 for 4bpp, 8 for 2bpp)
-        // Left tile row addr  = chr_base_addr + (char_left  + row_adjust) * words_per_tile + row_in_8x8
-        // Right tile row addr = chr_base_addr + (char_right + row_adjust) * words_per_tile + row_in_8x8
+        // A 2bpp tile is 8 words, 4bpp is 16 words. This matches bsnes'
+        // `origin << (3 + mode)` where mode is the bpp INDEX (0/1/2), giving
+        // shift of 3/4/5 = tile sizes of 8/16/32 words.
         let words_per_tile = (bpp << 2) as u16;
         let addr_left = bg_settings.chr_base_addr
-            .wrapping_add(((char_left  + row_adjust_char) & 0x3FF) * words_per_tile)
+            .wrapping_add(char_left.wrapping_mul(words_per_tile))
             .wrapping_add(row_in_8x8)
             & 0x7FFF;
+
         let addr_right = bg_settings.chr_base_addr
-            .wrapping_add(((char_right + row_adjust_char) & 0x3FF) * words_per_tile)
+            .wrapping_add(char_right.wrapping_mul(words_per_tile))
             .wrapping_add(row_in_8x8)
             & 0x7FFF;
 
@@ -2156,21 +2009,34 @@ impl Ppu5C7x {
     }
 
     #[inline(always)]
-    fn apply_cmath<H: DebugHarness>(&self, bus: &PpuBus<H>, main_col: Color, sub_col: Color) -> Color {
+    fn apply_cmath<H: DebugHarness>(&self, bus: &PpuBus<H>, main_col: Color, sub_col: Option<Color>) -> Color {
+        // addend bit: sub_color_fixed==true means addend=0 (always fixed color).
+        // addend=1 means "use subscreen", falling back to fixed color only when
+        // the subscreen pixel is transparent -- and in that fallback case Div2
+        // is forced off regardless of the cmath_half setting.
+        let (operand, force_no_div2) = if bus.ppu_regs.sub_color_fixed {
+            (bus.ppu_regs.fixed_color, false)
+        } else {
+            match sub_col {
+                Some(c) => (c, false),
+                None => (bus.cgram[0], true),
+            }
+        };
+        
         let mut color = match bus.ppu_regs.cmath_operator {
             CMathOperator::Add => Color {
-                r: main_col.r.saturating_add(sub_col.r) & 0xF8, // 5-bit color max
-                g: main_col.g.saturating_add(sub_col.g) & 0xF8,
-                b: main_col.b.saturating_add(sub_col.b) & 0xF8,
+                r: main_col.r.saturating_add(operand.r) & 0xF8, // 5-bit color max
+                g: main_col.g.saturating_add(operand.g) & 0xF8,
+                b: main_col.b.saturating_add(operand.b) & 0xF8,
             },
             CMathOperator::Subtract => Color {
-                r: main_col.r.saturating_sub(sub_col.r),
-                g: main_col.g.saturating_sub(sub_col.g),
-                b: main_col.b.saturating_sub(sub_col.b),
+                r: main_col.r.saturating_sub(operand.r),
+                g: main_col.g.saturating_sub(operand.g),
+                b: main_col.b.saturating_sub(operand.b),
             },
         };
 
-        if bus.ppu_regs.cmath_half {
+        if bus.ppu_regs.cmath_half && !force_no_div2 {
             color.r = (color.r >> 1) & 0xF8;
             color.g = (color.g >> 1) & 0xF8;
             color.b = (color.b >> 1) & 0xF8;
