@@ -4,6 +4,90 @@ use crate::ssmp::spc::Spc700;
 use crate::ssmp::spc::bus::SpcBus;
 use crate::{get_bit_n, get_byte_n};
 
+macro_rules! opcode {
+    // implied: no address. Some of these instructions never touch the bus
+    // (asl_acc, dex, clrp, sei, div, mul, xcn, das, daa, sleep, stop, etc.) —
+    // give those a dummy `_bus: &SpcBus<H>` parameter so every call site
+    // here looks the same.
+    ($cpu:ident, $bus:ident, $instr:ident, implied, $num_clocks:expr) => {{
+        $cpu.$instr($bus);
+        $num_clocks
+    }};
+
+    // immediate() doesn't touch the bus to compute its "address" (it's just PC).
+    ($cpu:ident, $bus:ident, $instr:ident, immediate, $num_clocks:expr) => {{
+        let addr = $cpu.immediate();
+        $cpu.$instr($bus, addr);
+        $num_clocks
+    }};
+
+    // jmp / conditional branches: addr mode reads the bus, but the
+    // instruction itself only needs the resulting address, not the bus.
+    ($cpu:ident, $bus:ident, addr_no_bus, $instr:ident, $addr_mode:ident, $num_clocks:expr) => {{
+        let addr = $cpu.$addr_mode($bus);
+        $cpu.$instr(addr);
+        $num_clocks
+    }};
+
+    // Two-address (tuple) shapes.
+    ($cpu:ident, $bus:ident, $instr:ident, direct_to_direct, $num_clocks:expr) => {{
+        let (src_addr, dst_addr) = $cpu.direct_to_direct($bus);
+        $cpu.$instr($bus, src_addr, dst_addr);
+        $num_clocks
+    }};
+    ($cpu:ident, $bus:ident, $instr:ident, immediate_to_direct, $num_clocks:expr) => {{
+        let (src_addr, dst_addr) = $cpu.immediate_to_direct($bus);
+        $cpu.$instr($bus, src_addr, dst_addr);
+        $num_clocks
+    }};
+    ($cpu:ident, $bus:ident, $instr:ident, indirect_to_indirect, $num_clocks:expr) => {{
+        let (src_addr, dst_addr) = $cpu.indirect_to_indirect($bus);
+        $cpu.$instr($bus, src_addr, dst_addr);
+        $num_clocks
+    }};
+    ($cpu:ident, $bus:ident, $instr:ident, direct_relative, $num_clocks:expr) => {{
+        let (data_addr, branch_addr) = $cpu.direct_relative($bus);
+        $cpu.$instr($bus, data_addr, branch_addr);
+        $num_clocks
+    }};
+    ($cpu:ident, $bus:ident, $instr:ident, x_direct_relative, $num_clocks:expr) => {{
+        let (data_addr, branch_addr) = $cpu.x_direct_relative($bus);
+        $cpu.$instr($bus, data_addr, branch_addr);
+        $num_clocks
+    }};
+
+    // Address + bit shapes.
+    ($cpu:ident, $bus:ident, $instr:ident, absolute_bit, $num_clocks:expr) => {{
+        let (addr, bit) = $cpu.absolute_bit($bus);
+        $cpu.$instr($bus, addr, bit);
+        $num_clocks
+    }};
+    ($cpu:ident, $bus:ident, bit_op, $instr:ident, $addr_mode:ident, $bit:expr, $num_clocks:expr) => {{
+        let addr = $cpu.$addr_mode($bus);
+        $cpu.$instr($bus, addr, $bit);
+        $num_clocks
+    }};
+    ($cpu:ident, $bus:ident, relative_bit_op, $instr:ident, $bit:expr, $num_clocks:expr) => {{
+        let (data_addr, branch_addr) = $cpu.direct_relative($bus);
+        $cpu.$instr($bus, data_addr, branch_addr, $bit);
+        $num_clocks
+    }};
+
+    // Fixed-vector shape.
+    ($cpu:ident, $bus:ident, tcall, $addr:expr, $num_clocks:expr) => {{
+        $cpu.tcall($bus, $addr);
+        $num_clocks
+    }};
+
+    // Fallback: addr mode reads the bus to produce an address,
+    // instruction takes (bus, addr). Covers the majority of opcodes.
+    ($cpu:ident, $bus:ident, $instr:ident, $addr_mode:ident, $num_clocks:expr) => {{
+        let addr = $cpu.$addr_mode($bus);
+        $cpu.$instr($bus, addr);
+        $num_clocks
+    }};
+}
+
 // Flag functions
 impl Spc700 {
     pub fn exec_instr<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) {
@@ -11,1241 +95,275 @@ impl Spc700 {
             self.prg_bytes.clear();
         }
 
-        let clocks: usize;
         let opcode = self.read_prg(bus);
         self.branch_taken = false;
-    
-        match opcode {
-            0x00 => {
-                self.nop();
-                clocks = 2;
-            }
-            0x01 => {
-                self.tcall(bus, 0xFFDE);
-                clocks = 8;
-            }
-            0x02 => {
-                let addr = self.direct(bus);
-                self.set1(bus, addr, 0);
-                clocks = 4;
-            }
-            0x03 => {
-                let (data_addr, branch_addr) = self.direct_relative(bus);
-                self.bbs(bus, data_addr, branch_addr, 0);
-                clocks = 5;
-            }
-            0x04 => {
-                let addr = self.direct(bus);
-                self.or_acc(bus, addr);
-                clocks = 3;
-            }
-            0x05 => {
-                let addr = self.absolute(bus);
-                self.or_acc(bus, addr);
-                clocks = 4;
-            }
-            0x06 => {
-                let addr = self.indirect(bus);
-                self.or_acc(bus, addr);
-                clocks = 3;
-            }
-            0x07 => {
-                let addr = self.x_indirect(bus);
-                self.or_acc(bus, addr);
-                clocks = 6;
-            }
-            0x08 => {
-                let addr = self.immediate();
-                self.or_acc(bus, addr);
-                clocks = 2;
-            }
-            0x09 => {
-                let (src_addr, dst_addr) = self.direct_to_direct(bus);
-                self.or_mem(bus, src_addr, dst_addr);
-                clocks = 6;
-            }
-            0x0A => {
-                let (addr, bit) = self.absolute_bit(bus);
-                self.or1(bus, addr, bit);
-                clocks = 5;
-            }
-            0x0B => {
-                let addr = self.direct(bus);
-                self.asl_mem(bus, addr);
-                clocks = 4;
-            }
-            0x0C => {
-                let addr = self.absolute(bus);
-                self.asl_mem(bus, addr);
-                clocks = 5;
-            }
-            0x0D => {
-                self.push_psw(bus);
-                clocks = 4;
-            }
-            0x0E => {
-                let addr = self.absolute(bus);
-                self.tset1(bus, addr);
-                clocks = 6;
-            }
-            0x0F => {
-                self.brk(bus);
-                clocks = 8;
-            }
-            0x10 => {
-                let addr = self.relative(bus);
-                self.bpl(addr);
-                clocks = 2;
-            }
-            0x11 => {
-                self.tcall(bus, 0xFFDC);
-                clocks = 8;
-            }
-            0x12 => {
-                let addr = self.direct(bus);
-                self.clr1(bus, addr, 0);
-                clocks = 4;
-            }
-            0x13 => {
-                let (data_addr, branch_addr) = self.direct_relative(bus);
-                self.bbc(bus, data_addr, branch_addr, 0);
-                clocks = 5;
-            }
-            0x14 => {
-                let addr = self.x_direct(bus);
-                self.or_acc(bus, addr);
-                clocks = 4;
-            }
-            0x15 => {
-                let addr = self.x_absolute(bus);
-                self.or_acc(bus, addr);
-                clocks = 5;
-            }
-            0x16 => {
-                let addr = self.y_absolute(bus);
-                self.or_acc(bus, addr);
-                clocks = 5;
-            }
-            0x17 => {
-                let addr = self.indirect_y(bus);
-                self.or_acc(bus, addr);
-                clocks = 6;
-            }
-            0x18 => {
-                let (src_addr, dst_addr) = self.immediate_to_direct(bus);
-                self.or_mem(bus, src_addr, dst_addr);
-                clocks = 5;
-            }
-            0x19 => {
-                let (src_addr, dst_addr) = self.indirect_to_indirect(bus);
-                self.or_mem(bus, src_addr, dst_addr);
-                clocks = 5;
-            }
-            0x1A => {
-                let addr = self.direct(bus);
-                self.decw(bus, addr);
-                clocks = 6;
-            }
-            0x1B => {
-                let addr = self.x_direct(bus);
-                self.asl_mem(bus, addr);
-                clocks = 5;
-            }
-            0x1C => {
-                self.asl_acc();
-                clocks = 2;
-            }
-            0x1D => {
-                self.dex();
-                clocks = 2;
-            }
-            0x1E => {
-                let addr = self.absolute(bus);
-                self.cmx(bus, addr);
-                clocks = 4;
-            }
-            0x1F => {
-                let addr = self.x_absolute_indirect(bus);
-                self.jmp(addr);
-                clocks = 6;
-            }
-            0x20 => {
-                self.clrp();
-                clocks = 2;
-            }
-            0x21 => {
-                self.tcall(bus, 0xFFDA);
-                clocks = 8;
-            }
-            0x22 => {
-                let addr = self.direct(bus);
-                self.set1(bus, addr, 1);
-                clocks = 4;
-            }
-            0x23 => {
-                let (data_addr, branch_addr) = self.direct_relative(bus);
-                self.bbs(bus, data_addr, branch_addr, 1);
-                clocks = 5;
-            }
-            0x24 => {
-                let addr = self.direct(bus);
-                self.and_acc(bus, addr);
-                clocks = 3;
-            }
-            0x25 => {
-                let addr = self.absolute(bus);
-                self.and_acc(bus, addr);
-                clocks = 4;
-            }
-            0x26 => {
-                let addr = self.indirect(bus);
-                self.and_acc(bus, addr);
-                clocks = 3;
-            }
-            0x27 => {
-                let addr = self.x_indirect(bus);
-                self.and_acc(bus, addr);
-                clocks = 6;
-            }
-            0x28 => {
-                let addr = self.immediate();
-                self.and_acc(bus, addr);
-                clocks = 2;
-            }
-            0x29 => {
-                let (src_addr, dst_addr) = self.direct_to_direct(bus);
-                self.and_mem(bus, src_addr, dst_addr);
-                clocks = 6;
-            }
-            0x2A => {
-                let (addr, bit) = self.absolute_bit(bus);
-                self.or1_inv(bus, addr, bit);
-                clocks = 5;
-            }
-            0x2B => {
-                let addr = self.direct(bus);
-                self.rol_mem(bus, addr);
-                clocks = 4;
-            }
-            0x2C => {
-                let addr = self.absolute(bus);
-                self.rol_mem(bus, addr);
-                clocks = 5;
-            }
-            0x2D => {
-                self.push_acc(bus);
-                clocks = 4;
-            }
-            0x2E => {
-                let (data_addr, branch_addr) = self.direct_relative(bus);
-                self.cbne(bus, data_addr, branch_addr);
-                clocks = 5;
-            }
-            0x2F => {
-                let addr = self.relative(bus);
-                self.bra(addr);
-                clocks = 4;
-            }
-            0x30 => {
-                let addr = self.relative(bus);
-                self.bmi(addr);
-                clocks = 2;
-            }
-            0x31 => {
-                self.tcall(bus, 0xFFD8);
-                clocks = 8;
-            }
-            0x32 => {
-                let addr = self.direct(bus);
-                self.clr1(bus, addr, 1);
-                clocks = 4;
-            }
-            0x33 => {
-                let (data_addr, branch_addr) = self.direct_relative(bus);
-                self.bbc(bus, data_addr, branch_addr, 1);
-                clocks = 5;
-            }
-            0x34 => {
-                let addr = self.x_direct(bus);
-                self.and_acc(bus, addr);
-                clocks = 4;
-            }
-            0x35 => {
-                let addr = self.x_absolute(bus);
-                self.and_acc(bus, addr);
-                clocks = 5;
-            }
-            0x36 => {
-                let addr = self.y_absolute(bus);
-                self.and_acc(bus, addr);
-                clocks = 5;
-            }
-            0x37 => {
-                let addr = self.indirect_y(bus);
-                self.and_acc(bus, addr);
-                clocks = 6;
-            }
-            0x38 => {
-                let (src_addr, dst_addr) = self.immediate_to_direct(bus);
-                self.and_mem(bus, src_addr, dst_addr);
-                clocks = 5;
-            }
-            0x39 => {
-                let (src_addr, dst_addr) = self.indirect_to_indirect(bus);
-                self.and_mem(bus, src_addr, dst_addr);
-                clocks = 5;
-            }
-            0x3A => {
-                let addr = self.direct(bus);
-                self.incw(bus, addr);
-                clocks = 6;
-            }
-            0x3B => {
-                let addr = self.x_direct(bus);
-                self.rol_mem(bus, addr);
-                clocks = 5;
-            }
-            0x3C => {
-                self.rol_acc();
-                clocks = 2;
-            }
-            0x3D => {
-                self.inx();
-                clocks = 2;
-            }
-            0x3E => {
-                let addr = self.direct(bus);
-                self.cmx(bus, addr);
-                clocks = 3;
-            }
-            0x3F => {
-                let addr = self.absolute(bus);
-                self.call(bus, addr);
-                clocks = 8;
-            }
-            0x40 => {
-                self.setp();
-                clocks = 2;
-            }
-            0x41 => {
-                self.tcall(bus, 0xFFD6);
-                clocks = 8;
-            }
-            0x42 => {
-                let addr = self.direct(bus);
-                self.set1(bus, addr, 2);
-                clocks = 4;
-            }
-            0x43 => {
-                let (data_addr, branch_addr) = self.direct_relative(bus);
-                self.bbs(bus, data_addr, branch_addr, 2);
-                clocks = 5;
-            }
-            0x44 => {
-                let addr = self.direct(bus);
-                self.eor_acc(bus, addr);
-                clocks = 3;
-            }
-            0x45 => {
-                let addr = self.absolute(bus);
-                self.eor_acc(bus, addr);
-                clocks = 4;
-            }
-            0x46 => {
-                let addr = self.indirect(bus);
-                self.eor_acc(bus, addr);
-                clocks = 3;
-            }
-            0x47 => {
-                let addr = self.x_indirect(bus);
-                self.eor_acc(bus, addr);
-                clocks = 6;
-            }
-            0x48 => {
-                let addr = self.immediate();
-                self.eor_acc(bus, addr);
-                clocks = 2;
-            }
-            0x49 => {
-                let (src_addr, dst_addr) = self.direct_to_direct(bus);
-                self.eor_mem(bus, src_addr, dst_addr);
-                clocks = 6;
-            }
-            0x4A => {
-                let (addr, bit) = self.absolute_bit(bus);
-                self.and1(bus, addr, bit);
-                clocks = 4;
-            }
-            0x4B => {
-                let addr = self.direct(bus);
-                self.lsr_mem(bus, addr);
-                clocks = 4;
-            }
-            0x4C => {
-                let addr = self.absolute(bus);
-                self.lsr_mem(bus, addr);
-                clocks = 5;
-            }
-            0x4D => {
-                self.push_x(bus);
-                clocks = 4;
-            }
-            0x4E => {
-                let addr = self.absolute(bus);
-                self.tclr1(bus, addr);
-                clocks = 6;
-            }
-            0x4F => {
-                let addr = self.immediate();
-                self.pcall(bus, addr);
-                clocks = 6;
-            }
-            0x50 => {
-                let addr = self.relative(bus);
-                self.bvc(addr);
-                clocks = 2;
-            }
-            0x51 => {
-                self.tcall(bus, 0xFFD4);
-                clocks = 8;
-            }
-            0x52 => {
-                let addr = self.direct(bus);
-                self.clr1(bus, addr, 2);
-                clocks = 4;
-            }
-            0x53 => {
-                let (data_addr, branch_addr) = self.direct_relative(bus);
-                self.bbc(bus, data_addr, branch_addr, 2);
-                clocks = 5;
-            }
-            0x54 => {
-                let addr = self.x_direct(bus);
-                self.eor_acc(bus, addr);
-                clocks = 4;
-            }
-            0x55 => {
-                let addr = self.x_absolute(bus);
-                self.eor_acc(bus, addr);
-                clocks = 5;
-            }
-            0x56 => {
-                let addr = self.y_absolute(bus);
-                self.eor_acc(bus, addr);
-                clocks = 5;
-            }
-            0x57 => {
-                let addr = self.indirect_y(bus);
-                self.eor_acc(bus, addr);
-                clocks = 6;
-            }
-            0x58 => {
-                let (src_addr, dst_addr) = self.immediate_to_direct(bus);
-                self.eor_mem(bus, src_addr, dst_addr);
-                clocks = 5;
-            }
-            0x59 => {
-                let (src_addr, dst_addr) = self.indirect_to_indirect(bus);
-                self.eor_mem(bus, src_addr, dst_addr);
-                clocks = 5;
-            }
-            0x5A => {
-                let addr = self.direct(bus);
-                self.cmpw(bus, addr);
-                clocks = 4;
-            }
-            0x5B => {
-                let addr = self.x_direct(bus);
-                self.lsr_mem(bus, addr);
-                clocks = 5;
-            }
-            0x5C => {
-                self.lsr_acc();
-                clocks = 2;
-            }
-            0x5D => {
-                self.tax();
-                clocks = 2;
-            }
-            0x5E => {
-                let addr = self.absolute(bus);
-                self.cmy(bus, addr);
-                clocks = 4;
-            }
-            0x5F => {
-                let addr = self.absolute(bus);
-                self.jmp(addr);
-                clocks = 3;
-            }
-            0x60 => {
-                self.clrc();
-                clocks = 2;
-            }
-            0x61 => {
-                self.tcall(bus, 0xFFD2);
-                clocks = 8;
-            }
-            0x62 => {
-                let addr = self.direct(bus);
-                self.set1(bus, addr, 3);
-                clocks = 4;
-            }
-            0x63 => {
-                let (data_addr, branch_addr) = self.direct_relative(bus);
-                self.bbs(bus, data_addr, branch_addr, 3);
-                clocks = 5;
-            }
-            0x64 => {
-                let addr = self.direct(bus);
-                self.cmp_acc(bus, addr);
-                clocks = 3;
-            }
-            0x65 => {
-                let addr = self.absolute(bus);
-                self.cmp_acc(bus, addr);
-                clocks = 4;
-            }
-            0x66 => {
-                let addr = self.indirect(bus);
-                self.cmp_acc(bus, addr);
-                clocks = 3;
-            }
-            0x67 => {
-                let addr = self.x_indirect(bus);
-                self.cmp_acc(bus, addr);
-                clocks = 6;
-            }
-            0x68 => {
-                let addr = self.immediate();
-                self.cmp_acc(bus, addr);
-                clocks = 2;
-            }
-            0x69 => {
-                let (src_addr, dst_addr) = self.direct_to_direct(bus);
-                self.cmp_mem(bus, src_addr, dst_addr);
-                clocks = 6;
-            }
-            0x6A => {
-                let (addr, bit) = self.absolute_bit(bus);
-                self.and1_inv(bus, addr, bit);
-                clocks = 4;
-            }
-            0x6B => {
-                let addr = self.direct(bus);
-                self.ror_mem(bus, addr);
-                clocks = 4;
-            }
-            0x6C => {
-                let addr = self.absolute(bus);
-                self.ror_mem(bus, addr);
-                clocks = 5;
-            }
-            0x6D => {
-                self.push_y(bus);
-                clocks = 4;
-            }
-            0x6E => {
-                let (data_addr, branch_addr) = self.direct_relative(bus);
-                self.dbnz_mem(bus, data_addr, branch_addr);
-                clocks = 5;
-            }
-            0x6F => {
-                self.ret(bus);
-                clocks = 5;
-            }
-            0x70 => {
-                let addr = self.relative(bus);
-                self.bvs(addr);
-                clocks = 2;
-            }
-            0x71 => {
-                self.tcall(bus, 0xFFD0);
-                clocks = 8;
-            }
-            0x72 => {
-                let addr = self.direct(bus);
-                self.clr1(bus, addr, 3);
-                clocks = 4;
-            }
-            0x73 => {
-                let (data_addr, branch_addr) = self.direct_relative(bus);
-                self.bbc(bus, data_addr, branch_addr, 3);
-                clocks = 5;
-            }
-            0x74 => {
-                let addr = self.x_direct(bus);
-                self.cmp_acc(bus, addr);
-                clocks = 4;
-            }
-            0x75 => {
-                let addr = self.x_absolute(bus);
-                self.cmp_acc(bus, addr);
-                clocks = 5;
-            }
-            0x76 => {
-                let addr = self.y_absolute(bus);
-                self.cmp_acc(bus, addr);
-                clocks = 5;
-            }
-            0x77 => {
-                let addr = self.indirect_y(bus);
-                self.cmp_acc(bus, addr);
-                clocks = 6;
-            }
-            0x78 => {
-                let (src_addr, dst_addr) = self.immediate_to_direct(bus);
-                self.cmp_mem(bus, src_addr, dst_addr);
-                clocks = 5;
-            }
-            0x79 => {
-                let (src_addr, dst_addr) = self.indirect_to_indirect(bus);
-                self.cmp_mem(bus, src_addr, dst_addr);
-                clocks = 5;
-            }
-            0x7A => {
-                let addr = self.direct(bus);
-                self.addw(bus, addr);
-                clocks = 5;
-            }
-            0x7B => {
-                let addr = self.x_direct(bus);
-                self.ror_mem(bus, addr);
-                clocks = 5;
-            }
-            0x7C => {
-                self.ror_acc();
-                clocks = 2;
-            }
-            0x7D => {
-                self.txa();
-                clocks = 2;
-            }
-            0x7E => {
-                let addr = self.direct(bus);
-                self.cmy(bus, addr);
-                clocks = 3;
-            }
-            0x7F => {
-                self.ret1(bus);
-                clocks = 6;
-            }
-            0x80 => {
-                self.setc();
-                clocks = 2;
-            }
-            0x81 => {
-                self.tcall(bus, 0xFFCE);
-                clocks = 8;
-            }
-            0x82 => {
-                let addr = self.direct(bus);
-                self.set1(bus, addr, 4);
-                clocks = 4;
-            }
-            0x83 => {
-                let (data_addr, branch_addr) = self.direct_relative(bus);
-                self.bbs(bus, data_addr, branch_addr, 4);
-                clocks = 5;
-            }
-            0x84 => {
-                let addr = self.direct(bus);
-                self.adc_acc(bus, addr);
-                clocks = 3;
-            }
-            0x85 => {
-                let addr = self.absolute(bus);
-                self.adc_acc(bus, addr);
-                clocks = 4;
-            }
-            0x86 => {
-                let addr = self.indirect(bus);
-                self.adc_acc(bus, addr);
-                clocks = 3;
-            }
-            0x87 => {
-                let addr = self.x_indirect(bus);
-                self.adc_acc(bus, addr);
-                clocks = 6;
-            }
-            0x88 => {
-                let addr = self.immediate();
-                self.adc_acc(bus, addr);
-                clocks = 2;
-            }
-            0x89 => {
-                let (src_addr, dst_addr) = self.direct_to_direct(bus);
-                self.adc_mem(bus, src_addr, dst_addr);
-                clocks = 6;
-            }
-            0x8A => {
-                let (addr, bit) = self.absolute_bit(bus);
-                self.eor1(bus, addr, bit);
-                clocks = 5;
-            }
-            0x8B => {
-                let addr = self.direct(bus);
-                self.dec_mem(bus, addr);
-                clocks = 4;
-            }
-            0x8C => {
-                let addr = self.absolute(bus);
-                self.dec_mem(bus, addr);
-                clocks = 5;
-            }
-            0x8D => {
-                let addr = self.immediate();
-                self.ldy(bus, addr);
-                clocks = 2;
-            }
-            0x8E => {
-                self.pop_psw(bus);
-                clocks = 4;
-            }
-            0x8F => {
-                let (src_addr, dst_addr) = self.immediate_to_direct(bus);
-                self.mov(bus, src_addr, dst_addr);
-                clocks = 5;
-            }
-            0x90 => {
-                let addr = self.relative(bus);
-                self.bcc(addr);
-                clocks = 2;
-            }
-            0x91 => {
-                self.tcall(bus, 0xFFCC);
-                clocks = 8;
-            }
-            0x92 => {
-                let addr = self.direct(bus);
-                self.clr1(bus, addr, 4);
-                clocks = 4;
-            }
-            0x93 => {
-                let (data_addr, branch_addr) = self.direct_relative(bus);
-                self.bbc(bus, data_addr, branch_addr, 4);
-                clocks = 5;
-            }
-            0x94 => {
-                let addr = self.x_direct(bus);
-                self.adc_acc(bus, addr);
-                clocks = 4;
-            }
-            0x95 => {
-                let addr = self.x_absolute(bus);
-                self.adc_acc(bus, addr);
-                clocks = 5;
-            }
-            0x96 => {
-                let addr = self.y_absolute(bus);
-                self.adc_acc(bus, addr);
-                clocks = 5;
-            }
-            0x97 => {
-                let addr = self.indirect_y(bus);
-                self.adc_acc(bus, addr);
-                clocks = 6;
-            }
-            0x98 => {
-                let (src_addr, dst_addr) = self.immediate_to_direct(bus);
-                self.adc_mem(bus, src_addr, dst_addr);
-                clocks = 5;
-            }
-            0x99 => {
-                let (src_addr, dst_addr) = self.indirect_to_indirect(bus);
-                self.adc_mem(bus, src_addr, dst_addr);
-                clocks = 5;
-            }
-            0x9A => {
-                let addr = self.direct(bus);
-                self.subw(bus, addr);
-                clocks = 5;
-            }
-            0x9B => {
-                let addr = self.x_direct(bus);
-                self.dec_mem(bus, addr);
-                clocks = 5;
-            }
-            0x9C => {
-                self.dec_acc();
-                clocks = 2;
-            }
-            0x9D => {
-                self.tsx();
-                clocks = 2;
-            }
-            0x9E => {
-                self.div();
-                clocks = 12;
-            }
-            0x9F => {
-                self.xcn();
-                clocks = 5;
-            }
-            0xA0 => {
-                self.sei();
-                clocks = 3;
-            }
-            0xA1 => {
-                self.tcall(bus, 0xFFCA);
-                clocks = 8;
-            }
-            0xA2 => {
-                let addr = self.direct(bus);
-                self.set1(bus, addr, 5);
-                clocks = 4;
-            }
-            0xA3 => {
-                let (data_addr, branch_addr) = self.direct_relative(bus);
-                self.bbs(bus, data_addr, branch_addr, 5);
-                clocks = 5;
-            }
-            0xA4 => {
-                let addr = self.direct(bus);
-                self.sbc_acc(bus, addr);
-                clocks = 3;
-            }
-            0xA5 => {
-                let addr = self.absolute(bus);
-                self.sbc_acc(bus, addr);
-                clocks = 4;
-            }
-            0xA6 => {
-                let addr = self.indirect(bus);
-                self.sbc_acc(bus, addr);
-                clocks = 3;
-            }
-            0xA7 => {
-                let addr = self.x_indirect(bus);
-                self.sbc_acc(bus, addr);
-                clocks = 6;
-            }
-            0xA8 => {
-                let addr = self.immediate();
-                self.sbc_acc(bus, addr);
-                clocks = 2;
-            }
-            0xA9 => {
-                let (src_addr, dst_addr) = self.direct_to_direct(bus);
-                self.sbc_mem(bus, src_addr, dst_addr);
-                clocks = 6;
-            }
-            0xAA => {
-                let (addr, bit) = self.absolute_bit(bus);
-                self.ldc(bus, addr, bit);
-                clocks = 4;
-            }
-            0xAB => {
-                let addr = self.direct(bus);
-                self.inc_mem(bus, addr);
-                clocks = 4;
-            }
-            0xAC => {
-                let addr = self.absolute(bus);
-                self.inc_mem(bus, addr);
-                clocks = 5;
-            }
-            0xAD => {
-                let addr = self.immediate();
-                self.cmy(bus, addr);
-                clocks = 2;
-            }
-            0xAE => {
-                self.pop_acc(bus);
-                clocks = 4;
-            }
-            0xAF => {
-                let addr = self.indirect_inc(bus);
-                self.sta(bus, addr);
-                clocks = 4;
-            }
-            0xB0 => {
-                let addr = self.relative(bus);
-                self.bcs(addr);
-                clocks = 2;
-            }
-            0xB1 => {
-                self.tcall(bus, 0xFFC8);
-                clocks = 8;
-            }
-            0xB2 => {
-                let addr = self.direct(bus);
-                self.clr1(bus, addr, 5);
-                clocks = 4;
-            }
-            0xB3 => {
-                let (data_addr, branch_addr) = self.direct_relative(bus);
-                self.bbc(bus, data_addr, branch_addr, 5);
-                clocks = 5;
-            }
-            0xB4 => {
-                let addr = self.x_direct(bus);
-                self.sbc_acc(bus, addr);
-                clocks = 4;
-            }
-            0xB5 => {
-                let addr = self.x_absolute(bus);
-                self.sbc_acc(bus, addr);
-                clocks = 5;
-            }
-            0xB6 => {
-                let addr = self.y_absolute(bus);
-                self.sbc_acc(bus, addr);
-                clocks = 5;
-            }
-            0xB7 => {
-                let addr = self.indirect_y(bus);
-                self.sbc_acc(bus, addr);
-                clocks = 6;
-            }
-            0xB8 => {
-                let (src_addr, dst_addr) = self.immediate_to_direct(bus);
-                self.sbc_mem(bus, src_addr, dst_addr);
-                clocks = 5;
-            }
-            0xB9 => {
-                let (src_addr, dst_addr) = self.indirect_to_indirect(bus);
-                self.sbc_mem(bus, src_addr, dst_addr);
-                clocks = 5;
-            }
-            0xBA => {
-                let addr = self.direct(bus);
-                self.ldya(bus, addr);
-                clocks = 5;
-            }
-            0xBB => {
-                let addr = self.x_direct(bus);
-                self.inc_mem(bus, addr);
-                clocks = 5;
-            }
-            0xBC => {
-                self.inc_acc();
-                clocks = 2;
-            }
-            0xBD => {
-                self.txs();
-                clocks = 2;
-            }
-            0xBE => {
-                self.das();
-                clocks = 3;
-            }
-            0xBF => {
-                let addr = self.indirect_inc(bus);
-                self.lda(bus, addr);
-                clocks = 4;
-            }
-            0xC0 => {
-                self.cli();
-                clocks = 3;
-            }
-            0xC1 => {
-                self.tcall(bus, 0xFFC6);
-                clocks = 8;
-            }
-            0xC2 => {
-                let addr = self.direct(bus);
-                self.set1(bus, addr, 6);
-                clocks = 4;
-            }
-            0xC3 => {
-                let (data_addr, branch_addr) = self.direct_relative(bus);
-                self.bbs(bus, data_addr, branch_addr, 6);
-                clocks = 5;
-            }
-            0xC4 => {
-                let addr = self.direct(bus);
-                self.sta(bus, addr);
-                clocks = 4;
-            }
-            0xC5 => {
-                let addr = self.absolute(bus);
-                self.sta(bus, addr);
-                clocks = 5;
-            }
-            0xC6 => {
-                let addr = self.indirect(bus);
-                self.sta(bus, addr);
-                clocks = 4;
-            }
-            0xC7 => {
-                let addr = self.x_indirect(bus);
-                self.sta(bus, addr);
-                clocks = 7;
-            }
-            0xC8 => {
-                let addr = self.immediate();
-                self.cmx(bus, addr);
-                clocks = 2;
-            }
-            0xC9 => {
-                let addr = self.absolute(bus);
-                self.stx(bus, addr);
-                clocks = 5;
-            }
-            0xCA => {
-                let (addr, bit) = self.absolute_bit(bus);
-                self.stc(bus, addr, bit);
-                clocks = 6;
-            }
-            0xCB => {
-                let addr = self.direct(bus);
-                self.sty(bus, addr);
-                clocks = 4;
-            }
-            0xCC => {
-                let addr = self.absolute(bus);
-                self.sty(bus, addr);
-                clocks = 5;
-            }
-            0xCD => {
-                let addr = self.immediate();
-                self.ldx(bus, addr);
-                clocks = 2;
-            }
-            0xCE => {
-                self.pop_x(bus);
-                clocks = 4;
-            }
-            0xCF => {
-                self.mul();
-                clocks = 9;
-            }
-            0xD0 => {
-                let addr = self.relative(bus);
-                self.bne(addr);
-                clocks = 2;
-            }
-            0xD1 => {
-                self.tcall(bus, 0xFFC4);
-                clocks = 8;
-            }
-            0xD2 => {
-                let addr = self.direct(bus);
-                self.clr1(bus, addr, 6);
-                clocks = 4;
-            }
-            0xD3 => {
-                let (data_addr, branch_addr) = self.direct_relative(bus);
-                self.bbc(bus, data_addr, branch_addr, 6);
-                clocks = 5;
-            }
-            0xD4 => {
-                let addr = self.x_direct(bus);
-                self.sta(bus, addr);
-                clocks = 5;
-            }
-            0xD5 => {
-                let addr = self.x_absolute(bus);
-                self.sta(bus, addr);
-                clocks = 6;
-            }
-            0xD6 => {
-                let addr = self.y_absolute(bus);
-                self.sta(bus, addr);
-                clocks = 6;
-            }
-            0xD7 => {
-                let addr = self.indirect_y(bus);
-                self.sta(bus, addr);
-                clocks = 7;
-            }
-            0xD8 => {
-                let addr = self.direct(bus);
-                self.stx(bus, addr);
-                clocks = 4;
-            }
-            0xD9 => {
-                let addr = self.y_direct(bus);
-                self.stx(bus, addr);
-                clocks = 5;
-            }
-            0xDA => {
-                let addr = self.direct(bus);
-                self.stya(bus, addr);
-                clocks = 5;
-            }
-            0xDB => {
-                let addr = self.x_direct(bus);
-                self.sty(bus, addr);
-                clocks = 5;
-            }
-            0xDC => {
-                self.dey();
-                clocks = 2;
-            }
-            0xDD => {
-                self.tya();
-                clocks = 2;
-            }
-            0xDE => {
-                let (data_addr, branch_addr) = self.x_direct_relative(bus);
-                self.cbne(bus, data_addr, branch_addr);
-                clocks = 6;
-            }
-            0xDF => {
-                self.daa();
-                clocks = 3;
-            }
-            0xE0 => {
-                self.clrv();
-                clocks = 2;
-            }
-            0xE1 => {
-                self.tcall(bus, 0xFFC2);
-                clocks = 8;
-            }
-            0xE2 => {
-                let addr = self.direct(bus);
-                self.set1(bus, addr, 7);
-                clocks = 4;
-            }
-            0xE3 => {
-                let (data_addr, branch_addr) = self.direct_relative(bus);
-                self.bbs(bus, data_addr, branch_addr, 7);
-                clocks = 5;
-            }
-            0xE4 => {
-                let addr = self.direct(bus);
-                self.lda(bus, addr);
-                clocks = 3;
-            }
-            0xE5 => {
-                let addr = self.absolute(bus);
-                self.lda(bus, addr);
-                clocks = 4;
-            }
-            0xE6 => {
-                let addr = self.indirect(bus);
-                self.lda(bus, addr);
-                clocks = 3;
-            }
-            0xE7 => {
-                let addr = self.x_indirect(bus);
-                self.lda(bus, addr);
-                clocks = 6;
-            }
-            0xE8 => {
-                let addr = self.immediate();
-                self.lda(bus, addr);
-                clocks = 2;
-            }
-            0xE9 => {
-                let addr = self.absolute(bus);
-                self.ldx(bus, addr);
-                clocks = 4;
-            }
-            0xEA => {
-                let (addr, bit) = self.absolute_bit(bus);
-                self.not1(bus, addr, bit);
-                clocks = 5;
-            }
-            0xEB => {
-                let addr = self.direct(bus);
-                self.ldy(bus, addr);
-                clocks = 3;
-            }
-            0xEC => {
-                let addr = self.absolute(bus);
-                self.ldy(bus, addr);
-                clocks = 4;
-            }
-            0xED => {
-                self.notc();
-                clocks = 3;
-            }
-            0xEE => {
-                self.pop_y(bus);
-                clocks = 4;
-            }
-            0xEF => {
-                self.sleep();
-                clocks = 3;
-            }
-            0xF0 => {
-                let addr = self.relative(bus);
-                self.beq(addr);
-                clocks = 2;
-            }
-            0xF1 => {
-                self.tcall(bus, 0xFFC0);
-                clocks = 8;
-            }
-            0xF2 => {
-                let addr = self.direct(bus);
-                self.clr1(bus, addr, 7);
-                clocks = 4;
-            }
-            0xF3 => {
-                let (data_addr, branch_addr) = self.direct_relative(bus);
-                self.bbc(bus, data_addr, branch_addr, 7);
-                clocks = 5;
-            }
-            0xF4 => {
-                let addr = self.x_direct(bus);
-                self.lda(bus, addr);
-                clocks = 4;
-            }
-            0xF5 => {
-                let addr = self.x_absolute(bus);
-                self.lda(bus, addr);
-                clocks = 5;
-            }
-            0xF6 => {
-                let addr = self.y_absolute(bus);
-                self.lda(bus, addr);
-                clocks = 5;
-            }
-            0xF7 => {
-                let addr = self.indirect_y(bus);
-                self.lda(bus, addr);
-                clocks = 6;
-            }
-            0xF8 => {
-                let addr = self.direct(bus);
-                self.ldx(bus, addr);
-                clocks = 3;
-            }
-            0xF9 => {
-                let addr = self.y_direct(bus);
-                self.ldx(bus, addr);
-                clocks = 4;
-            }
-            0xFA => {
-                let (src_addr, dst_addr) = self.direct_to_direct(bus);
-                self.mov(bus, src_addr, dst_addr);
-                clocks = 5;
-            }
-            0xFB => {
-                let addr = self.x_direct(bus);
-                self.ldy(bus, addr);
-                clocks = 4;
-            }
-            0xFC => {
-                self.iny();
-                clocks = 2;
-            }
-            0xFD => {
-                self.tay();
-                clocks = 2;
-            }
-            0xFE => {
-                let addr = self.relative(bus);
-                self.dbnz_y(addr);
-                clocks = 4;
-            }
-            0xFF => {
-                self.stop();
-                clocks = 3;
-            }
-        }
+
+        let clocks = match opcode {
+            0x00 => opcode!(self, bus, nop, implied, 2),
+            0x01 => opcode!(self, bus, tcall, 0xFFDE, 8),
+            0x02 => opcode!(self, bus, bit_op, set1, direct, 0, 4),
+            0x03 => opcode!(self, bus, relative_bit_op, bbs, 0, 5),
+            0x04 => opcode!(self, bus, or_acc, direct, 3),
+            0x05 => opcode!(self, bus, or_acc, absolute, 4),
+            0x06 => opcode!(self, bus, or_acc, indirect, 3),
+            0x07 => opcode!(self, bus, or_acc, x_indirect, 6),
+            0x08 => opcode!(self, bus, or_acc, immediate, 2),
+            0x09 => opcode!(self, bus, or_mem, direct_to_direct, 6),
+            0x0A => opcode!(self, bus, or1, absolute_bit, 5),
+            0x0B => opcode!(self, bus, asl_mem, direct, 4),
+            0x0C => opcode!(self, bus, asl_mem, absolute, 5),
+            0x0D => opcode!(self, bus, push_psw, implied, 4),
+            0x0E => opcode!(self, bus, tset1, absolute, 6),
+            0x0F => opcode!(self, bus, brk, implied, 8),
+            0x10 => opcode!(self, bus, addr_no_bus, bpl, relative, 2),
+            0x11 => opcode!(self, bus, tcall, 0xFFDC, 8),
+            0x12 => opcode!(self, bus, bit_op, clr1, direct, 0, 4),
+            0x13 => opcode!(self, bus, relative_bit_op, bbc, 0, 5),
+            0x14 => opcode!(self, bus, or_acc, x_direct, 4),
+            0x15 => opcode!(self, bus, or_acc, x_absolute, 5),
+            0x16 => opcode!(self, bus, or_acc, y_absolute, 5),
+            0x17 => opcode!(self, bus, or_acc, indirect_y, 6),
+            0x18 => opcode!(self, bus, or_mem, immediate_to_direct, 5),
+            0x19 => opcode!(self, bus, or_mem, indirect_to_indirect, 5),
+            0x1A => opcode!(self, bus, decw, direct, 6),
+            0x1B => opcode!(self, bus, asl_mem, x_direct, 5),
+            0x1C => opcode!(self, bus, asl_acc, implied, 2),
+            0x1D => opcode!(self, bus, dex, implied, 2),
+            0x1E => opcode!(self, bus, cmx, absolute, 4),
+            0x1F => opcode!(self, bus, addr_no_bus, jmp, x_absolute_indirect, 6),
+            0x20 => opcode!(self, bus, clrp, implied, 2),
+            0x21 => opcode!(self, bus, tcall, 0xFFDA, 8),
+            0x22 => opcode!(self, bus, bit_op, set1, direct, 1, 4),
+            0x23 => opcode!(self, bus, relative_bit_op, bbs, 1, 5),
+            0x24 => opcode!(self, bus, and_acc, direct, 3),
+            0x25 => opcode!(self, bus, and_acc, absolute, 4),
+            0x26 => opcode!(self, bus, and_acc, indirect, 3),
+            0x27 => opcode!(self, bus, and_acc, x_indirect, 6),
+            0x28 => opcode!(self, bus, and_acc, immediate, 2),
+            0x29 => opcode!(self, bus, and_mem, direct_to_direct, 6),
+            0x2A => opcode!(self, bus, or1_inv, absolute_bit, 5),
+            0x2B => opcode!(self, bus, rol_mem, direct, 4),
+            0x2C => opcode!(self, bus, rol_mem, absolute, 5),
+            0x2D => opcode!(self, bus, push_acc, implied, 4),
+            0x2E => opcode!(self, bus, cbne, direct_relative, 5),
+            0x2F => opcode!(self, bus, addr_no_bus, bra, relative, 4),
+            0x30 => opcode!(self, bus, addr_no_bus, bmi, relative, 2),
+            0x31 => opcode!(self, bus, tcall, 0xFFD8, 8),
+            0x32 => opcode!(self, bus, bit_op, clr1, direct, 1, 4),
+            0x33 => opcode!(self, bus, relative_bit_op, bbc, 1, 5),
+            0x34 => opcode!(self, bus, and_acc, x_direct, 4),
+            0x35 => opcode!(self, bus, and_acc, x_absolute, 5),
+            0x36 => opcode!(self, bus, and_acc, y_absolute, 5),
+            0x37 => opcode!(self, bus, and_acc, indirect_y, 6),
+            0x38 => opcode!(self, bus, and_mem, immediate_to_direct, 5),
+            0x39 => opcode!(self, bus, and_mem, indirect_to_indirect, 5),
+            0x3A => opcode!(self, bus, incw, direct, 6),
+            0x3B => opcode!(self, bus, rol_mem, x_direct, 5),
+            0x3C => opcode!(self, bus, rol_acc, implied, 2),
+            0x3D => opcode!(self, bus, inx, implied, 2),
+            0x3E => opcode!(self, bus, cmx, direct, 3),
+            0x3F => opcode!(self, bus, call, absolute, 8),
+            0x40 => opcode!(self, bus, setp, implied, 2),
+            0x41 => opcode!(self, bus, tcall, 0xFFD6, 8),
+            0x42 => opcode!(self, bus, bit_op, set1, direct, 2, 4),
+            0x43 => opcode!(self, bus, relative_bit_op, bbs, 2, 5),
+            0x44 => opcode!(self, bus, eor_acc, direct, 3),
+            0x45 => opcode!(self, bus, eor_acc, absolute, 4),
+            0x46 => opcode!(self, bus, eor_acc, indirect, 3),
+            0x47 => opcode!(self, bus, eor_acc, x_indirect, 6),
+            0x48 => opcode!(self, bus, eor_acc, immediate, 2),
+            0x49 => opcode!(self, bus, eor_mem, direct_to_direct, 6),
+            0x4A => opcode!(self, bus, and1, absolute_bit, 4),
+            0x4B => opcode!(self, bus, lsr_mem, direct, 4),
+            0x4C => opcode!(self, bus, lsr_mem, absolute, 5),
+            0x4D => opcode!(self, bus, push_x, implied, 4),
+            0x4E => opcode!(self, bus, tclr1, absolute, 6),
+            0x4F => opcode!(self, bus, pcall, immediate, 6),
+            0x50 => opcode!(self, bus, addr_no_bus, bvc, relative, 2),
+            0x51 => opcode!(self, bus, tcall, 0xFFD4, 8),
+            0x52 => opcode!(self, bus, bit_op, clr1, direct, 2, 4),
+            0x53 => opcode!(self, bus, relative_bit_op, bbc, 2, 5),
+            0x54 => opcode!(self, bus, eor_acc, x_direct, 4),
+            0x55 => opcode!(self, bus, eor_acc, x_absolute, 5),
+            0x56 => opcode!(self, bus, eor_acc, y_absolute, 5),
+            0x57 => opcode!(self, bus, eor_acc, indirect_y, 6),
+            0x58 => opcode!(self, bus, eor_mem, immediate_to_direct, 5),
+            0x59 => opcode!(self, bus, eor_mem, indirect_to_indirect, 5),
+            0x5A => opcode!(self, bus, cmpw, direct, 4),
+            0x5B => opcode!(self, bus, lsr_mem, x_direct, 5),
+            0x5C => opcode!(self, bus, lsr_acc, implied, 2),
+            0x5D => opcode!(self, bus, tax, implied, 2),
+            0x5E => opcode!(self, bus, cmy, absolute, 4),
+            0x5F => opcode!(self, bus, addr_no_bus, jmp, absolute, 3),
+            0x60 => opcode!(self, bus, clrc, implied, 2),
+            0x61 => opcode!(self, bus, tcall, 0xFFD2, 8),
+            0x62 => opcode!(self, bus, bit_op, set1, direct, 3, 4),
+            0x63 => opcode!(self, bus, relative_bit_op, bbs, 3, 5),
+            0x64 => opcode!(self, bus, cmp_acc, direct, 3),
+            0x65 => opcode!(self, bus, cmp_acc, absolute, 4),
+            0x66 => opcode!(self, bus, cmp_acc, indirect, 3),
+            0x67 => opcode!(self, bus, cmp_acc, x_indirect, 6),
+            0x68 => opcode!(self, bus, cmp_acc, immediate, 2),
+            0x69 => opcode!(self, bus, cmp_mem, direct_to_direct, 6),
+            0x6A => opcode!(self, bus, and1_inv, absolute_bit, 4),
+            0x6B => opcode!(self, bus, ror_mem, direct, 4),
+            0x6C => opcode!(self, bus, ror_mem, absolute, 5),
+            0x6D => opcode!(self, bus, push_y, implied, 4),
+            0x6E => opcode!(self, bus, dbnz_mem, direct_relative, 5),
+            0x6F => opcode!(self, bus, ret, implied, 5),
+            0x70 => opcode!(self, bus, addr_no_bus, bvs, relative, 2),
+            0x71 => opcode!(self, bus, tcall, 0xFFD0, 8),
+            0x72 => opcode!(self, bus, bit_op, clr1, direct, 3, 4),
+            0x73 => opcode!(self, bus, relative_bit_op, bbc, 3, 5),
+            0x74 => opcode!(self, bus, cmp_acc, x_direct, 4),
+            0x75 => opcode!(self, bus, cmp_acc, x_absolute, 5),
+            0x76 => opcode!(self, bus, cmp_acc, y_absolute, 5),
+            0x77 => opcode!(self, bus, cmp_acc, indirect_y, 6),
+            0x78 => opcode!(self, bus, cmp_mem, immediate_to_direct, 5),
+            0x79 => opcode!(self, bus, cmp_mem, indirect_to_indirect, 5),
+            0x7A => opcode!(self, bus, addw, direct, 5),
+            0x7B => opcode!(self, bus, ror_mem, x_direct, 5),
+            0x7C => opcode!(self, bus, ror_acc, implied, 2),
+            0x7D => opcode!(self, bus, txa, implied, 2),
+            0x7E => opcode!(self, bus, cmy, direct, 3),
+            0x7F => opcode!(self, bus, ret1, implied, 6),
+            0x80 => opcode!(self, bus, setc, implied, 2),
+            0x81 => opcode!(self, bus, tcall, 0xFFCE, 8),
+            0x82 => opcode!(self, bus, bit_op, set1, direct, 4, 4),
+            0x83 => opcode!(self, bus, relative_bit_op, bbs, 4, 5),
+            0x84 => opcode!(self, bus, adc_acc, direct, 3),
+            0x85 => opcode!(self, bus, adc_acc, absolute, 4),
+            0x86 => opcode!(self, bus, adc_acc, indirect, 3),
+            0x87 => opcode!(self, bus, adc_acc, x_indirect, 6),
+            0x88 => opcode!(self, bus, adc_acc, immediate, 2),
+            0x89 => opcode!(self, bus, adc_mem, direct_to_direct, 6),
+            0x8A => opcode!(self, bus, eor1, absolute_bit, 5),
+            0x8B => opcode!(self, bus, dec_mem, direct, 4),
+            0x8C => opcode!(self, bus, dec_mem, absolute, 5),
+            0x8D => opcode!(self, bus, ldy, immediate, 2),
+            0x8E => opcode!(self, bus, pop_psw, implied, 4),
+            0x8F => opcode!(self, bus, mov, immediate_to_direct, 5),
+            0x90 => opcode!(self, bus, addr_no_bus, bcc, relative, 2),
+            0x91 => opcode!(self, bus, tcall, 0xFFCC, 8),
+            0x92 => opcode!(self, bus, bit_op, clr1, direct, 4, 4),
+            0x93 => opcode!(self, bus, relative_bit_op, bbc, 4, 5),
+            0x94 => opcode!(self, bus, adc_acc, x_direct, 4),
+            0x95 => opcode!(self, bus, adc_acc, x_absolute, 5),
+            0x96 => opcode!(self, bus, adc_acc, y_absolute, 5),
+            0x97 => opcode!(self, bus, adc_acc, indirect_y, 6),
+            0x98 => opcode!(self, bus, adc_mem, immediate_to_direct, 5),
+            0x99 => opcode!(self, bus, adc_mem, indirect_to_indirect, 5),
+            0x9A => opcode!(self, bus, subw, direct, 5),
+            0x9B => opcode!(self, bus, dec_mem, x_direct, 5),
+            0x9C => opcode!(self, bus, dec_acc, implied, 2),
+            0x9D => opcode!(self, bus, tsx, implied, 2),
+            0x9E => opcode!(self, bus, div, implied, 12),
+            0x9F => opcode!(self, bus, xcn, implied, 5),
+            0xA0 => opcode!(self, bus, sei, implied, 3),
+            0xA1 => opcode!(self, bus, tcall, 0xFFCA, 8),
+            0xA2 => opcode!(self, bus, bit_op, set1, direct, 5, 4),
+            0xA3 => opcode!(self, bus, relative_bit_op, bbs, 5, 5),
+            0xA4 => opcode!(self, bus, sbc_acc, direct, 3),
+            0xA5 => opcode!(self, bus, sbc_acc, absolute, 4),
+            0xA6 => opcode!(self, bus, sbc_acc, indirect, 3),
+            0xA7 => opcode!(self, bus, sbc_acc, x_indirect, 6),
+            0xA8 => opcode!(self, bus, sbc_acc, immediate, 2),
+            0xA9 => opcode!(self, bus, sbc_mem, direct_to_direct, 6),
+            0xAA => opcode!(self, bus, ldc, absolute_bit, 4),
+            0xAB => opcode!(self, bus, inc_mem, direct, 4),
+            0xAC => opcode!(self, bus, inc_mem, absolute, 5),
+            0xAD => opcode!(self, bus, cmy, immediate, 2),
+            0xAE => opcode!(self, bus, pop_acc, implied, 4),
+            0xAF => opcode!(self, bus, sta, indirect_inc, 4),
+            0xB0 => opcode!(self, bus, addr_no_bus, bcs, relative, 2),
+            0xB1 => opcode!(self, bus, tcall, 0xFFC8, 8),
+            0xB2 => opcode!(self, bus, bit_op, clr1, direct, 5, 4),
+            0xB3 => opcode!(self, bus, relative_bit_op, bbc, 5, 5),
+            0xB4 => opcode!(self, bus, sbc_acc, x_direct, 4),
+            0xB5 => opcode!(self, bus, sbc_acc, x_absolute, 5),
+            0xB6 => opcode!(self, bus, sbc_acc, y_absolute, 5),
+            0xB7 => opcode!(self, bus, sbc_acc, indirect_y, 6),
+            0xB8 => opcode!(self, bus, sbc_mem, immediate_to_direct, 5),
+            0xB9 => opcode!(self, bus, sbc_mem, indirect_to_indirect, 5),
+            0xBA => opcode!(self, bus, ldya, direct, 5),
+            0xBB => opcode!(self, bus, inc_mem, x_direct, 5),
+            0xBC => opcode!(self, bus, inc_acc, implied, 2),
+            0xBD => opcode!(self, bus, txs, implied, 2),
+            0xBE => opcode!(self, bus, das, implied, 3),
+            0xBF => opcode!(self, bus, lda, indirect_inc, 4),
+            0xC0 => opcode!(self, bus, cli, implied, 3),
+            0xC1 => opcode!(self, bus, tcall, 0xFFC6, 8),
+            0xC2 => opcode!(self, bus, bit_op, set1, direct, 6, 4),
+            0xC3 => opcode!(self, bus, relative_bit_op, bbs, 6, 5),
+            0xC4 => opcode!(self, bus, sta, direct, 4),
+            0xC5 => opcode!(self, bus, sta, absolute, 5),
+            0xC6 => opcode!(self, bus, sta, indirect, 4),
+            0xC7 => opcode!(self, bus, sta, x_indirect, 7),
+            0xC8 => opcode!(self, bus, cmx, immediate, 2),
+            0xC9 => opcode!(self, bus, stx, absolute, 5),
+            0xCA => opcode!(self, bus, stc, absolute_bit, 6),
+            0xCB => opcode!(self, bus, sty, direct, 4),
+            0xCC => opcode!(self, bus, sty, absolute, 5),
+            0xCD => opcode!(self, bus, ldx, immediate, 2),
+            0xCE => opcode!(self, bus, pop_x, implied, 4),
+            0xCF => opcode!(self, bus, mul, implied, 9),
+            0xD0 => opcode!(self, bus, addr_no_bus, bne, relative, 2),
+            0xD1 => opcode!(self, bus, tcall, 0xFFC4, 8),
+            0xD2 => opcode!(self, bus, bit_op, clr1, direct, 6, 4),
+            0xD3 => opcode!(self, bus, relative_bit_op, bbc, 6, 5),
+            0xD4 => opcode!(self, bus, sta, x_direct, 5),
+            0xD5 => opcode!(self, bus, sta, x_absolute, 6),
+            0xD6 => opcode!(self, bus, sta, y_absolute, 6),
+            0xD7 => opcode!(self, bus, sta, indirect_y, 7),
+            0xD8 => opcode!(self, bus, stx, direct, 4),
+            0xD9 => opcode!(self, bus, stx, y_direct, 5),
+            0xDA => opcode!(self, bus, stya, direct, 5),
+            0xDB => opcode!(self, bus, sty, x_direct, 5),
+            0xDC => opcode!(self, bus, dey, implied, 2),
+            0xDD => opcode!(self, bus, tya, implied, 2),
+            0xDE => opcode!(self, bus, cbne, x_direct_relative, 6),
+            0xDF => opcode!(self, bus, daa, implied, 3),
+            0xE0 => opcode!(self, bus, clrv, implied, 2),
+            0xE1 => opcode!(self, bus, tcall, 0xFFC2, 8),
+            0xE2 => opcode!(self, bus, bit_op, set1, direct, 7, 4),
+            0xE3 => opcode!(self, bus, relative_bit_op, bbs, 7, 5),
+            0xE4 => opcode!(self, bus, lda, direct, 3),
+            0xE5 => opcode!(self, bus, lda, absolute, 4),
+            0xE6 => opcode!(self, bus, lda, indirect, 3),
+            0xE7 => opcode!(self, bus, lda, x_indirect, 6),
+            0xE8 => opcode!(self, bus, lda, immediate, 2),
+            0xE9 => opcode!(self, bus, ldx, absolute, 4),
+            0xEA => opcode!(self, bus, not1, absolute_bit, 5),
+            0xEB => opcode!(self, bus, ldy, direct, 3),
+            0xEC => opcode!(self, bus, ldy, absolute, 4),
+            0xED => opcode!(self, bus, notc, implied, 3),
+            0xEE => opcode!(self, bus, pop_y, implied, 4),
+            0xEF => opcode!(self, bus, sleep, implied, 3),
+            0xF0 => opcode!(self, bus, addr_no_bus, beq, relative, 2),
+            0xF1 => opcode!(self, bus, tcall, 0xFFC0, 8),
+            0xF2 => opcode!(self, bus, bit_op, clr1, direct, 7, 4),
+            0xF3 => opcode!(self, bus, relative_bit_op, bbc, 7, 5),
+            0xF4 => opcode!(self, bus, lda, x_direct, 4),
+            0xF5 => opcode!(self, bus, lda, x_absolute, 5),
+            0xF6 => opcode!(self, bus, lda, y_absolute, 5),
+            0xF7 => opcode!(self, bus, lda, indirect_y, 6),
+            0xF8 => opcode!(self, bus, ldx, direct, 3),
+            0xF9 => opcode!(self, bus, ldx, y_direct, 4),
+            0xFA => opcode!(self, bus, mov, direct_to_direct, 5),
+            0xFB => opcode!(self, bus, ldy, x_direct, 4),
+            0xFC => opcode!(self, bus, iny, implied, 2),
+            0xFD => opcode!(self, bus, tay, implied, 2),
+            0xFE => opcode!(self, bus, addr_no_bus, dbnz_y, relative, 4),
+            0xFF => opcode!(self, bus, stop, implied, 3),
+        };
 
         self.clocks += clocks;
-    
+
         if self.branch_taken {
             self.clocks += 2;
         }
     }
-    
+
     /// Reads the next byte of the program and increments PC
     fn read_prg<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) -> u8 {
         let value = self.read(bus, self.pc);
@@ -1349,7 +467,7 @@ impl Spc700 {
         ((self.read_prg(bus) + self.y) as u16) | self.dir_page
     }
 
-    fn indirect<H: DebugHarness>(&mut self, _bus: &mut SpcBus<H>) -> u16 {
+    fn indirect<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) -> u16 {
         (self.x as u16) | self.dir_page
     }
 
@@ -1366,7 +484,7 @@ impl Spc700 {
         (src_addr, dst_addr)
     }
 
-    fn indirect_to_indirect<H: DebugHarness>(&mut self, _bus: &mut SpcBus<H>) -> (u16, u16) {
+    fn indirect_to_indirect<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) -> (u16, u16) {
         let arg1_addr = (self.x as u16) | self.dir_page;
         let arg2_addr = (self.y as u16) | self.dir_page;
 
@@ -1533,7 +651,7 @@ impl Spc700 {
     }
 
     // ASL - Shift Left One Bit (Accumulator version)
-    fn asl_acc(&mut self) {
+    fn asl_acc<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         let result = self.a << 1;
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!(result, 7));
@@ -1696,7 +814,7 @@ impl Spc700 {
     }
 
     // CLI - CLear Interrupt flag (called DI in SPC700 documentation)
-    fn cli(&mut self) {
+    fn cli<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.clear_flag(Flag::FlagI);
     }
 
@@ -1709,18 +827,18 @@ impl Spc700 {
     }
 
     // CLRC - clear carry flag
-    fn clrc(&mut self) {
+    fn clrc<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.clear_flag(Flag::FlagC);
     }
 
     // CLRP - clear direct page flag
-    fn clrp(&mut self) {
+    fn clrp<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.clear_flag(Flag::FlagP);
         self.dir_page = 0;
     }
 
     // CLRV - clear overflow flag (and half carry)
-    fn clrv(&mut self) {
+    fn clrv<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.clear_flag(Flag::FlagV);
         self.clear_flag(Flag::FlagH);
     }
@@ -1757,7 +875,7 @@ impl Spc700 {
     }
 
     // DAA - Decimal Adjust Addition
-    fn daa(&mut self) {
+    fn daa<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         if self.is_flag_set(Flag::FlagC) || self.a >= 0x9A {
             self.a += 0x60;
             self.set_flag(Flag::FlagC);
@@ -1771,7 +889,7 @@ impl Spc700 {
     }
 
     // DAS - Decimal Adjust Subtraction
-    fn das(&mut self) {
+    fn das<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         if !self.is_flag_set(Flag::FlagC) || self.a >= 0x9A {
             self.a -= 0x60;
             self.clear_flag(Flag::FlagC);
@@ -1806,7 +924,7 @@ impl Spc700 {
     }
 
     // DEC - decrement (accumulator)
-    fn dec_acc(&mut self) {
+    fn dec_acc<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.a -= 1;
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!(self.a, 7));
@@ -1832,21 +950,21 @@ impl Spc700 {
         self.write_word(bus, address, result);
     }
 
-    fn dex(&mut self) {
+    fn dex<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.x -= 1;
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!(self.x, 7));
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
     }
 
-    fn dey(&mut self) {
+    fn dey<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.y -= 1;
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!(self.y, 7));
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
     }
 
-    fn div(&mut self) {
+    fn div<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         let ya = ((self.y as u16) << 8) | (self.a as u16);
 
         self.set_flag_to_bool(Flag::FlagH, (self.y & 0xF) >= (self.x & 0xF));
@@ -1892,7 +1010,7 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagC, result);
     }
 
-    fn inc_acc(&mut self) {
+    fn inc_acc<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.a += 1;
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!(self.a, 7));
@@ -1917,14 +1035,14 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagZ, result == 0);
     }
 
-    fn inx(&mut self) {
+    fn inx<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.x += 1;
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!(self.x, 7));
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
     }
 
-    fn iny(&mut self) {
+    fn iny<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.y += 1;
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!(self.y, 7));
@@ -1972,7 +1090,7 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0 && self.a == 0);
     }
 
-    fn lsr_acc(&mut self) {
+    fn lsr_acc<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.set_flag_to_bool(Flag::FlagC, get_bit_n!(self.a, 0));
 
         self.a >>= 1;
@@ -1998,7 +1116,7 @@ impl Spc700 {
         self.write(bus, dst_addr, data);
     }
 
-    fn mul(&mut self) {
+    fn mul<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         let result = (self.y as u16) * (self.a as u16);
 
         self.y = (result >> 8) as u8;
@@ -2008,7 +1126,7 @@ impl Spc700 {
         self.set_flag_to_bool(Flag::FlagZ, self.y == 0);
     }
 
-    fn nop(&self) {}
+    fn nop<H: DebugHarness>(&self, _bus: &SpcBus<H>) {}
 
     fn not1<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16, bit: u8) {
         let data = self.read(bus, address);
@@ -2018,7 +1136,7 @@ impl Spc700 {
         self.write(bus, address, result);
     }
 
-    fn notc(&mut self) {
+    fn notc<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.status ^= Flag::FlagC as u8;
     }
 
@@ -2113,7 +1231,7 @@ impl Spc700 {
         }
     }
 
-    fn rol_acc(&mut self) {
+    fn rol_acc<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         let new_c = get_bit_n!(self.a, 7);
         
         self.a <<= 1;
@@ -2135,7 +1253,7 @@ impl Spc700 {
         self.write(bus, address, result);
     }
 
-    fn ror_acc(&mut self) {
+    fn ror_acc<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         let new_c = get_bit_n!(self.a, 0);
 
         self.a >>= 1;
@@ -2182,7 +1300,7 @@ impl Spc700 {
         self.write(bus, addr2, result);
     }
 
-    fn sei(&mut self) {
+    fn sei<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.set_flag(Flag::FlagI)
     }
 
@@ -2193,16 +1311,16 @@ impl Spc700 {
         self.write(bus, address, data | b);
     }
 
-    fn setc(&mut self) {
+    fn setc<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.set_flag(Flag::FlagC);
     }
 
-    fn setp(&mut self) {
+    fn setp<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.set_flag(Flag::FlagP);
         self.dir_page = 0x100;
     }
 
-    fn sleep(&self) {}
+    fn sleep<H: DebugHarness>(&self, _bus: &SpcBus<H>) {}
 
     fn sta<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         self.write(bus, address, self.a);
@@ -2217,7 +1335,7 @@ impl Spc700 {
         }
     }
 
-    fn stop(&mut self) { self.stopped = true; }
+    fn stop<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) { self.stopped = true; }
 
     fn stx<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, address: u16) {
         self.write(bus, address, self.x);
@@ -2243,14 +1361,14 @@ impl Spc700 {
         self.a = result as u8;
     }
 
-    fn tax(&mut self) {
+    fn tax<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.x = self.a;
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!(self.x, 7));
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
     }
 
-    fn tay(&mut self) {
+    fn tay<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.y = self.a;
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!(self.y, 7));
@@ -2280,32 +1398,32 @@ impl Spc700 {
         self.write(bus, address, data | self.a);
     }
 
-    fn tsx(&mut self) {
+    fn tsx<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.x = self.sp;
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!(self.x, 7));
         self.set_flag_to_bool(Flag::FlagZ, self.x == 0);
     }
 
-    fn txa(&mut self) {
+    fn txa<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.a = self.x;
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!(self.a, 7));
         self.set_flag_to_bool(Flag::FlagZ, self.a == 0);
     }
 
-    fn txs(&mut self) {
+    fn txs<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.sp = self.x;
     }
 
-    fn tya(&mut self) {
+    fn tya<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.a = self.y;
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!(self.a, 7));
         self.set_flag_to_bool(Flag::FlagZ, self.a == 0);
     }
 
-    fn xcn(&mut self) {
+    fn xcn<H: DebugHarness>(&mut self, _bus: &SpcBus<H>) {
         self.a = (self.a >> 4) | (self.a << 4);
 
         self.set_flag_to_bool(Flag::FlagN, get_bit_n!(self.a, 7));
