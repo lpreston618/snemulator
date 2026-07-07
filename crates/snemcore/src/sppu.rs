@@ -1008,7 +1008,7 @@ impl Ppu5C7x {
             let color = if pal_idx == 0 {
                 None
             } else {
-                let color = if bus.ppu_regs.use_direct_col {
+                let color = if bg_render_settings.color_depth == ColorDepth::Bpp8 && bus.ppu_regs.use_direct_col {
                     let raw_color = pal_idx; // Pal index is the raw color
 
                     // https://snes.nesdev.org/wiki/Tiles#8bpp_Direct_Color
