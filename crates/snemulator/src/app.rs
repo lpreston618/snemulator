@@ -1,39 +1,42 @@
 use crate::SnemulatorArgs;
 
 use crate::app::audio::AudioManager;
-use crate::app::rom_paths::RomManifest;
-use crate::ui_window::UiWindow;
 use crate::app::resampler::AudioResampler;
-use sdl3::VideoSubsystem;
-#[cfg(not(feature="debug"))]
-use snemcore::debug::NullHarness;
-use snemcore::savestate::SaveState;
+use crate::app::rom_paths::RomManifest;
 #[cfg(feature = "debug")]
 use crate::debug::{harness::MainDebugHarness, window::DebugWindow};
+use crate::ui_window::UiWindow;
+use sdl3::gamepad::Button;
+use sdl3::sys::joystick::SDL_JoystickID;
+use sdl3::VideoSubsystem;
+use snemcore::controller::ControllerPlayer::Player1;
+#[cfg(not(feature = "debug"))]
+use snemcore::debug::NullHarness;
+use snemcore::savestate::SaveState;
 
 use crate::game::MainWindow;
-use theme::{AppTheme, ThemePreset};
-use settings::{Settings, SettingsWindow};
-use rom_paths::RomPaths;
 use anyhow::{anyhow, Result};
 use rfd::FileDialog;
-use ringbuf::HeapRb;
 use ringbuf::traits::{Observer, RingBuffer};
+use ringbuf::HeapRb;
+use rom_paths::RomPaths;
 use sdl3::audio::{AudioFormat, AudioSpec};
 use sdl3::event::Event;
 use sdl3::keyboard::{Keycode, Mod};
+use settings::{Settings, SettingsWindow};
 use snemcore::controller::{ControllerPlayer, JoypadButton};
 use snemcore::sysinfo::{self, AUDIO_SAMPLE_HZ, FRAMES_PER_SECOND, SCREEN_HEIGHT, SCREEN_WIDTH};
 use snemcore::Snemulator;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
+use theme::{AppTheme, ThemePreset};
 
-mod resampler;
+pub mod audio;
 pub mod library;
+mod resampler;
+pub mod rom_paths;
 pub mod settings;
 pub mod theme;
-pub mod audio;
-pub mod rom_paths;
 pub mod thumbnail_fetcher;
 
 pub const FRAME_BUF_SIZE: usize = (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize;
@@ -45,7 +48,8 @@ const FRAMES_BETWEEN_DISPLAY_FPS_UPDATE: u64 = (1.0 * FRAMES_PER_SECOND) as u64;
 const AUDIO_SAMPLES_PER_FRAME: usize = 2 * AUDIO_SAMPLE_HZ / FRAMES_PER_SECOND as usize;
 
 const SECONDS_BETWEEN_AUTO_SRAM_SAVES: f32 = 60.0;
-const FRAMES_BETWEEN_AUTO_SRAM_SAVES: u64 = (SECONDS_BETWEEN_AUTO_SRAM_SAVES * FRAMES_PER_SECOND) as u64;
+const FRAMES_BETWEEN_AUTO_SRAM_SAVES: u64 =
+    (SECONDS_BETWEEN_AUTO_SRAM_SAVES * FRAMES_PER_SECOND) as u64;
 
 pub const MAX_SAVE_STATE_SLOTS: usize = 10;
 
@@ -69,8 +73,12 @@ pub enum AppAction {
     UnloadRom,
     ResetCore,
     PowerOnCore,
-    SaveState { slot: usize },
-    LoadState { slot: usize },
+    SaveState {
+        slot: usize,
+    },
+    LoadState {
+        slot: usize,
+    },
     OpenSettings,
     Exit,
 
@@ -110,6 +118,7 @@ pub struct AppState {
 pub struct SnemulatorApp {
     sdl_context: sdl3::Sdl,
     video_subsystem: sdl3::VideoSubsystem,
+    controller_subsystem: sdl3::GamepadSubsystem,
     event_pump: Option<sdl3::EventPump>,
 
     main_window: MainWindow,
@@ -134,6 +143,8 @@ pub struct SnemulatorApp {
 
     #[cfg(feature = "debug")]
     debug_window: Option<DebugWindow>,
+
+    active_gamepads: std::collections::HashMap<u32, sdl3::gamepad::Gamepad>,
 }
 
 impl SnemulatorApp {
@@ -159,6 +170,7 @@ impl SnemulatorApp {
         let sdl_context = sdl3::init()?;
         let video_subsystem = sdl_context.video()?;
         let audio_subsystem = sdl_context.audio()?;
+        let controller_subsystem = sdl_context.gamepad()?;
         let event_pump = Some(sdl_context.event_pump()?);
         let settings = Settings::load();
         let theme = AppTheme::load_or_preset(ThemePreset::default());
@@ -172,11 +184,11 @@ impl SnemulatorApp {
             crate::game::WINDOW_HEIGHT,
             &video_subsystem,
             &fonts,
-            &theme
+            &theme,
         )?;
 
         let main_window = MainWindow::new(main_egui_window, &video_subsystem, &settings)?;
-        
+
         let (audio_stream, audio_resampler) = if args.noresample {
             let audio_spec = AudioSpec {
                 freq: Some(sysinfo::AUDIO_SAMPLE_HZ as i32),
@@ -205,7 +217,7 @@ impl SnemulatorApp {
             };
 
             let audio_stream = audio_device.open_device_stream(Some(&stream_spec))?;
-    
+
             let audio_resampler = AudioResampler::new(32000, output_rate);
 
             (audio_stream, Some(audio_resampler))
@@ -217,6 +229,7 @@ impl SnemulatorApp {
         let mut app = Self {
             sdl_context,
             video_subsystem,
+            controller_subsystem,
             event_pump,
 
             main_window,
@@ -227,8 +240,8 @@ impl SnemulatorApp {
             fonts,
             prev_frame_micros: HeapRb::new(PREV_FPS_BUFFER_LEN),
             total_frame_micros: 0,
-            random_seed: 0, 
-            
+            random_seed: 0,
+
             snem_core,
             frame_buffer,
             audio_buffer,
@@ -238,6 +251,8 @@ impl SnemulatorApp {
 
             #[cfg(feature = "debug")]
             debug_window: None,
+
+            active_gamepads: std::collections::HashMap::new(),
         };
 
         app.handle_args(args)?;
@@ -311,23 +326,25 @@ impl SnemulatorApp {
 
     fn load_fonts() -> egui::FontDefinitions {
         let mut fonts = egui::FontDefinitions::default();
-        
+
         let mono_data = include_bytes!("../assets/fonts/JetBrainsMonoNL-Bold.ttf");
         fonts.font_data.insert(
             "JetBrains Mono Bold".to_owned(),
             std::sync::Arc::new(egui::FontData::from_static(mono_data)),
         );
-        
-        fonts.families
+
+        fonts
+            .families
             .entry(egui::FontFamily::Monospace)
             .or_default()
             .insert(0, "JetBrains Mono Bold".to_owned());
-        
-        fonts.families
+
+        fonts
+            .families
             .entry(egui::FontFamily::Proportional)
             .or_default()
             .insert(0, "JetBrains Mono Bold".to_owned());
-        
+
         fonts
     }
 
@@ -366,9 +383,9 @@ impl SnemulatorApp {
                     {
                         self.debug_window = None;
                     }
-                
-                    break 'running
-                },
+
+                    break 'running;
+                }
                 Some(action) => {
                     self.do_action(action);
                 }
@@ -400,12 +417,16 @@ impl SnemulatorApp {
 
             self.sdl_context.mouse().show_cursor(self.state.show_mouse);
 
-            if (self.state.frame_count - self.state.last_display_fps_update_frame) > FRAMES_BETWEEN_DISPLAY_FPS_UPDATE {
+            if (self.state.frame_count - self.state.last_display_fps_update_frame)
+                > FRAMES_BETWEEN_DISPLAY_FPS_UPDATE
+            {
                 self.state.last_display_fps_update_frame = self.state.frame_count;
                 self.state.display_fps = self.state.fps as usize;
             }
 
-            if (self.state.frame_count - self.state.last_sram_autosave_frame) > FRAMES_BETWEEN_AUTO_SRAM_SAVES {
+            if (self.state.frame_count - self.state.last_sram_autosave_frame)
+                > FRAMES_BETWEEN_AUTO_SRAM_SAVES
+            {
                 self.state.last_sram_autosave_frame = self.state.frame_count;
                 self.save_cartridge_save_ram(true);
             }
@@ -433,18 +454,21 @@ impl SnemulatorApp {
 
         Ok(())
     }
-    
+
     fn update_fps(&mut self, elapsed: Duration) {
-        let prev = self.prev_frame_micros.push_overwrite(elapsed.as_micros() as usize);
-        
+        let prev = self
+            .prev_frame_micros
+            .push_overwrite(elapsed.as_micros() as usize);
+
         if let Some(prev_micros) = prev {
             self.total_frame_micros -= prev_micros;
         }
-        
+
         self.total_frame_micros += elapsed.as_micros() as usize;
-        
+
         if self.prev_frame_micros.occupied_len() > 0 {
-            let avg_micros = self.total_frame_micros / self.prev_frame_micros.occupied_len() as usize;
+            let avg_micros =
+                self.total_frame_micros / self.prev_frame_micros.occupied_len() as usize;
             let avg_secs = avg_micros as f32 / 1000000.0;
             let avg_fps = 1.0 / avg_secs;
             self.state.fps = avg_fps;
@@ -452,14 +476,20 @@ impl SnemulatorApp {
             self.state.fps = 0.0;
         }
     }
-    
+
     fn update_emulator(&mut self) {
-        if self.state.loaded_rom_data.is_some() && !self.state.is_paused && self.settings_window.is_none()
+        if self.state.loaded_rom_data.is_some()
+            && !self.state.is_paused
+            && self.settings_window.is_none()
             && (!self.state.is_minimized || !self.settings.pause_on_minimize)
         {
             // let audio_buf = if self.settings.audio_enabled { Some(&mut self.audio_buffer) } else { None };
 
-            self.snem_core.run_frame(&mut self.frame_buffer[..], &mut self.audio_buffer, &mut self.debug_harness);
+            self.snem_core.run_frame(
+                &mut self.frame_buffer[..],
+                &mut self.audio_buffer,
+                &mut self.debug_harness,
+            );
         }
     }
 
@@ -518,7 +548,7 @@ impl SnemulatorApp {
             match event {
                 Event::Quit { .. } => {
                     log::info!("Quit event received, exiting.");
-                    
+
                     self.settings.save();
                     self.settings_window = None;
 
@@ -537,6 +567,27 @@ impl SnemulatorApp {
                     keycode: Some(keycode),
                     ..
                 } => self.handle_keyup(keycode),
+
+                Event::ControllerDeviceAdded { timestamp, which } => {
+                    self.handle_controller_added(timestamp, which)
+                }
+
+                Event::ControllerDeviceRemoved { timestamp, which } => {
+                    self.handle_controller_removed(timestamp, which)
+                }
+
+                Event::ControllerButtonDown {
+                    timestamp,
+                    which,
+                    button,
+                } => self.handle_controller_button_down(timestamp, which, button),
+
+                Event::ControllerButtonUp {
+                    timestamp,
+                    which,
+                    button,
+                } => self.handle_controller_button_up(timestamp, which, button),
+
                 _ => {}
             }
         }
@@ -576,7 +627,7 @@ impl SnemulatorApp {
             AppAction::LoadRomFromPath(path) => {
                 if let Err(_) = self.try_load_rom_from_path(&path) {
                     self.settings.remove_recent_rom(&path);
-                    
+
                     let file_name = path
                         .to_str()
                         .ok_or_else(|| anyhow!("Invalid file name"))
@@ -593,12 +644,12 @@ impl SnemulatorApp {
                 if let Err(e) = self.try_load_state(slot) {
                     log::error!("Failed to load state: {e}");
                 }
-            },
+            }
             AppAction::SaveState { slot } => {
                 if let Err(e) = self.try_save_state(slot) {
                     log::error!("Failed to save state: {e}")
                 }
-            },
+            }
             AppAction::ResetCore => self.reset_emulation(false),
             AppAction::PowerOnCore => self.reset_emulation(true),
             AppAction::OpenSettings => self.show_settings(),
@@ -613,10 +664,12 @@ impl SnemulatorApp {
                 }
 
                 self.show_debug()
-            },
+            }
             #[cfg(feature = "debug")]
-            AppAction::CloseDebug => { self.debug_window = None; }
-            
+            AppAction::CloseDebug => {
+                self.debug_window = None;
+            }
+
             _ => {}
         }
     }
@@ -718,6 +771,95 @@ impl SnemulatorApp {
         }
     }
 
+    fn handle_controller_added(&mut self, timestamp: u64, which: u32) {
+        match self.controller_subsystem.open(SDL_JoystickID(which)) {
+            Ok(gp) => {
+                if let Some(name) = gp.name() {
+                    log::debug!("Detected controller {name} (id: {which}) at time {timestamp}");
+                }
+                self.active_gamepads.insert(which, gp);
+            }
+            Err(e) => {
+                log::error!("Failed to open gamepad at {timestamp}: {e}");
+            }
+        }
+    }
+
+    fn handle_controller_removed(&mut self, timestamp: u64, which: u32) {
+        if let Some(removed_gp) = self.active_gamepads.remove(&which) {
+            log::debug!(
+                "Removed gamepad {} (id: {which})",
+                removed_gp.name().unwrap_or(String::from("-"))
+            );
+        }
+    }
+
+    fn handle_controller_button_down(&mut self, timestamp: u64, which: u32, button: Button) {
+        log::debug!(
+            "Controller {which} pressed {:?} at time {timestamp}",
+            button
+        );
+        if self.active_gamepads.contains_key(&which) {
+            match button {
+                Button::DPadDown => self.snem_core.set_button(Player1, JoypadButton::Down, true),
+                Button::DPadUp => self.snem_core.set_button(Player1, JoypadButton::Up, true),
+                Button::DPadLeft => self.snem_core.set_button(Player1, JoypadButton::Left, true),
+                Button::DPadRight => self
+                    .snem_core
+                    .set_button(Player1, JoypadButton::Right, true),
+                Button::North => self.snem_core.set_button(Player1, JoypadButton::X, true),
+                Button::South => self.snem_core.set_button(Player1, JoypadButton::B, true),
+                Button::East => self.snem_core.set_button(Player1, JoypadButton::A, true),
+                Button::West => self.snem_core.set_button(Player1, JoypadButton::Y, true),
+                Button::Guide => self
+                    .snem_core
+                    .set_button(Player1, JoypadButton::Select, true),
+                Button::Start => self
+                    .snem_core
+                    .set_button(Player1, JoypadButton::Start, true),
+                Button::LeftShoulder => self.snem_core.set_button(Player1, JoypadButton::L1, true),
+                Button::RightShoulder => self.snem_core.set_button(Player1, JoypadButton::R1, true),
+                _ => {}
+            }
+        }
+    }
+
+    fn handle_controller_button_up(&mut self, timestamp: u64, which: u32, button: Button) {
+        log::debug!(
+            "Controller {which} released {:?} at time {timestamp}",
+            button
+        );
+        if self.active_gamepads.contains_key(&which) {
+            match button {
+                Button::DPadDown => self
+                    .snem_core
+                    .set_button(Player1, JoypadButton::Down, false),
+                Button::DPadUp => self.snem_core.set_button(Player1, JoypadButton::Up, false),
+                Button::DPadLeft => self
+                    .snem_core
+                    .set_button(Player1, JoypadButton::Left, false),
+                Button::DPadRight => self
+                    .snem_core
+                    .set_button(Player1, JoypadButton::Right, false),
+                Button::North => self.snem_core.set_button(Player1, JoypadButton::X, false),
+                Button::South => self.snem_core.set_button(Player1, JoypadButton::B, false),
+                Button::East => self.snem_core.set_button(Player1, JoypadButton::A, false),
+                Button::West => self.snem_core.set_button(Player1, JoypadButton::Y, false),
+                Button::Guide => self
+                    .snem_core
+                    .set_button(Player1, JoypadButton::Select, false),
+                Button::Start => self
+                    .snem_core
+                    .set_button(Player1, JoypadButton::Start, false),
+                Button::LeftShoulder => self.snem_core.set_button(Player1, JoypadButton::L1, false),
+                Button::RightShoulder => {
+                    self.snem_core.set_button(Player1, JoypadButton::R1, false)
+                }
+                _ => {}
+            }
+        }
+    }
+
     fn clear_frame_buf(&mut self) {
         self.frame_buffer.chunks_mut(4).for_each(|pixel| {
             pixel[0] = 0;
@@ -737,30 +879,30 @@ impl SnemulatorApp {
 
             let session_secs = now.saturating_sub(rom_data.last_load_time);
             let manifest_path = rom_data.paths.manifest_path();
-            let stem = manifest_path.parent()
+            let stem = manifest_path
+                .parent()
                 .and_then(|p| p.file_name())
                 .and_then(|n| n.to_str())
                 .unwrap_or("");
 
             if !stem.is_empty() {
-                let mut manifest = RomPaths::find_manifest_by_stem(stem)
-                    .unwrap_or_else(|| RomManifest {
+                let mut manifest =
+                    RomPaths::find_manifest_by_stem(stem).unwrap_or_else(|| RomManifest {
                         rom_crc: rom_data.crc32_hash,
                         display_name: rom_data.title.clone(),
                         ..Default::default()
                     });
-    
+
                 manifest.last_played = Some(now);
                 manifest.play_time_secs += session_secs;
                 rom_data.paths.write_manifest(&manifest);
-                
+
                 self.main_window.library.update_entry(
                     &rom_data.rom_path, // or however you get the path from loaded_rom_data
                     &self.settings,
                 );
             }
         }
-
 
         self.save_cartridge_save_ram(false);
         self.snem_core.unload_rom();
@@ -835,9 +977,8 @@ impl SnemulatorApp {
 
         self.clear_frame_buf();
 
-        let used_save_state_slots: [bool; MAX_SAVE_STATE_SLOTS] = std::array::from_fn(|slot| {
-            rom_paths.state_path(slot as u32).exists()
-        });
+        let used_save_state_slots: [bool; MAX_SAVE_STATE_SLOTS] =
+            std::array::from_fn(|slot| rom_paths.state_path(slot as u32).exists());
 
         self.state.loaded_rom_data = Some(RomMetadata {
             crc32_hash: crc,
@@ -851,7 +992,7 @@ impl SnemulatorApp {
         log::info!("Loaded rom '{}'", rom_name);
 
         self.load_save_ram();
-        
+
         Ok(())
     }
 
@@ -867,7 +1008,10 @@ impl SnemulatorApp {
         let save_data = match std::fs::read(&path) {
             Ok(data) => data,
             Err(e) => {
-                log::error!("Failed to read save data from file '{}': {e}", path.to_string_lossy());
+                log::error!(
+                    "Failed to read save data from file '{}': {e}",
+                    path.to_string_lossy()
+                );
                 return;
             }
         };
@@ -899,7 +1043,7 @@ impl SnemulatorApp {
         if self.state.is_paused {
             self.debug_harness.stop_emulation = false;
             self.debug_harness.stop_condition = None;
-            
+
             self.audio_manager.clear_playing_samples();
 
             log::trace!("Paused emulation");
@@ -918,7 +1062,8 @@ impl SnemulatorApp {
         self.audio_buffer.clear();
         self.audio_manager.pause();
         self.audio_manager.clear_playing_samples();
-        self.audio_manager.upload_samples(&[0; AUDIO_SAMPLES_PER_FRAME]);
+        self.audio_manager
+            .upload_samples(&[0; AUDIO_SAMPLES_PER_FRAME]);
         self.audio_manager.resume();
 
         self.clear_frame_buf();
@@ -964,7 +1109,7 @@ impl SnemulatorApp {
         match std::fs::write(path.clone(), sram) {
             Err(e) => {
                 let message = format!("Failed to write save to '{}': {e}", path.to_string_lossy());
-            
+
                 if is_auto {
                     log::warn!("{}", message);
                 } else {
@@ -1009,7 +1154,8 @@ impl SnemulatorApp {
 
         let bytes = std::fs::read(path.clone())?;
         let config = bincode_next::config::standard();
-        let (state, _bytes_read): (SaveState, usize) = bincode_next::serde::decode_from_slice(&bytes, config)?;
+        let (state, _bytes_read): (SaveState, usize) =
+            bincode_next::serde::decode_from_slice(&bytes, config)?;
 
         self.snem_core.try_load_state(state)?;
 
@@ -1161,52 +1307,49 @@ impl SnemulatorApp {
         fonts: &egui::FontDefinitions,
         theme: &AppTheme,
     ) -> Result<UiWindow> {
-        
         let mut window = video_subsystem
             .window(title, width, height)
             .opengl()
             .resizable()
             .build()?;
-        
+
         let win_scale = window.display_scale();
-        
+
         window.set_size(
             ((width as f32) * win_scale) as u32,
-            ((height as f32) * win_scale) as u32
+            ((height as f32) * win_scale) as u32,
         )?;
         window.set_position(
             sdl3::video::WindowPos::Centered,
-            sdl3::video::WindowPos::Centered
+            sdl3::video::WindowPos::Centered,
         );
         let window = window; // No longer mutable
-        
+
         let text_input = video_subsystem.text_input();
         let gl_context = window.gl_create_context()?;
 
         window.gl_make_current(&gl_context)?;
 
         let gl = unsafe {
-            glow::Context::from_loader_function(|s| {
-                match video_subsystem.gl_get_proc_address(s) {
-                    Some(ptr) => ptr as *const _,
-                    None => std::ptr::null(),
-                }
+            glow::Context::from_loader_function(|s| match video_subsystem.gl_get_proc_address(s) {
+                Some(ptr) => ptr as *const _,
+                None => std::ptr::null(),
             })
         };
-        
+
         let gl = std::sync::Arc::new(gl);
         let egui_ctx = egui::Context::default();
 
         egui_extras::install_image_loaders(&egui_ctx);
-        
+
         egui_ctx.set_fonts(fonts.clone());
         theme.apply(&egui_ctx);
 
         let egui_painter = egui_glow::Painter::new(gl.clone(), "", None, false)?;
         let ui_scale = window.display_scale();
-        
+
         egui_ctx.set_pixels_per_point(ui_scale);
-        
+
         Ok(UiWindow {
             window,
             raw_input: None,
