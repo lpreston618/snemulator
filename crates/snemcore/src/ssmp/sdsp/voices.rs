@@ -165,6 +165,11 @@ impl VoiceRegs {
         self.brr_group_step = state.brr_group_step;
     }
 
+    pub fn power_on(&mut self) {
+        *self = VoiceRegs::new();
+        self.reset();
+    }
+
     pub fn reset(&mut self) {
         self.adsr_stage = ADSRStage::Release;
         self.end_of_sample_flag = true;

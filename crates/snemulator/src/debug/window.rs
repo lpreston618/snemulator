@@ -16,6 +16,7 @@ pub const DEBUG_WINDOW_HEIGHT: u32 = 600;
 #[derive(Clone, Copy, PartialEq)]
 enum DebugTab {
     Cpu,
+    Spc,
     Dma,
     Memory,
     Ppu,
@@ -28,6 +29,7 @@ impl DebugTab {
     fn label(self) -> &'static str {
         match self {
             DebugTab::Cpu => "CPU",
+            DebugTab::Spc => "SPC",
             DebugTab::Dma => "DMA",
             DebugTab::Memory => "Memory",
             DebugTab::Ppu => "PPU",
@@ -40,6 +42,7 @@ impl DebugTab {
     fn all() -> &'static [Self] {
         &[
             DebugTab::Cpu,
+            DebugTab::Spc,
             DebugTab::Dma,
             DebugTab::Memory,
             DebugTab::Ppu,
@@ -61,6 +64,7 @@ pub enum DebugAction {
 pub struct DebugWindow {
     egui_window: Option<Box<UiWindow>>,
     cpu_tab: Box<tabs::cpu::CpuTab>,
+    spc_tab: Box<tabs::ssmp::spc::SpcTab>,
     dma_tab: Box<tabs::dma::DmaTab>,
     mem_tab: Box<tabs::mem::MemoryTab>,
     ppu_tab: Box<tabs::ppu::PpuTab>,
@@ -83,6 +87,7 @@ impl DebugWindow {
         let mut debug_window = Self {
             egui_window: None,
             cpu_tab: Box::new(tabs::cpu::CpuTab::new()),
+            spc_tab: Box::new(tabs::ssmp::spc::SpcTab::new()),
             dma_tab: Box::new(tabs::dma::DmaTab::new()),
             mem_tab: Box::new(tabs::mem::MemoryTab::new()),
             ppu_tab: Box::new(tabs::ppu::PpuTab::new()),
@@ -136,6 +141,7 @@ impl DebugWindow {
             egui::CentralPanel::default().show(ctx, |ui| {
                 match self.selected_tab {
                     DebugTab::Cpu => self.cpu_tab.render(ui, core, harness, app_theme),
+                    DebugTab::Spc => self.spc_tab.render(ui, core, harness, app_theme),
                     DebugTab::Dma => self.dma_tab.render(ui, core, harness, app_state, app_theme, &mut debug_action),
                     DebugTab::Memory => self.mem_tab.render(ui, core, app_theme),
                     DebugTab::Ppu => self.ppu_tab.render(ui, core, harness, app_theme),
@@ -323,6 +329,7 @@ impl DebugWindow {
 
                 let (single_step_text, single_step_stop_cond) = match self.selected_tab {
                     DebugTab::Brr | DebugTab::Audio | DebugTab::Sdsp => ("Next Sample", StopCondition::SampleGenerated),
+                    DebugTab::Spc => ("Step SPC700", StopCondition::SpcInstruction),
                     _ => ("Single Step", StopCondition::AnyScpuCycle),
                 };
 

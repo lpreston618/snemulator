@@ -81,8 +81,8 @@ impl Ssmp {
         self.spc.load_state(&mut self.spc_regs, &state.spc, version);
         self.sdsp.load_state(&mut self.sdsp_regs, &state.sdsp, version);
 
-        for v in 0..8usize {
-            self.voice_regs[v].load_state(&state.voices[v], version);
+        for (v, voice) in self.voice_regs.iter_mut().enumerate() {
+            voice.load_state(&state.voices[v], version);
         }
 
         self.timer0.load_state(&state.timers[0], version);
@@ -111,7 +111,7 @@ impl Ssmp {
         self.timer1.reset();
         self.timer2.reset();
 
-        self.voice_regs.iter_mut().for_each(|voice| voice.reset());
+        self.voice_regs.iter_mut().for_each(|voice| voice.power_on());
 
         self.samples_generated = 0;
     }

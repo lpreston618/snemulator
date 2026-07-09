@@ -42,6 +42,7 @@ pub struct MainDebugHarness {
     pub stop_emulation: bool,
 
     pub breakpoints: HashSet<u32>,
+    pub spc_breakpoints: HashSet<u16>,
 
     pub stack_tracker: StackTracker,
 
@@ -60,6 +61,7 @@ impl MainDebugHarness {
             stop_condition: None,
             stop_emulation: false,
             breakpoints: HashSet::new(),
+            spc_breakpoints: HashSet::new(),
             stack_tracker: StackTracker::new(),
             voices_just_keyed_on: [false; 8],
             voice_buffers: std::array::from_fn(|_| (RingBuffer::new(), RingBuffer::new())),
@@ -287,6 +289,16 @@ impl DebugHarness for MainDebugHarness {
 
             self.voice_buffers[voice].0.push(left_sample);
             self.voice_buffers[voice].1.push(right_sample);
+        }
+    }
+
+    fn on_spc_instruction(&mut self, spc: &mut snemcore::ssmp::spc::Spc700, _prg_bytes: &[u8]) {
+        if matches!(self.stop_condition, Some(StopCondition::SpcInstruction)) {
+            self.stop_emulation = true;
+        }
+
+        if self.spc_breakpoints.contains(&spc.pc) {
+            self.stop_emulation = true;
         }
     }
 }

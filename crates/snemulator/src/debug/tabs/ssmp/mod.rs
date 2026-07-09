@@ -1,6 +1,7 @@
 pub mod audio;
 pub mod sdsp;
 pub mod brr;
+pub mod spc;
 
 use egui::{Color32, FontId};
 use egui::text::{LayoutJob, TextFormat};
