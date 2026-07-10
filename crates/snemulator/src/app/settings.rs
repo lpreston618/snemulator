@@ -55,7 +55,7 @@ impl Default for Hotkeys {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Settings {
     // Video settings
-    pub ui_scale: f32,
+    // pub ui_scale: f32,
     pub vsync_en: bool,
     pub integer_scaling: bool,
     pub show_fps: bool,
@@ -87,7 +87,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            ui_scale: 1.0,
+            // ui_scale: 1.0,
             vsync_en: true,
             integer_scaling: false,
             show_fps: false,
@@ -120,7 +120,7 @@ impl Settings {
         dirs::data_dir().map(|d| d.join("snemulator"))
     }
 
-    pub fn load() -> Self {
+    pub fn load_or_default() -> Self {
         let Some(path) = Self::config_path() else { return Self::default() };
         let Ok(text) = std::fs::read_to_string(&path) else { return Self::default() };
         
@@ -166,13 +166,15 @@ enum SettingsTab {
 pub struct SettingsWindow {
     egui_window: UiWindow,
     current_tab: SettingsTab,
+    new_settings: Settings,
 }
 
 impl SettingsWindow {
-    pub fn new(egui_window: UiWindow) -> Result<Self> {
+    pub fn new(egui_window: UiWindow, settings: &Settings) -> Result<Self> {
         Ok(Self {
             egui_window,
             current_tab: SettingsTab::General,
+            new_settings: settings.clone(),
         })
     }
 
@@ -180,9 +182,9 @@ impl SettingsWindow {
         app_theme.apply(&self.egui_window.egui_ctx);
     }
     
-    pub fn update_and_render(&mut self, settings: &mut Settings) -> bool {
+    pub fn update_and_render(&mut self) -> Option<Settings> {
         let current_tab = &mut self.current_tab;
-        let mut close_window = false;
+        let mut apply_settings = false;
 
         let full_output = self.egui_window.update_ui(|ctx| {
             egui::SidePanel::left("settings_tab_strip")
@@ -196,21 +198,21 @@ impl SettingsWindow {
                 });
 
             egui::CentralPanel::default().show(ctx, |ui| match current_tab {
-                SettingsTab::General => Self::render_general_tab(ui, settings),
-                SettingsTab::Video => Self::render_video_tab(ui, settings),
-                SettingsTab::Audio => Self::render_audio_tab(ui, settings),
+                SettingsTab::General => Self::render_general_tab(ui, &mut self.new_settings),
+                SettingsTab::Video => Self::render_video_tab(ui, &mut self.new_settings),
+                SettingsTab::Audio => Self::render_audio_tab(ui, &mut self.new_settings),
                 SettingsTab::Controls => {
                     ui.label("Controller mapping coming soon.");
                 }
-                SettingsTab::Emulation => Self::render_emulation_tab(ui, settings),
+                SettingsTab::Emulation => Self::render_emulation_tab(ui, &mut self.new_settings),
             });
 
             egui::Area::new("settings_close_button".into())
                 .anchor(egui::Align2::RIGHT_BOTTOM, egui::Vec2::new(-10.0, -10.0))
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        if ui.button("Ok").clicked() {
-                            close_window = true;
+                        if ui.button("Apply").clicked() {
+                            apply_settings = true;
                         }
                     });
                 });
@@ -219,7 +221,11 @@ impl SettingsWindow {
         self.egui_window.clear();
         self.egui_window.render(full_output);
 
-        close_window
+        if apply_settings {
+            Some(self.new_settings.clone())
+        } else {
+            None
+        }
     }
 
     fn render_general_tab(ui: &mut egui::Ui, settings: &mut Settings) {
@@ -256,7 +262,7 @@ impl SettingsWindow {
         ui.checkbox(&mut settings.show_fps, "Show FPS counter");
         ui.checkbox(&mut settings.integer_scaling, "Integer scaling");
 
-        ui.add(egui::Slider::new(&mut settings.ui_scale, 0.5..=2.0).text("UI scale"));
+        // ui.add(egui::Slider::new(&mut settings.ui_scale, 0.5..=2.0).text("UI scale"));
 
         ui.separator();
         ui.label("Aspect ratio");

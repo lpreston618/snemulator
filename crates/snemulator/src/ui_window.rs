@@ -13,6 +13,10 @@ pub struct UiWindow {
 }
 
 impl UiWindow {
+    pub fn set_ui_scale(&mut self, ui_scale: f32) {
+        self.egui_ctx.set_pixels_per_point(ui_scale * self.window.display_scale());
+    }
+
     /// Updates the UI with the given function and returns the full output to be used during rendering.
     pub fn update_ui<F>(&mut self, ui_func: F) -> egui::FullOutput
     where

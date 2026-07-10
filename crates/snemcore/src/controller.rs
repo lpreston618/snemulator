@@ -28,6 +28,7 @@ pub enum ControllerPlayer {
     Player2,
 }
 
+#[derive(Default)]
 pub struct SnemController {
     buttons: u16,
 }

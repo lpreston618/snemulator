@@ -5,7 +5,7 @@ use egui::{Ui, Vec2};
 use crate::app::MAX_SAVE_STATE_SLOTS;
 use crate::app::theme::AppTheme;
 use crate::app::thumbnail_fetcher::{self, ThumbnailResult};
-use crate::app::{AppAction, settings::Settings};
+use crate::app::AppAction;
 use crate::app::rom_paths::{RomManifest, RomPaths};
 
 const MAX_ROM_DIR_SEARCH_DEPTH: usize = 3;
@@ -41,7 +41,7 @@ impl LibraryView {
         }
     }
 
-    pub fn update_entry(&mut self, path: &PathBuf, settings: &Settings) {
+    pub fn update_entry(&mut self, path: &PathBuf) {
         let Some(entry) = self.entries.iter_mut().find(|e| e.path == *path) else { return };
         let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
         let manifest = RomPaths::find_manifest_by_stem(stem);
@@ -62,11 +62,11 @@ impl LibraryView {
     }
 
     /// Re-scan the library folder. Call this when the folder changes or on startup.
-    pub fn scan(&mut self, settings: &Settings) {
+    pub fn scan(&mut self, roms_library_dir: &Option<PathBuf>) {
         self.entries.clear();
         self.selected = None;
-        let Some(lib_dir) = &settings.roms_library_dir else { return };
-        Self::scan_dir(lib_dir, 0, settings, &mut self.entries);
+        let Some(lib_dir) = roms_library_dir else { return };
+        Self::scan_dir(lib_dir, 0, &mut self.entries);
         self.entries.sort_by(|a, b| a.display_name.cmp(&b.display_name));
 
         // Collect stems that need thumbnails (all Loading entries after scan)
@@ -88,13 +88,13 @@ impl LibraryView {
         }
     }
 
-    fn scan_dir(dir: &PathBuf, depth: usize, settings: &Settings, entries: &mut Vec<LibraryEntry>) {
+    fn scan_dir(dir: &PathBuf, depth: usize, entries: &mut Vec<LibraryEntry>) {
         let Ok(read_dir) = std::fs::read_dir(dir) else { return };
 
         for entry in read_dir.flatten() {
             let path = entry.path();
             if path.is_dir() && depth < MAX_ROM_DIR_SEARCH_DEPTH {
-                Self::scan_dir(&path, depth + 1, settings, entries);
+                Self::scan_dir(&path, depth + 1, entries);
                 continue;
             }
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");

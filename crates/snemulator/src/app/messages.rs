@@ -69,3 +69,48 @@ fn ease_out_cubic(t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
     1.0 - (1.0 - t).powi(3)
 }
+
+pub struct MessageQueue {
+    pub messages: Vec<Message>,
+    next_id: u64,
+}
+
+impl MessageQueue {
+    pub fn new() -> Self {
+        Self {
+            messages: Vec::new(),
+            next_id: 0,
+        }
+    }
+
+    pub fn push(
+        &mut self,
+        kind: MessageKind,
+        text: impl Into<String>,
+        lifetime: Duration,
+        log_level: Option<log::Level>,
+    ) {
+        let text = text.into();
+
+        if let Some(level) = log_level {
+            log::log!(level, "{}", text);
+        }
+        
+        // Check for duplicates
+        if let Some(msg) = self.messages.iter_mut().find(|m| m.text == text && m.kind == kind) {
+            msg.count += 1;
+            msg.created = Instant::now(); // reset lifetime
+            return;
+        }
+
+        self.messages.push(Message {
+            kind,
+            text,
+            created: Instant::now(),
+            lifetime,
+            count: 1,
+            id: self.next_id,
+        });
+        self.next_id += 1;
+    }
+}

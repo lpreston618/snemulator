@@ -53,7 +53,7 @@ impl DebugTab {
 pub enum DebugAction {
     SingleStep,
     StepFrame,
-    TogglePause,
+    SetPaused(bool),
     Reset,
     HardReset,
 }
@@ -159,8 +159,8 @@ impl DebugWindow {
 
         if let Some(action) = debug_action {
             match action {
-                DebugAction::TogglePause => {
-                    app_action = app::AppAction::TogglePause;
+                DebugAction::SetPaused(paused) => {
+                    app_action = app::AppAction::SetPaused(paused);
                 }
                 DebugAction::Reset => {
                     app_action = app::AppAction::ResetCore;
@@ -318,7 +318,7 @@ impl DebugWindow {
                 if ui.icon_button_with_tint(pause_continue_icon, pause_continue_tint)
                     .on_hover_text(pause_continue_text)
                     .clicked() {
-                    debug_action = Some(DebugAction::TogglePause);
+                    debug_action = Some(DebugAction::SetPaused(!app_state.is_paused));
                 }
 
                 let (single_step_text, single_step_stop_cond) = match self.selected_tab {
@@ -331,7 +331,7 @@ impl DebugWindow {
                     }).inner
                     .on_hover_text(single_step_text)
                     .clicked() {
-                    debug_action = Some(DebugAction::TogglePause);
+                    debug_action = Some(DebugAction::SetPaused(false));
                     harness.stop_condition = Some(single_step_stop_cond);
                 }
 
@@ -347,7 +347,7 @@ impl DebugWindow {
                         }).inner
                         .on_hover_text(text)
                         .clicked() {
-                        debug_action = Some(DebugAction::TogglePause);
+                        debug_action = Some(DebugAction::SetPaused(false));
                         harness.stop_condition = Some(stop_cond);
                     }
                 }

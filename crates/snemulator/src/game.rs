@@ -1,10 +1,11 @@
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use egui::TextureHandle;
 use sdl3::video::GLProfile;
 
-use crate::app::messages::{Message, MessageKind};
+use crate::app::messages::{Message, MessageKind, MessageQueue};
 use crate::app::{self, AppAction};
 use crate::app::theme::AppTheme;
 use snemcore::sysinfo;
@@ -26,8 +27,6 @@ pub struct MainWindow {
     menu: MainMenuBar,
     game_texture: Option<TextureHandle>,
     pub library: LibraryView,
-    messages: Vec<Message>,
-    next_msg_id: u64,
 }
 
 impl MainWindow {
@@ -46,50 +45,11 @@ impl MainWindow {
             menu: MainMenuBar::new(),
             game_texture: None,
             library: LibraryView::new(),
-            messages: Vec::new(),
-            next_msg_id: 0,
         })
     }
 
-    /// Display a message in the bottom right corner of the window for a specified duration.
-    /// Optionally also log the message to the console at the specified log level.
-    pub fn push_message(
-        &mut self,
-        kind: MessageKind,
-        text: impl Into<String>,
-        lifetime: Duration,
-        log_level: Option<log::Level>,
-    ) {
-        let text = text.into();
-
-        if let Some(level) = log_level {
-            log::log!(level, "{}", text);
-        }
-
-        // Only dedup against the newest message (last pushed).
-        // This avoids collapsing an old identical message that already faded far.
-        if let Some(last) = self.messages.last_mut() {
-            if last.kind == kind && last.text == text {
-                last.count += 1;
-                last.created = Instant::now(); // refresh -> resets fade, keeps it alive
-                return;
-            }
-        }
-
-        self.messages.push(Message {
-            kind,
-            text,
-            created: Instant::now(),
-            lifetime,
-            count: 1,
-            id: self.next_msg_id,
-        });
-        self.next_msg_id += 1;
-    }
-
-    pub fn rescan_library(&mut self, settings: &Settings) {
-        self.library.scan(settings);
-        // thumbnail_fetcher::resolve_thumbnails_for_library(&mut self.library.entries);
+    pub fn rescan_library(&mut self, roms_library_dir: &Option<PathBuf>) {
+        self.library.scan(roms_library_dir);
     }
 
     pub fn set_theme(&mut self, app_theme: &AppTheme) {
@@ -119,6 +79,7 @@ impl MainWindow {
         app_state: &app::AppState,
         app_theme: &AppTheme, 
         app_settings: &mut Settings,
+        message_queue: &mut MessageQueue,
         frame_buffer: &[u8]
     ) -> Option<AppAction> {
         let mut menu_action: Option<AppAction> = None;
@@ -183,10 +144,10 @@ impl MainWindow {
                     });
             }
 
-            self.messages.retain(|m| m.alpha(FADE).is_some());
+            message_queue.messages.retain(|m| m.alpha(FADE).is_some());
 
-            if !self.messages.is_empty() {
-                Self::render_messages(&self.messages, ctx, app_theme);
+            if !message_queue.messages.is_empty() {
+                Self::render_messages(&message_queue.messages, ctx, app_theme);
             }
         });
 
