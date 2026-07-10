@@ -1,6 +1,7 @@
 use crate::SnemulatorArgs;
 
 use crate::app::audio::AudioManager;
+use crate::app::messages::MessageKind;
 use crate::app::resampler::AudioResampler;
 use crate::app::rom_paths::RomManifest;
 #[cfg(feature = "debug")]
@@ -38,6 +39,7 @@ pub mod rom_paths;
 pub mod settings;
 pub mod theme;
 pub mod thumbnail_fetcher;
+pub mod messages;
 
 pub const FRAME_BUF_SIZE: usize = (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize;
 
@@ -125,6 +127,7 @@ pub struct SnemulatorApp {
     settings_window: Option<SettingsWindow>,
     state: AppState,
     settings: Settings,
+    prev_settings: Option<Settings>,
     theme: AppTheme,
     fonts: egui::FontDefinitions,
     prev_frame_micros: HeapRb<usize>,
@@ -187,7 +190,7 @@ impl SnemulatorApp {
             &theme,
         )?;
 
-        let main_window = MainWindow::new(main_egui_window, &video_subsystem, &settings)?;
+        let main_window = MainWindow::new(main_egui_window, &video_subsystem)?;
 
         let (audio_stream, audio_resampler) = if args.noresample {
             let audio_spec = AudioSpec {
@@ -236,6 +239,7 @@ impl SnemulatorApp {
             settings_window: None,
             state,
             settings,
+            prev_settings: None,
             theme,
             fonts,
             prev_frame_micros: HeapRb::new(PREV_FPS_BUFFER_LEN),
@@ -311,6 +315,48 @@ impl SnemulatorApp {
         Ok(())
     }
 
+    fn apply_settings(&mut self) {
+        let Some(prev) = &self.prev_settings else { return };
+
+        if prev.vsync_en != self.settings.vsync_en {
+            let res = self.video_subsystem.gl_set_swap_interval(
+                if self.settings.vsync_en {
+                    sdl3::video::SwapInterval::VSync
+                } else {
+                    sdl3::video::SwapInterval::Immediate
+                }
+            );
+
+            if let Err(e) = res {
+                self.main_window.push_message(
+                    MessageKind::Error,
+                    format!("Failed to set vsync: {e}"),
+                    Duration::from_secs(5),
+                    Some(log::Level::Warn)
+                );
+            }
+        }
+
+        if !self.settings.audio_enabled {
+            self.audio_manager.pause();
+            self.audio_manager.clear_playing_samples();
+        } else if prev.master_volume != self.settings.master_volume {
+            self.audio_manager.resume();
+            self.audio_manager.set_volume(self.settings.master_volume);
+        }
+
+        if prev.roms_library_dir != self.settings.roms_library_dir {
+            self.main_window.rescan_library(&self.settings);
+        }
+
+        if prev.theme_preset != self.settings.theme_preset {
+            self.theme = AppTheme::from_preset(self.settings.theme_preset);
+            self.apply_new_theme();
+        }
+
+        self.prev_settings = Some(self.settings.clone());
+    }
+
     fn apply_new_theme(&mut self) {
         self.main_window.set_theme(&self.theme);
 
@@ -365,38 +411,44 @@ impl SnemulatorApp {
                 }
             }
 
-            self.update_emulator();
-
-            self.render_audio();
-
-            let app_action = self.main_window.update_and_render(
-                &self.state,
-                &self.theme,
-                &mut self.settings,
-                &self.frame_buffer[..],
-            );
-
-            match app_action {
-                None => {}
-                Some(AppAction::Exit) => {
-                    #[cfg(feature = "debug")]
-                    {
-                        self.debug_window = None;
-                    }
-
-                    break 'running;
-                }
-                Some(action) => {
-                    self.do_action(action);
-                }
-            }
-
             if let Some(settings_window) = &mut self.settings_window {
-                settings_window.update_and_render(&mut self.settings);
+                let close_settings = settings_window.update_and_render(&mut self.settings);
+
+                if close_settings {
+                    self.apply_settings();
+                    self.settings_window = None;
+                }
+            } else {
+                self.update_emulator();
+    
+                self.render_audio();
+    
+                let app_action = self.main_window.update_and_render(
+                    &self.state,
+                    &self.theme,
+                    &mut self.settings,
+                    &self.frame_buffer[..],
+                );
+    
+                match app_action {
+                    None => {}
+                    Some(AppAction::Exit) => {
+                        #[cfg(feature = "debug")]
+                        {
+                            self.debug_window = None;
+                        }
+    
+                        break 'running;
+                    }
+                    Some(action) => {
+                        self.do_action(action);
+                    }
+                }
+
+                #[cfg(feature = "debug")]
+                self.update_debug_window();
             }
 
-            #[cfg(feature = "debug")]
-            self.update_debug_window();
 
             if self.state.loaded_rom_data.is_some() {
                 self.state.show_menu = self.settings.always_show_menu
@@ -568,12 +620,12 @@ impl SnemulatorApp {
                     ..
                 } => self.handle_keyup(keycode),
 
-                Event::ControllerDeviceAdded { timestamp, which } => {
-                    self.handle_controller_added(timestamp, which)
+                Event::ControllerDeviceAdded { which, .. } => {
+                    self.handle_controller_added(which)
                 }
 
-                Event::ControllerDeviceRemoved { timestamp, which } => {
-                    self.handle_controller_removed(timestamp, which)
+                Event::ControllerDeviceRemoved { which, .. } => {
+                    self.handle_controller_removed(which)
                 }
 
                 Event::ControllerButtonDown {
@@ -603,6 +655,8 @@ impl SnemulatorApp {
                 win_event: sdl3::event::WindowEvent::CloseRequested,
                 ..
             } => {
+                self.apply_settings();
+
                 self.settings_window = None;
             }
             _ => {
@@ -771,34 +825,67 @@ impl SnemulatorApp {
         }
     }
 
-    fn handle_controller_added(&mut self, timestamp: u64, which: u32) {
-        match self.controller_subsystem.open(SDL_JoystickID(which)) {
-            Ok(gp) => {
-                if let Some(name) = gp.name() {
-                    log::debug!("Detected controller {name} (id: {which}) at time {timestamp}");
-                }
-                self.active_gamepads.insert(which, gp);
+    fn handle_controller_added(&mut self, which: u32) {
+        let t = std::time::Instant::now();
+        // let gp = self.controller_subsystem.open(SDL_JoystickID(which));
+        let name_res = self.controller_subsystem.name_for_id(SDL_JoystickID(which));
+        log::info!("name_for_id() took {:?}", t.elapsed());
+
+        match name_res {
+            Ok(name) => {
+                self.main_window.push_message(
+                    MessageKind::Info,
+                    format!("Detected controller {name} (id: {which})"),
+                    std::time::Duration::from_secs_f32(3.0),
+                    Some(log::Level::Debug),
+                );
             }
-            Err(e) => {
-                log::error!("Failed to open gamepad at {timestamp}: {e}");
-            }
+            _ => {}
         }
+
+
+        // match gp {
+        //     Ok(gp) => {
+        //         if let Some(name) = gp.name() {
+        //             self.main_window.push_message(
+        //                 MessageKind::Success,
+        //                 format!("Detected controller {name} (id: {which})"),
+        //                 std::time::Duration::from_secs_f32(3.0),
+        //                 Some(log::Level::Debug),
+        //             );
+        //         }
+        //         self.active_gamepads.insert(which, gp);
+        //     }
+        //     Err(e) => {
+        //         self.main_window.push_message(
+        //             MessageKind::Error,
+        //             format!("Failed to open gamepad: {e}"),
+        //             std::time::Duration::from_secs_f32(3.0),
+        //             Some(log::Level::Error)
+        //         );
+        //     }
+        // }
     }
 
-    fn handle_controller_removed(&mut self, timestamp: u64, which: u32) {
+    fn handle_controller_removed(&mut self, which: u32) {
         if let Some(removed_gp) = self.active_gamepads.remove(&which) {
-            log::debug!(
-                "Removed gamepad {} (id: {which})",
-                removed_gp.name().unwrap_or(String::from("-"))
+            self.main_window.push_message(
+                MessageKind::Success,
+                format!("Removed gamepad {} (id: {which})", removed_gp.name().unwrap_or(String::from("-"))),
+                std::time::Duration::from_secs_f32(3.0),
+                Some(log::Level::Debug),
             );
         }
     }
 
     fn handle_controller_button_down(&mut self, timestamp: u64, which: u32, button: Button) {
-        log::debug!(
-            "Controller {which} pressed {:?} at time {timestamp}",
-            button
+        self.main_window.push_message(
+            MessageKind::Info,
+            format!("Controller {which} pressed {:?}", button),
+            std::time::Duration::from_secs_f32(3.0),
+            Some(log::Level::Debug),
         );
+
         if self.active_gamepads.contains_key(&which) {
             match button {
                 Button::DPadDown => self.snem_core.set_button(Player1, JoypadButton::Down, true),
@@ -1201,6 +1288,8 @@ impl SnemulatorApp {
             Ok(window) => self.settings_window = Some(window),
             Err(e) => log::error!("Failed to create settings window: {}", e),
         }
+
+        self.settings_window.as_mut().unwrap().set_theme(&self.theme);
     }
 }
 

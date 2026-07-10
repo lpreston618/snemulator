@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use egui::{Ui, Vec2};
 
+use crate::app::MAX_SAVE_STATE_SLOTS;
 use crate::app::theme::AppTheme;
 use crate::app::thumbnail_fetcher::{self, ThumbnailResult};
 use crate::app::{AppAction, settings::Settings};
@@ -50,7 +51,7 @@ impl LibraryView {
         entry.play_time_secs = manifest.as_ref().map(|m| m.play_time_secs).unwrap_or(0);
         entry.has_sav = paths.as_ref().map(|p| p.sav_path().exists()).unwrap_or(false);
         entry.used_slots = paths.map(|p| {
-            (0..settings.save_state_slots)
+            (0..MAX_SAVE_STATE_SLOTS as u32)
                 .filter(|&slot| p.state_path(slot).exists())
                 .collect()
         }).unwrap_or_default();
@@ -133,7 +134,7 @@ impl LibraryView {
 
             let has_sav = paths.as_ref().map(|p| p.sav_path().exists()).unwrap_or(false);
             let used_slots = paths.map(|p| {
-                (0..settings.save_state_slots)
+                (0..MAX_SAVE_STATE_SLOTS as u32)
                     .filter(|&slot| p.state_path(slot).exists())
                     .collect()
             }).unwrap_or_default();

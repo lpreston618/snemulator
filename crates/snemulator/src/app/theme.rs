@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use egui::{
     Color32, Context, CornerRadius, FontId, Stroke, Style, Visuals, epaint::AlphaFromCoverage, style::{Selection, TextCursorStyle, WidgetVisuals, Widgets}
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 #[cfg(feature = "debug")]
 use snemcore::Snemulator;
 
@@ -20,6 +20,17 @@ pub struct AppTheme {
     pub text_secondary: Color32,
     pub text_muted: Color32,
     pub text_disabled: Color32,
+
+    // Message system
+    pub msg_debug: Color32,           // Accent for debug messages
+
+    pub msg_error_bg: Color32,        // Box fills (dark, tinted, semi-transparent)
+    pub msg_warning_bg: Color32,
+    pub msg_success_bg: Color32,
+    pub msg_info_bg: Color32,
+    pub msg_debug_bg: Color32,
+
+    pub msg_text: Color32,            // Body text color (kept separate from text_primary)
     
     // Accent colors
     pub accent: Color32,
@@ -132,6 +143,16 @@ impl AppTheme {
             success: Color32::from_rgb(85, 200, 120),
             info: Color32::from_rgb(80, 160, 230),
 
+            // Messages
+            msg_debug:      Color32::from_rgb(120, 144, 156),
+            msg_error_bg:      Color32::from_rgba_unmultiplied(60, 20, 20, 220),
+            msg_warning_bg:    Color32::from_rgba_unmultiplied(58, 46, 14, 220),
+            msg_success_bg:    Color32::from_rgba_unmultiplied(20, 45, 25, 220),
+            msg_info_bg:       Color32::from_rgba_unmultiplied(18, 34, 52, 220),
+            msg_debug_bg:      Color32::from_rgba_unmultiplied(34, 40, 45, 220),
+            msg_text:          Color32::from_rgb(238, 238, 238),
+
+            // Icons
             icon_primary: Color32::from_rgb(60, 180, 255),
             icon_secondary: Color32::from_rgb(40, 220, 120),
             icon_tertiary: Color32::from_rgb(230, 90, 90),
@@ -199,6 +220,16 @@ impl AppTheme {
             success: Color32::from_rgb(40, 160, 80),
             info: Color32::from_rgb(40, 120, 200),
 
+            // Messages
+            msg_debug:      Color32::from_rgb(120, 144, 156),
+            msg_error_bg:      Color32::from_rgba_unmultiplied(58, 18, 18, 240),
+            msg_warning_bg:    Color32::from_rgba_unmultiplied(56, 44, 12, 240),
+            msg_success_bg:    Color32::from_rgba_unmultiplied(18, 43, 23, 240),
+            msg_info_bg:       Color32::from_rgba_unmultiplied(16, 32, 50, 240),
+            msg_debug_bg:      Color32::from_rgba_unmultiplied(32, 38, 43, 240),
+            msg_text:          Color32::from_rgb(238, 238, 238),
+
+            // Icons
             icon_primary: Color32::from_rgb(60, 180, 255),
             icon_secondary: Color32::from_rgb(40, 220, 120),
             icon_tertiary: Color32::from_rgb(230, 90, 90),
@@ -266,6 +297,16 @@ impl AppTheme {
             success: Color32::from_rgb(100, 255, 150),
             info: Color32::from_rgb(100, 180, 255),
 
+            // Messages
+            msg_debug:      Color32::from_rgb(120, 144, 156),
+            msg_error_bg:      Color32::from_rgba_unmultiplied(60, 20, 20, 220),
+            msg_warning_bg:    Color32::from_rgba_unmultiplied(58, 46, 14, 220),
+            msg_success_bg:    Color32::from_rgba_unmultiplied(20, 45, 25, 220),
+            msg_info_bg:       Color32::from_rgba_unmultiplied(18, 34, 52, 220),
+            msg_debug_bg:      Color32::from_rgba_unmultiplied(34, 40, 45, 220),
+            msg_text:          Color32::from_rgb(238, 238, 238),
+
+            // Icons
             icon_primary: Color32::from_rgb(60, 180, 255),
             icon_secondary: Color32::from_rgb(40, 220, 120),
             icon_tertiary: Color32::from_rgb(230, 90, 90),
@@ -475,7 +516,7 @@ pub enum SyntaxKind {
 //     pub e: bool,  // Emulation mode (65816)
 // }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ThemePreset {
     #[default]
     Dark,

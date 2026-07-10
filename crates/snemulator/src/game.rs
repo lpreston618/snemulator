@@ -1,7 +1,10 @@
+use std::time::{Duration, Instant};
+
 use anyhow::Result;
 use egui::TextureHandle;
 use sdl3::video::GLProfile;
 
+use crate::app::messages::{Message, MessageKind};
 use crate::app::{self, AppAction};
 use crate::app::theme::AppTheme;
 use snemcore::sysinfo;
@@ -13,18 +16,24 @@ use crate::app::library::LibraryView;
 pub const WINDOW_WIDTH: u32 = 900;
 pub const WINDOW_HEIGHT: u32 = 675;
 
+const MAX_DISPLAYED_MESSAGES: usize = 5;
+const FADE: Duration = Duration::from_millis(250);
+const SLIDE_DISTANCE: f32 = 30.0; // px the box travels during fade
+const STACK_SPACING: f32 = 6.0;
+
 pub struct MainWindow {
     egui_window: UiWindow,
     menu: MainMenuBar,
     game_texture: Option<TextureHandle>,
     pub library: LibraryView,
+    messages: Vec<Message>,
+    next_msg_id: u64,
 }
 
 impl MainWindow {
     pub fn new(
         egui_window: UiWindow,
         video_subsystem: &sdl3::VideoSubsystem,
-        settings: &Settings,
     ) -> Result<Self> {
         let gl_attr = video_subsystem.gl_attr();
         gl_attr.set_context_profile(GLProfile::Core);
@@ -32,20 +41,50 @@ impl MainWindow {
         gl_attr.set_context_flags().forward_compatible().set();
         gl_attr.set_double_buffer(true);
 
-        video_subsystem.gl_set_swap_interval(
-            if settings.vsync_en {
-                sdl3::video::SwapInterval::VSync
-            } else {
-                sdl3::video::SwapInterval::Immediate
-            }
-        )?;
-
         Ok(Self {
             egui_window,
             menu: MainMenuBar::new(),
             game_texture: None,
             library: LibraryView::new(),
+            messages: Vec::new(),
+            next_msg_id: 0,
         })
+    }
+
+    /// Display a message in the bottom right corner of the window for a specified duration.
+    /// Optionally also log the message to the console at the specified log level.
+    pub fn push_message(
+        &mut self,
+        kind: MessageKind,
+        text: impl Into<String>,
+        lifetime: Duration,
+        log_level: Option<log::Level>,
+    ) {
+        let text = text.into();
+
+        if let Some(level) = log_level {
+            log::log!(level, "{}", text);
+        }
+
+        // Only dedup against the newest message (last pushed).
+        // This avoids collapsing an old identical message that already faded far.
+        if let Some(last) = self.messages.last_mut() {
+            if last.kind == kind && last.text == text {
+                last.count += 1;
+                last.created = Instant::now(); // refresh -> resets fade, keeps it alive
+                return;
+            }
+        }
+
+        self.messages.push(Message {
+            kind,
+            text,
+            created: Instant::now(),
+            lifetime,
+            count: 1,
+            id: self.next_msg_id,
+        });
+        self.next_msg_id += 1;
     }
 
     pub fn rescan_library(&mut self, settings: &Settings) {
@@ -77,12 +116,9 @@ impl MainWindow {
 
     pub fn update_and_render(
         &mut self, 
-        app_state:
-        &app::AppState,
-        app_theme:
-        &AppTheme, 
-        app_settings:
-        &mut Settings,
+        app_state: &app::AppState,
+        app_theme: &AppTheme, 
+        app_settings: &mut Settings,
         frame_buffer: &[u8]
     ) -> Option<AppAction> {
         let mut menu_action: Option<AppAction> = None;
@@ -146,6 +182,12 @@ impl MainWindow {
                         );
                     });
             }
+
+            self.messages.retain(|m| m.alpha(FADE).is_some());
+
+            if !self.messages.is_empty() {
+                Self::render_messages(&self.messages, ctx, app_theme);
+            }
         });
 
         // Use library action if there is one, else menu action. Should only ever
@@ -156,6 +198,97 @@ impl MainWindow {
         self.egui_window.render(full_output);
 
         app_action
+    }
+
+    fn render_messages(messages: &Vec<Message>, ctx: &egui::Context, app_theme: &AppTheme) {
+        let screen = ctx.viewport_rect();
+
+        let anchor_x = screen.max.x - 20.0; // desired RIGHT edge of boxes
+        let anchor_y = screen.max.y - 10.0; // desired BOTTOM edge of lowest box
+
+        let mut cursor_y = anchor_y;
+
+        let take = messages.len().min(MAX_DISPLAYED_MESSAGES);
+        let start = messages.len() - take;
+
+        for idx in start..messages.len() {
+            let message = &messages[idx];
+            let (alpha, slide) = match message.transition(FADE) {
+                Some(t) => t,
+                None => continue,
+            };
+
+            let msg_id = egui::Id::new(("msg", message.id));
+
+            let height = ctx
+                .data(|d| d.get_temp::<f32>(msg_id.with("h")))
+                .unwrap_or(28.0);
+            let width = ctx
+                .data(|d| d.get_temp::<f32>(msg_id.with("w")))
+                .unwrap_or(320.0);
+
+            let target_bottom = cursor_y;
+            cursor_y -= height + STACK_SPACING;
+
+            let animated_bottom = ctx.animate_value_with_time(
+                msg_id.with("y"),
+                target_bottom,
+                0.18,
+            );
+
+            let slide_x = (1.0 - slide) * SLIDE_DISTANCE;
+
+            // fixed_pos = top-left corner, so convert from right/bottom edges.
+            let box_top = animated_bottom - height;
+            let pos = egui::pos2(anchor_x - width + slide_x, box_top);
+
+            let fade_color = move |c: egui::Color32| {
+                egui::Color32::from_rgba_unmultiplied(
+                    c.r(), c.g(), c.b(),
+                    ((c.a() as f32) * alpha) as u8,
+                )
+            };
+
+            let (accent, bg) = message.kind.colors(app_theme);
+
+            let response = egui::Area::new(msg_id)
+                .fixed_pos(pos)          // <-- keep this
+                // .anchor(...)          // <-- REMOVED: this was overriding fixed_pos
+                .interactable(false)
+                .order(egui::Order::Foreground)
+                .show(ctx, |ui| {
+                    ui.set_max_width(320.0);
+                    egui::Frame::NONE
+                        .fill(fade_color(bg))
+                        .stroke(egui::Stroke::new(1.5, fade_color(accent)))
+                        .corner_radius(app_theme.widget_corner_radius)
+                        .inner_margin(egui::Margin::symmetric(10, 6))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(message.display_text())
+                                            .color(fade_color(egui::Color32::from_rgb(238, 238, 238)))
+                                            .strong(),
+                                    )
+                                    .wrap_mode(egui::TextWrapMode::Wrap),
+                                );
+                            });
+                        });
+                })
+                .response;
+
+            let measured = response.rect;
+            ctx.data_mut(|d| {
+                d.insert_temp(msg_id.with("h"), measured.height());
+                d.insert_temp(msg_id.with("w"), measured.width());
+            });
+        }
+
+        // Ensure animations keep ticking while messages exist.
+        if !messages.is_empty() {
+            ctx.request_repaint();
+        }
     }
 
     pub fn id(&self) -> u32 {

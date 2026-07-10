@@ -4,3 +4,5 @@
 /roms
 /.vscode
 /.zed
+/profile.*
+/profile
