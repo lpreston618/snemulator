@@ -303,7 +303,7 @@ impl SdspBrrTab {
         ui.separator();
 
         if super::voice_context_menu(ui, core, harness, voice) {
-            *debug_action = Some(DebugAction::TogglePause)
+            *debug_action = Some(DebugAction::SetPaused(false))
         }
     }
 

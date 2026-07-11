@@ -28,3 +28,7 @@ debug = 2
 overflow-checks = false
 opt-level = 3
 lto = true
+
+[profile.release.package.devtools]
+debug = true
+strip = false

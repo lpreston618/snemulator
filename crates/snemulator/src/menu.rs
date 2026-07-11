@@ -108,7 +108,7 @@ impl MainMenuBar {
                     ui.add_enabled_ui(!debug_active, |ui| {
                         let pause_text = if app_state.is_paused { "Resume" } else { "Pause" };
                         if ui.button(pause_text).clicked() {
-                            app_action = Some(AppAction::TogglePause);
+                            app_action = Some(AppAction::SetPaused(!app_state.is_paused));
                             ui.close();
                         }
                         if ui.button("Reset").clicked() {

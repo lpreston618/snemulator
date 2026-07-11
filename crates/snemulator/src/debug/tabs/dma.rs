@@ -34,12 +34,12 @@ impl DmaTab {
         ui.horizontal(|ui| {
             ui.add_enabled_ui(app_state.is_paused, |ui| {
                 if ui.button("Run Until DMA Start").clicked() {
-                    *debug_action = Some(DebugAction::TogglePause);
+                    *debug_action = Some(DebugAction::SetPaused(false));
                     harness.stop_condition = Some(StopCondition::DmaStart { ch: None });
                 }
 
                 if ui.button("Run Until H-DMA Init").clicked() {
-                    *debug_action = Some(DebugAction::TogglePause);
+                    *debug_action = Some(DebugAction::SetPaused(false));
                     harness.stop_condition = Some(StopCondition::HdmaInit { ch: None });
                 }
             });
@@ -81,13 +81,13 @@ impl DmaTab {
                     resp.header_response.context_menu(|ui| {
                         if dma_active {
                             if ui.button(format!("Run Until DMA{} Ends", ch)).clicked() {
-                                *debug_action = Some(DebugAction::TogglePause);
+                                *debug_action = Some(DebugAction::SetPaused(false));
                                 harness.stop_condition = Some(StopCondition::DmaEnd { ch: Some(ch as u8) });
                                 ui.close()
                             }
                         } else {
                             if ui.button(format!("Run Until DMA{} Begins", ch)).clicked() {
-                                *debug_action = Some(DebugAction::TogglePause);
+                                *debug_action = Some(DebugAction::SetPaused(false));
                                 harness.stop_condition = Some(StopCondition::DmaStart { ch: Some(ch as u8) });
                                 ui.close()
                             }
@@ -95,26 +95,26 @@ impl DmaTab {
 
                         if hdma_active {
                             if ui.button(format!("Run Until H-DMA{} Ends", ch)).clicked() {
-                                *debug_action = Some(DebugAction::TogglePause);
+                                *debug_action = Some(DebugAction::SetPaused(false));
                                 harness.stop_condition = Some(StopCondition::HdmaEnd { ch: Some(ch as u8) });
                                 ui.close()
                             }
 
                             if ui.button(format!("Run Until H-DMA{} Entry", ch)).clicked() {
-                                *debug_action = Some(DebugAction::TogglePause);
+                                *debug_action = Some(DebugAction::SetPaused(false));
                                 harness.stop_condition = Some(StopCondition::HdmaEntry { ch: Some(ch as u8) });
                                 ui.close()
                             }
                         } else {
                             if ui.button(format!("Run Until H-DMA{} Init", ch)).clicked() {
-                                *debug_action = Some(DebugAction::TogglePause);
+                                *debug_action = Some(DebugAction::SetPaused(false));
                                 harness.stop_condition = Some(StopCondition::HdmaInit { ch: Some(ch as u8) });
                                 ui.close()
                             }
                         }
 
                         if ui.button(format!("Run Until H-DMA{} Transfer", ch)).clicked() {
-                            *debug_action = Some(DebugAction::TogglePause);
+                            *debug_action = Some(DebugAction::SetPaused(false));
                             harness.stop_condition = Some(StopCondition::HdmaScanline { ch: Some(ch as u8) });
                             ui.close();
                         }

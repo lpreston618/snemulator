@@ -5,6 +5,8 @@ use crate::app::resampler::AudioResampler;
 pub struct AudioManager {
     stream: AudioStreamOwner,
     resampler: Option<AudioResampler>,
+    volume: f32,
+    muted: bool,
 }
 
 impl AudioManager {
@@ -12,7 +14,18 @@ impl AudioManager {
         Self {
             stream: audio_stream,
             resampler: audio_resampler,
+            volume: 1.0,
+            muted: false,
         }
+    }
+
+    pub fn set_volume(&mut self, volume: f32) {
+        self.volume = volume.clamp(0.0, 1.0);
+        self.muted = self.volume == 0.0;
+    }
+
+    pub fn set_muted(&mut self, muted: bool) {
+        self.muted = muted;
     }
 
     pub fn pause(&mut self) {
@@ -28,6 +41,12 @@ impl AudioManager {
     }
 
     pub fn upload_samples(&mut self, samples: &[i16]) -> usize {
+        if self.muted {
+            return 0;
+        }
+
+        let samples = samples.iter().map(|s| (*s as f32 * self.volume).clamp(i16::MIN as f32, i16::MAX as f32) as i16).collect::<Vec<_>>();
+
         if let Some(resampler) = &mut self.resampler {
             let mut samples_left = samples.len();
             let mut samples_start = 0;
