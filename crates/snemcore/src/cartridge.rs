@@ -133,23 +133,30 @@ impl Cartridge {
 
         cart.rom_hash = rom_hash;
 
-        let header_start = find_header(&cart.rom)?;
+        cart.mapping_mode = best_mapping_mode(&cart.rom);
+
+        let header_start = match cart.mapping_mode {
+            MappingMode::LoROM => LOROM_POS,
+            MappingMode::HiROM => HIROM_POS,
+            MappingMode::ExHiROM => EXHIROM_POS,
+        };
         let header_end = header_start + 0x40 as usize;
         let header_bytes = &cart.rom[header_start..header_end];
 
         cart.title.copy_from_slice(&header_bytes[..0x15]);
         cart.fast_rom = (header_bytes[0x15] & 0x10) > 0;
-        cart.mapping_mode = match header_bytes[0x15] & 0x0F {
-            0 => MappingMode::LoROM,
-            1 => MappingMode::HiROM,
-            5 => MappingMode::ExHiROM,
-            _ => {
-                return Err(format!(
-                    "unimplemented mapping mode 0x{:02X}",
-                    header_bytes[0x15] & 0x0F
-                ));
-            }
+
+        let declared_mapping_mode = header_bytes[0x15] & 0xF;
+        let expected_header_mapping_mode = match cart.mapping_mode {
+            MappingMode::LoROM => 0,
+            MappingMode::HiROM => 1,
+            MappingMode::ExHiROM => 5,
         };
+
+        if declared_mapping_mode != expected_header_mapping_mode {
+            log::warn!("Loading ROM with mapping mode {:?} ({expected_header_mapping_mode}), header says mapping mode {declared_mapping_mode}", cart.mapping_mode);
+        }
+
         (cart.extra_ram, cart.battery, cart.coprocessor) = match header_bytes[0x16] & 0x0F {
             0 => (false, false, false), // $00 - ROM only
             1 => (true, false, false),  // $01 - ROM + RAM
@@ -480,6 +487,30 @@ fn score_header(cart_rom: &[u8], map: MappingMode, checksum: u16, complement: u1
     }
 
     score
+}
+
+// Returns the most likely mapping mode for the rom based on various heuristics
+fn best_mapping_mode(cart_rom: &[u8]) -> MappingMode {
+    let checksum = compute_checksum(cart_rom);
+    let complement = !checksum;
+
+    let lorom_score = score_header(cart_rom, MappingMode::LoROM, checksum, complement);
+    let hirom_score = score_header(cart_rom, MappingMode::HiROM, checksum, complement);
+    let exhirom_score = score_header(cart_rom, MappingMode::ExHiROM, checksum, complement);
+
+    if lorom_score >= hirom_score && lorom_score >= exhirom_score {
+        return MappingMode::LoROM;
+    }
+
+    if hirom_score > lorom_score && hirom_score >= exhirom_score {
+        return MappingMode::HiROM;
+    }
+
+    if exhirom_score > lorom_score && exhirom_score > hirom_score {
+        return MappingMode::ExHiROM;
+    }
+
+    MappingMode::LoROM
 }
 
 /// Returns the address of the header in cartridge ROM

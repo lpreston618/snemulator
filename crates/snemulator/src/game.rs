@@ -1,11 +1,11 @@
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::Result;
 use egui::TextureHandle;
 use sdl3::video::GLProfile;
 
-use crate::app::messages::{Message, MessageKind, MessageQueue};
+use crate::app::messages::{Message, MessageQueue};
 use crate::app::{self, AppAction};
 use crate::app::theme::AppTheme;
 use snemcore::sysinfo;

@@ -8,11 +8,7 @@ use crate::app::rom_paths::RomManifest;
 #[cfg(feature = "debug")]
 use crate::debug::{harness::MainDebugHarness, window::DebugWindow};
 use crate::ui_window::UiWindow;
-use gilrs::Gilrs;
-use sdl3::gamepad::{self, Button};
-use sdl3::sys::joystick::SDL_JoystickID;
 use sdl3::VideoSubsystem;
-use snemcore::controller::ControllerPlayer::Player1;
 #[cfg(not(feature = "debug"))]
 use snemcore::debug::NullHarness;
 use snemcore::savestate::SaveState;
@@ -269,7 +265,7 @@ impl SnemulatorApp {
 
         app.main_window.rescan_library(&app.settings.roms_library_dir);
 
-        app.controller_manager.init_controllers(&mut app.message_queue);
+        app.controller_manager.init_controllers(&app.settings, &mut app.message_queue);
 
         Ok(app)
     }
@@ -410,7 +406,11 @@ impl SnemulatorApp {
         'running: loop {
             let frame_start = Instant::now();
 
-            self.controller_manager.update(&mut self.snem_core, &mut self.message_queue);
+            self.controller_manager.update(
+                &mut self.snem_core,
+                &mut self.settings,
+                &mut self.message_queue,
+            );
 
             let app_action = self.handle_input();
 
@@ -423,7 +423,10 @@ impl SnemulatorApp {
             }
 
             if let Some(settings_window) = &mut self.settings_window {
-                let new_settings = settings_window.update_and_render();
+                let new_settings = settings_window.update_and_render(
+                    &mut self.controller_manager,
+                    &mut self.settings,
+                );
 
                 if let Some(settings) = new_settings {
                     self.apply_settings(settings);
@@ -669,7 +672,7 @@ impl SnemulatorApp {
             }
             AppAction::LoadRom => self.load_rom(),
             AppAction::LoadRomFromPath(path) => {
-                if let Err(_) = self.try_load_rom_from_path(&path) {
+                if let Err(e) = self.try_load_rom_from_path(&path) {
                     self.settings.remove_recent_rom(&path);
 
                     let file_name = path
@@ -678,7 +681,12 @@ impl SnemulatorApp {
                         .unwrap()
                         .to_string();
 
-                    log::error!("Failed to load ROM '{}'", file_name);
+                    self.message_queue.push(
+                        MessageKind::Error,
+                        format!("Failed to load ROM '{}': {e}", file_name),
+                        Duration::from_secs_f32(5.0),
+                        Some(log::Level::Error),
+                    );
                 }
             }
             AppAction::UnloadRom if self.state.loaded_rom_data.is_some() => {
@@ -686,12 +694,22 @@ impl SnemulatorApp {
             }
             AppAction::LoadState { slot } => {
                 if let Err(e) = self.try_load_state(slot) {
-                    log::error!("Failed to load state: {e}");
+                    self.message_queue.push(
+                        MessageKind::Error,
+                        format!("Failed to load state: {e}"),
+                        Duration::from_secs_f32(5.0),
+                        Some(log::Level::Error),
+                    );
                 }
             }
             AppAction::SaveState { slot } => {
                 if let Err(e) = self.try_save_state(slot) {
-                    log::error!("Failed to save state: {e}")
+                    self.message_queue.push(
+                        MessageKind::Error,
+                        format!("Failed to save state: {e}"),
+                        Duration::from_secs_f32(5.0),
+                        Some(log::Level::Error),
+                    );
                 }
             }
             AppAction::ResetCore => self.reset_emulation(false),
@@ -703,7 +721,12 @@ impl SnemulatorApp {
             AppAction::OpenDebug(rom) => {
                 if let Some(rom_path) = rom {
                     if let Err(e) = self.try_load_rom_from_path(&rom_path) {
-                        log::warn!("Could not load rom '{}': {e}", rom_path.to_string_lossy());
+                        self.message_queue.push(
+                            MessageKind::Error,
+                            format!("Could not load rom '{}': {e}", rom_path.to_string_lossy()),
+                            Duration::from_secs_f32(5.0),
+                            Some(log::Level::Error),
+                        );
                     }
                 }
 
@@ -870,7 +893,12 @@ impl SnemulatorApp {
 
     fn load_rom(&mut self) {
         if let Err(e) = self.try_load_rom() {
-            log::error!("Failed to load rom: {}", e);
+            self.message_queue.push(
+                MessageKind::Error,
+                format!("Failed to load rom: {e}"),
+                Duration::from_secs_f32(5.0),
+                Some(log::Level::Error),
+            );
         }
     }
 

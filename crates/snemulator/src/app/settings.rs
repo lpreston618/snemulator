@@ -3,7 +3,13 @@ use std::path::PathBuf;
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
 
-use crate::{app::theme::{AppTheme, ThemePreset}, ui_window::UiWindow};
+use snemcore::controller::ControllerPlayer;
+
+use crate::{
+    app::theme::{AppTheme, ThemePreset},
+    app::controller::ControllerManager,
+    ui_window::UiWindow,
+};
 
 pub const SETTINGS_WINDOW_WIDTH: u32 = 600;
 pub const SETTINGS_WINDOW_HEIGHT: u32 = 400;
@@ -52,6 +58,166 @@ impl Default for Hotkeys {
     }
 }
 
+/// The 12 logical SNES pad inputs a player can rebind.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum SnesInput {
+    Up,
+    Down,
+    Left,
+    Right,
+    A,
+    B,
+    X,
+    Y,
+    L,
+    R,
+    Start,
+    Select,
+}
+
+impl SnesInput {
+    /// SNES-shaped layout order, grouped for the remap grid UI.
+    pub const DPAD: [SnesInput; 4] = [Self::Up, Self::Down, Self::Left, Self::Right];
+    pub const FACE: [SnesInput; 4] = [Self::Y, Self::X, Self::B, Self::A];
+    pub const SHOULDERS: [SnesInput; 2] = [Self::L, Self::R];
+    pub const SYSTEM: [SnesInput; 2] = [Self::Select, Self::Start];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            SnesInput::Up => "D-Pad Up",
+            SnesInput::Down => "D-Pad Down",
+            SnesInput::Left => "D-Pad Left",
+            SnesInput::Right => "D-Pad Right",
+            SnesInput::A => "A",
+            SnesInput::B => "B",
+            SnesInput::X => "X",
+            SnesInput::Y => "Y",
+            SnesInput::L => "L",
+            SnesInput::R => "R",
+            SnesInput::Start => "Start",
+            SnesInput::Select => "Select",
+        }
+    }
+}
+
+/// Mirrors the subset of `gilrs::Button` we support binding to. Kept as our
+/// own type (rather than serializing gilrs's directly) so the settings file
+/// format doesn't depend on gilrs's internal representation, and so this
+/// module has no gilrs dependency at all -- the conversion lives in
+/// controller.rs, next to the crate that owns it.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RemapButton {
+    South,
+    East,
+    North,
+    West,
+    LeftTrigger,
+    LeftTrigger2,
+    RightTrigger,
+    RightTrigger2,
+    Select,
+    Start,
+    DPadUp,
+    DPadDown,
+    DPadLeft,
+    DPadRight,
+    LeftThumb,
+    RightThumb,
+}
+
+/// Mirrors the subset of `gilrs::Axis` we support binding to (analog sticks
+/// used as digital directions).
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RemapAxis {
+    LeftStickX,
+    LeftStickY,
+    RightStickX,
+    RightStickY,
+    LeftZ,
+    RightZ,
+    DPadX,
+    DPadY,
+}
+
+/// A single physical input that can be bound to an `SnesInput`: either a
+/// digital button, or an analog axis pushed past a deadzone in a given
+/// direction (e.g. binding the D-pad to a stick).
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum InputSource {
+    Button(RemapButton),
+    ButtonLow(RemapButton),  // For axis-style d-pads where value ≈ 0 means pressed
+    AxisPositive(RemapAxis),
+    AxisNegative(RemapAxis),
+}
+
+impl InputSource {
+    /// Short display label for the remap grid, e.g. "South", "LStick Y −".
+    pub fn label(self) -> String {
+        match self {
+            InputSource::Button(b) => format!("{b:?}"),
+            InputSource::ButtonLow(b) => format!("{b:?} (Low)"),
+            InputSource::AxisPositive(a) => format!("{} +", axis_label(a)),
+            InputSource::AxisNegative(a) => format!("{} \u{2212}", axis_label(a)),
+        }
+    }
+}
+
+fn axis_label(axis: RemapAxis) -> &'static str {
+    match axis {
+        RemapAxis::LeftStickX => "LStick X",
+        RemapAxis::LeftStickY => "LStick Y",
+        RemapAxis::RightStickX => "RStick X",
+        RemapAxis::RightStickY => "RStick Y",
+        RemapAxis::LeftZ => "L Analog",
+        RemapAxis::RightZ => "R Analog",
+        RemapAxis::DPadX => "DPad X",
+        RemapAxis::DPadY => "DPad Y",
+    }
+}
+
+/// Full remap for one physical controller, keyed in `Settings` by the
+/// controller's hex-encoded UUID so it survives reconnects/replugging into
+/// a different port.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ControllerBinding {
+    /// Display name only -- not used for matching, just so the Controls tab
+    /// can show something readable even if the controller isn't currently
+    /// connected.
+    pub display_name: String,
+    pub bindings: std::collections::HashMap<SnesInput, InputSource>,
+}
+
+impl ControllerBinding {
+    /// Standard modern-gamepad layout: South/East/West/North face cluster
+    /// as B/A/Y/X, shoulder bumpers as L/R.
+    pub fn default_for(display_name: String) -> Self {
+        let bindings = std::collections::HashMap::from([
+            (SnesInput::B,      InputSource::Button(RemapButton::South)),
+            (SnesInput::A,      InputSource::Button(RemapButton::East)),
+            (SnesInput::Y,      InputSource::Button(RemapButton::West)),
+            (SnesInput::X,      InputSource::Button(RemapButton::North)),
+            (SnesInput::L,      InputSource::Button(RemapButton::LeftTrigger)),
+            (SnesInput::R,      InputSource::Button(RemapButton::RightTrigger)),
+            (SnesInput::Select, InputSource::Button(RemapButton::Select)),
+            (SnesInput::Start,  InputSource::Button(RemapButton::Start)),
+            (SnesInput::Up,     InputSource::Button(RemapButton::DPadUp)),
+            (SnesInput::Down,   InputSource::Button(RemapButton::DPadDown)),
+            (SnesInput::Left,   InputSource::Button(RemapButton::DPadLeft)),
+            (SnesInput::Right,  InputSource::Button(RemapButton::DPadRight)),
+        ]);
+
+        Self { display_name, bindings }
+    }
+}
+
+/// A user-named, reusable binding layout, decoupled from any specific
+/// physical controller.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ControllerProfile {
+    pub name: String,
+    pub bindings: std::collections::HashMap<SnesInput, InputSource>,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Settings {
     // Video settings
@@ -82,6 +248,20 @@ pub struct Settings {
 
     #[serde(default)]
     pub roms_library_dir: Option<PathBuf>,
+
+    /// Per-controller button remaps, keyed by the controller's hex-encoded
+    /// UUID. Absent entries fall back to `ControllerBinding::default_for`.
+    #[serde(default)]
+    pub controller_bindings: std::collections::HashMap<String, ControllerBinding>,
+
+    #[serde(default)]
+    pub profiles: Vec<ControllerProfile>,
+    
+    /// uuid_key of the controller that should auto-fill Player 1 / 2 on launch.
+    #[serde(default)]
+    pub preferred_p1: Option<String>,
+    #[serde(default)]
+    pub preferred_p2: Option<String>,
 }
 
 impl Default for Settings {
@@ -107,6 +287,11 @@ impl Default for Settings {
 
             recent_roms: Vec::new(),
             roms_library_dir: None,
+
+            controller_bindings: std::collections::HashMap::new(),
+            profiles: Vec::new(),
+            preferred_p1: None,
+            preferred_p2: None,
         }
     }
 }
@@ -152,6 +337,64 @@ impl Settings {
     pub fn remove_recent_rom(&mut self, path: &PathBuf) {
         self.recent_roms.retain(|p| p.file_name() != path.file_name());
     }
+
+    /// Current binding for a controller, falling back to the standard
+    /// default layout if it hasn't been customized.
+    pub fn binding_for(&self, uuid_key: &str, display_name: &str) -> ControllerBinding {
+        self.controller_bindings
+            .get(uuid_key)
+            .cloned()
+            .unwrap_or_else(|| ControllerBinding::default_for(display_name.to_string()))
+    }
+
+    /// Rebinds a single SNES input for a controller and saves immediately.
+    pub fn set_binding(
+        &mut self,
+        uuid_key: &str,
+        display_name: &str,
+        input: SnesInput,
+        source: InputSource,
+    ) {
+        let entry = self
+            .controller_bindings
+            .entry(uuid_key.to_string())
+            .or_insert_with(|| ControllerBinding::default_for(display_name.to_string()));
+        entry.display_name = display_name.to_string();
+        entry.bindings.insert(input, source);
+        self.save();
+    }
+
+    /// Resets a controller's bindings back to the default layout and saves.
+    pub fn reset_binding(&mut self, uuid_key: &str) {
+        self.controller_bindings.remove(uuid_key);
+        self.save();
+    }
+
+    /// Saves `bindings` as a named profile, overwriting any existing
+    /// profile with the same name.
+    pub fn save_profile(&mut self, name: String, bindings: std::collections::HashMap<SnesInput, InputSource>) {
+        match self.profiles.iter_mut().find(|p| p.name == name) {
+            Some(existing) => existing.bindings = bindings,
+            None => self.profiles.push(ControllerProfile { name, bindings }),
+        }
+        self.save();
+    }
+
+    /// Copies a saved profile's bindings onto a specific controller.
+    pub fn apply_profile(&mut self, uuid_key: &str, display_name: &str, profile_name: &str) {
+        let Some(profile) = self.profiles.iter().find(|p| p.name == profile_name) else { return };
+        let bindings = profile.bindings.clone();
+        self.controller_bindings
+            .entry(uuid_key.to_string())
+            .or_insert_with(|| ControllerBinding::default_for(display_name.to_string()))
+            .bindings = bindings;
+        self.save();
+    }
+
+    pub fn delete_profile(&mut self, name: &str) {
+        self.profiles.retain(|p| p.name != name);
+        self.save();
+    }
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -167,6 +410,10 @@ pub struct SettingsWindow {
     egui_window: UiWindow,
     current_tab: SettingsTab,
     new_settings: Settings,
+    /// Which physical controller is currently shown in the Controls tab's
+    /// remap grid, identified by its hex UUID key.
+    selected_controller: Option<String>,
+    new_profile_name: String,
 }
 
 impl SettingsWindow {
@@ -175,6 +422,8 @@ impl SettingsWindow {
             egui_window,
             current_tab: SettingsTab::General,
             new_settings: settings.clone(),
+            selected_controller: None,
+            new_profile_name: String::new(),
         })
     }
 
@@ -182,8 +431,17 @@ impl SettingsWindow {
         app_theme.apply(&self.egui_window.egui_ctx);
     }
     
-    pub fn update_and_render(&mut self) -> Option<Settings> {
+    /// `controller_manager` and `live_settings` are the app's real, persisted
+    /// state (not the buffered `new_settings` draft this window otherwise
+    /// edits). Controller rebinds are applied and saved immediately when
+    /// captured, so they bypass the draft/Apply flow used by the other tabs.
+    pub fn update_and_render(
+        &mut self,
+        controller_manager: &mut ControllerManager,
+        live_settings: &mut Settings,
+    ) -> Option<Settings> {
         let current_tab = &mut self.current_tab;
+        let selected_controller = &mut self.selected_controller;
         let mut apply_settings = false;
 
         let full_output = self.egui_window.update_ui(|ctx| {
@@ -201,9 +459,13 @@ impl SettingsWindow {
                 SettingsTab::General => Self::render_general_tab(ui, &mut self.new_settings),
                 SettingsTab::Video => Self::render_video_tab(ui, &mut self.new_settings),
                 SettingsTab::Audio => Self::render_audio_tab(ui, &mut self.new_settings),
-                SettingsTab::Controls => {
-                    ui.label("Controller mapping coming soon.");
-                }
+                SettingsTab::Controls => Self::render_controls_tab(
+                    ui,
+                    live_settings,
+                    controller_manager,
+                    selected_controller,
+                    &mut self.new_profile_name,
+                ),
                 SettingsTab::Emulation => Self::render_emulation_tab(ui, &mut self.new_settings),
             });
 
@@ -257,6 +519,150 @@ impl SettingsWindow {
         });
     }
 
+    fn render_controls_tab(
+        ui: &mut egui::Ui,
+        settings: &mut Settings,
+        controller_manager: &mut ControllerManager,
+        selected: &mut Option<String>,
+        new_profile_name: &mut String,
+    ) {
+        let controllers = controller_manager.connected_controllers();
+
+        if controllers.is_empty() {
+            ui.vertical_centered(|ui| {
+                ui.add_space(40.0);
+                ui.label("Plug in a controller to configure it.");
+            });
+            return;
+        }
+
+        // Keep the selection valid; default to the first connected controller.
+        let selection_valid = selected
+            .as_deref()
+            .is_some_and(|sel| controllers.iter().any(|c| c.uuid_key == sel));
+        if !selection_valid {
+            *selected = Some(controllers[0].uuid_key.clone());
+        }
+
+        ui.horizontal(|ui| {
+            // Left panel: which physical controller is connected.
+            ui.vertical(|ui| {
+                ui.set_width(180.0);
+                for info in &controllers {
+                    let is_selected = selected.as_deref() == Some(info.uuid_key.as_str());
+                    let badge = match info.assigned_player {
+                        Some(ControllerPlayer::Player1) => " (P1)",
+                        Some(ControllerPlayer::Player2) => " (P2)",
+                        None => "",
+                    };
+                    let label = format!("{}{}", info.name, badge);
+                    if ui.selectable_label(is_selected, label).clicked() {
+                        *selected = Some(info.uuid_key.clone());
+                    }
+                }
+            });
+
+            ui.separator();
+
+            // Right panel: remap grid, shaped like the physical pad so it
+            // reads at a glance instead of as a flat settings list.
+            ui.vertical(|ui| {
+                let Some(sel_key) = selected.clone() else { return };
+                let Some(info) = controllers.iter().find(|c| c.uuid_key == sel_key) else {
+                    return;
+                };
+
+                ui.horizontal(|ui| {
+                    ui.heading(&info.name);
+                    if ui.button("Set as Player 1").clicked() {
+                        controller_manager.assign_player(info.id, ControllerPlayer::Player1, settings);
+                    }
+                    if ui.button("Set as Player 2").clicked() {
+                        controller_manager.assign_player(info.id, ControllerPlayer::Player2, settings);
+                    }
+                    if ui.button("Reset to Defaults").clicked() {
+                        settings.reset_binding(&sel_key);
+                    }
+                });
+
+                ui.horizontal(|ui| {
+                    ui.add(egui::TextEdit::singleline(new_profile_name).hint_text("Profile name"));
+                    let name_valid = !new_profile_name.trim().is_empty();
+                    if ui.add_enabled(name_valid, egui::Button::new("Save as Profile")).clicked() {
+                        let binding = settings.binding_for(&sel_key, &info.name);
+                        settings.save_profile(new_profile_name.trim().to_string(), binding.bindings);
+                        new_profile_name.clear();
+                    }
+
+                    if !settings.profiles.is_empty() {
+                        egui::ComboBox::new("profile_select", "Load Profile")
+                            .selected_text("Choose…")
+                            .show_ui(ui, |ui| {
+                                for profile in settings.profiles.clone() {
+                                    if ui.selectable_label(false, &profile.name).clicked() {
+                                        settings.apply_profile(&sel_key, &info.name, &profile.name);
+                                    }
+                                }
+                            });
+                    }
+                });
+
+                ui.separator();
+
+                let capturing = controller_manager.capturing_for(info.id);
+                let binding = settings.binding_for(&sel_key, &info.name);
+
+                let mut remap_row = |ui: &mut egui::Ui, input: SnesInput| {
+                    ui.horizontal(|ui| {
+                        ui.set_width(220.0);
+                        ui.label(input.label());
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if capturing == Some(input) {
+                                ui.colored_label(egui::Color32::YELLOW, "Press a button…");
+                                if ui.small_button("Cancel").clicked() {
+                                    controller_manager.cancel_remap();
+                                }
+                            } else {
+                                let current = binding
+                                    .bindings
+                                    .get(&input)
+                                    .map(|s| s.label())
+                                    .unwrap_or_else(|| "Unbound".to_string());
+                                ui.label(current);
+                                if ui.small_button("Rebind").clicked() {
+                                    controller_manager.begin_remap(info.id, input);
+                                }
+                            }
+                        });
+                    });
+                };
+
+                ui.label(egui::RichText::new("D-Pad").strong());
+                for input in SnesInput::DPAD {
+                    remap_row(ui, input);
+                }
+
+                ui.add_space(8.0);
+                ui.label(egui::RichText::new("Face Buttons").strong());
+                for input in SnesInput::FACE {
+                    remap_row(ui, input);
+                }
+
+                ui.add_space(8.0);
+                ui.label(egui::RichText::new("Shoulders").strong());
+                for input in SnesInput::SHOULDERS {
+                    remap_row(ui, input);
+                }
+
+                ui.add_space(8.0);
+                ui.label(egui::RichText::new("System").strong());
+                for input in SnesInput::SYSTEM {
+                    remap_row(ui, input);
+                }
+            });
+        });
+    }
+
     fn render_video_tab(ui: &mut egui::Ui, settings: &mut Settings) {
         ui.checkbox(&mut settings.vsync_en, "Enable VSync");
         ui.checkbox(&mut settings.show_fps, "Show FPS counter");
@@ -301,5 +707,6 @@ impl SettingsWindow {
     
     pub fn handle_event(&mut self, event: &sdl3::event::Event, modifiers: &egui::Modifiers) {
         self.egui_window.handle_sdl_mouse_event(event, modifiers);
+        self.egui_window.handle_sdl_keyboard_event(event);
     }
 }

@@ -548,8 +548,13 @@ impl Snemulator {
             }
         }
     }
-
+    
     fn do_joypad_autoread_step(&mut self) {
+        self.controller_data.joy1_data1_auto <<= 1;
+        self.controller_data.joy2_data1_auto <<= 1;
+        // self.controller_data.joy1_data2_auto <<= 1;
+        // self.controller_data.joy2_data2_auto <<= 1;
+
         if self.controller_data.joypad_autoread_step < 12 {
             let button = match self.controller_data.joypad_autoread_step {
                 0 => JoypadButton::B,
@@ -567,28 +572,13 @@ impl Snemulator {
                 _ => unreachable!(),
             };
 
-            self.controller_data.joy1_data1_auto <<= 1;
-            self.controller_data.joy2_data1_auto <<= 1;
-            // self.controller_data.joy1_data2_auto <<= 1;
-            // self.controller_data.joy2_data2_auto <<= 1;
+            let p1_data = self.p1_controller.is_button_pressed(button) as u16;
+            let p2_data = self.p2_controller.is_button_pressed(button) as u16;
 
-            self.controller_data.joy1_data1_auto |= if self.p1_controller.is_button_pressed(button)
-            {
-                1
-            } else {
-                0
-            };
-            self.controller_data.joy2_data1_auto |= if self.p2_controller.is_button_pressed(button)
-            {
-                1
-            } else {
-                0
-            };
+            self.controller_data.joy1_data1_auto |= p1_data;
+            self.controller_data.joy2_data1_auto |= p2_data;
             // self.controller_data.joy1_data2_auto |=
             // self.controller_data.joy2_data2_auto |=
-        } else {
-            self.controller_data.joy1_data1_auto <<= 1;
-            self.controller_data.joy2_data1_auto <<= 1;
         }
 
         self.controller_data.joypad_autoread_step += 1;

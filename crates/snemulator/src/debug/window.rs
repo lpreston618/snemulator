@@ -122,7 +122,7 @@ impl DebugWindow {
         let mut egui_window = self.egui_window.take().unwrap();
         let mut debug_action: Option<DebugAction> = None;
 
-        let full_output = Some(egui_window.update_ui(|ctx| {
+        let full_output = egui_window.update_ui(|ctx| {
             egui::TopBottomPanel::top("tabs").show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     for &tab in DebugTab::all() {
@@ -148,9 +148,7 @@ impl DebugWindow {
                     // _ => {}
                 };
             });
-        }));
-
-        let full_output = full_output.unwrap();
+        });
 
         egui_window.clear();
         egui_window.render(full_output);
