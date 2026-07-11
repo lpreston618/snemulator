@@ -223,9 +223,6 @@ impl Cpu65c816 {
     /// Fetch, decode, and execute a single instruction. The number of system clocks taken
     /// to complete the instruction is added to the CPU's internal clock counter.
     pub fn execute<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
-        let prev_pb = self.pb;
-        let prev_pc = self.pc;
-
         let opcode = self.read_prg(bus);
 
         self.branch_taken = false;

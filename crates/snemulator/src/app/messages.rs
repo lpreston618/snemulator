@@ -2,6 +2,7 @@ use std::time::{Duration, Instant};
 
 use crate::app::theme::AppTheme;
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MessageKind {
     Info,

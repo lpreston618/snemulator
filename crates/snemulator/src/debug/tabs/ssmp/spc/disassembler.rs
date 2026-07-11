@@ -1,5 +1,3 @@
-use snemcore::ssmp::spc::Spc700;
-
 #[derive(Clone, Copy, Debug)]
 pub enum DisasmOperandKind {
     /// #$xx — 8-bit immediate
@@ -411,11 +409,11 @@ pub fn decode_operands(mode: AddressingMode, addr: u16, bytes: &[u8]) -> Vec<Dis
     }
 }
 
-fn relative_target(instr_addr: u16, instr_len: usize, offset_byte: u8) -> u16 {
-    let offset = offset_byte as i8 as i32; // sign-extend
-    let next_pc = instr_addr as i32 + instr_len as i32;
-    (next_pc + offset) as u16
-}
+// fn relative_target(instr_addr: u16, instr_len: usize, offset_byte: u8) -> u16 {
+//     let offset = offset_byte as i8 as i32; // sign-extend
+//     let next_pc = instr_addr as i32 + instr_len as i32;
+//     (next_pc + offset) as u16
+// }
 
 pub fn disassemble_range(mem: &[u8], ipl_rom: &[u8], ipl_read_en: bool, start_addr: u16, count: usize) -> Vec<DisasmLine> {
     let mut lines = Vec::with_capacity(count);

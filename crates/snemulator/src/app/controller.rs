@@ -11,8 +11,6 @@ use crate::{
 /// during remapping, and as a "pressed" digital direction during normal
 /// play if a stick is bound to a d-pad-style SnesInput.
 const AXIS_THRESHOLD: f32 = 0.5;
-/// Threshold for detecting significant movement from baseline
-const BUTTON_PRESS_THRESHOLD: f32 = 0.4;
 /// Value considered "low" for axis-style d-pads
 const BUTTON_LOW_THRESHOLD: f32 = 0.2;
 /// Value considered "high" for normal buttons or axis-style high direction

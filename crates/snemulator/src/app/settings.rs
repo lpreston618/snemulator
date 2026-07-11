@@ -391,10 +391,10 @@ impl Settings {
         self.save();
     }
 
-    pub fn delete_profile(&mut self, name: &str) {
-        self.profiles.retain(|p| p.name != name);
-        self.save();
-    }
+    // pub fn delete_profile(&mut self, name: &str) {
+    //     self.profiles.retain(|p| p.name != name);
+    //     self.save();
+    // }
 }
 
 #[derive(PartialEq, Clone, Copy)]
