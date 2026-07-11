@@ -700,6 +700,13 @@ impl SnemulatorApp {
                         Duration::from_secs_f32(5.0),
                         Some(log::Level::Error),
                     );
+                } else {
+                    self.message_queue.push(
+                        MessageKind::Success,
+                        format!("Loaded save state slot {slot}"),
+                        Duration::from_secs_f32(3.0),
+                        Some(log::Level::Info),
+                    );
                 }
             }
             AppAction::SaveState { slot } => {
@@ -709,6 +716,13 @@ impl SnemulatorApp {
                         format!("Failed to save state: {e}"),
                         Duration::from_secs_f32(5.0),
                         Some(log::Level::Error),
+                    );
+                } else {
+                    self.message_queue.push(
+                        MessageKind::Success,
+                        format!("Saved state to slot {slot}"),
+                        Duration::from_secs_f32(3.0),
+                        Some(log::Level::Info),
                     );
                 }
             }
