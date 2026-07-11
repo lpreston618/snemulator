@@ -97,10 +97,12 @@ impl MessageQueue {
         }
         
         // Check for duplicates
-        if let Some(msg) = self.messages.iter_mut().find(|m| m.text == text && m.kind == kind) {
-            msg.count += 1;
-            msg.created = Instant::now(); // reset lifetime
-            return;
+        if let Some(msg) = self.messages.last_mut() {
+            if msg.text == text {
+                msg.count += 1;
+                msg.created = Instant::now(); // reset lifetime
+                return;
+            }
         }
 
         self.messages.push(Message {
