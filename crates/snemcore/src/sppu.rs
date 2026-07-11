@@ -325,7 +325,7 @@ impl Ppu5C7x {
             main_color
         };
 
-        let sub_color = sub_color.unwrap_or(bus.cgram[0]);
+        let sub_color = sub_color.unwrap_or(bus.ppu_regs.fixed_color);
         let sub_color = if hi_res {
             if self.last_main_screen_pixel_did_cmath {
                 if self.last_sub_screen_color == Some(bus.ppu_regs.fixed_color) {
@@ -549,23 +549,11 @@ impl Ppu5C7x {
         let bg2_sub_col = if win_signals.bg_sub[1] { self.scanline_bg_data[1][self.x] } else { None };
         let bg3_sub_col = if win_signals.bg_sub[2] { self.scanline_bg_data[2][self.x] } else { None };
 
-        // let sub_col = if bus.ppu_regs.sub_color_fixed {
-        //     Some(bus.ppu_regs.fixed_color)
-        // } else {
-        //     Self::bg_mode1_choose_priority_color(
-        //         obj_sub_col, bg1_sub_col, 
-        //         bg2_sub_col, bg3_sub_col,
-        //         bus.ppu_regs.bg3_mode1_priority,
-        //     ).map(|pair| pair.0)
-        // };
-
         let sub_col = Self::bg_mode1_choose_priority_color(
             obj_sub_col, bg1_sub_col, 
             bg2_sub_col, bg3_sub_col,
             bus.ppu_regs.bg3_mode1_priority,
-        ).map_or(Some(bus.ppu_regs.fixed_color), |pair| Some(pair.0));
-
-        // let sub_col = if win_signals.color_sub { None } else { sub_col };
+        ).map(|pair| pair.0);
 
         let cmath_en = match main_col_layer {
             ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
@@ -1384,28 +1372,40 @@ impl Ppu5C7x {
         } else {
             match sub_col {
                 Some(c) => (c, false),
-                None => (bus.cgram[0], true),
+                None => (bus.ppu_regs.fixed_color, true),
             }
         };
-        
-        let mut color = match bus.ppu_regs.cmath_operator {
-            CMathOperator::Add => Color {
-                r: main_col.r.saturating_add(operand.r) & 0xF8, // 5-bit color max
-                g: main_col.g.saturating_add(operand.g) & 0xF8,
-                b: main_col.b.saturating_add(operand.b) & 0xF8,
-            },
-            CMathOperator::Subtract => Color {
-                r: main_col.r.saturating_sub(operand.r),
-                g: main_col.g.saturating_sub(operand.g),
-                b: main_col.b.saturating_sub(operand.b),
-            },
+
+        let r = main_col.r as u16;
+        let g = main_col.g as u16;
+        let b = main_col.b as u16;
+
+        let (r, g, b) = match bus.ppu_regs.cmath_operator {
+            CMathOperator::Add => (
+                r + operand.r as u16,
+                g + operand.g as u16,
+                b + operand.b as u16,
+            ),
+            CMathOperator::Subtract => (
+                r - operand.r as u16,
+                g - operand.g as u16,
+                b - operand.b as u16,
+            ),
         };
 
-        if bus.ppu_regs.cmath_half && !force_no_div2 {
-            color.r = (color.r >> 1) & 0xF8;
-            color.g = (color.g >> 1) & 0xF8;
-            color.b = (color.b >> 1) & 0xF8;
-        }
+        let color = if bus.ppu_regs.cmath_half && !force_no_div2 {
+            Color::new(
+                ((r >> 1) & 0xF8) as u8,
+                ((g >> 1) & 0xF8) as u8,
+                ((b >> 1) & 0xF8) as u8,
+            )
+        } else {
+            Color::new(
+                (r & 0xF8) as u8,
+                (g & 0xF8) as u8,
+                (b & 0xF8) as u8,
+            )
+        };
 
         color
     }

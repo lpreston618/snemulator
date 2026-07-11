@@ -779,8 +779,6 @@ impl Spc700 {
 
     // CALL - call a subroutine
     fn call<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, new_addr: u16) {
-        log::debug!("Pushed PC = ${:04X} to S = ${:02X}, new S = ${:02X}", self.pc, self.sp, self.sp - 2);
-        
         self.push_word(bus, self.pc);
         self.pc = new_addr;
     }
@@ -1220,8 +1218,6 @@ impl Spc700 {
 
     fn ret<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) {
         self.pc = self.pop_word(bus);
-
-        log::debug!("Popped PC = ${:04X} from S = ${:02X}, new S = ${:02X}", self.pc, self.sp - 2, self.sp);
     }
 
     fn ret1<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) {
