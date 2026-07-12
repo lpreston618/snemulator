@@ -265,7 +265,6 @@ pub enum ColorLayer {
     Bg3,
     Bg4,
     Obj,
-    Back,
 }
 
 #[derive(Clone, Copy, Debug)]

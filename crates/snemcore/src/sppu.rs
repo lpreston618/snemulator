@@ -286,19 +286,206 @@ impl Ppu5C7x {
     fn draw_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
         if bus.ppu_regs.in_fblank{
             self.set_pixel(bus, Color::BLACK, Some(Color::BLACK), false);
-            return;        
+            self.last_main_screen_color = Color::BLACK;
+            self.last_sub_screen_color = Some(Color::BLACK);
+            self.last_main_screen_pixel_did_cmath = false;
+            return;
         }
 
+        // match bus.ppu_regs.bg_mode {
+        //     BgMode::Mode0 => self.draw_mode0_dot(bus),
+        //     BgMode::Mode1 => self.draw_mode1_dot(bus),
+        //     BgMode::Mode2 => self.draw_mode2_dot(bus),
+        //     BgMode::Mode3 => self.draw_mode3_dot(bus),
+        //     BgMode::Mode4 => self.draw_mode4_dot(bus),
+        //     BgMode::Mode5 => self.draw_mode5_dot(bus),
+        //     BgMode::Mode6 => self.draw_mode6_dot(bus),
+        //     BgMode::Mode7 => self.draw_mode7_dot(bus),
+        // };
+
         match bus.ppu_regs.bg_mode {
-            BgMode::Mode0 => self.draw_mode0_dot(bus),
-            BgMode::Mode1 => self.draw_mode1_dot(bus),
-            BgMode::Mode2 => self.draw_mode2_dot(bus),
-            BgMode::Mode3 => self.draw_mode3_dot(bus),
-            BgMode::Mode4 => self.draw_mode4_dot(bus),
-            BgMode::Mode5 => self.draw_mode5_dot(bus),
-            BgMode::Mode6 => self.draw_mode6_dot(bus),
-            BgMode::Mode7 => self.draw_mode7_dot(bus),
+            BgMode::Mode0 => self.draw_dot_mode::<0, H>(bus),
+            BgMode::Mode1 => self.draw_dot_mode::<1, H>(bus),
+            BgMode::Mode2 => self.draw_dot_mode::<2, H>(bus),
+            BgMode::Mode3 => self.draw_dot_mode::<3, H>(bus),
+            BgMode::Mode4 => self.draw_dot_mode::<4, H>(bus),
+            BgMode::Mode5 => self.draw_dot_mode::<5, H>(bus),
+            BgMode::Mode6 => self.draw_dot_mode::<6, H>(bus),
+            BgMode::Mode7 => self.draw_dot_mode::<7, H>(bus),
         };
+    }
+
+    fn draw_dot_mode<const BGMODE: usize, H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
+        // CGRAM Base addresses and color depths for each BG (1,2,3, and 4) for each BG mode.
+        // `None` indicates that the BG layer is not used in that BG mode.
+        const MODE0_BG_SETTINGS: [Option<BgRenderSettings>; 4] = [
+            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp2, use_offset_per_tile: false }),
+            Some(BgRenderSettings { cgram_base: 0x20, color_depth: ColorDepth::Bpp2, use_offset_per_tile: false }),
+            Some(BgRenderSettings { cgram_base: 0x40, color_depth: ColorDepth::Bpp2, use_offset_per_tile: false }),
+            Some(BgRenderSettings { cgram_base: 0x60, color_depth: ColorDepth::Bpp2, use_offset_per_tile: false }),
+        ];
+        const MODE1_BG_SETTINGS: [Option<BgRenderSettings>; 4] = [
+            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp4, use_offset_per_tile: false }),
+            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp4, use_offset_per_tile: false }),
+            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp2, use_offset_per_tile: false }),
+            None,
+        ];
+        const MODE2_BG_SETTINGS: [Option<BgRenderSettings>; 4] = [
+            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp4, use_offset_per_tile: true }),
+            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp4, use_offset_per_tile: true }),
+            None,
+            None,
+        ];
+        const MODE3_BG_SETTINGS: [Option<BgRenderSettings>; 4] = [
+            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp8, use_offset_per_tile: false }),
+            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp4, use_offset_per_tile: false }),
+            None,
+            None,
+        ];
+        const MODE4_BG_SETTINGS: [Option<BgRenderSettings>; 4] = [
+            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp8, use_offset_per_tile: true }),
+            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp2, use_offset_per_tile: true }),
+            None,
+            None,
+        ];
+        const MODE5_BG_SETTINGS: [Option<BgRenderSettings>; 4] = [
+            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp4, use_offset_per_tile: false }),
+            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp2, use_offset_per_tile: false }),
+            None,
+            None,
+        ];
+        const MODE6_BG_SETTINGS: [Option<BgRenderSettings>; 4] = [
+            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp4, use_offset_per_tile: true }),
+            None,
+            None,
+            None,
+        ];
+        const MODE7_BG_SETTINGS: [Option<BgRenderSettings>; 4] = [
+            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp8, use_offset_per_tile: false }),
+            None,
+            None,
+            None,
+        ];
+
+        let bg_render_settings = [
+            MODE0_BG_SETTINGS, MODE1_BG_SETTINGS, MODE2_BG_SETTINGS, MODE3_BG_SETTINGS,
+            MODE4_BG_SETTINGS, MODE5_BG_SETTINGS, MODE6_BG_SETTINGS, MODE7_BG_SETTINGS,
+        ][BGMODE];
+
+        if BGMODE == 5 || BGMODE == 6 {
+            self.render_hires_bg_tiles(bus, &bg_render_settings);
+        } else {
+            self.render_bg_tiles(bus, &bg_render_settings);
+        }
+
+        let regs = &bus.ppu_regs;
+
+        let win_signals = Self::layer_window_signals(regs);
+
+        let obj_main_col = if win_signals.obj_main { self.scanline_sprite_data[self.x] } else { None };
+        let bg1_main_col = if win_signals.bg_main[0] { self.scanline_bg_data[0][self.x] } else { None };
+        let bg2_main_col = if win_signals.bg_main[1] { self.scanline_bg_data[1][self.x] } else { None };
+        let bg3_main_col = if win_signals.bg_main[2] { self.scanline_bg_data[2][self.x] } else { None };
+        let bg4_main_col = if win_signals.bg_main[3] { self.scanline_bg_data[3][self.x] } else { None };
+
+        let main_col_layer = if BGMODE == 0 {
+            Self::bg_mode0_choose_priority_color(
+                obj_main_col,
+                bg1_main_col,
+                bg2_main_col,
+                bg3_main_col,
+                bg4_main_col,
+            )
+        } else if BGMODE == 1 {
+            Self::bg_mode1_choose_priority_color(
+                obj_main_col,
+                bg1_main_col,
+                bg2_main_col,
+                bg3_main_col,
+                bus.ppu_regs.bg3_mode1_priority,
+            )
+        } else if BGMODE == 2 || BGMODE == 3 || BGMODE == 4 || BGMODE == 5 {
+            Self::bg_modes2thru5_choose_priority_color(
+                obj_main_col,
+                bg1_main_col,
+                bg2_main_col
+            )
+        } else {
+            None
+        };
+
+        let main_col = if win_signals.color_main {
+            Color::BLACK
+        } else {
+            match main_col_layer {
+                Some(ColorLayer::Bg1) => bg1_main_col.unwrap().color,
+                Some(ColorLayer::Bg2) => bg2_main_col.unwrap().color,
+                Some(ColorLayer::Bg3) => bg3_main_col.unwrap().color,
+                Some(ColorLayer::Bg4) => bg4_main_col.unwrap().color,
+                Some(ColorLayer::Obj) => obj_main_col.unwrap().color,
+                None => bus.cgram[0],
+            }
+        };
+
+        let obj_sub_col = if win_signals.obj_sub { self.scanline_sprite_data[self.x] } else { None };
+        let bg1_sub_col = if win_signals.bg_sub[0] { self.scanline_bg_data[0][self.x] } else { None };
+        let bg2_sub_col = if win_signals.bg_sub[1] { self.scanline_bg_data[1][self.x] } else { None };
+        let bg3_sub_col = if win_signals.bg_sub[2] { self.scanline_bg_data[2][self.x] } else { None };
+        let bg4_sub_col = if win_signals.bg_sub[3] { self.scanline_bg_data[3][self.x] } else { None };
+
+        let sub_col_layer = if BGMODE == 0 {
+            Self::bg_mode0_choose_priority_color(
+                obj_sub_col,
+                bg1_sub_col,
+                bg2_sub_col,
+                bg3_sub_col,
+                bg4_sub_col,
+            )
+        } else if BGMODE == 1 {
+            Self::bg_mode1_choose_priority_color(
+                obj_sub_col,
+                bg1_sub_col,
+                bg2_sub_col,
+                bg3_sub_col,
+                bus.ppu_regs.bg3_mode1_priority,
+            )
+        } else if BGMODE == 2 || BGMODE == 3 || BGMODE == 4 || BGMODE == 5 {
+            Self::bg_modes2thru5_choose_priority_color(
+                obj_sub_col,
+                bg1_sub_col,
+                bg2_sub_col
+            )
+        } else {
+            None
+        };
+
+        let sub_col = sub_col_layer.map(|layer| match layer {
+            ColorLayer::Bg1 => bg1_sub_col.unwrap().color,
+            ColorLayer::Bg2 => bg2_sub_col.unwrap().color,
+            ColorLayer::Bg3 => bg3_sub_col.unwrap().color,
+            ColorLayer::Bg4 => bg4_sub_col.unwrap().color,
+            ColorLayer::Obj => obj_sub_col.unwrap().color,
+        });
+
+        let cmath_en = match main_col_layer {
+            Some(ColorLayer::Bg1) => bus.ppu_regs.bg_settings[0].cmath_en,
+            Some(ColorLayer::Bg2) => bus.ppu_regs.bg_settings[1].cmath_en,
+            Some(ColorLayer::Bg3) => bus.ppu_regs.bg_settings[2].cmath_en,
+            Some(ColorLayer::Bg4) => bus.ppu_regs.bg_settings[3].cmath_en,
+            Some(ColorLayer::Obj) => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.unwrap().palette >= 4,
+            None => bus.ppu_regs.back_cmath_en,
+        } && !win_signals.color_sub;
+
+        self.set_pixel(
+            bus,
+            main_col,
+            sub_col,
+            cmath_en,
+        );
+
+        self.last_main_screen_color = main_col;
+        self.last_sub_screen_color = sub_col;
+        self.last_main_screen_pixel_did_cmath = cmath_en;
     }
 
     #[inline(always)]
@@ -387,10 +574,12 @@ impl Ppu5C7x {
     }
 
     #[inline(always)]
-    fn render_bg_tiles<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>, mode_bg_settings: &[BgRenderSettings]) {
+    fn render_bg_tiles<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>, mode_bg_settings: &[Option<BgRenderSettings>]) {
         for (bg, &bg_render_settings) in mode_bg_settings.into_iter().enumerate() {
+            if bg_render_settings.is_none() { return; }
+
             if self.x == self.scanline_bg_counters[bg] {
-                let dots_rendered = self.render_tile(bus, bg, bg_render_settings);
+                let dots_rendered = self.render_tile(bus, bg, bg_render_settings.unwrap());
 
                 debug_assert!(dots_rendered > 0, "{} {:?} {} {}", bg, bus.ppu_regs.bg_mode, self.x, self.y);
 
@@ -400,13 +589,15 @@ impl Ppu5C7x {
     }
 
     #[inline(always)]
-    fn render_hires_bg_tiles<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>, mode_bg_settings: &[BgRenderSettings]) {
+    fn render_hires_bg_tiles<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>, mode_bg_settings: &[Option<BgRenderSettings>]) {
         for (bg, &bg_render_settings) in mode_bg_settings.into_iter().enumerate() {
+            if bg_render_settings.is_none() { return; }
+
             if self.x == self.scanline_bg_counters[bg] {
                 // self.render_hires_tile(bus, bg, bg_render_settings, true);
                 // let dots_rendered = self.render_hires_tile(bus, bg, bg_render_settings, false);
 
-                let dots_rendered = self.render_hires_tile(bus, bg, bg_render_settings);
+                let dots_rendered = self.render_hires_tile(bus, bg, bg_render_settings.unwrap());
 
                 debug_assert!(dots_rendered > 0, "{} {:?} {} {}", bg, bus.ppu_regs.bg_mode, self.x, self.y);
 
@@ -436,339 +627,6 @@ impl Ppu5C7x {
             color_main: col_main,
             color_sub: col_sub,
         }
-    }
-
-    fn draw_mode0_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
-        const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG2_CGRAM_BASE_ADDR: u8 = 0x20;
-        const BG3_CGRAM_BASE_ADDR: u8 = 0x40;
-        const BG4_CGRAM_BASE_ADDR: u8 = 0x60;
-        const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
-        const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
-        const BG3_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
-        const BG4_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
-
-        const MODE0_BG_SETTINGS: &[BgRenderSettings] = &[
-            BgRenderSettings { cgram_base: BG1_CGRAM_BASE_ADDR, color_depth: BG1_COL_DEPTH, use_offset_per_tile: false },
-            BgRenderSettings { cgram_base: BG2_CGRAM_BASE_ADDR, color_depth: BG2_COL_DEPTH, use_offset_per_tile: false },
-            BgRenderSettings { cgram_base: BG3_CGRAM_BASE_ADDR, color_depth: BG3_COL_DEPTH, use_offset_per_tile: false },
-            BgRenderSettings { cgram_base: BG4_CGRAM_BASE_ADDR, color_depth: BG4_COL_DEPTH, use_offset_per_tile: false },
-        ];
-
-        self.render_bg_tiles(bus, MODE0_BG_SETTINGS);
-
-        let regs = &bus.ppu_regs;
-
-        let win_signals = Self::layer_window_signals(regs);
-
-        let obj_main_col = if win_signals.obj_main { self.scanline_sprite_data[self.x] } else { None };
-        let bg1_main_col = if win_signals.bg_main[0] { self.scanline_bg_data[0][self.x] } else { None };
-        let bg2_main_col = if win_signals.bg_main[1] { self.scanline_bg_data[1][self.x] } else { None };
-        let bg3_main_col = if win_signals.bg_main[2] { self.scanline_bg_data[2][self.x] } else { None };
-        let bg4_main_col = if win_signals.bg_main[3] { self.scanline_bg_data[3][self.x] } else { None };
-
-        let (main_col, main_col_layer) = Self::bg_mode0_choose_priority_color(
-            obj_main_col,
-            bg1_main_col,
-            bg2_main_col,
-            bg3_main_col,
-            bg4_main_col,
-        ).unwrap_or((bus.cgram[0], ColorLayer::Back));
-
-        let main_col = if win_signals.color_main { Color::BLACK } else { main_col };
-
-        let obj_sub_col = if win_signals.obj_sub { self.scanline_sprite_data[self.x] } else { None };
-        let bg1_sub_col = if win_signals.bg_sub[0] { self.scanline_bg_data[0][self.x] } else { None };
-        let bg2_sub_col = if win_signals.bg_sub[1] { self.scanline_bg_data[1][self.x] } else { None };
-        let bg3_sub_col = if win_signals.bg_sub[2] { self.scanline_bg_data[2][self.x] } else { None };
-        let bg4_sub_col = if win_signals.bg_sub[3] { self.scanline_bg_data[3][self.x] } else { None };
-
-        let sub_col = Self::bg_mode0_choose_priority_color(
-            obj_sub_col,  bg1_sub_col,  bg2_sub_col, 
-            bg3_sub_col, bg4_sub_col,
-        ).map(|pair| pair.0);
-
-        let cmath_en = match main_col_layer {
-            ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
-            ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
-            ColorLayer::Bg3 => bus.ppu_regs.bg_settings[2].cmath_en,
-            ColorLayer::Bg4 => bus.ppu_regs.bg_settings[3].cmath_en,
-            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.unwrap().palette >= 4,
-            ColorLayer::Back => bus.ppu_regs.back_cmath_en,
-        } && !win_signals.color_sub;
-
-        self.set_pixel(
-            bus,
-            main_col,
-            sub_col,
-            cmath_en,
-        );
-
-        self.last_main_screen_color = main_col;
-        self.last_sub_screen_color = sub_col;
-        self.last_main_screen_pixel_did_cmath = cmath_en;
-    }
-
-    fn draw_mode1_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
-        const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG2_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG3_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
-        const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
-        const BG3_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
-
-        const MODE1_BG_SETTINGS: &[BgRenderSettings] = &[
-            BgRenderSettings { cgram_base: BG1_CGRAM_BASE_ADDR, color_depth: BG1_COL_DEPTH, use_offset_per_tile: false },
-            BgRenderSettings { cgram_base: BG2_CGRAM_BASE_ADDR, color_depth: BG2_COL_DEPTH, use_offset_per_tile: false },
-            BgRenderSettings { cgram_base: BG3_CGRAM_BASE_ADDR, color_depth: BG3_COL_DEPTH, use_offset_per_tile: false },
-        ];
-
-        self.render_bg_tiles(bus, MODE1_BG_SETTINGS);
-
-        let regs = &bus.ppu_regs;
-
-        let win_signals = Self::layer_window_signals(regs);
-
-        let obj_main_col = if win_signals.obj_main { self.scanline_sprite_data[self.x] } else { None };
-        let bg1_main_col = if win_signals.bg_main[0] { self.scanline_bg_data[0][self.x] } else { None };
-        let bg2_main_col = if win_signals.bg_main[1] { self.scanline_bg_data[1][self.x] } else { None };
-        let bg3_main_col = if win_signals.bg_main[2] { self.scanline_bg_data[2][self.x] } else { None };
-
-        let (main_col, main_col_layer) = Self::bg_mode1_choose_priority_color(
-            obj_main_col,
-            bg1_main_col,
-            bg2_main_col,
-            bg3_main_col,
-            bus.ppu_regs.bg3_mode1_priority,
-        ).unwrap_or((bus.cgram[0], ColorLayer::Back));
-
-        let main_col = if win_signals.color_main { Color::BLACK } else { main_col };
-
-        let obj_sub_col = if win_signals.obj_sub { self.scanline_sprite_data[self.x] } else { None };
-        let bg1_sub_col = if win_signals.bg_sub[0] { self.scanline_bg_data[0][self.x] } else { None };
-        let bg2_sub_col = if win_signals.bg_sub[1] { self.scanline_bg_data[1][self.x] } else { None };
-        let bg3_sub_col = if win_signals.bg_sub[2] { self.scanline_bg_data[2][self.x] } else { None };
-
-        let sub_col = Self::bg_mode1_choose_priority_color(
-            obj_sub_col, bg1_sub_col, 
-            bg2_sub_col, bg3_sub_col,
-            bus.ppu_regs.bg3_mode1_priority,
-        ).map(|pair| pair.0);
-
-        let cmath_en = match main_col_layer {
-            ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
-            ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
-            ColorLayer::Bg3 => bus.ppu_regs.bg_settings[2].cmath_en,
-            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.unwrap().palette >= 4,
-            ColorLayer::Back => bus.ppu_regs.back_cmath_en,
-            _ => unreachable!(),
-        } && !win_signals.color_sub;
-
-        self.set_pixel(
-            bus,
-            main_col,
-            sub_col,
-            cmath_en,
-        );
-
-        self.last_main_screen_color = main_col;
-        self.last_sub_screen_color = sub_col;
-        self.last_main_screen_pixel_did_cmath = cmath_en;
-    }
-    
-    fn draw_mode2_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
-        const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG2_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
-        const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
-
-        const MODE2_BG_SETTINGS: &[BgRenderSettings] = &[
-            BgRenderSettings { cgram_base: BG1_CGRAM_BASE_ADDR, color_depth: BG1_COL_DEPTH, use_offset_per_tile: true },
-            BgRenderSettings { cgram_base: BG2_CGRAM_BASE_ADDR, color_depth: BG2_COL_DEPTH, use_offset_per_tile: true },
-        ];
-
-        self.render_bg_tiles(bus, MODE2_BG_SETTINGS);
-
-        let regs = &bus.ppu_regs;
-
-        let win_signals = Self::layer_window_signals(regs);
-
-        let obj_main_col = if win_signals.obj_main { self.scanline_sprite_data[self.x] } else { None };
-        let bg1_main_col = if win_signals.bg_main[0] { self.scanline_bg_data[0][self.x] } else { None };
-        let bg2_main_col = if win_signals.bg_main[1] { self.scanline_bg_data[1][self.x] } else { None };
-
-        let (main_col, main_col_layer) = Self::bg_modes2thru5_choose_priority_color(
-            obj_main_col,
-            bg1_main_col,
-            bg2_main_col,
-        ).unwrap_or((bus.cgram[0], ColorLayer::Back));
-
-        let main_col = if win_signals.color_main { Color::BLACK } else { main_col };
-
-        let obj_sub_col = if win_signals.obj_sub { self.scanline_sprite_data[self.x] } else { None };
-        let bg1_sub_col = if win_signals.bg_sub[0] { self.scanline_bg_data[0][self.x] } else { None };
-        let bg2_sub_col = if win_signals.bg_sub[1] { self.scanline_bg_data[1][self.x] } else { None };
-
-        let sub_col = Self::bg_modes2thru5_choose_priority_color(
-            obj_sub_col, bg1_sub_col, bg2_sub_col,
-        ).map(|pair| pair.0);
-
-        let cmath_en = match main_col_layer {
-            ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
-            ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
-            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.unwrap().palette >= 4,
-            ColorLayer::Back => bus.ppu_regs.back_cmath_en,
-            _ => unreachable!(),
-        } && !win_signals.color_sub;
-
-        self.set_pixel(
-            bus,
-            main_col,
-            sub_col,
-            cmath_en,
-        );
-
-        self.last_main_screen_color = main_col;
-        self.last_sub_screen_color = sub_col;
-        self.last_main_screen_pixel_did_cmath = cmath_en;
-    }
-
-    fn draw_mode3_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
-        const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG2_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp8;
-        const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
-
-        const MODE3_BG_SETTINGS: &[BgRenderSettings] = &[
-            BgRenderSettings { cgram_base: BG1_CGRAM_BASE_ADDR, color_depth: BG1_COL_DEPTH, use_offset_per_tile: false },
-            BgRenderSettings { cgram_base: BG2_CGRAM_BASE_ADDR, color_depth: BG2_COL_DEPTH, use_offset_per_tile: false },
-        ];
-
-        self.render_bg_tiles(bus, MODE3_BG_SETTINGS);
-
-        let regs = &bus.ppu_regs;
-
-        let win_signals = Self::layer_window_signals(regs);
-
-        let obj_main_col = if win_signals.obj_main { self.scanline_sprite_data[self.x] } else { None };
-        let bg1_main_col = if win_signals.bg_main[0] { self.scanline_bg_data[0][self.x] } else { None };
-        let bg2_main_col = if win_signals.bg_main[1] { self.scanline_bg_data[1][self.x] } else { None };
-
-        let (main_col, main_col_layer) = Self::bg_modes2thru5_choose_priority_color(
-            obj_main_col,
-            bg1_main_col,
-            bg2_main_col,
-        ).unwrap_or((bus.cgram[0], ColorLayer::Back));
-
-        let main_col = if win_signals.color_main { Color::BLACK } else { main_col };
-
-        let obj_sub_col = if win_signals.obj_sub { self.scanline_sprite_data[self.x] } else { None };
-        let bg1_sub_col = if win_signals.bg_sub[0] { self.scanline_bg_data[0][self.x] } else { None };
-        let bg2_sub_col = if win_signals.bg_sub[1] { self.scanline_bg_data[1][self.x] } else { None };
-
-        let sub_col = Self::bg_modes2thru5_choose_priority_color(
-            obj_sub_col, bg1_sub_col, bg2_sub_col,
-        ).map(|pair| pair.0);
-
-        let cmath_en = match main_col_layer {
-            ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
-            ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
-            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.unwrap().palette >= 4,
-            ColorLayer::Back => bus.ppu_regs.back_cmath_en,
-            _ => unreachable!(),
-        } && !win_signals.color_sub;
-
-        self.set_pixel(
-            bus,
-            main_col,
-            sub_col,
-            cmath_en,
-        );
-
-        self.last_main_screen_color = main_col;
-        self.last_sub_screen_color = sub_col;
-        self.last_main_screen_pixel_did_cmath = cmath_en;
-    }
-
-    fn draw_mode4_dot<H: DebugHarness>(&self, bus: &mut PpuBus<H>) {
-        
-    }
-
-    fn draw_mode5_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
-        const BG1_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG2_CGRAM_BASE_ADDR: u8 = 0x00;
-        const BG1_COL_DEPTH: ColorDepth = ColorDepth::Bpp4;
-        const BG2_COL_DEPTH: ColorDepth = ColorDepth::Bpp2;
-
-        const MODE5_BG_SETTINGS: &[BgRenderSettings] = &[
-            BgRenderSettings { cgram_base: BG1_CGRAM_BASE_ADDR, color_depth: BG1_COL_DEPTH, use_offset_per_tile: false },
-            BgRenderSettings { cgram_base: BG2_CGRAM_BASE_ADDR, color_depth: BG2_COL_DEPTH, use_offset_per_tile: false },
-        ];
-
-        self.render_hires_bg_tiles(bus, MODE5_BG_SETTINGS);
-
-        let regs = &bus.ppu_regs;
-
-        let win_signals = Self::layer_window_signals(regs);
-
-        let obj_main_col = if win_signals.obj_main { self.scanline_sprite_data[self.x] } else { None };
-        let bg1_main_col = if win_signals.bg_main[0] { self.scanline_bg_data[0][self.x] } else { None };
-        let bg2_main_col = if win_signals.bg_main[1] { self.scanline_bg_data[1][self.x] } else { None };
-
-        let (main_col, main_col_layer) = Self::bg_modes2thru5_choose_priority_color(
-            obj_main_col,
-            bg1_main_col,
-            bg2_main_col,
-        ).unwrap_or((bus.cgram[0], ColorLayer::Back));
-
-        let main_col = if win_signals.color_main { Color::BLACK } else { main_col };
-
-        let obj_sub_col = if win_signals.obj_sub { self.scanline_sprite_data[self.x] } else { None };
-        let bg1_sub_col = if win_signals.bg_sub[0] { self.bg1_extra_data[self.x] } else { None };
-        let bg2_sub_col = if win_signals.bg_sub[1] { self.bg2_extra_data[self.x] } else { None };
-
-        // let sub_col = if bus.ppu_regs.sub_color_fixed {
-        //     bus.ppu_regs.fixed_color
-        // } else {
-        //     Self::bg_modes2thru5_choose_priority_color(
-        //         obj_sub_col, 
-        //         bg1_sub_col, 
-        //         bg2_sub_col,
-        //     ).map_or(
-        //         bus.ppu_regs.fixed_color, 
-        //         |pair| pair.0
-        //     )
-        // };
-
-        let sub_col = Self::bg_modes2thru5_choose_priority_color(
-            obj_sub_col, bg1_sub_col, bg2_sub_col,
-        ).map(|pair| pair.0);
-
-        let cmath_en = match main_col_layer {
-            ColorLayer::Bg1 => bus.ppu_regs.bg_settings[0].cmath_en,
-            ColorLayer::Bg2 => bus.ppu_regs.bg_settings[1].cmath_en,
-            ColorLayer::Obj => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.unwrap().palette >= 4,
-            ColorLayer::Back => bus.ppu_regs.back_cmath_en,
-            _ => unreachable!("BGs 3 & 4 not used in mode 5"),
-        } && !win_signals.color_sub;
-
-        self.set_pixel(
-            bus,
-            main_col,
-            sub_col,
-            cmath_en,
-        );
-
-        self.last_main_screen_color = main_col;
-        self.last_sub_screen_color = sub_col;
-        self.last_main_screen_pixel_did_cmath = cmath_en;
-    }
-
-    fn draw_mode6_dot<H: DebugHarness>(&self, bus: &mut PpuBus<H>) {
-        
-    }
-    fn draw_mode7_dot<H: DebugHarness>(&self, bus: &mut PpuBus<H>) {
-        
     }
 
     #[inline(always)]
@@ -875,25 +733,35 @@ impl Ppu5C7x {
             ColorDepth::Bpp2 => {
                 let bp10 = bus.vram[tile_row_addr];
 
-                std::array::from_fn(|i| {
-                    let bp1 = ((bp10 >> (15 - i)) & 1) as u8;
-                    let bp0 = ((bp10 >> (7 - i)) & 1) as u8;
-                    (bp1 << 1) | bp0
-                })
+                let interleaved = interleave_2bpp(bp10);
+
+                [
+                    ((interleaved >> 14) & 3) as u8,
+                    ((interleaved >> 12) & 3) as u8,
+                    ((interleaved >> 10) & 3) as u8,
+                    ((interleaved >>  8) & 3) as u8,
+                    ((interleaved >>  6) & 3) as u8,
+                    ((interleaved >>  4) & 3) as u8,
+                    ((interleaved >>  2) & 3) as u8,
+                    ((interleaved >>  0) & 3) as u8,
+                ]
             }
             ColorDepth::Bpp4 => {
                 let bp10 = bus.vram[tile_row_addr];
                 let bp32 = bus.vram[tile_row_addr + 8];
-                
-                let indices = std::array::from_fn(|i| {
-                    let bp0 = ((bp10 >> ( 7 - i)) & 1) as u8;
-                    let bp1 = ((bp10 >> (15 - i)) & 1) as u8;
-                    let bp2 = ((bp32 >> ( 7 - i)) & 1) as u8;
-                    let bp3 = ((bp32 >> (15 - i)) & 1) as u8;
-                    (bp3 << 3) | (bp2 << 2) | (bp1 << 1) | bp0
-                });
 
-                indices
+                let interleaved = interleave_4bpp(bp10, bp32);
+                
+                [
+                    ((interleaved >> 28) & 0xF) as u8,
+                    ((interleaved >> 24) & 0xF) as u8,
+                    ((interleaved >> 20) & 0xF) as u8,
+                    ((interleaved >> 16) & 0xF) as u8,
+                    ((interleaved >> 12) & 0xF) as u8,
+                    ((interleaved >>  8) & 0xF) as u8,
+                    ((interleaved >>  4) & 0xF) as u8,
+                    ((interleaved >>  0) & 0xF) as u8,
+                ]
             }
             ColorDepth::Bpp8 => {
                 if bus.ppu_regs.bg_mode == BgMode::Mode7 && bus.ppu_regs.use_direct_col {
@@ -908,17 +776,21 @@ impl Ppu5C7x {
                     let bp32 = bus.vram[tile_row_addr + 8];
                     let bp54 = bus.vram[tile_row_addr + 16];
                     let bp76 = bus.vram[tile_row_addr + 24];
+
+                    let interleaved = interleave_8bpp(bp10, bp32, bp54, bp76);
     
                     std::array::from_fn(|i| {
-                        let bp0 = ((bp10 >> (7 - i)) & 1) as u8;
-                        let bp1 = ((bp10 >> (15 - i)) & 1) as u8;
-                        let bp2 = ((bp32 >> (7 - i)) & 1) as u8;
-                        let bp3 = ((bp32 >> (15 - i)) & 1) as u8;
-                        let bp4 = ((bp54 >> (7 - i)) & 1) as u8;
-                        let bp5 = ((bp54 >> (15 - i)) & 1) as u8;
-                        let bp6 = ((bp76 >> (7 - i)) & 1) as u8;
-                        let bp7 = ((bp76 >> (15 - i)) & 1) as u8;
-                        (bp7 << 7) | (bp6 << 6) | (bp5 << 5) | (bp4 << 4) | (bp3 << 3) | (bp2 << 2) | (bp1 << 1) | bp0
+                        // let bp0 = ((bp10 >> (7 - i)) & 1) as u8;
+                        // let bp1 = ((bp10 >> (15 - i)) & 1) as u8;
+                        // let bp2 = ((bp32 >> (7 - i)) & 1) as u8;
+                        // let bp3 = ((bp32 >> (15 - i)) & 1) as u8;
+                        // let bp4 = ((bp54 >> (7 - i)) & 1) as u8;
+                        // let bp5 = ((bp54 >> (15 - i)) & 1) as u8;
+                        // let bp6 = ((bp76 >> (7 - i)) & 1) as u8;
+                        // let bp7 = ((bp76 >> (15 - i)) & 1) as u8;
+                        // (bp7 << 7) | (bp6 << 6) | (bp5 << 5) | (bp4 << 4) | (bp3 << 3) | (bp2 << 2) | (bp1 << 1) | bp0
+
+                        (interleaved >> ((7 - i) * 8)) as u8
                     })
                 }
             }
@@ -1192,31 +1064,33 @@ impl Ppu5C7x {
         bg2_col: Option<BgColorData>,
         bg3_col: Option<BgColorData>,
         bg4_col: Option<BgColorData>,
-    ) -> Option<(Color, ColorLayer)> {
+    ) -> Option<ColorLayer> {
+        // Unlike Mode 1, the if-else chain is better performing for Mode 0 than
+        // an enumeration/bg index calculation approach.
         if obj_col.is_some() && obj_col.unwrap().priority == 3 {
-            Some((obj_col.unwrap().color, ColorLayer::Obj))
+            Some(ColorLayer::Obj)
         } else if bg1_col.is_some() && bg1_col.unwrap().priority {
-            Some((bg1_col.unwrap().color, ColorLayer::Bg1))
+            Some(ColorLayer::Bg1)
         } else if bg2_col.is_some() && bg2_col.unwrap().priority {
-            Some((bg2_col.unwrap().color, ColorLayer::Bg2))
+            Some(ColorLayer::Bg2)
         } else if obj_col.is_some() && obj_col.unwrap().priority == 2 {
-            Some((obj_col.unwrap().color, ColorLayer::Obj))
+            Some(ColorLayer::Obj)
         } else if bg1_col.is_some() {
-            Some((bg1_col.unwrap().color, ColorLayer::Bg1))
+            Some(ColorLayer::Bg1)
         } else if bg2_col.is_some() {
-            Some((bg2_col.unwrap().color, ColorLayer::Bg2))
+            Some(ColorLayer::Bg2)
         } else if obj_col.is_some() && obj_col.unwrap().priority == 1 {
-            Some((obj_col.unwrap().color, ColorLayer::Obj))
+            Some(ColorLayer::Obj)
         } else if bg3_col.is_some() && bg3_col.unwrap().priority {
-            Some((bg3_col.unwrap().color, ColorLayer::Bg3))
+            Some(ColorLayer::Bg3)
         } else if bg4_col.is_some() && bg4_col.unwrap().priority {
-            Some((bg4_col.unwrap().color, ColorLayer::Bg4))
+            Some(ColorLayer::Bg4)
         } else if obj_col.is_some() {
-            Some((obj_col.unwrap().color, ColorLayer::Obj))
+            Some(ColorLayer::Obj)
         } else if bg3_col.is_some() {
-            Some((bg3_col.unwrap().color, ColorLayer::Bg3))
+            Some(ColorLayer::Bg3)
         } else if bg4_col.is_some() {
-            Some((bg4_col.unwrap().color, ColorLayer::Bg4))
+            Some(ColorLayer::Bg4)
         } else {
             None
         }
@@ -1229,29 +1103,29 @@ impl Ppu5C7x {
         bg2_col: Option<BgColorData>,
         bg3_col: Option<BgColorData>,
         bg3_priority: bool,
-    ) -> Option<(Color, ColorLayer)> {
+    ) -> Option<ColorLayer> {
         if bg3_col.is_some() && bg3_priority && bg3_col.unwrap().priority {
-            Some((bg3_col.unwrap().color, ColorLayer::Bg3))
+            Some(ColorLayer::Bg3)
         } else if obj_col.is_some() && obj_col.unwrap().priority == 3 {
-            Some((obj_col.unwrap().color, ColorLayer::Obj))
+            Some(ColorLayer::Obj)
         } else if bg1_col.is_some() && bg1_col.unwrap().priority {
-            Some((bg1_col.unwrap().color, ColorLayer::Bg1))
+            Some(ColorLayer::Bg1)
         } else if bg2_col.is_some() && bg2_col.unwrap().priority {
-            Some((bg2_col.unwrap().color, ColorLayer::Bg2))
+            Some(ColorLayer::Bg2)
         } else if obj_col.is_some() && obj_col.unwrap().priority == 2 {
-            Some((obj_col.unwrap().color, ColorLayer::Obj))
+            Some(ColorLayer::Obj)
         } else if bg1_col.is_some() {
-            Some((bg1_col.unwrap().color, ColorLayer::Bg1))
+            Some(ColorLayer::Bg1)
         } else if bg2_col.is_some() {
-            Some((bg2_col.unwrap().color, ColorLayer::Bg2))
+            Some(ColorLayer::Bg2)
         } else if obj_col.is_some() && obj_col.unwrap().priority == 1 {
-            Some((obj_col.unwrap().color, ColorLayer::Obj))
+            Some(ColorLayer::Obj)
         } else if bg3_col.is_some() && bg3_col.unwrap().priority {
-            Some((bg3_col.unwrap().color, ColorLayer::Bg3))
+            Some(ColorLayer::Bg3)
         } else if obj_col.is_some() {
-            Some((obj_col.unwrap().color, ColorLayer::Obj))
+            Some(ColorLayer::Obj)
         } else if bg3_col.is_some() {
-            Some((bg3_col.unwrap().color, ColorLayer::Bg3))
+            Some(ColorLayer::Bg3)
         } else {
             None
         }
@@ -1262,23 +1136,23 @@ impl Ppu5C7x {
         obj_col: Option<ObjColorData>,
         bg1_col: Option<BgColorData>,
         bg2_col: Option<BgColorData>,
-    ) -> Option<(Color, ColorLayer)> {
+    ) -> Option<ColorLayer> {
         if obj_col.is_some() && obj_col.unwrap().priority == 3 {
-            Some((obj_col.unwrap().color, ColorLayer::Obj))
+            Some(ColorLayer::Obj)
         } else if bg1_col.is_some() && bg1_col.unwrap().priority {
-            Some((bg1_col.unwrap().color, ColorLayer::Bg1))
+            Some(ColorLayer::Bg1)
         } else if obj_col.is_some() && obj_col.unwrap().priority == 2 {
-            Some((obj_col.unwrap().color, ColorLayer::Obj))
+            Some(ColorLayer::Obj)
         } else if bg2_col.is_some() && bg2_col.unwrap().priority {
-            Some((bg2_col.unwrap().color, ColorLayer::Bg2))
+            Some(ColorLayer::Bg2)
         } else if obj_col.is_some() && obj_col.unwrap().priority == 1 {
-            Some((obj_col.unwrap().color, ColorLayer::Obj))
+            Some(ColorLayer::Obj)
         } else if bg1_col.is_some() {
-            Some((bg1_col.unwrap().color, ColorLayer::Bg1))
+            Some(ColorLayer::Bg1)
         } else if obj_col.is_some() {
-            Some((obj_col.unwrap().color, ColorLayer::Obj))
+            Some(ColorLayer::Obj)
         } else if bg2_col.is_some() {
-            Some((bg2_col.unwrap().color, ColorLayer::Bg2))
+            Some(ColorLayer::Bg2)
         } else {
             None
         }
