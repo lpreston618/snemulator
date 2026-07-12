@@ -140,7 +140,7 @@ impl Ssmp {
         self.sample_cycle_accumulator += clocks * AUDIO_SAMPLE_HZ;
         self.spc_cycle_accumulator += clocks * SPC_CLOCK_HZ;
 
-        if self.sample_cycle_accumulator >= MASTER_CLOCK_HZ {
+        while self.sample_cycle_accumulator >= MASTER_CLOCK_HZ {
             self.sample_cycle_accumulator -= MASTER_CLOCK_HZ;
 
             let mut sdsp_bus = SdspBus {
@@ -159,7 +159,7 @@ impl Ssmp {
             }
         }
 
-        if self.spc_cycle_accumulator >= MASTER_CLOCK_HZ {
+        while self.spc_cycle_accumulator >= MASTER_CLOCK_HZ {
             self.spc_cycle_accumulator -= MASTER_CLOCK_HZ;
 
             let mut spc_bus = SpcBus {

@@ -50,8 +50,6 @@ pub struct CpuBus<'a, H: DebugHarness> {
     pub controller_data: &'a mut ControllerData,
 
     pub harness: &'a mut H,
-    pub fblank_start: &'a mut bool,
-    pub fblank_end: &'a mut bool,
 }
 
 impl<'a, H: DebugHarness> CpuBus<'a, H> {
@@ -334,19 +332,19 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
 
         match offset {
             0x2100 => {
-                let old_fblank = self.ppu_regs.in_fblank;
+                // let old_fblank = self.ppu_regs.in_fblank;
                 self.ppu_regs.in_fblank = get_bit_n!(value, 7);
                 self.ppu_regs.screen_brightness = value & 0x0F;
 
-                if H::IS_DEBUGGING_HARNESS && H::TRACK_FBLANK {
-                    if !old_fblank && self.ppu_regs.in_fblank {
-                        *self.fblank_start = true;
-                    }
+                // if H::IS_DEBUGGING_HARNESS && H::TRACK_FBLANK {
+                //     if !old_fblank && self.ppu_regs.in_fblank {
+                //         *self.fblank_start = true;
+                //     }
 
-                    if old_fblank && !self.ppu_regs.in_fblank {
-                        *self.fblank_end = true;
-                    }
-                }
+                //     if old_fblank && !self.ppu_regs.in_fblank {
+                //         *self.fblank_end = true;
+                //     }
+                // }
             }
             0x2101 => {
                 ppu_regs.write_2101(value);

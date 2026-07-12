@@ -65,8 +65,8 @@ impl TestBacking {
             harness,
             // SAFETY: Values are never read or accessed by NullProbe
             open_bus_value: unsafe { &mut _FAKE_OPEN_BUS },
-            fblank_start: unsafe { &mut _FAKE_FBLANK_START_FLAG },
-            fblank_end: unsafe { &mut _FAKE_FBLANK_END_FLAG },
+            // fblank_start: unsafe { &mut _FAKE_FBLANK_START_FLAG },
+            // fblank_end: unsafe { &mut _FAKE_FBLANK_END_FLAG },
         }
     }
 }

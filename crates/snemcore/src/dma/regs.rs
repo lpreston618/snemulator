@@ -149,22 +149,22 @@ impl DmaRegs {
         let step = self.transfer_pattern_step;
 
         let low_byte = match self.transfer_pattern {
+            // 1-reg (+0)
             TransferPattern::Pattern0 | TransferPattern::Pattern2 | TransferPattern::Pattern6 => {
                 self.b_bus_addr
             }
 
+            // 2-reg alternating (+0 +1)
             TransferPattern::Pattern1 | TransferPattern::Pattern5 => {
                 self.b_bus_addr + (step & 1)
             }
 
+            // 2-reg write twice (+0 +0 +1 +1)
             TransferPattern::Pattern3 | TransferPattern::Pattern7 => {
-                if (step & 3) < 2 {
-                    self.b_bus_addr
-                } else {
-                    self.b_bus_addr + (step & 1)
-                }
+                self.b_bus_addr + ((step >> 1) & 1)
             }
 
+            // 4-reg (+0 +1 +2 +3)
             TransferPattern::Pattern4 => {
                 self.b_bus_addr + (step & 3)
             }

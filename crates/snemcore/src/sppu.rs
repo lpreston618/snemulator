@@ -1372,7 +1372,7 @@ impl Ppu5C7x {
         } else {
             match sub_col {
                 Some(c) => (c, false),
-                None => (bus.ppu_regs.fixed_color, true),
+                None => (bus.ppu_regs.fixed_color, true), // TODO: Per nocash, win_signals.main also forces no div2
             }
         };
 
@@ -1387,9 +1387,9 @@ impl Ppu5C7x {
                 b + operand.b as u16,
             ),
             CMathOperator::Subtract => (
-                r - operand.r as u16,
-                g - operand.g as u16,
-                b - operand.b as u16,
+                r.saturating_sub(operand.r as u16),
+                g.saturating_sub(operand.g as u16),
+                b.saturating_sub(operand.b as u16),
             ),
         };
 

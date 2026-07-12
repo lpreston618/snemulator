@@ -33,7 +33,7 @@ pub mod savestate;
 mod utils;
 
 macro_rules! cpu_bus {
-    ($core:ident, $harness:ident, $fblank_start:ident, $fblank_end:ident) => {
+    ($core:ident, $harness:ident) => {
         CpuBus {
             wram: &mut $core.wram,
             vram: &mut $core.vram,
@@ -52,14 +52,12 @@ macro_rules! cpu_bus {
             cart: $core.cart.as_mut().unwrap(),
 
             harness: $harness,
-            fblank_start: &mut $fblank_start,
-            fblank_end: &mut $fblank_end,
         }
     };
 }
 
 macro_rules! dma_bus {
-    ($core:ident, $harness:ident, $fblank_start:ident, $fblank_end:ident) => {
+    ($core:ident, $harness:ident) => {
         CpuBus {
             wram: &mut $core.wram,
             vram: &mut $core.vram,
@@ -78,8 +76,6 @@ macro_rules! dma_bus {
             cart: $core.cart.as_mut().unwrap(),
 
             harness: $harness,
-            fblank_start: &mut $fblank_start,
-            fblank_end: &mut $fblank_end,
         }
     };
 }
@@ -298,7 +294,7 @@ impl Snemulator {
 
         self.dma.power_on();
 
-        let mut bus = cpu_bus!(self, harness, false, false);
+        let mut bus = cpu_bus!(self, harness);
         self.cpu.power_on(&mut bus);
 
         self.ssmp.power_on();
@@ -328,7 +324,7 @@ impl Snemulator {
 
         self.dma.reset();
 
-        let mut bus = cpu_bus!(self, harness, false, false);
+        let mut bus = cpu_bus!(self, harness);
         self.cpu.reset(&mut bus);
 
         self.ssmp.reset();
@@ -418,18 +414,26 @@ impl Snemulator {
         self.ppu.clocks -= clocks;
         self.total_cycles += clocks as u64;
 
-        if self.cpu.clocks == 0 {
-            self.cycle_cpu(harness);
-        }
-
         if self.ppu.clocks == 0 {
             self.cycle_ppu(frame_buffer, harness);
-
+            
             // Pause the CPU for 40 master clocks during the middle of each
             // scanline, effectively reducing its execution speed by ~3%. 
             if self.ppu.dot == DRAM_REFRESH_START_DOT {
                 self.cpu.clocks += DRAM_REFRESH_CLOCKS;
             }
+
+            if self.ppu.scanline < sppu::VBLANK_START_SCANLINE && self.ppu.dot == sppu::HBLANK_START_DOT {
+                let mut bus = dma_bus!(self, harness);
+                
+                let bytes_transferred = self.dma.do_hdma(&mut bus);
+            
+                self.cpu.clocks += bytes_transferred * 6; // TODO: Update with actual cycle counts
+            }
+        }
+
+        if self.cpu.clocks == 0 {
+            self.cycle_cpu(harness);
         }
 
         self.ssmp.cycle(clocks, audio_buffer, &mut self.apu_ports, harness);
@@ -454,41 +458,29 @@ impl Snemulator {
         self.cpu.stopped = false;
         self.controller_data.joypad_cmd = None;
 
-        let mut fblank_start_flag = false;
-        let mut fblank_end_flag = false;
-
         if self.dma.hdma_needs_init && self.ppu.scanline == 0 {
             self.dma.hdma_needs_init = false;
-            let mut bus = dma_bus!(self, harness, fblank_start_flag, fblank_end_flag);
+            let mut bus = dma_bus!(self, harness);
             self.dma.hdma_init_channels(&mut bus);
         }
-        
-        let mut did_hdma = false;
-        let mut did_dma = false;
 
-        if self.dma.hdma_active_ch < 8 {
-            let mut bus = dma_bus!(self, harness, fblank_start_flag, fblank_end_flag);
-            
-            did_hdma = self.dma.do_hdma(&mut bus)
-        }
-        
-        if !did_hdma && self.dma.dma_active_ch < 8 {
-            let mut bus = dma_bus!(self, harness, fblank_start_flag, fblank_end_flag);
-            did_dma = self.dma.do_dma(&mut bus);
-        }
+        self.cpu.stopped = if self.dma.dma_active_ch < 8 {
+            let mut bus = dma_bus!(self, harness);
+            self.dma.do_dma(&mut bus)
+        } else {
+            false
+        };
 
-        self.cpu.stopped = did_hdma || did_dma;
-
-        let mut bus = cpu_bus!(self, harness, fblank_start_flag, fblank_end_flag);
+        let mut bus = cpu_bus!(self, harness);
         self.cpu.cycle(&mut bus);
 
-        if H::IS_DEBUGGING_HARNESS && H::TRACK_FBLANK {
-            if fblank_start_flag {
-                harness.on_fblank_start(self);
-            } else if fblank_end_flag {
-                harness.on_fblank_end(self);
-            }
-        }
+        // if H::IS_DEBUGGING_HARNESS && H::TRACK_FBLANK {
+        //     if fblank_start_flag {
+        //         harness.on_fblank_start(self);
+        //     } else if fblank_end_flag {
+        //         harness.on_fblank_end(self);
+        //     }
+        // }
 
         match self.controller_data.joypad_cmd {
             Some(JoypadCmd::ClockJoy1) => self.controller_data.joy1_latch >>= 1,
@@ -528,11 +520,6 @@ impl Snemulator {
             hblank_end_flag
         );
         self.ppu.cycle(&mut bus);
-
-        if self.ppu.scanline < sppu::VBLANK_START_SCANLINE &&
-            self.ppu.dot == sppu::HBLANK_START_DOT {
-            self.dma.seek_hdma(0);
-        }
 
         if H::IS_DEBUGGING_HARNESS && H::TRACK_PPU_STEP {
             harness.on_ppu_step(self);
