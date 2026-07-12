@@ -292,17 +292,6 @@ impl Ppu5C7x {
             return;
         }
 
-        // match bus.ppu_regs.bg_mode {
-        //     BgMode::Mode0 => self.draw_mode0_dot(bus),
-        //     BgMode::Mode1 => self.draw_mode1_dot(bus),
-        //     BgMode::Mode2 => self.draw_mode2_dot(bus),
-        //     BgMode::Mode3 => self.draw_mode3_dot(bus),
-        //     BgMode::Mode4 => self.draw_mode4_dot(bus),
-        //     BgMode::Mode5 => self.draw_mode5_dot(bus),
-        //     BgMode::Mode6 => self.draw_mode6_dot(bus),
-        //     BgMode::Mode7 => self.draw_mode7_dot(bus),
-        // };
-
         match bus.ppu_regs.bg_mode {
             BgMode::Mode0 => self.draw_dot_mode::<0, H>(bus),
             BgMode::Mode1 => self.draw_dot_mode::<1, H>(bus),
@@ -388,6 +377,7 @@ impl Ppu5C7x {
         let bg3_main_col = if win_signals.bg_main[2] { self.scanline_bg_data[2][self.x] } else { None };
         let bg4_main_col = if win_signals.bg_main[3] { self.scanline_bg_data[3][self.x] } else { None };
 
+        // Main color layer `None` indicates all layers were transparent (i.e. the 'Back' layer)
         let main_col_layer = if BGMODE == 0 {
             Self::bg_mode0_choose_priority_color(
                 obj_main_col,
@@ -428,8 +418,14 @@ impl Ppu5C7x {
         };
 
         let obj_sub_col = if win_signals.obj_sub { self.scanline_sprite_data[self.x] } else { None };
-        let bg1_sub_col = if win_signals.bg_sub[0] { self.scanline_bg_data[0][self.x] } else { None };
-        let bg2_sub_col = if win_signals.bg_sub[1] { self.scanline_bg_data[1][self.x] } else { None };
+        let bg1_sub_col = if win_signals.bg_sub[0] {
+            // Hi-res BG modes use separate extra data buffers for sub color (for BGs that are used)
+            if BGMODE == 5 || BGMODE == 6 { self.bg1_extra_data[self.x] } else { self.scanline_bg_data[0][self.x] }
+        } else { None };
+        let bg2_sub_col = if win_signals.bg_sub[1] {
+            // Hi-res BG modes use separate extra data buffers for sub color (for BGs that are used)
+            if BGMODE == 5 || BGMODE == 6 { self.bg2_extra_data[self.x] } else { self.scanline_bg_data[1][self.x] }
+        } else { None };
         let bg3_sub_col = if win_signals.bg_sub[2] { self.scanline_bg_data[2][self.x] } else { None };
         let bg4_sub_col = if win_signals.bg_sub[3] { self.scanline_bg_data[3][self.x] } else { None };
 
