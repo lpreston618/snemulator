@@ -187,7 +187,8 @@ impl Cartridge {
             std::str::from_utf8(&cart.title).unwrap_or("<FAILED TO READ TITLE>")
         );
         trace!("  fast_rom: {}", cart.fast_rom);
-        trace!("  mapping_mode: {:?}", cart.mapping_mode);
+        trace!("  mapping_mode: {}", declared_mapping_mode);
+        trace!("  loaded_as: {:?}", cart.mapping_mode);
         trace!("  extra_ram: {}", cart.extra_ram);
         trace!("  battery: {}", cart.battery);
         trace!("  coprocessor: {}", cart.coprocessor);

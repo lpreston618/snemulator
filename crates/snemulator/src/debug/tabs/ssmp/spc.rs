@@ -189,7 +189,7 @@ impl SpcTab {
         ui.horizontal(|ui| {
             let mut stopped = core.ssmp.spc.stopped;
             let mut ipl_read_en = core.ssmp.spc_regs.ipl_read_en;
-            let mut sdsp_read_only = core.ssmp.spc_regs.sdsp_read_only;
+            let mut sdsp_read_only = core.ssmp.spc_regs.sdsp_addr >= 0x80;
             ui.add_enabled(false, egui::Checkbox::new(&mut stopped, "Stopped"));
             ui.add_enabled(false, egui::Checkbox::new(&mut ipl_read_en, "IPL Read En."));
             ui.add_enabled(false, egui::Checkbox::new(&mut sdsp_read_only, "SDSP Read Only"));

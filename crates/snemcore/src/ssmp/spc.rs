@@ -55,7 +55,6 @@ impl Spc700 {
             dir_page: self.dir_page,
             stopped: self.stopped,
             ipl_read_en: regs.ipl_read_en,
-            sdsp_read_only: regs.sdsp_read_only,
             sdsp_addr: regs.sdsp_addr,
         }
     }
@@ -70,7 +69,6 @@ impl Spc700 {
         self.dir_page = state.dir_page;
         self.stopped = state.stopped;
         regs.ipl_read_en = state.ipl_read_en;
-        regs.sdsp_read_only = state.sdsp_read_only;
         regs.sdsp_addr = state.sdsp_addr;
     }
 

@@ -88,13 +88,10 @@ impl<'a, H: DebugHarness> SpcBus<'a, H> {
                 }
             }
             0x2 => {
-                self.spc_regs.sdsp_read_only = get_bit_n!(value, 7);
-                self.spc_regs.sdsp_addr = value & 0x7F;
+                self.spc_regs.sdsp_addr = value;
             }
             0x3 => {
-                if !self.spc_regs.sdsp_read_only {
-                    self.write_sdsp_regs(value);
-                }
+                self.write_sdsp_regs(value);
             }
             0x4 => {
                 self.apuio_regs.apuio0 = value;

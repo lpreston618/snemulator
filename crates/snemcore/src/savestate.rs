@@ -147,7 +147,6 @@ pub struct SpcState {
     pub stopped: bool,
 
     pub ipl_read_en: bool,
-    pub sdsp_read_only: bool,
     pub sdsp_addr: u8,
 }
 
