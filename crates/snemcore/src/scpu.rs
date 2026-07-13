@@ -206,37 +206,10 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagI, true);
         self.set_flag_to_bool(Flag::FlagD, false);
 
-        let vector_offset = if self.e {
-            match interrupt {
-                CpuInterrupt::IRQ => 0xFFFE,
-                CpuInterrupt::NMI => 0xFFFA,
-                CpuInterrupt::BRK => 0xFFFE,
-                CpuInterrupt::COP => 0xFFF4,
-                CpuInterrupt::Reset => 0xFFFC,
-                CpuInterrupt::Abort => 0xFFF8,
-            }
-        } else {
-            match interrupt {
-                CpuInterrupt::IRQ => 0xFFEE,
-                CpuInterrupt::NMI => 0xFFEA,
-                CpuInterrupt::BRK => 0xFFE6,
-                CpuInterrupt::COP => 0xFFE4,
-                CpuInterrupt::Reset => unreachable!(), // reset interrupt sets e flag
-                CpuInterrupt::Abort => 0xFFE8,
-            }
-        };
-
-        let vector_lo = Address {
-            bank: 0,
-            offset: vector_offset,
-        };
-        let vector_hi = Address {
-            bank: 0,
-            offset: vector_offset + 1,
-        };
+        let vector = bus.cart.interrupt_vector(interrupt, self.e);
 
         self.pb = 0;
-        self.pc = self.read_word(bus, vector_lo, vector_hi);
+        self.pc = vector;
 
         if H::IS_DEBUGGING_HARNESS && H::TRACK_CPU_INTERRUPTS {
             bus.harness.on_interrupt(self, interrupt);

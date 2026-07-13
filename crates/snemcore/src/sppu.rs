@@ -590,9 +590,6 @@ impl Ppu5C7x {
             if bg_render_settings.is_none() { return; }
 
             if self.x == self.scanline_bg_counters[bg] {
-                // self.render_hires_tile(bus, bg, bg_render_settings, true);
-                // let dots_rendered = self.render_hires_tile(bus, bg, bg_render_settings, false);
-
                 let dots_rendered = self.render_hires_tile(bus, bg, bg_render_settings.unwrap());
 
                 debug_assert!(dots_rendered > 0, "{} {:?} {} {}", bg, bus.ppu_regs.bg_mode, self.x, self.y);
@@ -994,15 +991,16 @@ impl Ppu5C7x {
         };
         let vscroll = bg_settings.scroll_y;
 
-        let (_, tile_h_native) = bg_settings.chr_size.raw_size(); // 8 or 16
-        let tile_size_bit = if tile_h_native == 16 { 1u16 } else { 0u16 };
+        let (_, tile_height_native) = bg_settings.chr_size.raw_size(); // 8 or 16
+        let tile_size_bit = if tile_height_native == 16 { 1u16 } else { 0u16 };
 
         let width_hires: u16 = 512;
+        let height: u16 = 256;
         let screen_size_x_bit = matches!(bg_settings.tilemap_cnt_x, TilemapCount::Two) as u16;
         let screen_size_y_bit = matches!(bg_settings.tilemap_cnt_y, TilemapCount::Two) as u16;
 
-        let hsize = width_hires << tile_size_bit << screen_size_x_bit;
-        let vsize = width_hires << tile_size_bit << screen_size_y_bit;
+        let hsize = width_hires << screen_size_x_bit;
+        let vsize = (height << tile_size_bit) << screen_size_y_bit;
 
         let hoffset = (hpixel + hscroll) & (hsize - 1);
         let voffset = (vpixel + vscroll) & (vsize - 1);
@@ -1013,11 +1011,8 @@ impl Ppu5C7x {
             (hoffset, voffset)
         };
 
-        let htiles = 4u16;
-        let vtiles = 3u16 + tile_size_bit;
-
-        let htile = hoffset >> htiles;   // tilemap x index (in tile grid)
-        let vtile = voffset >> vtiles;   // tilemap y index
+        let htile = hoffset / 16;                     // tilemap x index (in tile grid)
+        let vtile = voffset / (8 << tile_size_bit);   // tilemap y index
 
         let hscreen: u16 = if screen_size_x_bit == 1 { 32 << 5 } else { 0 };
         let vscreen: u16 = if screen_size_y_bit == 1 {
@@ -1027,32 +1022,32 @@ impl Ppu5C7x {
         };
 
         let mut tilemap_offset = ((htile & 0x1F) << 0) | ((vtile & 0x1F) << 5);
-        if htile & 0x20 != 0 { tilemap_offset = tilemap_offset.wrapping_add(hscreen); }
-        if vtile & 0x20 != 0 { tilemap_offset = tilemap_offset.wrapping_add(vscreen); }
+        if htile & 0x20 != 0 { tilemap_offset += hscreen; }
+        if vtile & 0x20 != 0 { tilemap_offset += vscreen; }
 
         let tilemap_addr = bg_settings.tilemap_base_addr.wrapping_add(tilemap_offset);
         let tilemap_entry = TilemapEntry::from_word(bus.vram[tilemap_addr as usize]);
 
         let left_hoffset = hoffset;
-        let right_hoffset = (hoffset.wrapping_add(8)) & (hsize - 1);
+        let right_hoffset = (hoffset + 8) & (hsize - 1);
 
         let char_base = tilemap_entry.chr_num;
 
         let mut char_left = char_base;
         if (left_hoffset & 8 != 0) != tilemap_entry.flip_x {
-            char_left = char_left.wrapping_add(1);
+            char_left += 1;
         }
-        if vtiles == 4 && (voffset & 8 != 0) != tilemap_entry.flip_y {
-            char_left = char_left.wrapping_add(16);
+        if tile_size_bit == 1 && (voffset & 8 != 0) != tilemap_entry.flip_y {
+            char_left += 16;
         }
         char_left &= 0x3FF;
 
         let mut char_right = char_base;
         if (right_hoffset & 8 != 0) != tilemap_entry.flip_x {
-            char_right = char_right.wrapping_add(1);
+            char_right += 1;
         }
-        if vtiles == 4 && (voffset & 8 != 0) != tilemap_entry.flip_y {
-            char_right = char_right.wrapping_add(16);
+        if tile_size_bit == 1 && (voffset & 8 != 0) != tilemap_entry.flip_y {
+            char_right += 16;
         }
         char_right &= 0x3FF;
 
@@ -1064,24 +1059,24 @@ impl Ppu5C7x {
         };
 
         let words_per_tile = (bpp << 2) as u16;
-        let addr_left = bg_settings.chr_base_addr
-            .wrapping_add(char_left.wrapping_mul(words_per_tile))
-            .wrapping_add(row_in_8x8)
+        let addr_left = (bg_settings.chr_base_addr
+             + (char_left * words_per_tile)
+             + row_in_8x8)
             & 0x7FFF;
 
-        let addr_right = bg_settings.chr_base_addr
-            .wrapping_add(char_right.wrapping_mul(words_per_tile))
-            .wrapping_add(row_in_8x8)
+        let addr_right = (bg_settings.chr_base_addr
+             + (char_right * words_per_tile)
+             + row_in_8x8)
             & 0x7FFF;
 
         let mut pal_indices = [0u8; 16];
         self.decode_tile_row_into(bus, addr_left as usize,  bpp, tilemap_entry.flip_x, &mut pal_indices[0..8]);
         self.decode_tile_row_into(bus, addr_right as usize, bpp, tilemap_entry.flip_x, &mut pal_indices[8..16]);
 
-        let skip = (hoffset & 15) as usize;
+        let skip = if self.x == 0 { (hscroll & 0xF) as usize } else { 0 };
         // How many hi-res cols we can still emit before running off the screen:
         let hires_available = 16usize - skip;
-        let hires_remaining_scanline = (512 - hpixel as usize).min(hires_available);
+        let hires_remaining_scanline_dots = (512 - hpixel as usize).min(hires_available);
 
         let extra_buffer = if bg == 0 {
             &mut self.bg1_extra_data
@@ -1092,8 +1087,8 @@ impl Ppu5C7x {
         let mut dots_rendered = 0usize;
         let mut last_native_x: Option<usize> = None;
 
-        for k in 0..hires_remaining_scanline {
-            let pal_idx = pal_indices[skip + k];
+        for k in 0..hires_remaining_scanline_dots {
+            let pal_idx = pal_indices[(skip & 7) + k];
             let hires_col_relative = k;  // 0 = sub, 1 = main, 2 = sub, ...
             let native_slot = self.x + (hires_col_relative >> 1);
             let is_main_col = (hires_col_relative & 1) == 1;
@@ -1104,6 +1099,7 @@ impl Ppu5C7x {
                 let cgram_addr = bg_render_settings.cgram_base
                     + (tilemap_entry.palette << bpp)
                     + pal_idx;
+
                 Some(BgColorData {
                     color: bus.cgram[cgram_addr as usize],
                     palette: tilemap_entry.palette,

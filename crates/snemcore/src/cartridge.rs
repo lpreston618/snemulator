@@ -1,4 +1,4 @@
-use crate::{coprocessor::{Coprocessor, superfx}, scpu::bus::Address};
+use crate::{coprocessor::{Coprocessor, superfx}, scpu::{CpuInterrupt, bus::Address}};
 
 // Positions of the start of the header for different memory mappings
 const LOROM_POS: usize = 0x007FC0;
@@ -42,7 +42,16 @@ pub struct Cartridge {
 
     pub is_ntsc: bool,
 
-    pub interrupt_vectors: [u8; 32],
+    pub cop_vec_e: u16,
+    pub cop_vec_n: u16,
+    pub brk_vec: u16,
+    pub abort_vec_e: u16,
+    pub abort_vec_n: u16,
+    pub nmi_vec_e: u16,
+    pub nmi_vec_n: u16,
+    pub reset_vec: u16,
+    pub irq_vec_e: u16,
+    pub irq_vec_n: u16,
 
     pub rom_hash: u32,
 }
@@ -56,6 +65,17 @@ impl Cartridge {
             }
         } else {
             0
+        }
+    }
+
+    pub fn interrupt_vector(&self, interrupt: CpuInterrupt, e: bool) -> u16 {
+        match interrupt {
+            CpuInterrupt::COP   => if e { self.cop_vec_e } else { self.cop_vec_n },
+            CpuInterrupt::BRK   => self.brk_vec,
+            CpuInterrupt::Abort => if e { self.abort_vec_e } else { self.abort_vec_n },
+            CpuInterrupt::NMI   => if e { self.nmi_vec_e } else { self.nmi_vec_n },
+            CpuInterrupt::Reset => self.reset_vec,
+            CpuInterrupt::IRQ   => if e { self.irq_vec_e } else { self.irq_vec_n },
         }
     }
 
@@ -93,7 +113,16 @@ impl Cartridge {
 
             is_ntsc: true,
 
-            interrupt_vectors: [0; 32],
+            cop_vec_e: 0u16,
+            cop_vec_n: 0u16,
+            brk_vec: 0u16,
+            abort_vec_e: 0u16,
+            abort_vec_n: 0u16,
+            nmi_vec_e: 0u16,
+            nmi_vec_n: 0u16,
+            reset_vec: 0u16,
+            irq_vec_e: 0u16,
+            irq_vec_n: 0u16,
 
             rom_hash: 0u32,
         };
@@ -201,8 +230,16 @@ impl Cartridge {
         }
 
         cart.is_ntsc = header_bytes[0x19] > 0;
-        cart.interrupt_vectors
-            .copy_from_slice(&header_bytes[0x20..0x40]);
+        cart.cop_vec_n   = u16::from_le_bytes([header_bytes[0x24], header_bytes[0x25]]);
+        cart.brk_vec     = u16::from_le_bytes([header_bytes[0x26], header_bytes[0x27]]);
+        cart.abort_vec_n = u16::from_le_bytes([header_bytes[0x28], header_bytes[0x29]]);
+        cart.nmi_vec_n   = u16::from_le_bytes([header_bytes[0x2A], header_bytes[0x2B]]);
+        cart.irq_vec_n   = u16::from_le_bytes([header_bytes[0x2E], header_bytes[0x2F]]);
+        cart.cop_vec_e   = u16::from_le_bytes([header_bytes[0x34], header_bytes[0x35]]);
+        cart.abort_vec_e = u16::from_le_bytes([header_bytes[0x38], header_bytes[0x39]]);
+        cart.nmi_vec_e   = u16::from_le_bytes([header_bytes[0x3A], header_bytes[0x3B]]);
+        cart.reset_vec   = u16::from_le_bytes([header_bytes[0x3C], header_bytes[0x3D]]);
+        cart.irq_vec_e   = u16::from_le_bytes([header_bytes[0x3E], header_bytes[0x3F]]);
 
         log::trace!("ROM Hash (CRC32) = 0x{:04X}", cart.rom_hash);
         log::trace!(
@@ -228,44 +265,12 @@ impl Cartridge {
         log::trace!("  is_ntsc: {}", cart.is_ntsc);
         log::trace!("  padded rom size: 0x{:X}", cart.rom.len());
         log::trace!("  vectors:    NAT    EMU ");
-        log::trace!(
-            "    COP      ${:02X}{:02X}  ${:02X}{:02X}",
-            cart.interrupt_vectors[0x05],
-            cart.interrupt_vectors[0x04],
-            cart.interrupt_vectors[0x15],
-            cart.interrupt_vectors[0x14]
-        );
-        log::trace!(
-            "    BRK      ${:02X}{:02X}  .....",
-            cart.interrupt_vectors[0x07],
-            cart.interrupt_vectors[0x06]
-        );
-        log::trace!(
-            "    ABORT    ${:02X}{:02X}  ${:02X}{:02X}",
-            cart.interrupt_vectors[0x09],
-            cart.interrupt_vectors[0x08],
-            cart.interrupt_vectors[0x19],
-            cart.interrupt_vectors[0x18]
-        );
-        log::trace!(
-            "    NMI      ${:02X}{:02X}  ${:02X}{:02X}",
-            cart.interrupt_vectors[0x0B],
-            cart.interrupt_vectors[0x0A],
-            cart.interrupt_vectors[0x1B],
-            cart.interrupt_vectors[0x1A]
-        );
-        log::trace!(
-            "    RESET    .....  ${:02X}{:02X}",
-            cart.interrupt_vectors[0x1D],
-            cart.interrupt_vectors[0x1C]
-        );
-        log::trace!(
-            "    IRQ      ${:02X}{:02X}  ${:02X}{:02X}",
-            cart.interrupt_vectors[0x0F],
-            cart.interrupt_vectors[0x0E],
-            cart.interrupt_vectors[0x1F],
-            cart.interrupt_vectors[0x1E]
-        );
+        log::trace!("    COP      ${:04X}  ${:04X}", cart.cop_vec_n, cart.cop_vec_e);
+        log::trace!("    BRK      ${:04X}  .....", cart.brk_vec);
+        log::trace!("    ABORT    ${:04X}  ${:04X}", cart.abort_vec_n, cart.abort_vec_e);
+        log::trace!("    NMI      ${:04X}  ${:04X}", cart.nmi_vec_n, cart.nmi_vec_e);
+        log::trace!("    RESET    .....  ${:04X}", cart.reset_vec);
+        log::trace!("    IRQ      ${:04X}  ${:04X}", cart.irq_vec_n, cart.irq_vec_e);
 
         Ok(cart)
     }

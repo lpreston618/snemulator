@@ -935,6 +935,8 @@ impl SnemulatorApp {
             self.try_load_rom_from_path(&romfile)?;
         }
 
+        self.set_paused(false);
+
         Ok(())
     }
 

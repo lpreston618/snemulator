@@ -99,14 +99,14 @@ impl ControllerManager {
                     }
                 }
                 EventType::ButtonPressed(button, _) => {
-                    self.try_capture_button(id, button, settings, message_queue);
+                    self.try_capture_button(id, button, settings);
                 }
                 EventType::ButtonChanged(button, value, _) => {
                     // Some controllers report buttons as ButtonChanged instead of ButtonPressed
-                    self.try_capture_button_changed(id, button, value, settings, message_queue);
+                    self.try_capture_button_changed(id, button, value, settings);
                 }
                 EventType::AxisChanged(axis, value, _) => {
-                    self.try_capture_axis(id, axis, value, settings, message_queue);
+                    self.try_capture_axis(id, axis, value, settings);
                 }
                 _ => {}
             }
@@ -213,7 +213,6 @@ impl ControllerManager {
         id: GamepadId,
         button: Button,
         settings: &mut Settings,
-        message_queue: &mut MessageQueue,
     ) {
         let Some((pending_id, input)) = self.pending_remap else { return };
 
@@ -223,7 +222,7 @@ impl ControllerManager {
 
         let Some(remap_button) = to_remap_button(button) else { return };
 
-        self.commit_binding(id, input, InputSource::Button(remap_button), settings, message_queue);
+        self.commit_binding(id, input, InputSource::Button(remap_button), settings);
     }
 
     fn try_capture_button_changed(
@@ -232,7 +231,6 @@ impl ControllerManager {
         button: Button,
         value: f32,
         settings: &mut Settings,
-        message_queue: &mut MessageQueue,
     ) {
         let Some((pending_id, input)) = self.pending_remap else { return };
 
@@ -264,7 +262,7 @@ impl ControllerManager {
             }
         };
         
-        self.commit_binding(id, input, source, settings, message_queue);
+        self.commit_binding(id, input, source, settings);
     }
 
     fn try_capture_axis(
@@ -273,7 +271,6 @@ impl ControllerManager {
         axis: Axis,
         value: f32,
         settings: &mut Settings,
-        message_queue: &mut MessageQueue,
     ) {
         let Some((pending_id, input)) = self.pending_remap else { return };
         if pending_id != id || value.abs() < AXIS_THRESHOLD {
@@ -287,7 +284,7 @@ impl ControllerManager {
             InputSource::AxisNegative(remap_axis)
         };
 
-        self.commit_binding(id, input, source, settings, message_queue);
+        self.commit_binding(id, input, source, settings);
     }
 
     fn commit_binding(
@@ -296,7 +293,6 @@ impl ControllerManager {
         input: SnesInput,
         source: InputSource,
         settings: &mut Settings,
-        message_queue: &mut MessageQueue,
     ) {
         let gamepad = self.gilrs.gamepad(id);
         let key = uuid_key(gamepad.uuid());
