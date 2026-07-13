@@ -30,6 +30,7 @@ pub mod ssmp;
 pub mod sysinfo;
 pub mod debug;
 pub mod savestate;
+pub mod coprocessor;
 mod utils;
 
 macro_rules! cpu_bus {

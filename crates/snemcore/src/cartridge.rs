@@ -1,4 +1,4 @@
-use crate::scpu::bus::Address;
+use crate::{coprocessor::{Coprocessor, superfx}, scpu::bus::Address};
 
 // Positions of the start of the header for different memory mappings
 const LOROM_POS: usize = 0x007FC0;
@@ -33,8 +33,7 @@ pub struct Cartridge {
 
     pub extra_ram: bool,
     pub battery: bool,
-    pub coprocessor: bool,
-    pub coprocessor_id: u8,
+    pub coprocessor: Option<Coprocessor>,
 
     pub rom_size_shift: u8, // ROM size is (1 << rom_size) KiB
     pub ram_size_shift: u8, // RAM size is (1 << ram_size) KiB
@@ -49,6 +48,17 @@ pub struct Cartridge {
 }
 
 impl Cartridge {
+    pub fn cycle(&mut self, clocks: usize) -> usize {
+        if let Some(coprocessor) = self.coprocessor.as_mut() {
+            match coprocessor {
+                Coprocessor::SuperFx(sfx) => sfx.cycle(clocks, &self.rom, &mut self.ram),
+                _ => 0,
+            }
+        } else {
+            0
+        }
+    }
+
     pub fn mapping_mode(&self) -> MappingMode {
         self.mapping_mode
     }
@@ -74,8 +84,7 @@ impl Cartridge {
 
             extra_ram: false,
             battery: false,
-            coprocessor: false,
-            coprocessor_id: 0,
+            coprocessor: None,
 
             rom_size_shift: (ROM_SIZE / 1024).trailing_zeros() as u8,
             ram_size_shift: 0,
@@ -155,7 +164,9 @@ impl Cartridge {
             log::warn!("Loading ROM with mapping mode {:?} ({expected_header_mapping_mode}), header says mapping mode {declared_mapping_mode}", cart.mapping_mode);
         }
 
-        (cart.extra_ram, cart.battery, cart.coprocessor) = match header_bytes[0x16] & 0x0F {
+        let has_coprocessor: bool;
+
+        (cart.extra_ram, cart.battery, has_coprocessor) = match header_bytes[0x16] & 0x0F {
             0 => (false, false, false), // $00 - ROM only
             1 => (true, false, false),  // $01 - ROM + RAM
             2 => (true, true, false),   // $02 - ROM + RAM + battery
@@ -165,7 +176,21 @@ impl Cartridge {
             6 => (false, true, true),   // $x6 - ROM + coprocessor + battery
             _ => (false, false, false), // Should not happen?
         };
-        cart.coprocessor_id = header_bytes[0x16] >> 4;
+
+        cart.coprocessor = if has_coprocessor {
+            match header_bytes[0x16] >> 4 {
+                // 0 => CoprocessorKind::Dsp,
+                1 => Some(Coprocessor::SuperFx(superfx::SuperFx::new())),
+                // 2 => CoprocessorKind::ObC1,
+                // 3 => CoprocessorKind::Sa1,
+                // 4 => CoprocessorKind::SDd1,
+                // 5 => CoprocessorKind::Rtc,
+                // x => CoprocessorKind::Other(x),
+                x => return Err(format!("Unimplemented coprocessor {x}")),
+            }
+        } else {
+            None
+        };
         cart.rom_size_shift = header_bytes[0x17];
         cart.ram_size_shift = header_bytes[0x18];
         if cart.extra_ram {
@@ -189,8 +214,7 @@ impl Cartridge {
         log::trace!("  loaded_as: {:?}", cart.mapping_mode);
         log::trace!("  extra_ram: {}", cart.extra_ram);
         log::trace!("  battery: {}", cart.battery);
-        log::trace!("  coprocessor: {}", cart.coprocessor);
-        log::trace!("  coprocessor_id: {}", cart.coprocessor_id);
+        log::trace!("  coprocessor: {}", cart.coprocessor.as_ref().map_or("None", |c| c.label()));
         log::trace!(
             "  rom_size: {} (= {} KiB)",
             cart.rom_size_shift,
@@ -352,12 +376,38 @@ impl Cartridge {
 
     pub fn map_addr(&self, addr: Address) -> usize {
         let addr = addr.to_u32();
-        let mapped_addr = match self.mapping_mode {
-            MappingMode::LoROM => ((addr & 0x7F0000) >> 1) | (addr & 0x7FFF),
-            MappingMode::HiROM => addr & 0x3FFFFF,
-            MappingMode::ExHiROM => (((addr & 0x800000) ^ 0x800000) >> 1) | (addr & 0x3FFFFF),
-        };
-        (mapped_addr as usize) & (self.rom.len() - 1)
+
+        if let Some(coprocessor) = &self.coprocessor {
+            match coprocessor {
+                Coprocessor::SuperFx(_) => {
+                    // Super FX exposes the whole ROM linearly (no 32KB fold) at banks
+                    // $40-$5F and their mirror $C0-$DF, for the GSU's own direct access.
+                    let bank = (addr >> 16) & 0xFF;
+                    if (0x40..=0x5F).contains(&bank) || (0xC0..=0xDF).contains(&bank) {
+                        let mapped_addr = addr & 0x1FFFFF; // linear, unfolded
+
+                        (mapped_addr as usize) & (self.rom.len() - 1)
+                    } else {
+                        let mapped_addr = match self.mapping_mode {
+                            MappingMode::LoROM => ((addr & 0x7F0000) >> 1) | (addr & 0x7FFF),
+                            MappingMode::HiROM => addr & 0x3FFFFF,
+                            MappingMode::ExHiROM => (((addr & 0x800000) ^ 0x800000) >> 1) | (addr & 0x3FFFFF),
+                        };
+
+                        (mapped_addr as usize) & (self.rom.len() - 1)
+                    }
+                }
+                _ => unreachable!("Not implemented yet"),
+            }
+        } else {
+            let mapped_addr = match self.mapping_mode {
+                MappingMode::LoROM => ((addr & 0x7F0000) >> 1) | (addr & 0x7FFF),
+                MappingMode::HiROM => addr & 0x3FFFFF,
+                MappingMode::ExHiROM => (((addr & 0x800000) ^ 0x800000) >> 1) | (addr & 0x3FFFFF),
+            };
+
+            (mapped_addr as usize) & (self.rom.len() - 1)
+        }
     }
 
     // Take an address and map it into an SRAM / extra cart ram vector address.
