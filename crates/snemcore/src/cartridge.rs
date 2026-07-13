@@ -1,5 +1,3 @@
-use log::trace;
-
 use crate::scpu::bus::Address;
 
 // Positions of the start of the header for different memory mappings
@@ -181,63 +179,63 @@ impl Cartridge {
         cart.interrupt_vectors
             .copy_from_slice(&header_bytes[0x20..0x40]);
 
-        trace!("ROM Hash (CRC32) = 0x{:04X}", cart.rom_hash);
-        trace!(
+        log::trace!("ROM Hash (CRC32) = 0x{:04X}", cart.rom_hash);
+        log::trace!(
             "Title: '{}'",
             std::str::from_utf8(&cart.title).unwrap_or("<FAILED TO READ TITLE>")
         );
-        trace!("  fast_rom: {}", cart.fast_rom);
-        trace!("  mapping_mode: {}", declared_mapping_mode);
-        trace!("  loaded_as: {:?}", cart.mapping_mode);
-        trace!("  extra_ram: {}", cart.extra_ram);
-        trace!("  battery: {}", cart.battery);
-        trace!("  coprocessor: {}", cart.coprocessor);
-        trace!("  coprocessor_id: {}", cart.coprocessor_id);
-        trace!(
+        log::trace!("  fast_rom: {}", cart.fast_rom);
+        log::trace!("  mapping_mode: {}", declared_mapping_mode);
+        log::trace!("  loaded_as: {:?}", cart.mapping_mode);
+        log::trace!("  extra_ram: {}", cart.extra_ram);
+        log::trace!("  battery: {}", cart.battery);
+        log::trace!("  coprocessor: {}", cart.coprocessor);
+        log::trace!("  coprocessor_id: {}", cart.coprocessor_id);
+        log::trace!(
             "  rom_size: {} (= {} KiB)",
             cart.rom_size_shift,
             1 << cart.rom_size_shift
         );
-        trace!(
+        log::trace!(
             "  ram_size: {} (= {} KiB)",
             cart.ram_size_shift,
             1 << cart.ram_size_shift
         );
-        trace!("  is_ntsc: {}", cart.is_ntsc);
-        trace!("  padded rom size: 0x{:X}", cart.rom.len());
-        trace!("  vectors:    NAT    EMU ");
-        trace!(
+        log::trace!("  is_ntsc: {}", cart.is_ntsc);
+        log::trace!("  padded rom size: 0x{:X}", cart.rom.len());
+        log::trace!("  vectors:    NAT    EMU ");
+        log::trace!(
             "    COP      ${:02X}{:02X}  ${:02X}{:02X}",
             cart.interrupt_vectors[0x05],
             cart.interrupt_vectors[0x04],
             cart.interrupt_vectors[0x15],
             cart.interrupt_vectors[0x14]
         );
-        trace!(
+        log::trace!(
             "    BRK      ${:02X}{:02X}  .....",
             cart.interrupt_vectors[0x07],
             cart.interrupt_vectors[0x06]
         );
-        trace!(
+        log::trace!(
             "    ABORT    ${:02X}{:02X}  ${:02X}{:02X}",
             cart.interrupt_vectors[0x09],
             cart.interrupt_vectors[0x08],
             cart.interrupt_vectors[0x19],
             cart.interrupt_vectors[0x18]
         );
-        trace!(
+        log::trace!(
             "    NMI      ${:02X}{:02X}  ${:02X}{:02X}",
             cart.interrupt_vectors[0x0B],
             cart.interrupt_vectors[0x0A],
             cart.interrupt_vectors[0x1B],
             cart.interrupt_vectors[0x1A]
         );
-        trace!(
+        log::trace!(
             "    RESET    .....  ${:02X}{:02X}",
             cart.interrupt_vectors[0x1D],
             cart.interrupt_vectors[0x1C]
         );
-        trace!(
+        log::trace!(
             "    IRQ      ${:02X}{:02X}  ${:02X}{:02X}",
             cart.interrupt_vectors[0x0F],
             cart.interrupt_vectors[0x0E],

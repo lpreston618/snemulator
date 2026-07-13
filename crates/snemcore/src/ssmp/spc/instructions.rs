@@ -381,9 +381,6 @@ impl Spc700 {
     }
 
     fn write<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>, addr: u16, value: u8) {
-        if (0x04e0..0x05E0).contains(&addr) {
-            log::debug!("Write to ${addr:04X} w/ {value:02X} at PC = ${:04X}", self.pc);
-        }
         bus.write(addr, value);
     }
 

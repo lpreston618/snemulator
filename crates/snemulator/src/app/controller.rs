@@ -305,13 +305,6 @@ impl ControllerManager {
         settings.set_binding(&key, &name, input, source);
         self.pending_remap = None;
         self.remap_baselines.clear();
-
-        message_queue.push(
-            MessageKind::Info,
-            format!("Bound {} to {}", input.label(), source.label()),
-            std::time::Duration::from_secs_f32(2.0),
-            Some(log::Level::Debug),
-        );
     }
 
     fn assign_to_free_slot(&mut self, id: GamepadId, settings: &Settings, message_queue: &mut MessageQueue) {
@@ -323,7 +316,7 @@ impl ControllerManager {
             message_queue.push(
                 MessageKind::Info,
                 format!("Restored gamepad {} as Player 1", self.gilrs.gamepad(id).name()),
-                std::time::Duration::from_secs_f32(3.0),
+                std::time::Duration::from_secs(3),
                 Some(log::Level::Debug),
             );
 
@@ -334,7 +327,7 @@ impl ControllerManager {
                     message_queue.push(
                         MessageKind::Info,
                         format!("Set gamepad {} as Player 2", self.gilrs.gamepad(p2_id).name()),
-                        std::time::Duration::from_secs_f32(3.0),
+                        std::time::Duration::from_secs(3),
                         Some(log::Level::Debug),
                     );
                 }
@@ -345,7 +338,7 @@ impl ControllerManager {
             message_queue.push(
                 MessageKind::Info,
                 format!("Restored gamepad {} as Player 2", self.gilrs.gamepad(id).name()),
-                std::time::Duration::from_secs_f32(3.0),
+                std::time::Duration::from_secs(3),
                 Some(log::Level::Debug),
             );
 
@@ -356,7 +349,7 @@ impl ControllerManager {
                     message_queue.push(
                         MessageKind::Info,
                         format!("Set gamepad {} as Player 1", self.gilrs.gamepad(p1_id).name()),
-                        std::time::Duration::from_secs_f32(3.0),
+                        std::time::Duration::from_secs(3),
                         Some(log::Level::Debug),
                     );
                 }
@@ -368,7 +361,7 @@ impl ControllerManager {
             message_queue.push(
                 MessageKind::Info,
                 format!("Added gamepad {} as Player 1", self.gilrs.gamepad(id).name()),
-                std::time::Duration::from_secs_f32(3.0),
+                std::time::Duration::from_secs(3),
                 Some(log::Level::Debug),
             );
         } else if self.p2_controller.is_none() {
@@ -376,7 +369,7 @@ impl ControllerManager {
             message_queue.push(
                 MessageKind::Info,
                 format!("Added gamepad {} as Player 2", self.gilrs.gamepad(id).name()),
-                std::time::Duration::from_secs_f32(3.0),
+                std::time::Duration::from_secs(3),
                 Some(log::Level::Debug),
             );
         }
@@ -389,7 +382,7 @@ impl ControllerManager {
             message_queue.push(
                 MessageKind::Info,
                 format!("Gamepad {} disconnected from Player 1", self.gilrs.gamepad(id).name()),
-                std::time::Duration::from_secs_f32(3.0),
+                std::time::Duration::from_secs(3),
                 Some(log::Level::Debug),
             );
         } else if Some(id) == self.p2_controller {
@@ -398,7 +391,7 @@ impl ControllerManager {
             message_queue.push(
                 MessageKind::Info,
                 format!("Gamepad {} disconnected from Player 2", self.gilrs.gamepad(id).name()),
-                std::time::Duration::from_secs_f32(3.0),
+                std::time::Duration::from_secs(3),
                 Some(log::Level::Debug),
             );
         }

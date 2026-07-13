@@ -357,7 +357,7 @@ impl SnemulatorApp {
         self.message_queue.push(
             MessageKind::Success,
             "Applied new settings",
-            Duration::from_secs_f32(3.0),
+            Duration::from_secs(3),
             Some(log::Level::Debug),
         );
     }
@@ -684,7 +684,7 @@ impl SnemulatorApp {
                     self.message_queue.push(
                         MessageKind::Error,
                         format!("Failed to load ROM '{}': {e}", file_name),
-                        Duration::from_secs_f32(5.0),
+                        Duration::from_secs(5),
                         Some(log::Level::Error),
                     );
                 }
@@ -697,14 +697,14 @@ impl SnemulatorApp {
                     self.message_queue.push(
                         MessageKind::Error,
                         format!("Failed to load state: {e}"),
-                        Duration::from_secs_f32(5.0),
+                        Duration::from_secs(5),
                         Some(log::Level::Error),
                     );
                 } else {
                     self.message_queue.push(
                         MessageKind::Success,
                         format!("Loaded save state slot {slot}"),
-                        Duration::from_secs_f32(3.0),
+                        Duration::from_secs(3),
                         Some(log::Level::Info),
                     );
                 }
@@ -714,14 +714,14 @@ impl SnemulatorApp {
                     self.message_queue.push(
                         MessageKind::Error,
                         format!("Failed to save state: {e}"),
-                        Duration::from_secs_f32(5.0),
+                        Duration::from_secs(5),
                         Some(log::Level::Error),
                     );
                 } else {
                     self.message_queue.push(
                         MessageKind::Success,
                         format!("Saved state to slot {slot}"),
-                        Duration::from_secs_f32(3.0),
+                        Duration::from_secs(3),
                         Some(log::Level::Info),
                     );
                 }
@@ -738,7 +738,7 @@ impl SnemulatorApp {
                         self.message_queue.push(
                             MessageKind::Error,
                             format!("Could not load rom '{}': {e}", rom_path.to_string_lossy()),
-                            Duration::from_secs_f32(5.0),
+                            Duration::from_secs(5),
                             Some(log::Level::Error),
                         );
                     }
@@ -910,7 +910,7 @@ impl SnemulatorApp {
             self.message_queue.push(
                 MessageKind::Error,
                 format!("Failed to load rom: {e}"),
-                Duration::from_secs_f32(5.0),
+                Duration::from_secs(5),
                 Some(log::Level::Error),
             );
         }
@@ -985,7 +985,12 @@ impl SnemulatorApp {
             title: self.snem_core.get_loaded_rom_title().unwrap(),
         });
 
-        log::info!("Loaded rom '{}'", rom_name);
+        self.message_queue.push(
+            MessageKind::Success,
+            format!("Loaded ROM '{rom_name}'"),
+            Duration::from_secs(3),
+            Some(log::Level::Info),
+        );
 
         self.load_save_ram();
 
@@ -1001,21 +1006,43 @@ impl SnemulatorApp {
             return;
         };
 
+        if !path.exists() {
+            self.message_queue.push(
+                MessageKind::Info,
+                "No save data detected",
+                Duration::from_secs(3),
+                Some(log::Level::Info),
+            );
+            return;
+        }
+
         let save_data = match std::fs::read(&path) {
             Ok(data) => data,
             Err(e) => {
-                log::error!(
-                    "Failed to read save data from file '{}': {e}",
-                    path.to_string_lossy()
+                self.message_queue.push(
+                    MessageKind::Error,
+                    format!("Failed to read save data from file '{}': {e}", path.to_string_lossy()),
+                    Duration::from_secs(5),
+                    Some(log::Level::Error),
                 );
                 return;
             }
         };
 
         if let Err(e) = self.snem_core.load_save_ram(save_data) {
-            log::warn!("Could not load previous save: {e}");
+            self.message_queue.push(
+                MessageKind::Error,
+                format!("Could not load previous save: {e}"),
+                Duration::from_secs(5),
+                Some(log::Level::Warn),
+            );
         } else {
-            log::info!("Loaded previous save from '{}'", path.to_string_lossy());
+            self.message_queue.push(
+                MessageKind::Success,
+                format!("Loaded save from '{}'", path.to_string_lossy()),
+                Duration::from_secs(3),
+                Some(log::Level::Info),
+            );
         }
     }
 
