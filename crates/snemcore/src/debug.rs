@@ -74,7 +74,7 @@ pub trait DebugHarness {
     fn on_hdma_init(&mut self, dma: &mut DmaController, channel: usize) {}
     /// Called after and H-DMA channel starts a new entry in its table
     fn on_hdma_load_entry(&mut self, dma: &mut DmaController, channel: usize) {}
-    /// Called after a single byte is transferred from `src_addr` to `dst_addr` over the given H-DMA channel.
+    /// Called after a multi-byte transfer pattern is completed over the given H-DMA channel.
     fn on_hdma_transfer(&mut self, dma: &mut DmaController, channel: usize, src_addr: Address, dst_addr: Address, value: u8) {}
     /// Called after an H-DMA transfer completes on the given channel (when all table entries have been processed)
     fn on_hdma_end(&mut self, dma: &mut DmaController, channel: usize) {}

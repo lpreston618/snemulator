@@ -646,27 +646,48 @@ impl Ppu5C7x {
             let bg3_x = (shifted_x & 7) | (((self.x as u16 - 8) & (!7)) + (bg3.scroll_x & (!7)));
             let bg3_y = bg3.scroll_y;
 
-            let bg3_tile_x = bg3_x / 8;
-            let bg3_tile_y = bg3_y / 8;
+            if matches!(bus.ppu_regs.bg_mode, BgMode::Mode4) {
+                let bg3_tile_x = bg3_x / 8;
+                let bg3_tile_y = bg3_y / 8;
 
-            let tilemap_offset_x = Self::tilemap_offset(bg3.tilemap_cnt_x, bg3.tilemap_cnt_y, bg3_tile_x, bg3_tile_y);
-            let tilemap_offset_y = Self::tilemap_offset(bg3.tilemap_cnt_x, bg3.tilemap_cnt_y, bg3_tile_x, bg3_tile_y + 1);
+                let tilemap_offset = Self::tilemap_offset(bg3.tilemap_cnt_x, bg3.tilemap_cnt_y, bg3_tile_x, bg3_tile_y);
 
-            let bg3_entry_addr_x = (bg3.tilemap_base_addr + ((bg3_tile_y & 0x1F) << 5) + (bg3_tile_x & 0x1F) + tilemap_offset_x) & 0x7FFF;
-            let bg3_entry_addr_y = (bg3.tilemap_base_addr + (((bg3_tile_y + 1) & 0x1F) << 5) + (bg3_tile_x & 0x1F) + tilemap_offset_y) & 0x7FFF;
-        
-            let scroll_x_entry = TilemapScrollEntry::from_word(bus.vram[bg3_entry_addr_x as usize]);
-            let scroll_y_entry = TilemapScrollEntry::from_word(bus.vram[bg3_entry_addr_y as usize]);
+                let bg3_entry_addr = (bg3.tilemap_base_addr + ((bg3_tile_y & 0x1F) << 5) + (bg3_tile_x & 0x1F) + tilemap_offset) & 0x7FFF;
 
-            let do_x_scroll = if bg == 0 { scroll_x_entry.bg1_offset_en } else { scroll_x_entry.bg2_offset_en };
-            let do_y_scroll = if bg == 0 { scroll_y_entry.bg1_offset_en } else { scroll_y_entry.bg2_offset_en };
+                let scroll_entry = TilemapScrollEntry::from_word(bus.vram[bg3_entry_addr as usize]);
 
-            if do_x_scroll {
-                shifted_x = (shifted_x & 7) | ((self.x as u16 & (!7)) + (scroll_x_entry.scroll & (!7)));
-            }
+                let do_scroll = if bg == 0 { scroll_entry.bg1_offset_en } else { scroll_entry.bg2_offset_en };
 
-            if do_y_scroll {
-                shifted_y = self.y as u16 + scroll_y_entry.scroll;
+                if do_scroll {
+                    if scroll_entry.mode4_dir {
+                        shifted_y = self.y as u16 + scroll_entry.scroll;
+                    } else {
+                        shifted_x = (shifted_x & 7) | ((self.x as u16 & (!7)) + (scroll_entry.scroll & (!7)));
+                    }
+                }
+            } else {
+                let bg3_tile_x = bg3_x / 8;
+                let bg3_tile_y = bg3_y / 8;
+    
+                let tilemap_offset_x = Self::tilemap_offset(bg3.tilemap_cnt_x, bg3.tilemap_cnt_y, bg3_tile_x, bg3_tile_y);
+                let tilemap_offset_y = Self::tilemap_offset(bg3.tilemap_cnt_x, bg3.tilemap_cnt_y, bg3_tile_x, bg3_tile_y + 1);
+    
+                let bg3_entry_addr_x = (bg3.tilemap_base_addr + ((bg3_tile_y & 0x1F) << 5) + (bg3_tile_x & 0x1F) + tilemap_offset_x) & 0x7FFF;
+                let bg3_entry_addr_y = (bg3.tilemap_base_addr + (((bg3_tile_y + 1) & 0x1F) << 5) + (bg3_tile_x & 0x1F) + tilemap_offset_y) & 0x7FFF;
+            
+                let scroll_x_entry = TilemapScrollEntry::from_word(bus.vram[bg3_entry_addr_x as usize]);
+                let scroll_y_entry = TilemapScrollEntry::from_word(bus.vram[bg3_entry_addr_y as usize]);
+    
+                let do_x_scroll = if bg == 0 { scroll_x_entry.bg1_offset_en } else { scroll_x_entry.bg2_offset_en };
+                let do_y_scroll = if bg == 0 { scroll_y_entry.bg1_offset_en } else { scroll_y_entry.bg2_offset_en };
+    
+                if do_x_scroll {
+                    shifted_x = (shifted_x & 7) | ((self.x as u16 & (!7)) + (scroll_x_entry.scroll & (!7)));
+                }
+    
+                if do_y_scroll {
+                    shifted_y = self.y as u16 + scroll_y_entry.scroll;
+                }
             }
 
             shifted_x &= scroll_range;
@@ -674,6 +695,88 @@ impl Ppu5C7x {
         }
 
         (shifted_x, shifted_y)
+    }
+
+    #[inline(always)]
+    fn apply_hires_scroll<H: DebugHarness>(
+        &self,
+        bus: &PpuBus<H>,
+        bg: usize,
+        hoffset: u16,  // already computed: (hpixel + hscroll) & (hsize - 1)
+        voffset: u16,  // already computed: (vpixel + vscroll) & (vsize - 1)
+        hsize: u16,    // e.g. 512 or 1024
+        vsize: u16,
+    ) -> (u16, u16) {
+        // Mode 6 is always Mode 2-style OPT (two entries: one for X, one for Y).
+        // The first 16 hi-res pixels (== 1 tile-width in hires) are exempt from OPT.
+        let hpixel = (self.x as u16) << 1;
+
+        if hpixel < 16 {
+            return (hoffset, voffset);
+        }
+
+        let bg3 = &bus.ppu_regs.bg_settings[2];
+
+        // Compute which BG3 tile column to fetch the OPT entry from.
+        // In hi-res, one screen tile is 16 hires pixels wide, but BG3 tiles
+        // are always 8px in BG3's own coordinate space.
+        // We want the BG3 tile that corresponds to the current screen tile minus one.
+        //
+        // (hpixel - 16) drops the exempt column; align to 16-px hires tile boundary,
+        // then convert to a BG3 8px tile index by dividing by 8 (>> 3).
+        let cur_hires_tile_base = (hpixel - 16) & !15u16; // align to 16-px boundary
+        let bg3_hires_x = cur_hires_tile_base + (bg3.scroll_x & !7u16);
+        // Each BG3 tile is 8px in BG3-space, but our coordinate is in hires-space.
+        // Divide by 2 to get lores-equivalent, then by 8 to get tile index.
+        let bg3_tile_x = bg3_hires_x >> 4; // == bg3_hires_x / 16
+        let bg3_tile_y = bg3.scroll_y >> 3;
+
+        let tilemap_offset_x = Self::tilemap_offset(
+            bg3.tilemap_cnt_x, bg3.tilemap_cnt_y,
+            bg3_tile_x, bg3_tile_y,
+        );
+        let tilemap_offset_y = Self::tilemap_offset(
+            bg3.tilemap_cnt_x, bg3.tilemap_cnt_y,
+            bg3_tile_x, bg3_tile_y + 1,
+        );
+
+        let bg3_entry_addr_x = (bg3.tilemap_base_addr
+            + ((bg3_tile_y & 0x1F) << 5)
+            + (bg3_tile_x & 0x1F)
+            + tilemap_offset_x) & 0x7FFF;
+
+        let bg3_entry_addr_y = (bg3.tilemap_base_addr
+            + (((bg3_tile_y + 1) & 0x1F) << 5)
+            + (bg3_tile_x & 0x1F)
+            + tilemap_offset_y) & 0x7FFF;
+
+        let scroll_x_entry = TilemapScrollEntry::from_word(bus.vram[bg3_entry_addr_x as usize]);
+        let scroll_y_entry = TilemapScrollEntry::from_word(bus.vram[bg3_entry_addr_y as usize]);
+
+        // Mode 6 only has BG1, so only bg1_offset_en is meaningful here.
+        // bg == 0 is always true in mode 6, but keep the guard for safety.
+        let do_x_scroll = if bg == 0 { scroll_x_entry.bg1_offset_en } else { false };
+        let do_y_scroll = if bg == 0 { scroll_y_entry.bg1_offset_en } else { false };
+
+        let mut new_hoffset = hoffset;
+        let mut new_voffset = voffset;
+
+        if do_x_scroll {
+            // Replace the tile-aligned part of hoffset with the OPT value,
+            // keeping the sub-tile pixel bits intact.
+            // scroll_x_entry.scroll is a lores value — scale to hires by << 1.
+            let opt_x_hires = scroll_x_entry.scroll << 1;
+            new_hoffset = (hoffset & 15) | (cur_hires_tile_base + (opt_x_hires & !15u16));
+        }
+
+        if do_y_scroll {
+            new_voffset = (self.y as u16) + scroll_y_entry.scroll;
+        }
+
+        new_hoffset &= hsize - 1;
+        new_voffset &= vsize - 1;
+
+        (new_hoffset, new_voffset)
     }
 
     /// Renders a tile to a BG scanline buffer. Returns the number of dots rendered.
@@ -901,8 +1004,14 @@ impl Ppu5C7x {
         let hsize = width_hires << tile_size_bit << screen_size_x_bit;
         let vsize = width_hires << tile_size_bit << screen_size_y_bit;
 
-        let hoffset = hpixel.wrapping_add(hscroll) & (hsize - 1);
-        let voffset = vpixel.wrapping_add(vscroll) & (vsize - 1);
+        let hoffset = (hpixel + hscroll) & (hsize - 1);
+        let voffset = (vpixel + vscroll) & (vsize - 1);
+
+        let (hoffset, voffset) = if bg_render_settings.use_offset_per_tile {
+            self.apply_hires_scroll(bus, bg, hoffset, voffset, hsize, vsize)
+        } else {
+            (hoffset, voffset)
+        };
 
         let htiles = 4u16;
         let vtiles = 3u16 + tile_size_bit;
@@ -1246,34 +1355,38 @@ impl Ppu5C7x {
             }
         };
 
-        let r = main_col.r as u16;
-        let g = main_col.g as u16;
-        let b = main_col.b as u16;
+        let r = main_col.r as i16;
+        let g = main_col.g as i16;
+        let b = main_col.b as i16;
 
         let (r, g, b) = match bus.ppu_regs.cmath_operator {
             CMathOperator::Add => (
-                r + operand.r as u16,
-                g + operand.g as u16,
-                b + operand.b as u16,
+                r + operand.r as i16,
+                g + operand.g as i16,
+                b + operand.b as i16,
             ),
             CMathOperator::Subtract => (
-                r.saturating_sub(operand.r as u16),
-                g.saturating_sub(operand.g as u16),
-                b.saturating_sub(operand.b as u16),
+                r - operand.r as i16,
+                g - operand.g as i16,
+                b - operand.b as i16,
             ),
         };
 
+        let r = r.clamp(0, 255) as u8;
+        let g = g.clamp(0, 255) as u8;
+        let b = b.clamp(0, 255) as u8;
+
         let color = if bus.ppu_regs.cmath_half && !force_no_div2 {
             Color::new(
-                ((r >> 1) & 0xF8) as u8,
-                ((g >> 1) & 0xF8) as u8,
-                ((b >> 1) & 0xF8) as u8,
+                (r >> 1) & 0xF8,
+                (g >> 1) & 0xF8,
+                (b >> 1) & 0xF8,
             )
         } else {
             Color::new(
-                (r & 0xF8) as u8,
-                (g & 0xF8) as u8,
-                (b & 0xF8) as u8,
+                r & 0xF8,
+                g & 0xF8,
+                b & 0xF8,
             )
         };
 
