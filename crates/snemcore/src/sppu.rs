@@ -284,7 +284,7 @@ impl Ppu5C7x {
     }
 
     fn draw_dot<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
-        if bus.ppu_regs.in_fblank{
+        if bus.ppu_regs.in_fblank {
             self.set_pixel(bus, Color::BLACK, Some(Color::BLACK), false);
             self.last_main_screen_color = Color::BLACK;
             self.last_sub_screen_color = Some(Color::BLACK);
@@ -308,57 +308,131 @@ impl Ppu5C7x {
         // CGRAM Base addresses and color depths for each BG (1,2,3, and 4) for each BG mode.
         // `None` indicates that the BG layer is not used in that BG mode.
         const MODE0_BG_SETTINGS: [Option<BgRenderSettings>; 4] = [
-            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp2, use_offset_per_tile: false }),
-            Some(BgRenderSettings { cgram_base: 0x20, color_depth: ColorDepth::Bpp2, use_offset_per_tile: false }),
-            Some(BgRenderSettings { cgram_base: 0x40, color_depth: ColorDepth::Bpp2, use_offset_per_tile: false }),
-            Some(BgRenderSettings { cgram_base: 0x60, color_depth: ColorDepth::Bpp2, use_offset_per_tile: false }),
+            Some(BgRenderSettings {
+                cgram_base: 0x00,
+                color_depth: ColorDepth::Bpp2,
+                use_offset_per_tile: false,
+            }),
+            Some(BgRenderSettings {
+                cgram_base: 0x20,
+                color_depth: ColorDepth::Bpp2,
+                use_offset_per_tile: false,
+            }),
+            Some(BgRenderSettings {
+                cgram_base: 0x40,
+                color_depth: ColorDepth::Bpp2,
+                use_offset_per_tile: false,
+            }),
+            Some(BgRenderSettings {
+                cgram_base: 0x60,
+                color_depth: ColorDepth::Bpp2,
+                use_offset_per_tile: false,
+            }),
         ];
         const MODE1_BG_SETTINGS: [Option<BgRenderSettings>; 4] = [
-            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp4, use_offset_per_tile: false }),
-            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp4, use_offset_per_tile: false }),
-            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp2, use_offset_per_tile: false }),
+            Some(BgRenderSettings {
+                cgram_base: 0x00,
+                color_depth: ColorDepth::Bpp4,
+                use_offset_per_tile: false,
+            }),
+            Some(BgRenderSettings {
+                cgram_base: 0x00,
+                color_depth: ColorDepth::Bpp4,
+                use_offset_per_tile: false,
+            }),
+            Some(BgRenderSettings {
+                cgram_base: 0x00,
+                color_depth: ColorDepth::Bpp2,
+                use_offset_per_tile: false,
+            }),
             None,
         ];
         const MODE2_BG_SETTINGS: [Option<BgRenderSettings>; 4] = [
-            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp4, use_offset_per_tile: true }),
-            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp4, use_offset_per_tile: true }),
+            Some(BgRenderSettings {
+                cgram_base: 0x00,
+                color_depth: ColorDepth::Bpp4,
+                use_offset_per_tile: true,
+            }),
+            Some(BgRenderSettings {
+                cgram_base: 0x00,
+                color_depth: ColorDepth::Bpp4,
+                use_offset_per_tile: true,
+            }),
             None,
             None,
         ];
         const MODE3_BG_SETTINGS: [Option<BgRenderSettings>; 4] = [
-            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp8, use_offset_per_tile: false }),
-            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp4, use_offset_per_tile: false }),
+            Some(BgRenderSettings {
+                cgram_base: 0x00,
+                color_depth: ColorDepth::Bpp8,
+                use_offset_per_tile: false,
+            }),
+            Some(BgRenderSettings {
+                cgram_base: 0x00,
+                color_depth: ColorDepth::Bpp4,
+                use_offset_per_tile: false,
+            }),
             None,
             None,
         ];
         const MODE4_BG_SETTINGS: [Option<BgRenderSettings>; 4] = [
-            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp8, use_offset_per_tile: true }),
-            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp2, use_offset_per_tile: true }),
+            Some(BgRenderSettings {
+                cgram_base: 0x00,
+                color_depth: ColorDepth::Bpp8,
+                use_offset_per_tile: true,
+            }),
+            Some(BgRenderSettings {
+                cgram_base: 0x00,
+                color_depth: ColorDepth::Bpp2,
+                use_offset_per_tile: true,
+            }),
             None,
             None,
         ];
         const MODE5_BG_SETTINGS: [Option<BgRenderSettings>; 4] = [
-            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp4, use_offset_per_tile: false }),
-            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp2, use_offset_per_tile: false }),
+            Some(BgRenderSettings {
+                cgram_base: 0x00,
+                color_depth: ColorDepth::Bpp4,
+                use_offset_per_tile: false,
+            }),
+            Some(BgRenderSettings {
+                cgram_base: 0x00,
+                color_depth: ColorDepth::Bpp2,
+                use_offset_per_tile: false,
+            }),
             None,
             None,
         ];
         const MODE6_BG_SETTINGS: [Option<BgRenderSettings>; 4] = [
-            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp4, use_offset_per_tile: true }),
+            Some(BgRenderSettings {
+                cgram_base: 0x00,
+                color_depth: ColorDepth::Bpp4,
+                use_offset_per_tile: true,
+            }),
             None,
             None,
             None,
         ];
         const MODE7_BG_SETTINGS: [Option<BgRenderSettings>; 4] = [
-            Some(BgRenderSettings { cgram_base: 0x00, color_depth: ColorDepth::Bpp8, use_offset_per_tile: false }),
+            Some(BgRenderSettings {
+                cgram_base: 0x00,
+                color_depth: ColorDepth::Bpp8,
+                use_offset_per_tile: false,
+            }),
             None,
             None,
             None,
         ];
 
         let bg_render_settings = [
-            MODE0_BG_SETTINGS, MODE1_BG_SETTINGS, MODE2_BG_SETTINGS, MODE3_BG_SETTINGS,
-            MODE4_BG_SETTINGS, MODE5_BG_SETTINGS, MODE6_BG_SETTINGS, MODE7_BG_SETTINGS,
+            MODE0_BG_SETTINGS,
+            MODE1_BG_SETTINGS,
+            MODE2_BG_SETTINGS,
+            MODE3_BG_SETTINGS,
+            MODE4_BG_SETTINGS,
+            MODE5_BG_SETTINGS,
+            MODE6_BG_SETTINGS,
+            MODE7_BG_SETTINGS,
         ][BGMODE];
 
         if BGMODE == 5 || BGMODE == 6 {
@@ -371,11 +445,31 @@ impl Ppu5C7x {
 
         let win_signals = Self::layer_window_signals(regs);
 
-        let obj_main_col = if win_signals.obj_main { self.scanline_sprite_data[self.x] } else { None };
-        let bg1_main_col = if win_signals.bg_main[0] { self.scanline_bg_data[0][self.x] } else { None };
-        let bg2_main_col = if win_signals.bg_main[1] { self.scanline_bg_data[1][self.x] } else { None };
-        let bg3_main_col = if win_signals.bg_main[2] { self.scanline_bg_data[2][self.x] } else { None };
-        let bg4_main_col = if win_signals.bg_main[3] { self.scanline_bg_data[3][self.x] } else { None };
+        let obj_main_col = if win_signals.obj_main {
+            self.scanline_sprite_data[self.x]
+        } else {
+            None
+        };
+        let bg1_main_col = if win_signals.bg_main[0] {
+            self.scanline_bg_data[0][self.x]
+        } else {
+            None
+        };
+        let bg2_main_col = if win_signals.bg_main[1] {
+            self.scanline_bg_data[1][self.x]
+        } else {
+            None
+        };
+        let bg3_main_col = if win_signals.bg_main[2] {
+            self.scanline_bg_data[2][self.x]
+        } else {
+            None
+        };
+        let bg4_main_col = if win_signals.bg_main[3] {
+            self.scanline_bg_data[3][self.x]
+        } else {
+            None
+        };
 
         // Main color layer `None` indicates all layers were transparent (i.e. the 'Back' layer)
         let main_col_layer = if BGMODE == 0 {
@@ -395,16 +489,9 @@ impl Ppu5C7x {
                 bus.ppu_regs.bg3_mode1_priority,
             )
         } else if BGMODE == 2 || BGMODE == 3 || BGMODE == 4 || BGMODE == 5 {
-            Self::bg_modes2thru5_choose_priority_color(
-                obj_main_col,
-                bg1_main_col,
-                bg2_main_col
-            )
+            Self::bg_modes2thru5_choose_priority_color(obj_main_col, bg1_main_col, bg2_main_col)
         } else if BGMODE == 6 {
-            Self::bg_mode6_choose_priority_color(
-                obj_main_col,
-                bg1_main_col,
-            )
+            Self::bg_mode6_choose_priority_color(obj_main_col, bg1_main_col)
         } else {
             None
         };
@@ -422,17 +509,41 @@ impl Ppu5C7x {
             }
         };
 
-        let obj_sub_col = if win_signals.obj_sub { self.scanline_sprite_data[self.x] } else { None };
+        let obj_sub_col = if win_signals.obj_sub {
+            self.scanline_sprite_data[self.x]
+        } else {
+            None
+        };
         let bg1_sub_col = if win_signals.bg_sub[0] {
             // Hi-res BG modes use separate extra data buffers for sub color (for BGs that are used)
-            if BGMODE == 5 || BGMODE == 6 { self.bg1_extra_data[self.x] } else { self.scanline_bg_data[0][self.x] }
-        } else { None };
+            if BGMODE == 5 || BGMODE == 6 {
+                self.bg1_extra_data[self.x]
+            } else {
+                self.scanline_bg_data[0][self.x]
+            }
+        } else {
+            None
+        };
         let bg2_sub_col = if win_signals.bg_sub[1] {
             // Hi-res BG modes use separate extra data buffers for sub color (for BGs that are used)
-            if BGMODE == 5 || BGMODE == 6 { self.bg2_extra_data[self.x] } else { self.scanline_bg_data[1][self.x] }
-        } else { None };
-        let bg3_sub_col = if win_signals.bg_sub[2] { self.scanline_bg_data[2][self.x] } else { None };
-        let bg4_sub_col = if win_signals.bg_sub[3] { self.scanline_bg_data[3][self.x] } else { None };
+            if BGMODE == 5 || BGMODE == 6 {
+                self.bg2_extra_data[self.x]
+            } else {
+                self.scanline_bg_data[1][self.x]
+            }
+        } else {
+            None
+        };
+        let bg3_sub_col = if win_signals.bg_sub[2] {
+            self.scanline_bg_data[2][self.x]
+        } else {
+            None
+        };
+        let bg4_sub_col = if win_signals.bg_sub[3] {
+            self.scanline_bg_data[3][self.x]
+        } else {
+            None
+        };
 
         let sub_col_layer = if BGMODE == 0 {
             Self::bg_mode0_choose_priority_color(
@@ -451,16 +562,9 @@ impl Ppu5C7x {
                 bus.ppu_regs.bg3_mode1_priority,
             )
         } else if BGMODE == 2 || BGMODE == 3 || BGMODE == 4 || BGMODE == 5 {
-            Self::bg_modes2thru5_choose_priority_color(
-                obj_sub_col,
-                bg1_sub_col,
-                bg2_sub_col
-            )
+            Self::bg_modes2thru5_choose_priority_color(obj_sub_col, bg1_sub_col, bg2_sub_col)
         } else if BGMODE == 6 {
-            Self::bg_mode6_choose_priority_color(
-                obj_sub_col,
-                bg1_sub_col,
-            )
+            Self::bg_mode6_choose_priority_color(obj_sub_col, bg1_sub_col)
         } else {
             None
         };
@@ -478,33 +582,58 @@ impl Ppu5C7x {
             Some(ColorLayer::Bg2) => bus.ppu_regs.bg_settings[1].cmath_en,
             Some(ColorLayer::Bg3) => bus.ppu_regs.bg_settings[2].cmath_en,
             Some(ColorLayer::Bg4) => bus.ppu_regs.bg_settings[3].cmath_en,
-            Some(ColorLayer::Obj) => bus.ppu_regs.obj_settings.cmath_en && obj_main_col.unwrap().palette >= 4,
+            Some(ColorLayer::Obj) => {
+                bus.ppu_regs.obj_settings.cmath_en && obj_main_col.unwrap().palette >= 4
+            }
             None => bus.ppu_regs.back_cmath_en,
         } && !win_signals.color_sub;
 
-        self.set_pixel(
-            bus,
-            main_col,
-            sub_col,
-            cmath_en,
-        );
+        self.set_pixel(bus, main_col, sub_col, cmath_en);
 
         self.last_main_screen_color = main_col;
         self.last_sub_screen_color = sub_col;
         self.last_main_screen_pixel_did_cmath = cmath_en;
     }
 
+    fn draw_dot_mode_7<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
+        let (tx, ty) = Self::apply_mode_7_transform(bus, self.x, self.y);
+        
+        // TODO: blit to scanline (probably move cmath to draw_dot_mode<>)
+    }
+
+    fn apply_mode_7_transform<H: DebugHarness>(
+        bus: &PpuBus<H>,
+        sx: usize,
+        sy: usize,
+    ) -> (usize, usize) {
+        let regs = &bus.ppu_regs;
+        let offset_x = sx + regs.m7_scroll_x as usize - regs.m7_center_x as usize;
+        let offset_y = sy + regs.m7_scroll_y as usize - regs.m7_center_y as usize;
+        let a = regs.m7_matrix_a as usize;
+        let b = regs.m7_matrix_b as usize;
+        let c = regs.m7_matrix_c as usize;
+        let d = regs.m7_matrix_d as usize;
+
+        let mut tx = a * offset_x + b * offset_y;
+        let mut ty = c * offset_x + d * offset_y;
+
+        tx >>= 8;
+        ty >>= 8;
+
+        (tx, ty)
+    }
+
     #[inline(always)]
     fn set_pixel<H: DebugHarness>(
-        &self, 
-        bus: &mut PpuBus<H>, 
+        &self,
+        bus: &mut PpuBus<H>,
         main_color: Color,
         sub_color: Option<Color>,
         cmath_en: bool,
     ) {
         const BYTES_PER_PIXEL: usize = 4;
         const PIXELS_PER_ROW: usize = 512;
-        
+
         let true_hi_res = matches!(bus.ppu_regs.bg_mode, BgMode::Mode5 | BgMode::Mode6);
         let hi_res = bus.ppu_regs.hi_res_en || true_hi_res;
         let interlace = bus.ppu_regs.screen_interlace_en;
@@ -534,7 +663,7 @@ impl Ppu5C7x {
         };
 
         let main_color = Self::apply_brightness(main_color, bus.ppu_regs.screen_brightness);
-        let sub_color  = Self::apply_brightness(sub_color,  bus.ppu_regs.screen_brightness);
+        let sub_color = Self::apply_brightness(sub_color, bus.ppu_regs.screen_brightness);
 
         if interlace && hi_res {
             let row = 2 * y + field;
@@ -542,28 +671,28 @@ impl Ppu5C7x {
             let idx1 = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * row) + (col + 0));
             let idx2 = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * row) + (col + 1));
 
-            bus.frame_buffer[idx1..idx1+4].copy_from_slice(&sub_color.to_rgba_bytes());
-            bus.frame_buffer[idx2..idx2+4].copy_from_slice(&main_color.to_rgba_bytes());
+            bus.frame_buffer[idx1..idx1 + 4].copy_from_slice(&sub_color.to_rgba_bytes());
+            bus.frame_buffer[idx2..idx2 + 4].copy_from_slice(&main_color.to_rgba_bytes());
         } else if interlace {
             let row = 2 * y + field;
             let col = 2 * x;
             let idx1 = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * row) + (col + 0));
             let idx2 = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * row) + (col + 1));
 
-            bus.frame_buffer[idx1..idx1+4].copy_from_slice(&main_color.to_rgba_bytes());
-            bus.frame_buffer[idx2..idx2+4].copy_from_slice(&main_color.to_rgba_bytes());
+            bus.frame_buffer[idx1..idx1 + 4].copy_from_slice(&main_color.to_rgba_bytes());
+            bus.frame_buffer[idx2..idx2 + 4].copy_from_slice(&main_color.to_rgba_bytes());
         } else if hi_res {
             let row = 2 * y;
             let col = 2 * x;
-            let sub1  = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * (row + 0)) + (col + 0));
-            let sub2  = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * (row + 1)) + (col + 0));
+            let sub1 = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * (row + 0)) + (col + 0));
+            let sub2 = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * (row + 1)) + (col + 0));
             let main1 = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * (row + 0)) + (col + 1));
             let main2 = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * (row + 1)) + (col + 1));
 
-            bus.frame_buffer[sub1..sub1+4].copy_from_slice(&sub_color.to_rgba_bytes());
-            bus.frame_buffer[sub2..sub2+4].copy_from_slice(&sub_color.to_rgba_bytes());
-            bus.frame_buffer[main1..main1+4].copy_from_slice(&main_color.to_rgba_bytes());
-            bus.frame_buffer[main2..main2+4].copy_from_slice(&main_color.to_rgba_bytes());
+            bus.frame_buffer[sub1..sub1 + 4].copy_from_slice(&sub_color.to_rgba_bytes());
+            bus.frame_buffer[sub2..sub2 + 4].copy_from_slice(&sub_color.to_rgba_bytes());
+            bus.frame_buffer[main1..main1 + 4].copy_from_slice(&main_color.to_rgba_bytes());
+            bus.frame_buffer[main2..main2 + 4].copy_from_slice(&main_color.to_rgba_bytes());
         } else {
             let row = 2 * y;
             let col = 2 * x;
@@ -572,22 +701,35 @@ impl Ppu5C7x {
             let idx3 = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * (row + 1)) + (col + 0));
             let idx4 = BYTES_PER_PIXEL * ((PIXELS_PER_ROW * (row + 1)) + (col + 1));
 
-            bus.frame_buffer[idx1..idx1+4].copy_from_slice(&main_color.to_rgba_bytes());
-            bus.frame_buffer[idx2..idx2+4].copy_from_slice(&main_color.to_rgba_bytes());
-            bus.frame_buffer[idx3..idx3+4].copy_from_slice(&main_color.to_rgba_bytes());
-            bus.frame_buffer[idx4..idx4+4].copy_from_slice(&main_color.to_rgba_bytes());
+            bus.frame_buffer[idx1..idx1 + 4].copy_from_slice(&main_color.to_rgba_bytes());
+            bus.frame_buffer[idx2..idx2 + 4].copy_from_slice(&main_color.to_rgba_bytes());
+            bus.frame_buffer[idx3..idx3 + 4].copy_from_slice(&main_color.to_rgba_bytes());
+            bus.frame_buffer[idx4..idx4 + 4].copy_from_slice(&main_color.to_rgba_bytes());
         }
     }
 
     #[inline(always)]
-    fn render_bg_tiles<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>, mode_bg_settings: &[Option<BgRenderSettings>]) {
+    fn render_bg_tiles<H: DebugHarness>(
+        &mut self,
+        bus: &mut PpuBus<H>,
+        mode_bg_settings: &[Option<BgRenderSettings>],
+    ) {
         for (bg, &bg_render_settings) in mode_bg_settings.into_iter().enumerate() {
-            if bg_render_settings.is_none() { return; }
+            if bg_render_settings.is_none() {
+                return;
+            }
 
             if self.x == self.scanline_bg_counters[bg] {
                 let dots_rendered = self.render_tile(bus, bg, bg_render_settings.unwrap());
 
-                debug_assert!(dots_rendered > 0, "{} {:?} {} {}", bg, bus.ppu_regs.bg_mode, self.x, self.y);
+                debug_assert!(
+                    dots_rendered > 0,
+                    "{} {:?} {} {}",
+                    bg,
+                    bus.ppu_regs.bg_mode,
+                    self.x,
+                    self.y
+                );
 
                 self.scanline_bg_counters[bg] += dots_rendered;
             }
@@ -595,14 +737,27 @@ impl Ppu5C7x {
     }
 
     #[inline(always)]
-    fn render_hires_bg_tiles<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>, mode_bg_settings: &[Option<BgRenderSettings>]) {
+    fn render_hires_bg_tiles<H: DebugHarness>(
+        &mut self,
+        bus: &mut PpuBus<H>,
+        mode_bg_settings: &[Option<BgRenderSettings>],
+    ) {
         for (bg, &bg_render_settings) in mode_bg_settings.into_iter().enumerate() {
-            if bg_render_settings.is_none() { return; }
+            if bg_render_settings.is_none() {
+                return;
+            }
 
             if self.x == self.scanline_bg_counters[bg] {
                 let dots_rendered = self.render_hires_tile(bus, bg, bg_render_settings.unwrap());
 
-                debug_assert!(dots_rendered > 0, "{} {:?} {} {}", bg, bus.ppu_regs.bg_mode, self.x, self.y);
+                debug_assert!(
+                    dots_rendered > 0,
+                    "{} {:?} {} {}",
+                    bg,
+                    bus.ppu_regs.bg_mode,
+                    self.x,
+                    self.y
+                );
 
                 self.scanline_bg_counters[bg] += dots_rendered;
             }
@@ -611,14 +766,18 @@ impl Ppu5C7x {
 
     fn layer_window_signals(regs: &PpuRegs) -> WindowSignals {
         let bg_main: [bool; 4] = std::array::from_fn(|bg| {
-            regs.bg_settings[bg].main_en && (!regs.bg_settings[bg].window.main_en || !regs.bg_apply_window_signals[bg])
+            regs.bg_settings[bg].main_en
+                && (!regs.bg_settings[bg].window.main_en || !regs.bg_apply_window_signals[bg])
         });
         let bg_sub: [bool; 4] = std::array::from_fn(|bg| {
-            regs.bg_settings[bg].sub_en && (!regs.bg_settings[bg].window.sub_en || !regs.bg_apply_window_signals[bg])
+            regs.bg_settings[bg].sub_en
+                && (!regs.bg_settings[bg].window.sub_en || !regs.bg_apply_window_signals[bg])
         });
 
-        let obj_main = regs.obj_settings.main_en && (!regs.obj_settings.window.main_en || !regs.obj_apply_window_signal);
-        let obj_sub = regs.obj_settings.sub_en && (!regs.obj_settings.window.sub_en || !regs.obj_apply_window_signal);
+        let obj_main = regs.obj_settings.main_en
+            && (!regs.obj_settings.window.main_en || !regs.obj_apply_window_signal);
+        let obj_sub = regs.obj_settings.sub_en
+            && (!regs.obj_settings.window.sub_en || !regs.obj_apply_window_signal);
 
         let (col_main, col_sub) = Self::color_window_signals(regs);
 
@@ -633,7 +792,12 @@ impl Ppu5C7x {
     }
 
     #[inline(always)]
-    fn apply_scroll<H: DebugHarness>(&self, bus: &PpuBus<H>, bg: usize, use_offset_per_tile: bool) -> (u16, u16) {
+    fn apply_scroll<H: DebugHarness>(
+        &self,
+        bus: &PpuBus<H>,
+        bg: usize,
+        use_offset_per_tile: bool,
+    ) -> (u16, u16) {
         let bg_settings = &bus.ppu_regs.bg_settings[bg];
 
         let scroll_range = match bg_settings.chr_size {
@@ -657,41 +821,84 @@ impl Ppu5C7x {
                 let bg3_tile_x = bg3_x / 8;
                 let bg3_tile_y = bg3_y / 8;
 
-                let tilemap_offset = Self::tilemap_offset(bg3.tilemap_cnt_x, bg3.tilemap_cnt_y, bg3_tile_x, bg3_tile_y);
+                let tilemap_offset = Self::tilemap_offset(
+                    bg3.tilemap_cnt_x,
+                    bg3.tilemap_cnt_y,
+                    bg3_tile_x,
+                    bg3_tile_y,
+                );
 
-                let bg3_entry_addr = (bg3.tilemap_base_addr + ((bg3_tile_y & 0x1F) << 5) + (bg3_tile_x & 0x1F) + tilemap_offset) & 0x7FFF;
+                let bg3_entry_addr = (bg3.tilemap_base_addr
+                    + ((bg3_tile_y & 0x1F) << 5)
+                    + (bg3_tile_x & 0x1F)
+                    + tilemap_offset)
+                    & 0x7FFF;
 
                 let scroll_entry = TilemapScrollEntry::from_word(bus.vram[bg3_entry_addr as usize]);
 
-                let do_scroll = if bg == 0 { scroll_entry.bg1_offset_en } else { scroll_entry.bg2_offset_en };
+                let do_scroll = if bg == 0 {
+                    scroll_entry.bg1_offset_en
+                } else {
+                    scroll_entry.bg2_offset_en
+                };
 
                 if do_scroll {
                     if scroll_entry.mode4_dir {
                         shifted_y = self.y as u16 + scroll_entry.scroll;
                     } else {
-                        shifted_x = (shifted_x & 7) | ((self.x as u16 & (!7)) + (scroll_entry.scroll & (!7)));
+                        shifted_x = (shifted_x & 7)
+                            | ((self.x as u16 & (!7)) + (scroll_entry.scroll & (!7)));
                     }
                 }
             } else {
                 let bg3_tile_x = bg3_x / 8;
                 let bg3_tile_y = bg3_y / 8;
-    
-                let tilemap_offset_x = Self::tilemap_offset(bg3.tilemap_cnt_x, bg3.tilemap_cnt_y, bg3_tile_x, bg3_tile_y);
-                let tilemap_offset_y = Self::tilemap_offset(bg3.tilemap_cnt_x, bg3.tilemap_cnt_y, bg3_tile_x, bg3_tile_y + 1);
-    
-                let bg3_entry_addr_x = (bg3.tilemap_base_addr + ((bg3_tile_y & 0x1F) << 5) + (bg3_tile_x & 0x1F) + tilemap_offset_x) & 0x7FFF;
-                let bg3_entry_addr_y = (bg3.tilemap_base_addr + (((bg3_tile_y + 1) & 0x1F) << 5) + (bg3_tile_x & 0x1F) + tilemap_offset_y) & 0x7FFF;
-            
-                let scroll_x_entry = TilemapScrollEntry::from_word(bus.vram[bg3_entry_addr_x as usize]);
-                let scroll_y_entry = TilemapScrollEntry::from_word(bus.vram[bg3_entry_addr_y as usize]);
-    
-                let do_x_scroll = if bg == 0 { scroll_x_entry.bg1_offset_en } else { scroll_x_entry.bg2_offset_en };
-                let do_y_scroll = if bg == 0 { scroll_y_entry.bg1_offset_en } else { scroll_y_entry.bg2_offset_en };
-    
+
+                let tilemap_offset_x = Self::tilemap_offset(
+                    bg3.tilemap_cnt_x,
+                    bg3.tilemap_cnt_y,
+                    bg3_tile_x,
+                    bg3_tile_y,
+                );
+                let tilemap_offset_y = Self::tilemap_offset(
+                    bg3.tilemap_cnt_x,
+                    bg3.tilemap_cnt_y,
+                    bg3_tile_x,
+                    bg3_tile_y + 1,
+                );
+
+                let bg3_entry_addr_x = (bg3.tilemap_base_addr
+                    + ((bg3_tile_y & 0x1F) << 5)
+                    + (bg3_tile_x & 0x1F)
+                    + tilemap_offset_x)
+                    & 0x7FFF;
+                let bg3_entry_addr_y = (bg3.tilemap_base_addr
+                    + (((bg3_tile_y + 1) & 0x1F) << 5)
+                    + (bg3_tile_x & 0x1F)
+                    + tilemap_offset_y)
+                    & 0x7FFF;
+
+                let scroll_x_entry =
+                    TilemapScrollEntry::from_word(bus.vram[bg3_entry_addr_x as usize]);
+                let scroll_y_entry =
+                    TilemapScrollEntry::from_word(bus.vram[bg3_entry_addr_y as usize]);
+
+                let do_x_scroll = if bg == 0 {
+                    scroll_x_entry.bg1_offset_en
+                } else {
+                    scroll_x_entry.bg2_offset_en
+                };
+                let do_y_scroll = if bg == 0 {
+                    scroll_y_entry.bg1_offset_en
+                } else {
+                    scroll_y_entry.bg2_offset_en
+                };
+
                 if do_x_scroll {
-                    shifted_x = (shifted_x & 7) | ((self.x as u16 & (!7)) + (scroll_x_entry.scroll & (!7)));
+                    shifted_x =
+                        (shifted_x & 7) | ((self.x as u16 & (!7)) + (scroll_x_entry.scroll & (!7)));
                 }
-    
+
                 if do_y_scroll {
                     shifted_y = self.y as u16 + scroll_y_entry.scroll;
                 }
@@ -709,9 +916,9 @@ impl Ppu5C7x {
         &self,
         bus: &PpuBus<H>,
         bg: usize,
-        hoffset: u16,  // already computed: (hpixel + hscroll) & (hsize - 1)
-        voffset: u16,  // already computed: (vpixel + vscroll) & (vsize - 1)
-        hsize: u16,    // e.g. 512 or 1024
+        hoffset: u16, // already computed: (hpixel + hscroll) & (hsize - 1)
+        voffset: u16, // already computed: (vpixel + vscroll) & (vsize - 1)
+        hsize: u16,   // e.g. 512 or 1024
         vsize: u16,
     ) -> (u16, u16) {
         // Mode 6 is always Mode 2-style OPT (two entries: one for X, one for Y).
@@ -738,32 +945,42 @@ impl Ppu5C7x {
         let bg3_tile_x = bg3_hires_x >> 4; // == bg3_hires_x / 16
         let bg3_tile_y = bg3.scroll_y >> 3;
 
-        let tilemap_offset_x = Self::tilemap_offset(
-            bg3.tilemap_cnt_x, bg3.tilemap_cnt_y,
-            bg3_tile_x, bg3_tile_y,
-        );
+        let tilemap_offset_x =
+            Self::tilemap_offset(bg3.tilemap_cnt_x, bg3.tilemap_cnt_y, bg3_tile_x, bg3_tile_y);
         let tilemap_offset_y = Self::tilemap_offset(
-            bg3.tilemap_cnt_x, bg3.tilemap_cnt_y,
-            bg3_tile_x, bg3_tile_y + 1,
+            bg3.tilemap_cnt_x,
+            bg3.tilemap_cnt_y,
+            bg3_tile_x,
+            bg3_tile_y + 1,
         );
 
         let bg3_entry_addr_x = (bg3.tilemap_base_addr
             + ((bg3_tile_y & 0x1F) << 5)
             + (bg3_tile_x & 0x1F)
-            + tilemap_offset_x) & 0x7FFF;
+            + tilemap_offset_x)
+            & 0x7FFF;
 
         let bg3_entry_addr_y = (bg3.tilemap_base_addr
             + (((bg3_tile_y + 1) & 0x1F) << 5)
             + (bg3_tile_x & 0x1F)
-            + tilemap_offset_y) & 0x7FFF;
+            + tilemap_offset_y)
+            & 0x7FFF;
 
         let scroll_x_entry = TilemapScrollEntry::from_word(bus.vram[bg3_entry_addr_x as usize]);
         let scroll_y_entry = TilemapScrollEntry::from_word(bus.vram[bg3_entry_addr_y as usize]);
 
         // Mode 6 only has BG1, so only bg1_offset_en is meaningful here.
         // bg == 0 is always true in mode 6, but keep the guard for safety.
-        let do_x_scroll = if bg == 0 { scroll_x_entry.bg1_offset_en } else { false };
-        let do_y_scroll = if bg == 0 { scroll_y_entry.bg1_offset_en } else { false };
+        let do_x_scroll = if bg == 0 {
+            scroll_x_entry.bg1_offset_en
+        } else {
+            false
+        };
+        let do_y_scroll = if bg == 0 {
+            scroll_y_entry.bg1_offset_en
+        } else {
+            false
+        };
 
         let mut new_hoffset = hoffset;
         let mut new_voffset = voffset;
@@ -798,16 +1015,20 @@ impl Ppu5C7x {
 
         let bg_settings = &bus.ppu_regs.bg_settings[bg];
 
-        let (shifted_x, shifted_y) = self.apply_scroll(bus, bg, bg_render_settings.use_offset_per_tile);
-    
+        let (shifted_x, shifted_y) =
+            self.apply_scroll(bus, bg, bg_render_settings.use_offset_per_tile);
+
         let m = bus.ppu_regs.mosaic_size as u16;
 
         let (playfield_x, playfield_y) = if bg_settings.mosaic_en {
-            (Self::apply_mosaic(shifted_x, m), Self::apply_mosaic(shifted_y, m))
+            (
+                Self::apply_mosaic(shifted_x, m),
+                Self::apply_mosaic(shifted_y, m),
+            )
         } else {
             (shifted_x, shifted_y)
         };
-        
+
         let (size_x, size_y) = bg_settings.chr_size.raw_size();
         let tilemap_x = playfield_x / size_x;
         let tilemap_y = playfield_y / size_y;
@@ -815,15 +1036,29 @@ impl Ppu5C7x {
         let tile_row = playfield_y % size_y;
 
         let tilemap_offset = Self::tilemap_offset(
-            bg_settings.tilemap_cnt_x, bg_settings.tilemap_cnt_y,
-            tilemap_x, tilemap_y
+            bg_settings.tilemap_cnt_x,
+            bg_settings.tilemap_cnt_y,
+            tilemap_x,
+            tilemap_y,
         );
 
-        let tilemap_entry_addr = (bg_settings.tilemap_base_addr + ((tilemap_y & 0x1F) << 5) + (tilemap_x & 0x1F) + tilemap_offset) & 0x7FFF;
+        let tilemap_entry_addr = (bg_settings.tilemap_base_addr
+            + ((tilemap_y & 0x1F) << 5)
+            + (tilemap_x & 0x1F)
+            + tilemap_offset)
+            & 0x7FFF;
         let tilemap_entry = TilemapEntry::from_word(bus.vram[tilemap_entry_addr as usize]);
 
-        let tile_col = if tilemap_entry.flip_x { size_x - tile_col - 1 } else { tile_col };
-        let tile_row = if tilemap_entry.flip_y { size_y - tile_row - 1 } else { tile_row };
+        let tile_col = if tilemap_entry.flip_x {
+            size_x - tile_col - 1
+        } else {
+            tile_col
+        };
+        let tile_row = if tilemap_entry.flip_y {
+            size_y - tile_row - 1
+        } else {
+            tile_row
+        };
 
         // tile_number = tile_number + 1 if tile_col >= 8, + 32 if tile_row >= 8
         let chr_x = tilemap_entry.chr_num & 0x1F;
@@ -845,11 +1080,11 @@ impl Ppu5C7x {
                     ((interleaved >> 14) & 3) as u8,
                     ((interleaved >> 12) & 3) as u8,
                     ((interleaved >> 10) & 3) as u8,
-                    ((interleaved >>  8) & 3) as u8,
-                    ((interleaved >>  6) & 3) as u8,
-                    ((interleaved >>  4) & 3) as u8,
-                    ((interleaved >>  2) & 3) as u8,
-                    ((interleaved >>  0) & 3) as u8,
+                    ((interleaved >> 8) & 3) as u8,
+                    ((interleaved >> 6) & 3) as u8,
+                    ((interleaved >> 4) & 3) as u8,
+                    ((interleaved >> 2) & 3) as u8,
+                    ((interleaved >> 0) & 3) as u8,
                 ]
             }
             ColorDepth::Bpp4 => {
@@ -857,16 +1092,16 @@ impl Ppu5C7x {
                 let bp32 = bus.vram[tile_row_addr + 8];
 
                 let interleaved = interleave_4bpp(bp10, bp32);
-                
+
                 [
                     ((interleaved >> 28) & 0xF) as u8,
                     ((interleaved >> 24) & 0xF) as u8,
                     ((interleaved >> 20) & 0xF) as u8,
                     ((interleaved >> 16) & 0xF) as u8,
                     ((interleaved >> 12) & 0xF) as u8,
-                    ((interleaved >>  8) & 0xF) as u8,
-                    ((interleaved >>  4) & 0xF) as u8,
-                    ((interleaved >>  0) & 0xF) as u8,
+                    ((interleaved >> 8) & 0xF) as u8,
+                    ((interleaved >> 4) & 0xF) as u8,
+                    ((interleaved >> 0) & 0xF) as u8,
                 ]
             }
             ColorDepth::Bpp8 => {
@@ -884,7 +1119,7 @@ impl Ppu5C7x {
                     let bp76 = bus.vram[tile_row_addr + 24];
 
                     let interleaved = interleave_8bpp(bp10, bp32, bp54, bp76);
-    
+
                     std::array::from_fn(|i| {
                         // let bp0 = ((bp10 >> (7 - i)) & 1) as u8;
                         // let bp1 = ((bp10 >> (15 - i)) & 1) as u8;
@@ -905,8 +1140,16 @@ impl Ppu5C7x {
         let mut dots_rendered = 0;
 
         // Cut off the ends of the tile if we are close to the edge of the screen
-        let col_start = if self.x == 0 { bg_settings.scroll_x % 8 } else { 0 };
-        let col_end = if self.x > 256 - 8 { 256 - self.x as u16 } else { 8 };
+        let col_start = if self.x == 0 {
+            bg_settings.scroll_x % 8
+        } else {
+            0
+        };
+        let col_end = if self.x > 256 - 8 {
+            256 - self.x as u16
+        } else {
+            8
+        };
 
         let mut i = 0;
 
@@ -917,12 +1160,12 @@ impl Ppu5C7x {
             i += 1;
 
             // TODO: Move this check before the tile recalculation somehow to avoid all of the math.
-            // 
+            //
             // When doing mosaic, if the mosaiced x < scrolled x, then we are rendering a part of a mosaic
             // tile that is not the first dot in the mosaic tile, so we can grab the color from the prev dot
-            // and repeat it for the whole mosaic tile. We can only do this trick per-scanline, however, as 
+            // and repeat it for the whole mosaic tile. We can only do this trick per-scanline, however, as
             // mosaic may have changed between scanlines. If we are on the first pixel of a mosaic tile, then
-            // mosaiced_x will be equal to scrolled x, so we render the color as normal. We cannot use this 
+            // mosaiced_x will be equal to scrolled x, so we render the color as normal. We cannot use this
             // trick on the first pixel of the background, obviously, as there is no previous color to extend.
             if idx > 0 && mosaiced_x < shifted_x + col {
                 self.scanline_bg_data[bg][idx] = self.scanline_bg_data[bg][idx - 1];
@@ -941,7 +1184,9 @@ impl Ppu5C7x {
             let color = if pal_idx == 0 {
                 None
             } else {
-                let color = if bg_render_settings.color_depth == ColorDepth::Bpp8 && bus.ppu_regs.use_direct_col {                    
+                let color = if bg_render_settings.color_depth == ColorDepth::Bpp8
+                    && bus.ppu_regs.use_direct_col
+                {
                     let raw_color = pal_idx; // Pal index is the raw color
 
                     if raw_color == 0 {
@@ -954,11 +1199,12 @@ impl Ppu5C7x {
                         let r = (((raw_color >> 0) & 7) << 2) | (r_ext << 1);
                         let g = (((raw_color >> 3) & 7) << 2) | (g_ext << 1);
                         let b = (((raw_color >> 6) & 3) << 3) | (b_ext << 2);
-                        
+
                         Color::new(r, g, b)
                     }
                 } else {
-                    let cgram_addr = bg_render_settings.cgram_base + (tilemap_entry.palette << bpp) + pal_idx;
+                    let cgram_addr =
+                        bg_render_settings.cgram_base + (tilemap_entry.palette << bpp) + pal_idx;
 
                     bus.cgram[cgram_addr as usize]
                 };
@@ -1021,8 +1267,8 @@ impl Ppu5C7x {
             (hoffset, voffset)
         };
 
-        let htile = hoffset / 16;                     // tilemap x index (in tile grid)
-        let vtile = voffset / (8 << tile_size_bit);   // tilemap y index
+        let htile = hoffset / 16; // tilemap x index (in tile grid)
+        let vtile = voffset / (8 << tile_size_bit); // tilemap y index
 
         let hscreen: u16 = if screen_size_x_bit == 1 { 32 << 5 } else { 0 };
         let vscreen: u16 = if screen_size_y_bit == 1 {
@@ -1032,8 +1278,12 @@ impl Ppu5C7x {
         };
 
         let mut tilemap_offset = ((htile & 0x1F) << 0) | ((vtile & 0x1F) << 5);
-        if htile & 0x20 != 0 { tilemap_offset += hscreen; }
-        if vtile & 0x20 != 0 { tilemap_offset += vscreen; }
+        if htile & 0x20 != 0 {
+            tilemap_offset += hscreen;
+        }
+        if vtile & 0x20 != 0 {
+            tilemap_offset += vscreen;
+        }
 
         let tilemap_addr = bg_settings.tilemap_base_addr.wrapping_add(tilemap_offset);
         let tilemap_entry = TilemapEntry::from_word(bus.vram[tilemap_addr as usize]);
@@ -1069,21 +1319,33 @@ impl Ppu5C7x {
         };
 
         let words_per_tile = (bpp << 2) as u16;
-        let addr_left = (bg_settings.chr_base_addr
-             + (char_left * words_per_tile)
-             + row_in_8x8)
-            & 0x7FFF;
+        let addr_left =
+            (bg_settings.chr_base_addr + (char_left * words_per_tile) + row_in_8x8) & 0x7FFF;
 
-        let addr_right = (bg_settings.chr_base_addr
-             + (char_right * words_per_tile)
-             + row_in_8x8)
-            & 0x7FFF;
+        let addr_right =
+            (bg_settings.chr_base_addr + (char_right * words_per_tile) + row_in_8x8) & 0x7FFF;
 
         let mut pal_indices = [0u8; 16];
-        self.decode_tile_row_into(bus, addr_left as usize,  bpp, tilemap_entry.flip_x, &mut pal_indices[0..8]);
-        self.decode_tile_row_into(bus, addr_right as usize, bpp, tilemap_entry.flip_x, &mut pal_indices[8..16]);
+        self.decode_tile_row_into(
+            bus,
+            addr_left as usize,
+            bpp,
+            tilemap_entry.flip_x,
+            &mut pal_indices[0..8],
+        );
+        self.decode_tile_row_into(
+            bus,
+            addr_right as usize,
+            bpp,
+            tilemap_entry.flip_x,
+            &mut pal_indices[8..16],
+        );
 
-        let skip = if self.x == 0 { (hscroll & 0xF) as usize } else { 0 };
+        let skip = if self.x == 0 {
+            (hscroll & 0xF) as usize
+        } else {
+            0
+        };
         // How many hi-res cols we can still emit before running off the screen:
         let hires_available = 16usize - skip;
         let hires_remaining_scanline_dots = (512 - hpixel as usize).min(hires_available);
@@ -1099,16 +1361,15 @@ impl Ppu5C7x {
 
         for k in 0..hires_remaining_scanline_dots {
             let pal_idx = pal_indices[(skip & 7) + k];
-            let hires_col_relative = k;  // 0 = sub, 1 = main, 2 = sub, ...
+            let hires_col_relative = k; // 0 = sub, 1 = main, 2 = sub, ...
             let native_slot = self.x + (hires_col_relative >> 1);
             let is_main_col = (hires_col_relative & 1) == 1;
 
             let color = if pal_idx == 0 {
                 None
             } else {
-                let cgram_addr = bg_render_settings.cgram_base
-                    + (tilemap_entry.palette << bpp)
-                    + pal_idx;
+                let cgram_addr =
+                    bg_render_settings.cgram_base + (tilemap_entry.palette << bpp) + pal_idx;
 
                 Some(BgColorData {
                     color: bus.cgram[cgram_addr as usize],
@@ -1147,7 +1408,7 @@ impl Ppu5C7x {
                 let bp10 = bus.vram[row_addr];
                 for i in 0..8 {
                     let src_bit = if hmirror { i } else { 7 - i };
-                    let bp0 = ((bp10 >> src_bit)       & 1) as u8;
+                    let bp0 = ((bp10 >> src_bit) & 1) as u8;
                     let bp1 = ((bp10 >> (8 + src_bit)) & 1) as u8;
                     out[i] = (bp1 << 1) | bp0;
                 }
@@ -1157,9 +1418,9 @@ impl Ppu5C7x {
                 let bp32 = bus.vram[row_addr + 8];
                 for i in 0..8 {
                     let src_bit = if hmirror { i } else { 7 - i };
-                    let bp0 = ((bp10 >> src_bit)       & 1) as u8;
+                    let bp0 = ((bp10 >> src_bit) & 1) as u8;
                     let bp1 = ((bp10 >> (8 + src_bit)) & 1) as u8;
-                    let bp2 = ((bp32 >> src_bit)       & 1) as u8;
+                    let bp2 = ((bp32 >> src_bit) & 1) as u8;
                     let bp3 = ((bp32 >> (8 + src_bit)) & 1) as u8;
                     out[i] = (bp3 << 3) | (bp2 << 2) | (bp1 << 1) | bp0;
                 }
@@ -1317,15 +1578,16 @@ impl Ppu5C7x {
     }
 
     // Calculate offset into VRAM to find the tilemap given playfield position and tilemap count settings.
-    fn tilemap_offset(cnt_x: TilemapCount, cnt_y: TilemapCount, tilemap_x: u16, tilemap_y: u16) -> u16 {
+    fn tilemap_offset(
+        cnt_x: TilemapCount,
+        cnt_y: TilemapCount,
+        tilemap_x: u16,
+        tilemap_y: u16,
+    ) -> u16 {
         match (cnt_x, cnt_y) {
             (TilemapCount::One, TilemapCount::One) => 0,
-            (TilemapCount::One, TilemapCount::Two) => {
-                (tilemap_y & 0x20) << 5
-            },
-            (TilemapCount::Two, TilemapCount::One) => {
-                (tilemap_x & 0x20) << 5
-            },
+            (TilemapCount::One, TilemapCount::Two) => (tilemap_y & 0x20) << 5,
+            (TilemapCount::Two, TilemapCount::One) => (tilemap_x & 0x20) << 5,
             (TilemapCount::Two, TilemapCount::Two) => {
                 ((tilemap_y & 0x20) << 6) + ((tilemap_x & 0x20) << 5)
             }
@@ -1343,7 +1605,7 @@ impl Ppu5C7x {
         }
     }
 
-    fn color_window_signals(regs: &PpuRegs) -> (bool, bool) {        
+    fn color_window_signals(regs: &PpuRegs) -> (bool, bool) {
         let apply_col_window = regs.col_apply_window_signal;
         let main_region = regs.col_win_main_region;
         let sub_region = regs.col_win_sub_region;
@@ -1366,7 +1628,12 @@ impl Ppu5C7x {
     }
 
     #[inline(always)]
-    fn apply_cmath<H: DebugHarness>(&self, bus: &PpuBus<H>, main_col: Color, sub_col: Option<Color>) -> Color {
+    fn apply_cmath<H: DebugHarness>(
+        &self,
+        bus: &PpuBus<H>,
+        main_col: Color,
+        sub_col: Option<Color>,
+    ) -> Color {
         // addend bit: sub_color_fixed==true means addend=0 (always fixed color).
         // addend=1 means "use subscreen", falling back to fixed color only when
         // the subscreen pixel is transparent -- and in that fallback case Div2
@@ -1402,17 +1669,9 @@ impl Ppu5C7x {
         let b = b.clamp(0, 255) as u8;
 
         let color = if bus.ppu_regs.cmath_half && !force_no_div2 {
-            Color::new(
-                (r >> 1) & 0xF8,
-                (g >> 1) & 0xF8,
-                (b >> 1) & 0xF8,
-            )
+            Color::new((r >> 1) & 0xF8, (g >> 1) & 0xF8, (b >> 1) & 0xF8)
         } else {
-            Color::new(
-                r & 0xF8,
-                g & 0xF8,
-                b & 0xF8,
-            )
+            Color::new(r & 0xF8, g & 0xF8, b & 0xF8)
         };
 
         color
@@ -1432,8 +1691,10 @@ impl Ppu5C7x {
         let in_w1_old = bus.ppu_regs.in_w1;
         let in_w2_old = bus.ppu_regs.in_w2;
 
-        bus.ppu_regs.in_w1 = bus.ppu_regs.w1_left_pos as usize <= self.x && self.x <= bus.ppu_regs.w1_right_pos as usize;
-        bus.ppu_regs.in_w2 = bus.ppu_regs.w2_left_pos as usize <= self.x && self.x <= bus.ppu_regs.w2_right_pos as usize;
+        bus.ppu_regs.in_w1 = bus.ppu_regs.w1_left_pos as usize <= self.x
+            && self.x <= bus.ppu_regs.w1_right_pos as usize;
+        bus.ppu_regs.in_w2 = bus.ppu_regs.w2_left_pos as usize <= self.x
+            && self.x <= bus.ppu_regs.w2_right_pos as usize;
 
         if (in_w1_old != bus.ppu_regs.in_w1) || (in_w2_old != bus.ppu_regs.in_w2) {
             bus.ppu_regs.update_all_in_window_signals();
@@ -1574,7 +1835,7 @@ impl Ppu5C7x {
             } else {
                 sprite_row
             };
-            
+
             let sprite_row = if sprite.flip_y {
                 spr_h as u8 - sprite_row as u8 - 1
             } else {
@@ -1588,9 +1849,9 @@ impl Ppu5C7x {
             } else {
                 regs.name_base_addr
             };
-            
+
             let spr_tile_base_addr = (obj_table_base_addr as u16) + ((sprite.tile_idx as u16) << 4);
-            
+
             'draw_sprite_slivers: for sliver in 0..sprite_slivers {
                 let first_pixel_of_sliver = sprite.x + sliver as i16 * 8;
                 let last_pixel_of_sliver = first_pixel_of_sliver + 7;
@@ -1598,7 +1859,7 @@ impl Ppu5C7x {
                 if last_pixel_of_sliver < 0 || first_pixel_of_sliver >= 256 {
                     // No part of this sliver will be drawn, skip
                     continue 'draw_sprite_slivers;
-                } 
+                }
 
                 let tile_x = if sprite.flip_x {
                     sprite_slivers - sliver - 1
@@ -1607,7 +1868,7 @@ impl Ppu5C7x {
                 };
 
                 let chr_idx = (tile_y << 4) + tile_x as u8;
-                
+
                 let spr_tile_addr = (spr_tile_base_addr + ((chr_idx as u16) << 4)) & 0x7FFF;
                 let spr_tile_row_addr = spr_tile_addr + tile_row as u16;
 
@@ -1618,7 +1879,7 @@ impl Ppu5C7x {
 
                 'draw_sprite_pixel: for tile_col in 0..8 {
                     let x = sprite.x + sliver as i16 * 8 + tile_col;
-    
+
                     if x < 0 || x >= 256 {
                         // Pixel not drawn, skip
                         continue 'draw_sprite_pixel;
