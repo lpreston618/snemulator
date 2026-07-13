@@ -400,6 +400,11 @@ impl Ppu5C7x {
                 bg1_main_col,
                 bg2_main_col
             )
+        } else if BGMODE == 6 {
+            Self::bg_mode6_choose_priority_color(
+                obj_main_col,
+                bg1_main_col,
+            )
         } else {
             None
         };
@@ -450,6 +455,11 @@ impl Ppu5C7x {
                 obj_sub_col,
                 bg1_sub_col,
                 bg2_sub_col
+            )
+        } else if BGMODE == 6 {
+            Self::bg_mode6_choose_priority_color(
+                obj_sub_col,
+                bg1_sub_col,
             )
         } else {
             None
@@ -1254,6 +1264,25 @@ impl Ppu5C7x {
             Some(ColorLayer::Obj)
         } else if bg2_col.is_some() {
             Some(ColorLayer::Bg2)
+        } else {
+            None
+        }
+    }
+
+    fn bg_mode6_choose_priority_color(
+        obj_col: Option<ObjColorData>,
+        bg1_col: Option<BgColorData>,
+    ) -> Option<ColorLayer> {
+        if obj_col.is_some() && obj_col.unwrap().priority == 3 {
+            Some(ColorLayer::Obj)
+        } else if bg1_col.is_some() && bg1_col.unwrap().priority {
+            Some(ColorLayer::Bg1)
+        } else if obj_col.is_some() && obj_col.unwrap().priority >= 1 {
+            Some(ColorLayer::Obj)
+        } else if bg1_col.is_some() {
+            Some(ColorLayer::Bg1)
+        } else if obj_col.is_some() {
+            Some(ColorLayer::Obj)
         } else {
             None
         }
