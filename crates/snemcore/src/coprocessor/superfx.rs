@@ -131,6 +131,12 @@ impl SuperFx {
     }
 
     fn step(&mut self, rom: &[u8], ram: &mut [u8]) {
+        let opcode = self.fetch(rom, ram);
+
+
+    }
+
+    fn fetch(&mut self, rom: &[u8], ram: &mut [u8]) {
         
     }
 }

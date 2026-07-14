@@ -1,6 +1,7 @@
 use crate::coprocessor::superfx::SuperFx;
 
 pub mod superfx;
+pub mod dsp;
 
 pub enum Coprocessor {
     // Versions of DSP-1:
