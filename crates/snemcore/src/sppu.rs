@@ -4,6 +4,7 @@ use crate::scpu::ioregs::HVTimerIRQ;
 use crate::sppu::bus::PpuBus;
 use crate::sppu::regs::PpuRegs;
 use crate::sppu::utils::{interleave_2bpp, interleave_4bpp, interleave_8bpp};
+use crate::sysinfo::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
 pub use color::Color;
 pub use types::*;
@@ -300,7 +301,7 @@ impl Ppu5C7x {
             BgMode::Mode4 => self.draw_dot_mode::<4, H>(bus),
             BgMode::Mode5 => self.draw_dot_mode::<5, H>(bus),
             BgMode::Mode6 => self.draw_dot_mode::<6, H>(bus),
-            BgMode::Mode7 => self.draw_dot_mode::<7, H>(bus),
+            BgMode::Mode7 => self.draw_dot_mode_7(bus),
         };
     }
 
@@ -596,29 +597,110 @@ impl Ppu5C7x {
     }
 
     fn draw_dot_mode_7<H: DebugHarness>(&mut self, bus: &mut PpuBus<H>) {
-        let (tx, ty) = Self::apply_mode_7_transform(bus, self.x, self.y);
+        let sx = if bus.ppu_regs.m7_flip_bg_x {
+            SCREEN_WIDTH as i32 - self.x as i32
+        } else {
+            self.x as i32
+        };
+
+        let sy = if bus.ppu_regs.m7_flip_bg_y {
+            SCREEN_HEIGHT as i32 - self.y as i32
+        } else {
+            self.y as i32
+        };
+
+        let (mut tx, mut ty) = Self::apply_mode_7_transform(bus, sx, sy);
+
+        let mut bg_col: Option<Color> = None;
+
+        // If we're off the tilemap
+        if tx < 0 || tx >= 1024 || ty < 0 || ty > 1024 {
+            if bus.ppu_regs.m7_tilemap_repeat {
+                tx &= 0x3FF;
+                ty &= 0x3FF;
+            } else {
+                match bus.ppu_regs.m7_fill_mode {
+                    M7FillMode::Transparent => bg_col = Some(bus.cgram[0]),
+                    M7FillMode::Character => {
+                        tx &= 7;
+                        ty &= 7;
+                    }
+                };
+            }
+        }
+
+        // If we're not doing transparent color (either we were on the tilemap, we're mirroring the
+        // tilemap, or we're repeating tile 0; in all cases, our lookup logic is the same).
+        if bg_col.is_none() {
+            // Tilemap is 128x128 tiles of 8x8 pixels
+            let tile_x = tx >> 3;
+            let tile_y = ty >> 3;
+            let tile_idx = tile_y * 128 + tile_x;
+
+            // Tilemap info is stored in the low byte of a VRAM word, color info is stored in the high byte.
+            // VRAM data for mode 7 always starts at address 0. Makes my life easy.
+            let tilemap_entry = (bus.vram[tile_idx as usize] & 0xFF) as usize;
+
+            // Color information is stored in the high byte of VRAM words. Tiles are stored "chunky"
+            // rather than in bitplanes like the other mapping modes - each byte is simply an index
+            // into CGRAM (or a unique direct color format - BBGGGRRR).
+            let row = ty as usize % 8;
+            let col = tx as usize % 8;
+            let pixel_col_idx = tilemap_entry * 64 + row * 8 + col;
+
+            if bus.ppu_regs.use_direct_col {
+                // treat our color index as color information: BBGGGRRR -> RRR00 GGG00 BB000
+                let r = ((pixel_col_idx & 0x7) << 2) as u8;
+                let g = ((pixel_col_idx & 0x38) >> 1) as u8;
+                let b = ((pixel_col_idx & 0xC0) >> 3) as u8;
+                bg_col = Some(Color { r: r, g: g, b: b });
+            } else {
+                let pal_idx = (bus.vram[pixel_col_idx] >> 8) as usize;
+                bg_col = Some(bus.cgram[pal_idx]);
+            }
+        }
+
+        // TODO: incorporate sprites
+        let obj_col = self.scanline_sprite_data[self.x];
         
-        // TODO: blit to scanline (probably move cmath to draw_dot_mode<>)
+        if bus.ppu_regs.ext_bg_en {
+            // TODO: extbg stuff
+        }
+        
+        // TODO: cmath.
+        self.set_pixel(bus, bg_col.unwrap(), None, false);
     }
 
-    fn apply_mode_7_transform<H: DebugHarness>(
-        bus: &PpuBus<H>,
-        sx: usize,
-        sy: usize,
-    ) -> (usize, usize) {
+    // Transform screen coordinates into mode 7 tilemap coordinates according to the
+    // affine transform described by the mode 7 registers.
+    fn apply_mode_7_transform<H: DebugHarness>(bus: &PpuBus<H>, sx: i32, sy: i32) -> (i32, i32) {
+        // TODO: Check edge cases for flipping bug.
         let regs = &bus.ppu_regs;
-        let offset_x = sx + regs.m7_scroll_x as usize - regs.m7_center_x as usize;
-        let offset_y = sy + regs.m7_scroll_y as usize - regs.m7_center_y as usize;
-        let a = regs.m7_matrix_a as usize;
-        let b = regs.m7_matrix_b as usize;
-        let c = regs.m7_matrix_c as usize;
-        let d = regs.m7_matrix_d as usize;
+        // Sign extend from 13 to 32 bits
+        let hofs = ((regs.m7_scroll_x as i32) << 19) >> 19;
+        let vofs = ((regs.m7_scroll_y as i32) << 19) >> 19;
+        let cx = ((regs.m7_center_x as i32) << 19) >> 19;
+        let cy = ((regs.m7_center_y as i32) << 19) >> 19;
+        // Precompute reused values
+        let offset_x = sx + hofs - cx;
+        let offset_y = sy + vofs - cy;
+        // Sign extend from 16 to 32 bit (simpler)
+        let a = (regs.m7_matrix_a as i16) as i32;
+        let b = (regs.m7_matrix_b as i16) as i32;
+        let c = (regs.m7_matrix_c as i16) as i32;
+        let d = (regs.m7_matrix_d as i16) as i32;
 
+        // Apple linear transformation
         let mut tx = a * offset_x + b * offset_y;
         let mut ty = c * offset_x + d * offset_y;
 
+        // Account for the scaling factor
         tx >>= 8;
         ty >>= 8;
+
+        // Translate after the linear part
+        tx += cx;
+        ty += cy;
 
         (tx, ty)
     }
@@ -1530,6 +1612,7 @@ impl Ppu5C7x {
         }
     }
 
+    #[inline]
     fn bg_mode6_choose_priority_color(
         obj_col: Option<ObjColorData>,
         bg1_col: Option<BgColorData>,

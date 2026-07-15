@@ -1,5 +1,8 @@
-pub const SCREEN_WIDTH: u32 = 2 * 256;
-pub const SCREEN_HEIGHT: u32 = 2 * 224;
+pub const SCREEN_WIDTH: u32 = 256;
+pub const SCREEN_HEIGHT: u32 = 224;
+
+pub const FRAMEBUFFER_WIDTH: u32 = 2 * SCREEN_WIDTH;
+pub const FRAMEBUFFER_HEIGHT: u32 = 2 * SCREEN_HEIGHT;
 
 /// 128 KiB of WRAM
 pub const WRAM_SIZE: usize = 128 * 1024;
@@ -31,7 +34,7 @@ pub const AUDIO_SAMPLE_HZ: usize = 32000;
 
 /// Number of master clocks between joypad autoread steps. Autoread takes 4224
 /// master clocks, four 16-bit regs need filling.
-pub const CLOCKS_BETWEEN_AUTOREAD_STEPS: usize = 4224/16 * 4;
+pub const CLOCKS_BETWEEN_AUTOREAD_STEPS: usize = 4224 / 16 * 4;
 
 pub const FRAMES_PER_SECOND: f32 = 60.0;
 

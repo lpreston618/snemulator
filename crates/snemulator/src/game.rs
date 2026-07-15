@@ -58,7 +58,7 @@ impl MainWindow {
 
     fn update_game_texture(&mut self, frame_buffer: &[u8]) {
         let image = egui::ColorImage::from_rgba_unmultiplied(
-            [sysinfo::SCREEN_WIDTH as usize, sysinfo::SCREEN_HEIGHT as usize],
+            [sysinfo::FRAMEBUFFER_WIDTH as usize, sysinfo::FRAMEBUFFER_HEIGHT as usize],
             frame_buffer,
         );
 
@@ -93,7 +93,7 @@ impl MainWindow {
                 menu_action = self.menu.render(ctx, app_state, app_settings);
             }
 
-            let game_aspect = sysinfo::SCREEN_WIDTH as f32 / sysinfo::SCREEN_HEIGHT as f32;
+            let game_aspect = sysinfo::FRAMEBUFFER_WIDTH as f32 / sysinfo::FRAMEBUFFER_HEIGHT as f32;
 
             egui::CentralPanel::default()
                 .frame(egui::Frame::new())

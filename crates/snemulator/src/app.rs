@@ -24,7 +24,7 @@ use sdl3::event::Event;
 use sdl3::keyboard::{Keycode, Mod};
 use settings::{Settings, SettingsWindow};
 use snemcore::controller::{ControllerPlayer, JoypadButton};
-use snemcore::sysinfo::{self, AUDIO_SAMPLE_HZ, FRAMES_PER_SECOND, SCREEN_HEIGHT, SCREEN_WIDTH};
+use snemcore::sysinfo::{self, AUDIO_SAMPLE_HZ, FRAMES_PER_SECOND, FRAMEBUFFER_HEIGHT, FRAMEBUFFER_WIDTH};
 use snemcore::Snemulator;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -40,7 +40,7 @@ pub mod thumbnail_fetcher;
 pub mod messages;
 mod controller;
 
-pub const FRAME_BUF_SIZE: usize = (SCREEN_WIDTH * SCREEN_HEIGHT * 4) as usize;
+pub const FRAME_BUF_SIZE: usize = (FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT * 4) as usize;
 
 const PREV_FPS_BUFFER_LEN: usize = FRAMES_PER_SECOND as usize * 1;
 const FRAMES_BEFORE_HIDE_MENU: u64 = (3.0 * FRAMES_PER_SECOND) as u64;
