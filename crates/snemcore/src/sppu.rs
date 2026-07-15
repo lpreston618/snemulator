@@ -1,5 +1,5 @@
 use crate::debug::DebugHarness;
-use crate::savestate;
+use crate::{get_bit_n, savestate};
 use crate::scpu::ioregs::HVTimerIRQ;
 use crate::sppu::bus::PpuBus;
 use crate::sppu::regs::PpuRegs;
@@ -446,31 +446,11 @@ impl Ppu5C7x {
 
         let win_signals = Self::layer_window_signals(regs);
 
-        let obj_main_col = if win_signals.obj_main {
-            self.scanline_sprite_data[self.x]
-        } else {
-            None
-        };
-        let bg1_main_col = if win_signals.bg_main[0] {
-            self.scanline_bg_data[0][self.x]
-        } else {
-            None
-        };
-        let bg2_main_col = if win_signals.bg_main[1] {
-            self.scanline_bg_data[1][self.x]
-        } else {
-            None
-        };
-        let bg3_main_col = if win_signals.bg_main[2] {
-            self.scanline_bg_data[2][self.x]
-        } else {
-            None
-        };
-        let bg4_main_col = if win_signals.bg_main[3] {
-            self.scanline_bg_data[3][self.x]
-        } else {
-            None
-        };
+        let obj_main_col = if win_signals.obj_main { self.scanline_sprite_data[self.x] } else { None };
+        let bg1_main_col = if win_signals.bg_main[0] { self.scanline_bg_data[0][self.x] } else { None };
+        let bg2_main_col = if win_signals.bg_main[1] { self.scanline_bg_data[1][self.x] } else { None };
+        let bg3_main_col = if win_signals.bg_main[2] { self.scanline_bg_data[2][self.x] } else { None };
+        let bg4_main_col = if win_signals.bg_main[3] { self.scanline_bg_data[3][self.x] } else { None };
 
         // Main color layer `None` indicates all layers were transparent (i.e. the 'Back' layer)
         let main_col_layer = if BGMODE == 0 {
@@ -611,8 +591,8 @@ impl Ppu5C7x {
 
         let (mut tx, mut ty) = Self::apply_mode_7_transform(bus, sx, sy);
 
-        let mut bg_col: Option<Color> = None;
-
+        let mut use_transparent_color = false;
+        
         // If we're off the tilemap
         if tx < 0 || tx >= 1024 || ty < 0 || ty > 1024 {
             if bus.ppu_regs.m7_tilemap_repeat {
@@ -620,7 +600,9 @@ impl Ppu5C7x {
                 ty &= 0x3FF;
             } else {
                 match bus.ppu_regs.m7_fill_mode {
-                    M7FillMode::Transparent => bg_col = Some(bus.cgram[0]),
+                    M7FillMode::Transparent => {
+                        use_transparent_color = true;
+                    },
                     M7FillMode::Character => {
                         tx &= 7;
                         ty &= 7;
@@ -628,47 +610,75 @@ impl Ppu5C7x {
                 };
             }
         }
-
+        
+        let bg1_col: Option<Color>;
+        let bg2_col: Option<Color>;
+        let bg2_pri: bool;
+        
         // If we're not doing transparent color (either we were on the tilemap, we're mirroring the
         // tilemap, or we're repeating tile 0; in all cases, our lookup logic is the same).
-        if bg_col.is_none() {
-            // Tilemap is 128x128 tiles of 8x8 pixels
-            let tile_x = tx >> 3;
-            let tile_y = ty >> 3;
-            let tile_idx = tile_y * 128 + tile_x;
-
-            // Tilemap info is stored in the low byte of a VRAM word, color info is stored in the high byte.
-            // VRAM data for mode 7 always starts at address 0. Makes my life easy.
-            let tilemap_entry = (bus.vram[tile_idx as usize] & 0xFF) as usize;
-
-            // Color information is stored in the high byte of VRAM words. Tiles are stored "chunky"
-            // rather than in bitplanes like the other mapping modes - each byte is simply an index
-            // into CGRAM (or a unique direct color format - BBGGGRRR).
-            let row = ty as usize % 8;
-            let col = tx as usize % 8;
-            let pixel_col_idx = tilemap_entry * 64 + row * 8 + col;
+        if !use_transparent_color {
+            let bg_pal_idx = Self::mode7_color_idx(bus, tx, ty);
 
             if bus.ppu_regs.use_direct_col {
                 // treat our color index as color information: BBGGGRRR -> RRR00 GGG00 BB000
-                let r = ((pixel_col_idx & 0x7) << 2) as u8;
-                let g = ((pixel_col_idx & 0x38) >> 1) as u8;
-                let b = ((pixel_col_idx & 0xC0) >> 3) as u8;
-                bg_col = Some(Color { r: r, g: g, b: b });
+                let r = (bg_pal_idx & 0x7) << 2;
+                let g = (bg_pal_idx & 0x38) >> 1;
+                let b = (bg_pal_idx & 0xC0) >> 3;
+                bg1_col = Some(Color { r: r, g: g, b: b });
             } else {
-                let pal_idx = (bus.vram[pixel_col_idx] >> 8) as usize;
-                bg_col = Some(bus.cgram[pal_idx]);
+                bg1_col = Some(bus.cgram[bg_pal_idx as usize]);
             }
+
+            if bus.ppu_regs.ext_bg_en {
+                bg2_col = Some(bus.cgram[(bg_pal_idx & 0x7F) as usize]);
+                bg2_pri = get_bit_n!(bg_pal_idx, 7);
+            } else {
+                bg2_col = None;
+                bg2_pri = false;
+            }
+        } else {
+            bg1_col = None;
+            bg2_col = None;
+            bg2_pri = false;
         }
 
-        // TODO: incorporate sprites
-        let obj_col = self.scanline_sprite_data[self.x];
-        
-        if bus.ppu_regs.ext_bg_en {
-            // TODO: extbg stuff
-        }
-        
+        let win_signals = Self::layer_window_signals(bus.ppu_regs);
+
+        let obj_col = if win_signals.obj_main { self.scanline_sprite_data[self.x] } else { None };
+        let bg1_col = if win_signals.bg_main[0] { bg1_col } else { None };
+        let bg2_col = if win_signals.bg_main[1] { bg2_col } else { None };
+
+        let bg1_col = if win_signals.color_main { Some(Color::BLACK) } else { bg1_col };
+
+        let main_color_layer = Self::bg_mode7_choose_priority_color(
+            obj_col,
+            bg1_col,
+            bg2_col,
+            bg2_pri
+        );
+
+        let main_color = match main_color_layer {
+            Some(ColorLayer::Bg1) => bg1_col.unwrap(),
+            Some(ColorLayer::Bg2) => bg2_col.unwrap(),
+            Some(ColorLayer::Obj) => obj_col.unwrap().color,
+            None => bus.cgram[0],
+            _ => unreachable!("BGs 3 & 4 not used in mode 7"),
+        };
+        let sub_col = obj_col.map(|c| c.color);
+
+        let cmath_en = match main_color_layer {
+            Some(ColorLayer::Bg1) => bus.ppu_regs.bg_settings[0].cmath_en,
+            Some(ColorLayer::Bg2) => bus.ppu_regs.bg_settings[1].cmath_en,
+            Some(ColorLayer::Obj) => {
+                bus.ppu_regs.obj_settings.cmath_en && obj_col.unwrap().palette >= 4
+            }
+            None => bus.ppu_regs.back_cmath_en,
+            _ => unreachable!("BGs 3 & 4 not used in mode 7"),
+        } && !win_signals.color_sub;
+
         // TODO: cmath.
-        self.set_pixel(bus, bg_col.unwrap(), None, false);
+        self.set_pixel(bus, main_color, sub_col, cmath_en);
     }
 
     // Transform screen coordinates into mode 7 tilemap coordinates according to the
@@ -703,6 +713,25 @@ impl Ppu5C7x {
         ty += cy;
 
         (tx, ty)
+    }
+
+    fn mode7_color_idx<H: DebugHarness>(bus: &mut PpuBus<H>, tx: i32, ty: i32) -> u8 {
+        // Tilemap is 128x128 tiles of 8x8 pixels
+        let tile_x = tx >> 3;
+        let tile_y = ty >> 3;
+        let tile_idx = tile_y * 128 + tile_x;
+
+        // Tilemap info is stored in the low byte of a VRAM word, color info is stored in the high byte.
+        // VRAM data for mode 7 always starts at address 0. Makes my life easy.
+        let tilemap_entry = (bus.vram[tile_idx as usize] & 0xFF) as usize;
+
+        // Color information is stored in the high byte of VRAM words. Tiles are stored "chunky"
+        // rather than in bitplanes like the other mapping modes - each byte is simply an index
+        // into CGRAM (or a unique direct color format - BBGGGRRR).
+        let row = ty as usize % 8;
+        let col = tx as usize % 8;
+        
+        (bus.vram[tilemap_entry * 64 + row * 8 + col] >> 8) as u8
     }
 
     #[inline(always)]
@@ -1627,6 +1656,30 @@ impl Ppu5C7x {
             Some(ColorLayer::Bg1)
         } else if obj_col.is_some() {
             Some(ColorLayer::Obj)
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    fn bg_mode7_choose_priority_color(
+        obj_col: Option<ObjColorData>,
+        bg1_col: Option<Color>,
+        bg2_col: Option<Color>,
+        bg2_pri: bool,
+    ) -> Option<ColorLayer> {
+        if obj_col.is_some() && obj_col.unwrap().priority >= 2 {
+            Some(ColorLayer::Obj)
+        } else if bg2_col.is_some() && bg2_pri {
+            Some(ColorLayer::Bg2)
+        } else if obj_col.is_some() && obj_col.unwrap().priority == 1 {
+            Some(ColorLayer::Obj)
+        } else if bg1_col.is_some() {
+            Some(ColorLayer::Bg1)
+        } else if obj_col.is_some() {
+            Some(ColorLayer::Obj)
+        } else if bg2_col.is_some() {
+            Some(ColorLayer::Bg2)
         } else {
             None
         }
