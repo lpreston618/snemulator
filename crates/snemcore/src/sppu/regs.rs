@@ -401,6 +401,8 @@ impl PpuRegs {
             7 => BgMode::Mode7,
             _ => unreachable!(),
         };
+
+        log::debug!("Write to $2105 w/ {value:02X}, bg mode: {:?}", self.bg_mode);
     }
 
     pub fn write_2106(&mut self, value: u8) {

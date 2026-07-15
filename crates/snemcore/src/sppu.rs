@@ -884,20 +884,8 @@ impl Ppu5C7x {
                     let bp76 = bus.vram[tile_row_addr + 24];
 
                     let interleaved = interleave_8bpp(bp10, bp32, bp54, bp76);
-    
-                    std::array::from_fn(|i| {
-                        // let bp0 = ((bp10 >> (7 - i)) & 1) as u8;
-                        // let bp1 = ((bp10 >> (15 - i)) & 1) as u8;
-                        // let bp2 = ((bp32 >> (7 - i)) & 1) as u8;
-                        // let bp3 = ((bp32 >> (15 - i)) & 1) as u8;
-                        // let bp4 = ((bp54 >> (7 - i)) & 1) as u8;
-                        // let bp5 = ((bp54 >> (15 - i)) & 1) as u8;
-                        // let bp6 = ((bp76 >> (7 - i)) & 1) as u8;
-                        // let bp7 = ((bp76 >> (15 - i)) & 1) as u8;
-                        // (bp7 << 7) | (bp6 << 6) | (bp5 << 5) | (bp4 << 4) | (bp3 << 3) | (bp2 << 2) | (bp1 << 1) | bp0
 
-                        (interleaved >> ((7 - i) * 8)) as u8
-                    })
+                    interleaved.to_be_bytes() // Want order from highest to lowest (BE)
                 }
             }
         };
@@ -1176,8 +1164,6 @@ impl Ppu5C7x {
         bg3_col: Option<BgColorData>,
         bg4_col: Option<BgColorData>,
     ) -> Option<ColorLayer> {
-        // Unlike Mode 1, the if-else chain is better performing for Mode 0 than
-        // an enumeration/bg index calculation approach.
         if obj_col.is_some() && obj_col.unwrap().priority == 3 {
             Some(ColorLayer::Obj)
         } else if bg1_col.is_some() && bg1_col.unwrap().priority {

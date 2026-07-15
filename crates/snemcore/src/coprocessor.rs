@@ -1,4 +1,4 @@
-use crate::coprocessor::superfx::SuperFx;
+use crate::coprocessor::{dsp::Dsp1, superfx::SuperFx};
 
 pub mod superfx;
 pub mod dsp;
@@ -8,7 +8,7 @@ pub enum Coprocessor {
     // - DSP-1: Several
     // - DSP-1A: Michael Andretti's Indy Car Challenge (also DSP-1), Ace o Nerae! 3D Tennis
     // - DSP-1B: Pilotwings (also DSP-1), Super Mario Kart (also DSP-1), Ballz 3D, Shutokō Battle 2: Drift King Keichii Tsuchiya & Masaaki Bandoh, Shutokō Battle '94: Keichii Tsuchiya Drift King
-    Dsp1,    // 15+ games including Super Mario Kart and Pilotwings
+    Dsp1(Dsp1),    // 15+ games including Super Mario Kart and Pilotwings
     Dsp2,    // Dungeon Master only
     // Dsp3,    // SD Gundam GX only
     // Dsp4,    // Top Gear 3000 only
@@ -28,7 +28,7 @@ pub enum Coprocessor {
 impl Coprocessor {
     pub fn label(&self) -> &'static str {
         match self {
-            Coprocessor::Dsp1        => "DSP-1",
+            Coprocessor::Dsp1(_)     => "DSP-1",
             Coprocessor::Dsp2        => "DSP-2",
             Coprocessor::SuperFx(_)  => "Super FX",
             Coprocessor::Sa1         => "SA-1",
