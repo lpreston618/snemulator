@@ -1,4 +1,4 @@
-use crate::{coprocessor::{Coprocessor, superfx}, scpu::{CpuInterrupt, bus::Address}};
+use crate::{coprocessor::{Coprocessor, superfx, dsp}, scpu::{CpuInterrupt, bus::Address}};
 
 // Positions of the start of the header for different memory mappings
 const LOROM_POS: usize = 0x007FC0;
@@ -17,6 +17,45 @@ pub enum MappingMode {
     LoROM,
     HiROM,
     ExHiROM,
+}
+
+/// Which DSP-1 register a given CPU address refers to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DspRegister {
+    /// Command/Data register - RW, drives the chip's command protocol.
+    Command,
+    /// Status register - read-only, bit 7 is the Data Request (RQM) flag.
+    Status,
+}
+
+/// Classifies a CPU address as a DSP-1 command or status register access, if it
+/// is one, for the given mapping mode. Addresses per the SNESdev wiki:
+///   Mode 20 (LoROM): Command $30-$3F/$B0-$BF:$8000-$BFFF, Status $30-$3F/$B0-$BF:$C000-$FFFF
+///   Mode 21 (HiROM): Command $00-$0F/$80-$8F:$6000-$6FFF, Status $00-$0F/$80-$8F:$7000-$7FFF
+/// This is the "Super Mario Kart"-style DSP-1 mapping used by the large majority of
+/// DSP-1/1A/1B/2/3/4 games. A handful of titles (e.g. Pilotwings) use a different board
+/// with different addresses - if you hit one of those, this will need a per-game override.
+fn dsp_register(mapping_mode: MappingMode, addr: Address) -> Option<DspRegister> {
+    match mapping_mode {
+        MappingMode::LoROM => match addr.bank {
+            0x30..=0x3F | 0xB0..=0xBF => match addr.offset {
+                0x8000..=0xBFFF => Some(DspRegister::Command),
+                0xC000..=0xFFFF => Some(DspRegister::Status),
+                _ => None,
+            },
+            _ => None,
+        },
+        MappingMode::HiROM => match addr.bank {
+            0x00..=0x0F | 0x80..=0x8F => match addr.offset {
+                0x6000..=0x6FFF => Some(DspRegister::Command),
+                0x7000..=0x7FFF => Some(DspRegister::Status),
+                _ => None,
+            },
+            _ => None,
+        },
+        // No known DSP-1 games use ExHiROM; add a mapping here if you find one that does.
+        MappingMode::ExHiROM => None,
+    }
 }
 
 #[derive(Default)]
@@ -208,7 +247,7 @@ impl Cartridge {
 
         cart.coprocessor = if has_coprocessor {
             match header_bytes[0x16] >> 4 {
-                // 0 => CoprocessorKind::Dsp,
+                0 => Some(Coprocessor::Dsp1(dsp::Dsp1::new())),
                 1 => Some(Coprocessor::SuperFx(superfx::SuperFx::new())),
                 // 2 => CoprocessorKind::ObC1,
                 // 3 => CoprocessorKind::Sa1,
@@ -275,7 +314,17 @@ impl Cartridge {
         Ok(cart)
     }
 
-    pub fn read(&self, addr: Address) -> u8 {
+    pub fn read(&mut self, addr: Address) -> u8 {
+        // Check for / perform coprocessor register reads
+        if let Some(Coprocessor::Dsp1(dsp)) = self.coprocessor.as_mut() {
+            if let Some(reg) = dsp_register(self.mapping_mode, addr) {
+                return match reg {
+                    DspRegister::Command => dsp.read(),
+                    DspRegister::Status => dsp.status(),
+                };
+            }
+        }
+
         let mapped_addr = self.map_addr(addr);
 
         // Check for / perform SRAM reads
@@ -320,6 +369,17 @@ impl Cartridge {
     }
 
     pub fn write(&mut self, addr: Address, value: u8) {
+        // Check for / perform coprocessor register writes
+        if let Some(Coprocessor::Dsp1(dsp)) = self.coprocessor.as_mut() {
+            if let Some(reg) = dsp_register(self.mapping_mode, addr) {
+                // Status is read-only; writes to it are ignored on real hardware.
+                if reg == DspRegister::Command {
+                    dsp.write(value);
+                }
+                return;
+            }
+        }
+
         // Check for / perform SRAM write
         match self.mapping_mode {
             MappingMode::LoROM => {
@@ -391,19 +451,21 @@ impl Cartridge {
                     if (0x40..=0x5F).contains(&bank) || (0xC0..=0xDF).contains(&bank) {
                         let mapped_addr = addr & 0x1FFFFF; // linear, unfolded
 
-                        (mapped_addr as usize) & (self.rom.len() - 1)
+                        Some((mapped_addr as usize) & (self.rom.len() - 1))
                     } else {
-                        let mapped_addr = match self.mapping_mode {
-                            MappingMode::LoROM => ((addr & 0x7F0000) >> 1) | (addr & 0x7FFF),
-                            MappingMode::HiROM => addr & 0x3FFFFF,
-                            MappingMode::ExHiROM => (((addr & 0x800000) ^ 0x800000) >> 1) | (addr & 0x3FFFFF),
-                        };
-
-                        (mapped_addr as usize) & (self.rom.len() - 1)
+                        None
                     }
                 }
-                _ => unreachable!("Not implemented yet"),
-            }
+                _ => None,
+            }.unwrap_or({
+                let mapped_addr = match self.mapping_mode {
+                    MappingMode::LoROM => ((addr & 0x7F0000) >> 1) | (addr & 0x7FFF),
+                    MappingMode::HiROM => addr & 0x3FFFFF,
+                    MappingMode::ExHiROM => (((addr & 0x800000) ^ 0x800000) >> 1) | (addr & 0x3FFFFF),
+                };
+
+                (mapped_addr as usize) & (self.rom.len() - 1)
+            })
         } else {
             let mapped_addr = match self.mapping_mode {
                 MappingMode::LoROM => ((addr & 0x7F0000) >> 1) | (addr & 0x7FFF),

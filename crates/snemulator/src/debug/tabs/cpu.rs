@@ -40,7 +40,7 @@ impl DisassemblyView {
     }
 
     fn update(&mut self,
-        core: &Snemulator,
+        core: &mut Snemulator,
         options: &disassembler::DisassemblyOptions,
     ) {
         if self.follow_pc {
@@ -738,7 +738,7 @@ impl CpuTab {
         }
     }
     
-    fn update_disasm(&mut self, core: &Snemulator) {
+    fn update_disasm(&mut self, core: &mut Snemulator) {
         let options = self.disasm.options.clone();
 
         self.disasm.update(core, &options);

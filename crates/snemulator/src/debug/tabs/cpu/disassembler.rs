@@ -830,7 +830,7 @@ fn disassemble(
 }
 
 pub fn disassemble_forward(
-    core: &Snemulator,
+    core: &mut Snemulator,
     options: &DisassemblyOptions,
     symbols: &SymbolManager,
     start_addr: u32,
@@ -888,16 +888,16 @@ pub fn disassemble_forward(
     disassembly
 }
 
-fn read_rom_or_ram(core: &Snemulator, addr: scpu::Address) -> u8 {
+fn read_rom_or_ram(core: &mut Snemulator, addr: scpu::Address) -> u8 {
     if addr.bank & 0x7F <= 0x3F {
         if addr.offset >= 0x8000 {
-            core.cart.as_ref().unwrap().read(addr)
+            core.cart.as_mut().unwrap().read(addr)
         } else {
             0
         }
     } else if addr.bank == 0x7E || addr.bank == 0x7F {
         core.wram[addr.to_u32() as usize & 0x1FFFF]
     } else {
-        core.cart.as_ref().unwrap().read(addr)
+        core.cart.as_mut().unwrap().read(addr)
     }
 }
