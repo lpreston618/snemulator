@@ -582,7 +582,7 @@ impl PpuRegs {
 
     #[allow(non_snake_case)]
     pub fn write_211A(&mut self, value: u8) {
-        self.m7_tilemap_repeat = get_bit_n!(value, 7);
+        self.m7_tilemap_repeat = !get_bit_n!(value, 7);
         self.m7_fill_mode = if get_bit_n!(value, 6) {
             M7FillMode::Character
         } else {
