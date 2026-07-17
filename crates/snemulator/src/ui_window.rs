@@ -1,5 +1,7 @@
 use glow::HasContext;
 
+use crate::app::theme::AppTheme;
+
 // Generic egui window wrapper
 pub struct UiWindow {
     pub window: sdl3::video::Window,
@@ -20,13 +22,13 @@ impl UiWindow {
     /// Updates the UI with the given function and returns the full output to be used during rendering.
     pub fn update_ui<F>(&mut self, ui_func: F) -> egui::FullOutput
     where
-        F: FnMut(&egui::Context),
+        F: for<'a> FnMut(&'a mut egui::Ui),
     {   
         self.window.gl_make_current(&self.gl_context).ok();
         
         let raw_input = self.raw_input.take().unwrap_or(self.new_raw_input());
         
-        let full_output = self.egui_ctx.run(raw_input, ui_func);
+        let full_output = self.egui_ctx.run_ui(raw_input, ui_func);
         
         let wants_text = full_output.platform_output.ime.is_some()
             || self.egui_ctx.memory(|m| m.focused().is_some());
@@ -41,12 +43,16 @@ impl UiWindow {
     }
     
     /// Clears the screen with the default background color. Should be called before rendering.
-    pub fn clear(&mut self) {
+    pub fn clear(&mut self, app_theme: &AppTheme) {
         let (width, height) = self.window.size();
+
+        let clear_r = (app_theme.bg_primary.r() as f32) / 255.0;
+        let clear_g = (app_theme.bg_primary.g() as f32) / 255.0;
+        let clear_b = (app_theme.bg_primary.b() as f32) / 255.0;
 
         unsafe {
             self.gl.viewport(0, 0, width as i32, height as i32);
-            self.gl.clear_color(0.2, 0.2, 0.2, 1.0);
+            self.gl.clear_color(clear_r, clear_g, clear_b, 1.0);
             self.gl.clear(glow::COLOR_BUFFER_BIT);
         }
     }
@@ -105,6 +111,7 @@ impl UiWindow {
                     unit: egui::MouseWheelUnit::Line,
                     delta: egui::Vec2::new(0.0, *y as f32),
                     modifiers: egui::Modifiers::default(),
+                    phase: egui::TouchPhase::Move,
                 });
             }
             _ => {}

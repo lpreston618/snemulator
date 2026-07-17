@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use egui::{
-    Color32, Context, CornerRadius, FontId, Stroke, Style, Visuals, epaint::AlphaFromCoverage, style::{Selection, TextCursorStyle, WidgetVisuals, Widgets}
+    Color32, Context, CornerRadius, FontId, Stroke, Visuals, style::{Selection, TextCursorStyle, WidgetVisuals, Widgets}
 };
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "debug")]
@@ -82,6 +82,9 @@ pub struct AppTheme {
     // Widget styling
     pub corner_radius: u8,
     pub widget_corner_radius: u8,
+
+    pub font_default: egui::FontId,
+    pub font_bold: egui::FontId,
 }
 
 impl AppTheme {
@@ -187,6 +190,9 @@ impl AppTheme {
             // Styling
             corner_radius: 6,
             widget_corner_radius: 4,
+
+            font_default: egui::FontId::proportional(14.0),
+            font_bold: egui::FontId::new(14.0, egui::FontFamily::Name("Bold".into())),
         }
     }
     
@@ -264,6 +270,9 @@ impl AppTheme {
             // Styling
             corner_radius: 6,
             widget_corner_radius: 4,
+
+            font_default: egui::FontId::proportional(14.0),
+            font_bold: egui::FontId::new(14.0, egui::FontFamily::Name("Bold".into())),
         }
     }
     
@@ -341,19 +350,19 @@ impl AppTheme {
             // Styling - sharper for retro feel
             corner_radius: 2,
             widget_corner_radius: 2,
+
+            font_default: egui::FontId::proportional(14.0),
+            font_bold: egui::FontId::new(14.0, egui::FontFamily::Name("Bold".into())),
         }
     }
     
     /// Apply theme to an egui context
     pub fn apply(&self, ctx: &Context) {
-        let mut style = Style::default();
-        
-        // Visuals
-        style.visuals = Visuals {
+        let visuals = Visuals {
             dark_mode: self.is_dark(),
             
             override_text_color: None,
-            
+
             widgets: Widgets {
                 noninteractive: WidgetVisuals {
                     bg_fill: self.bg_secondary,
@@ -442,7 +451,7 @@ impl AppTheme {
                 off_duration: 0.5,
             },
 
-            text_alpha_from_coverage: AlphaFromCoverage::Gamma(2.2),
+            // text_alpha_from_coverage: AlphaFromCoverage::Gamma(2.2),
             weak_text_alpha: 0.6,
             weak_text_color: Some(self.text_muted),
             text_edit_bg_color: Some(self.bg_tertiary),
@@ -464,18 +473,20 @@ impl AppTheme {
             image_loading_spinners: true,
             
             numeric_color_space: egui::style::NumericColorSpace::GammaByte,
+            text_options: egui::epaint::TextOptions::default(),
+            ime_composition: egui::style::ImeComposition::default(),
         };
         
         // Spacing
-        style.spacing.item_spacing = egui::vec2(8.0, 4.0);
-        style.spacing.window_margin = egui::Margin::same(12);
-        style.spacing.button_padding = egui::vec2(8.0, 4.0);
-        style.spacing.indent = 18.0;
-        style.spacing.scroll.bar_width = 10.0;
-        style.spacing.scroll.bar_inner_margin = 2.0;
-        style.spacing.scroll.bar_outer_margin = 2.0;
+        // style.spacing.item_spacing = egui::vec2(8.0, 4.0);
+        // style.spacing.window_margin = egui::Margin::same(12);
+        // style.spacing.button_padding = egui::vec2(8.0, 4.0);
+        // style.spacing.indent = 18.0;
+        // style.spacing.scroll.bar_width = 10.0;
+        // style.spacing.scroll.bar_inner_margin = 2.0;
+        // style.spacing.scroll.bar_outer_margin = 2.0;
         
-        ctx.set_style(style);
+        ctx.set_visuals(visuals);
     }
     
     /// Determine if this is a dark theme based on background luminance

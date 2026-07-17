@@ -155,7 +155,7 @@ impl MainWindow {
         // be one at a time anyways.
         let app_action = library_action.map_or(menu_action, |action| Some(action));
 
-        self.egui_window.clear();
+        self.egui_window.clear(app_theme);
         self.egui_window.render(full_output);
 
         app_action

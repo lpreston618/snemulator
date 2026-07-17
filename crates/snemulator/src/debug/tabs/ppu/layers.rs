@@ -188,10 +188,10 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
 
         // Side panel for tile info — reserves space before the background view is laid out,
         // so the scroll area always gets the correct remaining width.
-        egui::SidePanel::right(format!("bg{}_tile_info", BG_LAYER))
+        egui::Panel::right(format!("bg{}_tile_info", BG_LAYER))
             .resizable(true)
-            .min_width(160.0)
-            .show_inside(ui, |ui| {
+            .min_size(160.0)
+            .show(ui, |ui| {
                 self.render_tile_info_panel(ui, core, app_theme);
             });
 

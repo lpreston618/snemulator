@@ -9,7 +9,7 @@ pub struct MainMenuBar;
 impl MainMenuBar {
     pub fn new() -> Self { Self {} }
 
-    pub fn render(&self, ctx: &egui::Context, app_state: &AppState, app_settings: &mut Settings) -> Option<AppAction> {
+    pub fn render(&self, ui: &mut egui::Ui, app_state: &AppState, app_settings: &mut Settings) -> Option<AppAction> {
         let mut app_action: Option<AppAction> = None;
 
         let debug_active;
@@ -22,9 +22,11 @@ impl MainMenuBar {
         {
             debug_active = false;
         }
+
+
     
         // Top menu bar
-        egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
+        egui::Panel::top("menu_bar").show(ui, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {                
                 ui.menu_button("File", |ui| {
                     ui.set_width(120.0);

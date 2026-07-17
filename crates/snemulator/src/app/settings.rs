@@ -439,13 +439,14 @@ impl SettingsWindow {
         &mut self,
         controller_manager: &mut ControllerManager,
         live_settings: &mut Settings,
+        app_theme: &AppTheme,
     ) -> Option<Settings> {
         let current_tab = &mut self.current_tab;
         let selected_controller = &mut self.selected_controller;
         let mut apply_settings = false;
 
         let full_output = self.egui_window.update_ui(|ctx| {
-            egui::SidePanel::left("settings_tab_strip")
+            egui::Panel::left("settings_tab_strip")
                 .resizable(false)
                 .show(ctx, |ui| {
                     ui.selectable_value(current_tab, SettingsTab::General, "⚙ General");
@@ -480,7 +481,7 @@ impl SettingsWindow {
                 });
         });
         
-        self.egui_window.clear();
+        self.egui_window.clear(app_theme);
         self.egui_window.render(full_output);
 
         if apply_settings {

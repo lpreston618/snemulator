@@ -1,5 +1,5 @@
 use anyhow::Result;
-use glow::HasContext;
+use egui_glow::glow::HasContext;
 
 pub struct Texture {
     texture: glow::Texture,

@@ -127,8 +127,8 @@ impl DebugWindow {
         let mut egui_window = self.egui_window.take().unwrap();
         let mut debug_action: Option<DebugAction> = None;
 
-        let full_output = egui_window.update_ui(|ctx| {
-            egui::TopBottomPanel::top("tabs").show(ctx, |ui| {
+        let full_output = egui_window.update_ui(|ui| {
+            egui::Panel::top("tabs").show(ui, |ui| {
                 ui.horizontal(|ui| {
                     for &tab in DebugTab::all() {
                         ui.selectable_value(&mut self.selected_tab, tab, tab.label());
@@ -136,9 +136,9 @@ impl DebugWindow {
                 });
             });
 
-            debug_action = self.show_toolbar(ctx, app_state, app_theme, core, harness);
+            debug_action = self.show_toolbar(ui, app_state, app_theme, core, harness);
 
-            egui::CentralPanel::default().show(ctx, |ui| {
+            egui::CentralPanel::default().show(ui, |ui| {
                 match self.selected_tab {
                     DebugTab::Cpu => self.cpu_tab.render(ui, core, harness, app_theme),
                     DebugTab::Spc => self.spc_tab.render(ui, core, harness, app_theme),
@@ -156,7 +156,7 @@ impl DebugWindow {
             });
         });
 
-        egui_window.clear();
+        egui_window.clear(app_theme);
         egui_window.render(full_output);
 
         self.egui_window = Some(egui_window);
@@ -306,10 +306,10 @@ impl DebugWindow {
         app_action
     }
 
-    fn show_toolbar(&mut self, ctx: &egui::Context, app_state: &app::AppState, app_theme: &AppTheme, core: &mut Snemulator, harness: &mut MainDebugHarness) -> Option<DebugAction> {
+    fn show_toolbar(&mut self, ui: &mut egui::Ui, app_state: &app::AppState, app_theme: &AppTheme, core: &mut Snemulator, harness: &mut MainDebugHarness) -> Option<DebugAction> {
         let mut debug_action = None;
 
-        egui::TopBottomPanel::top("commands").show(ctx, |ui| {
+        egui::Panel::top("commands").show(ui, |ui| {
             ui.add_space(5.0);
 
             ui.horizontal(|ui| {

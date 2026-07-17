@@ -378,23 +378,34 @@ impl SnemulatorApp {
     fn load_fonts() -> egui::FontDefinitions {
         let mut fonts = egui::FontDefinitions::default();
 
-        let mono_data = include_bytes!("../assets/fonts/JetBrainsMonoNL-Bold.ttf");
+        let regular_data = include_bytes!("../assets/fonts/JetBrainsMonoNL-Regular.ttf");
         fonts.font_data.insert(
-            "JetBrains Mono Bold".to_owned(),
-            std::sync::Arc::new(egui::FontData::from_static(mono_data)),
+            "JetBrains Mono Regular".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_static(regular_data)),
         );
 
-        fonts
-            .families
-            .entry(egui::FontFamily::Monospace)
-            .or_default()
-            .insert(0, "JetBrains Mono Bold".to_owned());
+        let bold_data = include_bytes!("../assets/fonts/JetBrainsMonoNL-Bold.ttf");
+        fonts.font_data.insert(
+            "JetBrains Mono Bold".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_static(bold_data)),
+        );
 
         fonts
             .families
             .entry(egui::FontFamily::Proportional)
             .or_default()
-            .insert(0, "JetBrains Mono Bold".to_owned());
+            .insert(0, "JetBrains Mono Regular".to_owned());
+
+        fonts
+            .families
+            .entry(egui::FontFamily::Monospace)
+            .or_default()
+            .insert(0, "JetBrains Mono Regular".to_owned());
+
+        fonts.families.insert(
+            egui::FontFamily::Name("Bold".into()),
+            vec!["JetBrains Mono Bold".to_owned()],
+        );
 
         fonts
     }
@@ -426,6 +437,7 @@ impl SnemulatorApp {
                 let new_settings = settings_window.update_and_render(
                     &mut self.controller_manager,
                     &mut self.settings,
+                    &self.theme,
                 );
 
                 if let Some(settings) = new_settings {
@@ -1371,6 +1383,10 @@ impl SnemulatorApp {
         let gl = std::sync::Arc::new(gl);
         let egui_ctx = egui::Context::default();
 
+        // Ensure tessellation snaps to pixels
+        // let mut tess_options = egui_ctx.tessellation_options(|t| t.clone());
+        // tess_options.
+        
         egui_extras::install_image_loaders(&egui_ctx);
 
         egui_ctx.set_fonts(fonts.clone());

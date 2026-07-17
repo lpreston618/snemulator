@@ -58,7 +58,7 @@ impl PpuTab {
     
     pub fn render(&mut self, ui: &mut egui::Ui, core: &Snemulator, harness: &mut MainDebugHarness, app_theme: &AppTheme) {
         ui.vertical(|ui| {
-            egui::TopBottomPanel::top("tabs").show_inside(ui, |ui| {
+            egui::Panel::top("tabs").show(ui, |ui| {
                 ui.horizontal(|ui| {
                     for tab in [
                         PpuSubTab::Chr,

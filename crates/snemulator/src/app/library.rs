@@ -189,8 +189,6 @@ impl LibraryView {
 
         let mut action: Option<AppAction> = None;
 
-        Self::render_header(ui, app_theme);
-
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.set_min_width(ui.available_width());
 
@@ -214,66 +212,11 @@ impl LibraryView {
                 });
             }
         });
+
         action
     }
 
-    fn render_header(ui: &mut Ui, theme: &AppTheme) {
-        let available_width = ui.available_width();
-        let row_height = 24.0;
-
-        let (rect, _) = ui.allocate_exact_size(
-            Vec2::new(available_width, row_height),
-            egui::Sense::hover(),
-        );
-
-        if !ui.is_rect_visible(rect) { return; }
-
-        let painter = ui.painter();
-
-        painter.rect_filled(rect, 0.0, theme.bg_secondary);
-        painter.line_segment(
-            [egui::pos2(rect.min.x, rect.max.y - 0.5), egui::pos2(rect.max.x, rect.max.y - 0.5)],
-            egui::Stroke::new(0.5, theme.border),
-        );
-
-        let margin = 12.0;
-        let thumb_size = 44.0;
-        let col_sav_w    = 40.0;
-        let col_states_w = 80.0;
-        let col_played_w = 110.0;
-        let col_time_w   = 90.0;
-
-        let text_x = margin + thumb_size + 10.0;
-        let mid_y = rect.center().y;
-
-        let label = |painter: &egui::Painter, x: f32, anchor: egui::Align2, text: &str| {
-            painter.text(
-                egui::pos2(x, mid_y),
-                anchor,
-                text,
-                egui::FontId::proportional(10.0),
-                theme.text_disabled,
-            );
-        };
-
-        label(&painter, text_x, egui::Align2::LEFT_CENTER, "NAME");
-
-        let mut col_right_x = rect.max.x - margin;
-
-        col_right_x -= col_time_w;
-        label(&painter, col_right_x + col_time_w / 2.0, egui::Align2::CENTER_CENTER, "TIME PLAYED");
-
-        col_right_x -= col_played_w;
-        label(&painter, col_right_x + col_played_w / 2.0, egui::Align2::CENTER_CENTER, "LAST PLAYED");
-
-        col_right_x -= col_states_w;
-        label(&painter, col_right_x + col_states_w / 2.0, egui::Align2::CENTER_CENTER, "SAVE STATES");
-
-        col_right_x -= col_sav_w;
-        label(&painter, col_right_x + col_sav_w / 2.0, egui::Align2::CENTER_CENTER, "SAV");
-    }
-
-    fn render_entry(ui: &mut Ui, entry: &LibraryEntry, is_selected: bool, theme: &AppTheme) -> egui::Response {
+    fn render_entry(ui: &mut Ui, entry: &LibraryEntry, is_selected: bool, app_theme: &AppTheme) -> egui::Response {
         const ROW_HEIGHT: f32 = 116.0;
         const THUMBNAIL_SIZE: f32 = 96.0;
         const THUMBNAIL_MARGIN: f32 = 12.0;
@@ -289,24 +232,24 @@ impl LibraryView {
         }
 
         let painter = ui.painter();
-        let cr = theme.corner_radius as f32;
+        let cr = app_theme.corner_radius as f32;
 
         // Background
         if is_selected {
-            painter.rect_filled(rect, 0.0, theme.bg_elevated);
+            painter.rect_filled(rect, 0.0, app_theme.bg_elevated);
             painter.rect_filled(
                 egui::Rect::from_min_size(rect.min, Vec2::new(3.0, ROW_HEIGHT)),
                 0.0,
-                theme.accent,
+                app_theme.accent,
             );
         } else if response.hovered() {
-            painter.rect_filled(rect, 0.0, theme.bg_secondary);
+            painter.rect_filled(rect, 0.0, app_theme.bg_secondary);
         }
 
         // Separator
         painter.line_segment(
             [egui::pos2(rect.min.x, rect.max.y - 0.5), egui::pos2(rect.max.x, rect.max.y - 0.5)],
-            egui::Stroke::new(0.5, theme.border),
+            egui::Stroke::new(0.5, app_theme.border),
         );
 
         // Thumbnail
@@ -314,11 +257,11 @@ impl LibraryView {
             egui::pos2(rect.min.x + THUMBNAIL_MARGIN, rect.min.y + (ROW_HEIGHT - THUMBNAIL_SIZE) / 2.0),
             Vec2::splat(THUMBNAIL_SIZE),
         );
-        painter.rect_filled(thumb_rect, cr, theme.bg_tertiary);
+        painter.rect_filled(thumb_rect, cr, app_theme.bg_tertiary);
         painter.rect_stroke(
             thumb_rect, 
             cr, 
-            egui::Stroke::new(1.0, theme.border),
+            egui::Stroke::new(1.0, app_theme.border),
             egui::StrokeKind::Outside,
         );
         match &entry.thumbnail {
@@ -345,7 +288,7 @@ impl LibraryView {
                     let alpha = (pair[0].x - center.x + radius) / (2.0 * radius);
                     painter.line_segment(
                         [pair[0], pair[1]],
-                        egui::Stroke::new(2.5, theme.accent.linear_multiply(alpha.clamp(0.2, 1.0))),
+                        egui::Stroke::new(2.5, app_theme.accent.linear_multiply(alpha.clamp(0.2, 1.0))),
                     );
                 }
 
@@ -367,7 +310,7 @@ impl LibraryView {
                     egui::Align2::CENTER_CENTER,
                     initial.to_string(),
                     egui::FontId::proportional(48.0),
-                    theme.text_muted,
+                    app_theme.text_muted,
                 );
             }
         }
@@ -388,8 +331,8 @@ impl LibraryView {
             egui::pos2(text_x, mid_y - 9.0),
             egui::Align2::LEFT_CENTER,
             &entry.display_name,
-            egui::FontId::proportional(13.0),
-            if is_selected { theme.text_primary } else { theme.text_secondary },
+            app_theme.font_bold.clone(),
+            if is_selected { app_theme.text_primary } else { app_theme.text_secondary },
         );
         let stem = entry.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
         if stem != entry.display_name {
@@ -398,7 +341,7 @@ impl LibraryView {
                 egui::Align2::LEFT_CENTER,
                 stem,
                 egui::FontId::proportional(10.0),
-                theme.text_muted,
+                app_theme.text_muted,
             );
         }
 
@@ -411,7 +354,7 @@ impl LibraryView {
             egui::Align2::CENTER_CENTER,
             format_play_time(entry.play_time_secs),
             egui::FontId::proportional(11.0),
-            theme.text_muted,
+            app_theme.text_muted,
         );
 
         col_right_x -= col_played_w;
@@ -420,7 +363,7 @@ impl LibraryView {
             egui::Align2::CENTER_CENTER,
             entry.last_played.map(format_timestamp).unwrap_or_else(|| "Never".to_string()),
             egui::FontId::proportional(11.0),
-            theme.text_muted,
+            app_theme.text_muted,
         );
 
         col_right_x -= col_states_w;
@@ -433,18 +376,18 @@ impl LibraryView {
                 format!("{} state{}", entry.used_slots.len(), if entry.used_slots.len() == 1 { "" } else { "s" })
             },
             egui::FontId::proportional(11.0),
-            theme.text_muted,
+            app_theme.text_muted,
         );
 
         col_right_x -= col_sav_w;
         if entry.has_sav {
             let badge_center = egui::pos2(col_right_x + col_sav_w / 2.0, mid_y);
             let badge_rect = egui::Rect::from_center_size(badge_center, Vec2::new(28.0, 16.0));
-            painter.rect_filled(badge_rect, theme.widget_corner_radius as f32, theme.success.linear_multiply(0.25));
+            painter.rect_filled(badge_rect, app_theme.widget_corner_radius as f32, app_theme.success.linear_multiply(0.25));
             painter.rect_stroke(
                 badge_rect, 
-                theme.widget_corner_radius as f32, 
-                egui::Stroke::new(0.5, theme.success.linear_multiply(0.6)),
+                app_theme.widget_corner_radius as f32, 
+                egui::Stroke::new(0.5, app_theme.success.linear_multiply(0.6)),
                 egui::StrokeKind::Outside,
             );
             painter.text(
@@ -452,7 +395,7 @@ impl LibraryView {
                 egui::Align2::CENTER_CENTER,
                 "SAV",
                 egui::FontId::proportional(9.0),
-                theme.success,
+                app_theme.success,
             );
         }
 
