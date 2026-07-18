@@ -44,6 +44,14 @@ pub fn spawn_thumbnail_resolver(
 /// Fetches and writes a single thumbnail. Returns the saved path on success.
 fn try_fetch_thumbnail(stem: &RomPathStem, index: &[String]) -> Option<PathBuf> {
     let rom_paths = RomPaths::new(stem)?;
+    let dest = rom_paths.thumbnail_path();
+
+    if std::fs::read(&dest).ok().filter(|b| is_valid_png(b)).is_some() {
+        log::debug!("Existing thumbnail for '{}' is valid, reusing", stem.sanitized_name());
+        update_manifest_thumbnail(stem, &rom_paths, &dest);
+        return Some(dest);
+    }
+
     let candidates = best_matches(stem.raw_name(), index, 3);
 
     for candidate in candidates {
@@ -55,16 +63,19 @@ fn try_fetch_thumbnail(stem: &RomPathStem, index: &[String]) -> Option<PathBuf> 
             continue;
         }
 
-        // Update manifest
-        let mut manifest = RomPaths::find_manifest_by_stem(stem).unwrap_or_default();
-        manifest.thumbnail_path = Some(dest.clone());
-        rom_paths.write_manifest(&manifest);
+        update_manifest_thumbnail(stem, &rom_paths, &dest);
 
         log::info!("Fetched thumbnail for '{}' -> '{}'", stem.sanitized_name(), candidate);
         return Some(dest);
     }
 
     None
+}
+
+fn update_manifest_thumbnail(stem: &RomPathStem, rom_paths: &RomPaths, thumb_path: &PathBuf) {
+    let mut manifest = RomPaths::find_manifest_by_stem(stem).unwrap_or_default();
+    manifest.thumbnail_path = Some(thumb_path.clone());
+    rom_paths.write_manifest(&manifest);
 }
 
 /// Returns path to the index file, downloading it first if absent.
@@ -208,21 +219,23 @@ fn fetch_valid_png_data(filename: &str) -> Option<Vec<u8>> {
     let encoded = url_encode(filename);
     let url = format!("{}/{}", RAW_BASE_URL, encoded);
 
-    let bytes = ureq::get(&url)
+    let response = ureq::get(&url)
         .header("User-Agent", "snemulator")
         .call()
-        .ok().unwrap()
+        .inspect_err(|e| log::warn!("Request failed for '{filename}': {e}"))
+        .ok()?;
+
+    let bytes = response
         .into_body()
         .read_to_vec()
-        .ok().unwrap();
+        .inspect_err(|e| log::warn!("Failed to read response body for '{filename}': {e}"))
+        .ok()?;
 
-    let is_valid = is_valid_png(&bytes);
-
-    if !is_valid {
-        log::debug!("'{}' failed PNG validation (likely a git-lfs pointer)", filename);
-        None
-    } else {
+    if is_valid_png(&bytes) {
         Some(bytes)
+    } else {
+        log::debug!("'{filename}' failed PNG validation (likely a git-lfs pointer)");
+        None
     }
 }
 
