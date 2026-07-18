@@ -1,4 +1,3 @@
-pub mod texture;
 pub mod harness;
 pub mod window;
 pub mod icons;

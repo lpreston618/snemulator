@@ -6,9 +6,7 @@ use anyhow::Result;
 use snemcore::controller::ControllerPlayer;
 
 use crate::{
-    app::theme::{AppTheme, ThemePreset},
-    app::controller::ControllerManager,
-    ui_window::UiWindow,
+    app::{controller::ControllerManager, library::LibraryViewMode, theme::{AppTheme, ThemePreset}}, ui_window::UiWindow,
 };
 
 pub const SETTINGS_WINDOW_WIDTH: u32 = 600;
@@ -229,6 +227,7 @@ pub struct Settings {
     pub aspect_mode: AspectMode,
     pub scaling_filter: ScalingFilter,
     pub theme_preset: ThemePreset,
+    pub library_view_mode: LibraryViewMode,
 
     // Audio settings
     pub audio_enabled: bool,
@@ -275,6 +274,7 @@ impl Default for Settings {
             aspect_mode: AspectMode::Stretch,
             scaling_filter: ScalingFilter::Nearest,
             theme_preset: ThemePreset::Dark,
+            library_view_mode: LibraryViewMode::List,
 
             audio_enabled: true,
             master_volume: 1.0,

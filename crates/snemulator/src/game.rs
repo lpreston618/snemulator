@@ -117,7 +117,7 @@ impl MainWindow {
                         // Library mode
                         match &app_settings.roms_library_dir {
                             Some(_) => {
-                                library_action = self.library.render(ui, app_theme);
+                                library_action = self.library.render(ui, app_settings, app_theme);
                             }
                             None => {
                                 Self::render_empty_state(ui, &mut library_action, app_theme);
@@ -304,7 +304,7 @@ impl MainWindow {
             egui::pos2(rect.center().x, box_rect.max.y + 16.0),
             egui::Align2::CENTER_TOP,
             "Add ROMs Folder",
-            egui::FontId::proportional(13.0),
+            egui::FontId::proportional(12.0),
             label_color,
         );
 

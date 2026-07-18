@@ -1383,10 +1383,6 @@ impl SnemulatorApp {
         let gl = std::sync::Arc::new(gl);
         let egui_ctx = egui::Context::default();
 
-        // Ensure tessellation snaps to pixels
-        // let mut tess_options = egui_ctx.tessellation_options(|t| t.clone());
-        // tess_options.
-        
         egui_extras::install_image_loaders(&egui_ctx);
 
         egui_ctx.set_fonts(fonts.clone());

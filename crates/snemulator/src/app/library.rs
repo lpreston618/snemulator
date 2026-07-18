@@ -1,14 +1,24 @@
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use egui::{Ui, Vec2};
+use serde::{Deserialize, Serialize};
 
 use crate::app::MAX_SAVE_STATE_SLOTS;
+use crate::app::settings::Settings;
 use crate::app::theme::AppTheme;
 use crate::app::thumbnail_fetcher::{self, ThumbnailResult};
 use crate::app::AppAction;
 use crate::app::rom_paths::{RomManifest, RomPaths};
 
 const MAX_ROM_DIR_SEARCH_DEPTH: usize = 3;
+const STANDARD_THUMBNAIL_HEIGHT: f32 = 228.0;
+const STANDARD_THUMBNAIL_WIDTH: f32 = 160.0;
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub enum LibraryViewMode {
+    List,
+    Grid,
+}
 
 pub enum ThumbnailState {
     Loading,
@@ -154,7 +164,7 @@ impl LibraryView {
         }
     }
 
-    pub fn render(&mut self, ui: &mut Ui, app_theme: &AppTheme) -> Option<AppAction> {
+    pub fn render(&mut self, ui: &mut Ui, app_settings: &Settings, app_theme: &AppTheme) -> Option<AppAction> {
         if let Some(rx) = &self.thumbnail_rx {
             'receive_thumbnails: loop {
                 match rx.try_recv() {
@@ -187,15 +197,22 @@ impl LibraryView {
             }
         }
 
+        match app_settings.library_view_mode {
+            LibraryViewMode::List => self.render_library_list(ui, app_theme),
+            LibraryViewMode::Grid => { None }, //self.render_library_grid(ui, app_theme),
+        }
+    }
+
+    fn render_library_list(&mut self, ui: &mut Ui, app_theme: &AppTheme) -> Option<AppAction> {
         let mut action: Option<AppAction> = None;
 
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.set_min_width(ui.available_width());
 
-            for (i, entry) in self.entries.iter().enumerate() {
+            for (i, entry) in self.entries.iter_mut().enumerate() {
                 let is_selected = self.selected == Some(i);
                 
-                let response = Self::render_entry(ui, entry, is_selected, app_theme);
+                let response = Self::render_list_entry(ui, entry, is_selected, app_theme);
                 
                 if response.double_clicked() {
                     action = Some(AppAction::LoadRomFromPath(entry.path.clone()));
@@ -216,10 +233,14 @@ impl LibraryView {
         action
     }
 
-    fn render_entry(ui: &mut Ui, entry: &LibraryEntry, is_selected: bool, app_theme: &AppTheme) -> egui::Response {
-        const ROW_HEIGHT: f32 = 116.0;
-        const THUMBNAIL_SIZE: f32 = 96.0;
+    fn render_list_entry(ui: &mut Ui, entry: &mut LibraryEntry, is_selected: bool, app_theme: &AppTheme) -> egui::Response {
+        const THUMBNAIL_SCALE: f32 = 1.0;
+        const SCALED_THUMBNAIL_HEIGHT: f32 = THUMBNAIL_SCALE * STANDARD_THUMBNAIL_HEIGHT;
+        const SCALED_THUMBNAIL_WIDTH: f32 = THUMBNAIL_SCALE * STANDARD_THUMBNAIL_WIDTH;
         const THUMBNAIL_MARGIN: f32 = 12.0;
+        const ROW_HEIGHT: f32 = SCALED_THUMBNAIL_HEIGHT + THUMBNAIL_MARGIN;
+
+        let thumbnail_size = Vec2::new(SCALED_THUMBNAIL_WIDTH, SCALED_THUMBNAIL_HEIGHT);
 
         let available_width = ui.available_width();
         let (rect, response) = ui.allocate_exact_size(
@@ -254,8 +275,8 @@ impl LibraryView {
 
         // Thumbnail
         let thumb_rect = egui::Rect::from_min_size(
-            egui::pos2(rect.min.x + THUMBNAIL_MARGIN, rect.min.y + (ROW_HEIGHT - THUMBNAIL_SIZE) / 2.0),
-            Vec2::splat(THUMBNAIL_SIZE),
+            egui::pos2(rect.min.x + THUMBNAIL_MARGIN, rect.min.y + (ROW_HEIGHT - SCALED_THUMBNAIL_HEIGHT) / 2.0),
+            thumbnail_size,
         );
         painter.rect_filled(thumb_rect, cr, app_theme.bg_tertiary);
         painter.rect_stroke(
@@ -264,7 +285,7 @@ impl LibraryView {
             egui::Stroke::new(1.0, app_theme.border),
             egui::StrokeKind::Outside,
         );
-        match &entry.thumbnail {
+        match &mut entry.thumbnail {
             ThumbnailState::Loading => {
                 // Spinning arc loader
                 let center = thumb_rect.center();
@@ -296,10 +317,20 @@ impl LibraryView {
             }
             ThumbnailState::Ready(thumb_path) => {
                 let path_str = thumb_path.to_string_lossy().replace('\\', "/");
-                let uri = format!("file://{}", path_str);
-                ui.put(thumb_rect, egui::Image::new(uri)
-                    .fit_to_exact_size(Vec2::splat(THUMBNAIL_SIZE))
-                    .corner_radius(cr));
+                let uri = format!("file:///{}", path_str);
+
+                let image = egui::Image::new(&uri)
+                    .fit_to_exact_size(thumbnail_size)
+                    .corner_radius(cr);
+
+                match image.load_for_size(ui.ctx(), thumb_rect.size()) {
+                    Ok(_) => { ui.put(thumb_rect, image); }
+                    Err(e) => {
+                        log::error!("thumbnail load failed for {}: {e:?}", &uri);
+
+                        entry.thumbnail = ThumbnailState::NotFound;
+                    }
+                }
             }
             ThumbnailState::NotFound => {
                 let initial = entry.display_name.chars().next()
