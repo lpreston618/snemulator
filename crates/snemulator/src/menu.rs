@@ -66,7 +66,7 @@ impl MainMenuBar {
                         ui.menu_button("Save State", |ui| {
                             for slot in 0..MAX_SAVE_STATE_SLOTS {
                                 if ui.button(format!("Slot {}", slot)).clicked() {
-                                    app_action = Some(AppAction::SaveState { slot });
+                                    app_action = Some(AppAction::SaveState { slot: slot as u32 });
                                     ui.close();
                                 }
                             }
@@ -80,7 +80,7 @@ impl MainMenuBar {
                                 }).inner;
     
                                 if resp.clicked() {
-                                    app_action = Some(AppAction::LoadState { slot });
+                                    app_action = Some(AppAction::LoadState { slot: slot as u32 });
                                     ui.close();
                                 }
                             }

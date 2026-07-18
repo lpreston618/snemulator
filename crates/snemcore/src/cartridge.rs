@@ -1,4 +1,4 @@
-use crate::{coprocessor::{Coprocessor, superfx, dsp}, scpu::{CpuInterrupt, bus::Address}};
+use crate::{coprocessor::Coprocessor, scpu::{CpuInterrupt, bus::Address}};
 
 // Positions of the start of the header for different memory mappings
 const LOROM_POS: usize = 0x007FC0;

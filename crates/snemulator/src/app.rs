@@ -71,15 +71,13 @@ pub enum AppAction {
     SelectRomsFolder,
     LoadRom,
     LoadRomFromPath(PathBuf),
+    LoadRomAndState { path: PathBuf, slot: u32 },
     UnloadRom,
     ResetCore,
     PowerOnCore,
-    SaveState {
-        slot: usize,
-    },
-    LoadState {
-        slot: usize,
-    },
+    SaveState { slot: u32 },
+    LoadState { slot: u32 },
+    DeleteStateForRom { path: PathBuf, slot: u32 },
     OpenSettings,
     Exit,
 
@@ -723,6 +721,40 @@ impl SnemulatorApp {
                     );
                 }
             }
+            AppAction::LoadRomAndState { path, slot } => {
+                if let Err(e) = self.try_load_rom_from_path(&path) {
+                    self.settings.remove_recent_rom(&path);
+
+                    let file_name = path
+                        .to_str()
+                        .ok_or_else(|| anyhow!("Invalid file name"))
+                        .unwrap()
+                        .to_string();
+
+                    self.message_queue.push(
+                        MessageKind::Error,
+                        format!("Failed to load ROM '{}': {e}", file_name),
+                        Duration::from_secs(5),
+                        Some(log::Level::Error),
+                    );
+                }
+
+                if let Err(e) = self.try_load_state(slot) {
+                    self.message_queue.push(
+                        MessageKind::Error,
+                        format!("Failed to load state: {e}"),
+                        Duration::from_secs(5),
+                        Some(log::Level::Error),
+                    );
+                } else {
+                    self.message_queue.push(
+                        MessageKind::Success,
+                        format!("Loaded save state slot {slot}"),
+                        Duration::from_secs(3),
+                        Some(log::Level::Info),
+                    );
+                }
+            }
             AppAction::UnloadRom if self.state.loaded_rom_data.is_some() => {
                 self.unload_rom();
             }
@@ -758,6 +790,22 @@ impl SnemulatorApp {
                         Duration::from_secs(3),
                         Some(log::Level::Info),
                     );
+                }
+            }
+            AppAction::DeleteStateForRom { path, slot } => {
+                match self.delete_state(path, slot) {
+                    Ok(_) => self.message_queue.push(
+                        MessageKind::Success,
+                        format!("Deleted save state {slot}"),
+                        Duration::from_secs(3),
+                        Some(log::Level::Debug),
+                    ),
+                    Err(_) => self.message_queue.push(
+                        MessageKind::Error,
+                        format!("Failed to delete save state slot {slot}"),
+                        Duration::from_secs(5),
+                        None,
+                    ),
                 }
             }
             AppAction::ResetCore => self.reset_emulation(false),
@@ -1188,26 +1236,26 @@ impl SnemulatorApp {
         }
     }
 
-    fn try_save_state(&mut self, slot: usize) -> Result<()> {
+    fn try_save_state(&mut self, slot: u32) -> Result<()> {
         let Some(loaded_rom) = &mut self.state.loaded_rom_data else {
             return Err(anyhow!("cannot save state with no rom loaded"));
         };
 
-        let path = loaded_rom.paths.state_path(slot as u32);
+        let path = loaded_rom.paths.state_path(slot);
         let state = self.snem_core.save_state();
         let config = bincode_next::config::standard();
         let bytes: Vec<u8> = bincode_next::serde::encode_to_vec(state, config)?;
 
         std::fs::write(path.clone(), bytes)?;
 
-        loaded_rom.used_save_state_slots[slot] = true;
+        loaded_rom.used_save_state_slots[slot as usize] = true;
 
         log::info!("Saved state '{}'", path.to_string_lossy());
 
         Ok(())
     }
 
-    fn try_load_state(&mut self, slot: usize) -> Result<()> {
+    fn try_load_state(&mut self, slot: u32) -> Result<()> {
         let Some(loaded_rom) = &self.state.loaded_rom_data else {
             return Err(anyhow!("cannot load state with no rom loaded"));
         };
@@ -1222,6 +1270,22 @@ impl SnemulatorApp {
         self.snem_core.try_load_state(state)?;
 
         log::info!("Loaded state from '{}'", path.to_string_lossy());
+
+        Ok(())
+    }
+
+    fn delete_state(&mut self, path: PathBuf, slot: u32) -> Result<()> {
+        let stem = RomPathStem::from_path(&path);
+        let Some(rom_paths) = RomPaths::new(&stem) else { return Err(anyhow!("")); };
+
+        let state_path = rom_paths.state_path(slot);
+
+        if std::fs::exists(&state_path).ok().unwrap_or(false) {
+            match std::fs::remove_file(&state_path) {
+                Ok(_) => {},
+                Err(_) => return Err(anyhow!("")),
+            }
+        }
 
         Ok(())
     }

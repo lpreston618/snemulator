@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
-use egui::{TextBuffer, Ui, Vec2};
+use egui::{Ui, Vec2};
 use serde::{Deserialize, Serialize};
 
 use crate::app::{self, MAX_SAVE_STATE_SLOTS};
@@ -40,9 +40,9 @@ enum DeleteConfirm {
     SaveState(u32),
 }
 
-pub struct GameDetailState {
-    pub delete_confirm: Option<DeleteConfirm>,
-    pub selected_save_state: Option<u32>,
+struct GameDetailState {
+    delete_confirm: Option<DeleteConfirm>,
+    selected_save_state: Option<u32>,
 }
 
 impl GameDetailState {
@@ -275,13 +275,29 @@ impl LibraryView {
                     GameDetailAction::Close => { self.detail_view_state = None; },
                     GameDetailAction::Play => {
                         if let Some(slot) = self.detail_view_state.as_ref().unwrap().selected_save_state {
-                            // TODO: Load ROM then load state
+                            action = Some(AppAction::LoadRomAndState {
+                                path: entry.path.clone(),
+                                slot,
+                            });
                         } else {
                             action = Some(AppAction::LoadRomFromPath(entry.path.clone()))
                         }
                     }
                     GameDetailAction::DeleteSave => {},
-                    GameDetailAction::DeleteSlot(slot) => {},
+                    GameDetailAction::DeleteSlot(slot) => {
+                        action = Some(AppAction::DeleteStateForRom {
+                            path: entry.path.clone(),
+                            slot,
+                        });
+                        
+                        entry.used_slots.retain(|&s| s != slot);
+
+                        if let Some(detail_view_state) = &mut self.detail_view_state {
+                            if Some(slot) == detail_view_state.selected_save_state {
+                                detail_view_state.selected_save_state = None;
+                            }
+                        }
+                    },
                 }
             }
         }
@@ -289,7 +305,7 @@ impl LibraryView {
         action
     }
 
-    pub fn show_game_detail_panel(
+    fn show_game_detail_panel(
         ctx: &egui::Context,
         entry: &mut LibraryEntry,
         state: &mut GameDetailState,
@@ -532,35 +548,42 @@ impl LibraryView {
 
         ui.add_space(12.0);
 
-        // Title
-        ui.label(
-            egui::RichText::new(&entry.display_name)
-                .font(app::theme::bold_font(20.0))
-                .color(app_theme.text_primary),
-        );
+        // Title on the left, technical details right-aligned to the panel's edge
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new(&entry.display_name)
+                    .font(app::theme::bold_font(20.0))
+                    .color(app_theme.text_primary),
+            );
 
-        ui.add_space(12.0);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                ui.with_layout(egui::Layout::top_down(egui::Align::RIGHT), |ui| {
+                    let detail_font = egui::FontId::proportional(10.0);
 
-        // Last played / time played
-        egui::Grid::new("detail_stats_grid")
-            .num_columns(2)
-            .spacing([32.0, 4.0])
-            .show(ui, |ui| {
-                ui.label(egui::RichText::new("Last Played").color(app_theme.text_muted).size(11.0));
-                ui.label(egui::RichText::new("Time Played").color(app_theme.text_muted).size(11.0));
-                ui.end_row();
-                ui.label(
-                    egui::RichText::new(
-                        entry
-                            .last_played
-                            .map(format_timestamp)
-                            .unwrap_or_else(|| "Never".to_string()),
-                    )
-                    .color(app_theme.text_secondary),
-                );
-                ui.label(egui::RichText::new(format_play_time(entry.play_time_secs)).color(app_theme.text_secondary));
-                ui.end_row();
+                    ui.label(
+                        egui::RichText::new(format_file_size(entry.file_size_bytes))
+                            .font(detail_font.clone())
+                            .color(app_theme.text_muted),
+                    );
+                    ui.label(
+                        egui::RichText::new(format!("CRC32: {:08X}", entry.crc32))
+                        .font(detail_font.clone())
+                        .color(app_theme.text_muted),
+                    );
+                    ui.label(
+                        egui::RichText::new(format!("Mapping: {}", entry.mapping))
+                        .font(detail_font.clone())
+                        .color(app_theme.text_muted),
+                    );
+                    ui.label(
+                        egui::RichText::new(format!("Coprocessor: {}", entry.coprocessor))
+                            .font(detail_font.clone())
+                            .color(app_theme.text_muted),
+                    );
+                });
             });
+        });
+
 
         ui.add_space(12.0);
         ui.separator();
@@ -653,45 +676,6 @@ impl LibraryView {
                 });
             }
         });
-
-        ui.add_space(16.0);
-
-        // Technical details — demoted, always visible, small & muted
-        ui.label(egui::RichText::new("Details").color(app_theme.text_muted).size(11.0));
-        ui.add_space(4.0);
-        egui::Grid::new("tech_details_grid")
-            .num_columns(2)
-            .spacing([24.0, 4.0])
-            .show(ui, |ui| {
-                ui.label(egui::RichText::new("File Size").color(app_theme.text_muted).size(10.0));
-                ui.label(
-                    egui::RichText::new(format_file_size(entry.file_size_bytes))
-                        .color(app_theme.text_muted)
-                        .size(10.0),
-                );
-                ui.end_row();
-
-                ui.label(egui::RichText::new("CRC32").color(app_theme.text_muted).size(10.0));
-                ui.label(
-                    egui::RichText::new(format!("{:08X}", entry.crc32))
-                        .color(app_theme.text_muted)
-                        .size(10.0),
-                );
-                ui.end_row();
-
-                ui.label(egui::RichText::new("Mapping").color(app_theme.text_muted).size(10.0));
-                ui.label(egui::RichText::new(&entry.mapping).color(app_theme.text_muted).size(10.0));
-                ui.end_row();
-
-                ui.label(egui::RichText::new("Coprocessor").color(app_theme.text_muted).size(10.0));
-                ui.label(
-                    egui::RichText::new(&entry.coprocessor)
-                        .color(app_theme.text_muted)
-                        .size(10.0),
-                );
-                ui.end_row();
-            }
-        );
 
         ui.add_space(16.0);
 
