@@ -1,18 +1,18 @@
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
-use egui::{Ui, Vec2};
+use egui::{TextBuffer, Ui, Vec2};
 use serde::{Deserialize, Serialize};
 
-use crate::app::MAX_SAVE_STATE_SLOTS;
+use crate::app::{self, MAX_SAVE_STATE_SLOTS};
 use crate::app::settings::Settings;
 use crate::app::theme::AppTheme;
 use crate::app::thumbnail_fetcher::{self, ThumbnailResult};
 use crate::app::AppAction;
-use crate::app::rom_paths::{RomManifest, RomPaths};
+use crate::app::rom_paths::{RomManifest, RomPathStem, RomPaths};
 
 const MAX_ROM_DIR_SEARCH_DEPTH: usize = 3;
-const STANDARD_THUMBNAIL_HEIGHT: f32 = 228.0;
-const STANDARD_THUMBNAIL_WIDTH: f32 = 160.0;
+const STANDARD_THUMBNAIL_HEIGHT: f32 = 160.0;
+const STANDARD_THUMBNAIL_WIDTH: f32 = 228.0;
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
 pub enum LibraryViewMode {
@@ -26,19 +26,53 @@ pub enum ThumbnailState {
     NotFound,
 }
 
+#[derive(Clone, Copy)]
+pub enum GameDetailAction {
+    Close,
+    Play,
+    DeleteSave,
+    DeleteSlot(u32),
+}
+
+#[derive(Clone, Copy)]
+enum DeleteConfirm {
+    SaveData,
+    SaveState(u32),
+}
+
+pub struct GameDetailState {
+    pub delete_confirm: Option<DeleteConfirm>,
+    pub selected_save_state: Option<u32>,
+}
+
+impl GameDetailState {
+    pub fn new() -> Self {
+        Self {
+            delete_confirm: None,
+            selected_save_state: None,
+        }
+    }
+}
+
 pub struct LibraryEntry {
     pub path: PathBuf,
     pub display_name: String,
-    pub has_sav: bool,
+    pub uses_save: bool,
+    pub has_save: bool,
     pub used_slots: Vec<u32>, // slot indices that exist on disk
     pub last_played: Option<u64>,
     pub play_time_secs: u64,
     pub thumbnail: ThumbnailState,
+    pub file_size_bytes: usize,
+    pub crc32: u32,
+    pub mapping: String,
+    pub coprocessor: String,
 }
 
 pub struct LibraryView {
     pub entries: Vec<LibraryEntry>,
-    selected: Option<usize>,
+    selected_entry: Option<usize>,
+    detail_view_state: Option<GameDetailState>,
     thumbnail_rx: Option<Receiver<ThumbnailResult>>,
 }
 
@@ -46,20 +80,21 @@ impl LibraryView {
     pub fn new() -> Self {
         Self {
             entries: Vec::new(),
-            selected: None,
+            selected_entry: None,
+            detail_view_state: None,
             thumbnail_rx: None,
         }
     }
 
     pub fn update_entry(&mut self, path: &PathBuf) {
         let Some(entry) = self.entries.iter_mut().find(|e| e.path == *path) else { return };
-        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        let manifest = RomPaths::find_manifest_by_stem(stem);
-        let paths = RomPaths::new(stem);
+        let stem = RomPathStem::from_path(path);
+        let manifest = RomPaths::find_manifest_by_stem(&stem);
+        let paths = RomPaths::new(&stem);
 
         entry.last_played = manifest.as_ref().and_then(|m| m.last_played);
         entry.play_time_secs = manifest.as_ref().map(|m| m.play_time_secs).unwrap_or(0);
-        entry.has_sav = paths.as_ref().map(|p| p.sav_path().exists()).unwrap_or(false);
+        entry.has_save = paths.as_ref().map(|p| p.sav_path().exists()).unwrap_or(false);
         entry.used_slots = paths.map(|p| {
             (0..MAX_SAVE_STATE_SLOTS as u32)
                 .filter(|&slot| p.state_path(slot).exists())
@@ -74,16 +109,16 @@ impl LibraryView {
     /// Re-scan the library folder. Call this when the folder changes or on startup.
     pub fn scan(&mut self, roms_library_dir: &Option<PathBuf>) {
         self.entries.clear();
-        self.selected = None;
+        self.selected_entry = None;
         let Some(lib_dir) = roms_library_dir else { return };
         Self::scan_dir(lib_dir, 0, &mut self.entries);
         self.entries.sort_by(|a, b| a.display_name.cmp(&b.display_name));
 
         // Collect stems that need thumbnails (all Loading entries after scan)
-        let stems: Vec<(String, PathBuf)> = self.entries.iter()
+        let stems: Vec<(RomPathStem, PathBuf)> = self.entries.iter()
             .filter(|e| matches!(e.thumbnail, ThumbnailState::Loading))
             .filter_map(|e| {
-                let stem = e.path.file_stem()?.to_str()?.to_string();
+                let stem = RomPathStem::from_path(&e.path);
                 Some((stem, e.path.clone()))
             })
             .collect();
@@ -110,7 +145,7 @@ impl LibraryView {
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
             if !matches!(ext, "sfc" | "smc") { continue; }
 
-            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+            let stem = RomPathStem::from_path(&path);
             let paths = RomPaths::new(&stem);
 
             let manifest = match RomPaths::find_manifest_by_stem(&stem) {
@@ -119,9 +154,7 @@ impl LibraryView {
                     let bytes: Option<Vec<u8>> = std::fs::read(&path).ok();
 
                     // First time seeing this ROM — derive title from header if possible
-                    let display_name = bytes.as_ref()
-                        .and_then(|bytes| snemcore::cartridge::get_rom_title(&bytes))
-                        .unwrap_or_else(|| stem.clone());
+                    let rom_header_meta = snemcore::cartridge::get_rom_meta(bytes.as_ref().map(|b| b.as_slice()));
 
                     let crc: u32 = bytes.as_ref()
                         .and_then(|bytes| Some(crc32fast::hash(&bytes)))
@@ -129,7 +162,11 @@ impl LibraryView {
 
                     let m = RomManifest {
                         rom_crc: crc,
-                        display_name,
+                        display_name: rom_header_meta.title.trim().to_owned(),
+                        saves_game: rom_header_meta.saves_game,
+                        coprocessor: rom_header_meta.coprocessor_name,
+                        mapping: rom_header_meta.mapping_name,
+                        rom_size_bytes: rom_header_meta.rom_size_bytes,
                         ..Default::default()
                     };
 
@@ -142,24 +179,41 @@ impl LibraryView {
                 }
             };
 
-            let has_sav = paths.as_ref().map(|p| p.sav_path().exists()).unwrap_or(false);
+            let has_save = paths.as_ref().map(|p| p.sav_path().exists()).unwrap_or(false);
             let used_slots = paths.map(|p| {
                 (0..MAX_SAVE_STATE_SLOTS as u32)
                     .filter(|&slot| p.state_path(slot).exists())
                     .collect()
             }).unwrap_or_default();
 
+            log::debug!("Read manifest for '{}', thumbnail_path: {:?}, exists: {:?}",
+                stem.sanitized_name(),
+                &manifest.thumbnail_path,
+                manifest.thumbnail_path.as_ref().map(|p| std::fs::exists(p))
+            );
+
             entries.push(LibraryEntry {
                 path,
                 display_name: manifest.display_name,
-                has_sav,
+                uses_save: manifest.saves_game,
+                has_save,
                 used_slots,
                 last_played: manifest.last_played,
                 play_time_secs: manifest.play_time_secs,
                 thumbnail: match &manifest.thumbnail_path {
-                    Some(p) => ThumbnailState::Ready(p.clone()),
+                    Some(p) => {
+                        if std::fs::exists(p).ok().unwrap_or(false) {
+                            ThumbnailState::Ready(p.clone())
+                        } else {
+                            ThumbnailState::Loading
+                        }
+                    },
                     None    => ThumbnailState::Loading,
                 },
+                file_size_bytes: manifest.rom_size_bytes,
+                crc32: manifest.rom_crc,
+                mapping: manifest.mapping,
+                coprocessor: manifest.coprocessor,
             });
         }
     }
@@ -172,7 +226,7 @@ impl LibraryView {
                         log::debug!("Received thumbnail: found={}, path={:?}", result.path.is_some(), result.path);
         
                         if let Some(entry) = self.entries.iter_mut()
-                            .find(|e| e.path.file_stem().and_then(|s| s.to_str()) == Some(&result.stem))
+                            .find(|e| RomPathStem::from_path(&e.path).raw_name() == result.stem.raw_name())
                         {
                             entry.thumbnail = match result.path {
                                 Some(p) => ThumbnailState::Ready(p),
@@ -197,10 +251,71 @@ impl LibraryView {
             }
         }
 
-        match app_settings.library_view_mode {
-            LibraryViewMode::List => self.render_library_list(ui, app_theme),
-            LibraryViewMode::Grid => { None }, //self.render_library_grid(ui, app_theme),
+        let mut action: Option<AppAction>;
+
+        action = ui.add_enabled_ui(self.detail_view_state.is_none(), |ui| {
+            match app_settings.library_view_mode {
+                LibraryViewMode::List => self.render_library_list(ui, app_theme),
+                LibraryViewMode::Grid => { None }, //self.render_library_grid(ui, app_theme),
+            }
+        }).inner;
+
+        if self.detail_view_state.is_some() {
+            if self.selected_entry.is_none() {
+                self.detail_view_state = None;
+                return action;
+            }
+
+            let entry = &mut self.entries[self.selected_entry.unwrap()];
+            
+            let detail_view_action = Self::show_game_detail_panel(ui, entry, self.detail_view_state.as_mut().unwrap(), app_theme);
+
+            if let Some(detail_action) = detail_view_action {
+                match detail_action {
+                    GameDetailAction::Close => { self.detail_view_state = None; },
+                    GameDetailAction::Play => {
+                        if let Some(slot) = self.detail_view_state.as_ref().unwrap().selected_save_state {
+                            // TODO: Load ROM then load state
+                        } else {
+                            action = Some(AppAction::LoadRomFromPath(entry.path.clone()))
+                        }
+                    }
+                    GameDetailAction::DeleteSave => {},
+                    GameDetailAction::DeleteSlot(slot) => {},
+                }
+            }
         }
+
+        action
+    }
+
+    pub fn show_game_detail_panel(
+        ctx: &egui::Context,
+        entry: &mut LibraryEntry,
+        state: &mut GameDetailState,
+        app_theme: &AppTheme,
+    ) -> Option<GameDetailAction> {
+        let mut action: Option<GameDetailAction> = None;
+
+        let screen_rect = ctx.content_rect();
+
+        egui::Window::new("game_detail_panel")
+            .title_bar(false)
+            .resizable(false)
+            .collapsible(false)
+            .fixed_size(Vec2::new(640.0, screen_rect.height()))
+            .fixed_pos(egui::pos2(screen_rect.right() - 640.0, screen_rect.top()))
+            .frame(egui::Frame::NONE.fill(app_theme.bg_elevated).inner_margin(16.0))
+            .show(ctx, |ui| {
+                Self::render_game_detail_panel(ui, entry, state, app_theme, &mut action);
+            });
+
+
+        if state.delete_confirm.is_some() {
+            Self::render_delete_confirm_dialog(ctx, entry, state, app_theme, &mut action);
+        }
+
+        action
     }
 
     fn render_library_list(&mut self, ui: &mut Ui, app_theme: &AppTheme) -> Option<AppAction> {
@@ -210,14 +325,16 @@ impl LibraryView {
             ui.set_min_width(ui.available_width());
 
             for (i, entry) in self.entries.iter_mut().enumerate() {
-                let is_selected = self.selected == Some(i);
+                let is_selected = self.selected_entry == Some(i);
                 
                 let response = Self::render_list_entry(ui, entry, is_selected, app_theme);
                 
-                if response.double_clicked() {
-                    action = Some(AppAction::LoadRomFromPath(entry.path.clone()));
-                } else if response.clicked() {
-                    self.selected = Some(i);
+                if response.clicked() {
+                    if self.selected_entry != Some(i) {
+                        self.selected_entry = Some(i);
+                    }
+                    
+                    self.detail_view_state = Some(GameDetailState::new());
                 }
 
                 #[cfg(feature = "debug")]
@@ -234,7 +351,7 @@ impl LibraryView {
     }
 
     fn render_list_entry(ui: &mut Ui, entry: &mut LibraryEntry, is_selected: bool, app_theme: &AppTheme) -> egui::Response {
-        const THUMBNAIL_SCALE: f32 = 1.0;
+        const THUMBNAIL_SCALE: f32 = 0.75;
         const SCALED_THUMBNAIL_HEIGHT: f32 = THUMBNAIL_SCALE * STANDARD_THUMBNAIL_HEIGHT;
         const SCALED_THUMBNAIL_WIDTH: f32 = THUMBNAIL_SCALE * STANDARD_THUMBNAIL_WIDTH;
         const THUMBNAIL_MARGIN: f32 = 12.0;
@@ -285,10 +402,410 @@ impl LibraryView {
             egui::Stroke::new(1.0, app_theme.border),
             egui::StrokeKind::Outside,
         );
+
+        Self::render_box_art(ui, thumb_rect, entry, app_theme);
+
+        let painter = ui.painter();
+
+        let text_x = thumb_rect.max.x + 10.0;
+        let mid_y = rect.center().y;
+
+        let title_size = 12.0;
+        let filename_size = 10.0;
+
+        let max_stem_len = 40;
+
+        // Title + subtitle
+        painter.text(
+            egui::pos2(text_x, mid_y - 9.0),
+            egui::Align2::LEFT_CENTER,
+            &entry.display_name,
+            app::theme::bold_font(title_size),
+            if is_selected { app_theme.text_primary } else { app_theme.text_secondary },
+        );
+        let stem = entry.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        let trimmed_stem = if stem.len() <= max_stem_len {
+            stem.to_string()
+        } else {
+            stem.chars()
+                .take(max_stem_len - 3)
+                .collect::<String>()
+                + "..."
+        };
+        if stem != entry.display_name {
+            painter.text(
+                egui::pos2(text_x, mid_y + 9.0),
+                egui::Align2::LEFT_CENTER,
+                trimmed_stem,
+                egui::FontId::proportional(filename_size),
+                app_theme.text_muted,
+            );
+        }
+
+        const RIGHT_MARGIN: f32 = 24.0;
+        const LINE_HEIGHT: f32 = 20.0;
+
+        let right_edge = rect.max.x - RIGHT_MARGIN;
+        let block_height = LINE_HEIGHT * 3.0;
+        let block_top = mid_y - block_height / 2.0;
+
+        // Row 1: save status
+        let (save_text, save_color) = if !entry.uses_save {
+            ("--", app_theme.text_muted)
+        } else if entry.has_save {
+            ("Yes", app_theme.success)
+        } else {
+            ("No", app_theme.warning)
+        };
+
+        let mut job = egui::text::LayoutJob::default();
+        job.append(
+            "Save: ",
+            0.0,
+            egui::TextFormat {
+                font_id: egui::FontId::proportional(11.0),
+                color: app_theme.text_muted,
+                ..Default::default()
+            },
+        );
+        job.append(
+            save_text,
+            0.0,
+            egui::TextFormat {
+                font_id: egui::FontId::proportional(11.0),
+                color: save_color,
+                ..Default::default()
+            },
+        );
+
+        let galley = ui.fonts_mut(|f| f.layout_job(job));
+        let pos = egui::pos2(
+            right_edge - galley.size().x,
+            block_top + LINE_HEIGHT * 0.5 - galley.size().y / 2.0,
+        );
+        painter.galley(pos, galley, app_theme.text_muted);
+
+        // Row 2: last played
+        painter.text(
+            egui::pos2(right_edge, block_top + LINE_HEIGHT * 1.5),
+            egui::Align2::RIGHT_CENTER,
+            entry.last_played.map(format_timestamp).unwrap_or_else(|| "Never".to_string()),
+            egui::FontId::proportional(11.0),
+            app_theme.text_muted,
+        );
+
+        // Row 3: time played
+        painter.text(
+            egui::pos2(right_edge, block_top + LINE_HEIGHT * 2.5),
+            egui::Align2::RIGHT_CENTER,
+            format_play_time(entry.play_time_secs),
+            egui::FontId::proportional(11.0),
+            app_theme.text_muted,
+        );
+
+        response
+    }
+
+    fn render_game_detail_panel(
+        ui: &mut Ui,
+        entry: &mut LibraryEntry,
+        state: &mut GameDetailState,
+        app_theme: &AppTheme,
+        action: &mut Option<GameDetailAction>,
+    ) {
+        // Header: close button, right-aligned
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
+            if ui
+                .add(egui::Button::new(egui::RichText::new("✕").color(app_theme.text_muted)).frame(false))
+                .clicked()
+            {
+                *action = Some(GameDetailAction::Close);
+            }
+        });
+
+        ui.add_space(8.0);
+
+        // Box art
+        let art_size = Vec2::new(ui.available_width(), 240.0);
+        let (art_rect, _) = ui.allocate_exact_size(art_size, egui::Sense::hover());
+        Self::render_box_art(ui, art_rect, entry, app_theme);
+
+        ui.add_space(12.0);
+
+        // Title
+        ui.label(
+            egui::RichText::new(&entry.display_name)
+                .font(app::theme::bold_font(20.0))
+                .color(app_theme.text_primary),
+        );
+
+        ui.add_space(12.0);
+
+        // Last played / time played
+        egui::Grid::new("detail_stats_grid")
+            .num_columns(2)
+            .spacing([32.0, 4.0])
+            .show(ui, |ui| {
+                ui.label(egui::RichText::new("Last Played").color(app_theme.text_muted).size(11.0));
+                ui.label(egui::RichText::new("Time Played").color(app_theme.text_muted).size(11.0));
+                ui.end_row();
+                ui.label(
+                    egui::RichText::new(
+                        entry
+                            .last_played
+                            .map(format_timestamp)
+                            .unwrap_or_else(|| "Never".to_string()),
+                    )
+                    .color(app_theme.text_secondary),
+                );
+                ui.label(egui::RichText::new(format_play_time(entry.play_time_secs)).color(app_theme.text_secondary));
+                ui.end_row();
+            });
+
+        ui.add_space(12.0);
+        ui.separator();
+        ui.add_space(12.0);
+
+        // Save data status
+        ui.horizontal(|ui| {
+            let (save_text, save_color) = if !entry.uses_save {
+                ("--", app_theme.text_muted)
+            } else if entry.has_save {
+                ("Yes", app_theme.success)
+            } else {
+                ("No", app_theme.warning)
+            };
+
+            let mut job = egui::text::LayoutJob::default();
+            job.append(
+                "Save Data: ",
+                0.0,
+                egui::TextFormat {
+                    font_id: egui::FontId::proportional(13.0),
+                    color: app_theme.text_muted,
+                    ..Default::default()
+                },
+            );
+            job.append(
+                save_text,
+                0.0,
+                egui::TextFormat {
+                    font_id: egui::FontId::proportional(13.0),
+                    color: save_color,
+                    ..Default::default()
+                },
+            );
+            ui.label(job);
+
+            if entry.uses_save && entry.has_save {
+                ui.add_space(8.0);
+                if ui
+                    .add(egui::Button::new(egui::RichText::new("🗑").color(app_theme.text_muted)).frame(false))
+                    .on_hover_text("Delete save data")
+                    .clicked()
+                {
+                    state.delete_confirm = Some(DeleteConfirm::SaveData);
+                }
+            }
+        });
+
+        ui.add_space(10.0);
+
+        // Save state slots
+        ui.label(egui::RichText::new("Save States").color(app_theme.text_muted).size(11.0));
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
+            for slot in 0..MAX_SAVE_STATE_SLOTS as u32 {
+                let used = entry.used_slots.contains(&slot);
+                let selected = state.selected_save_state == Some(slot);
+                
+                ui.add_enabled_ui(used, |ui| {
+                    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(28.0), egui::Sense::click());
+                    let painter = ui.painter();
+    
+                    let fill = if resp.hovered() {
+                        app_theme.accent.linear_multiply(0.45)
+                    } else {
+                        app_theme.accent.linear_multiply(0.3)
+                    };
+    
+                    painter.rect_filled(rect, 4.0, fill);
+                    
+                    if used && selected {
+                        painter.rect_stroke(rect, 6.0, egui::Stroke::new(1.0, app_theme.border_focused), egui::StrokeKind::Outside);
+                    } else {
+                        painter.rect_stroke(rect, 4.0, egui::Stroke::new(1.0, app_theme.border), egui::StrokeKind::Outside);
+                    }
+                    
+                    if used {
+                        painter.text(
+                            rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            format!("{}", slot + 1),
+                            egui::FontId::proportional(11.0),
+                            app_theme.text_secondary,
+                        );
+                    }
+    
+                    if resp.clicked() {
+                        state.selected_save_state = if selected { None } else { Some(slot) };
+                    }
+                });
+            }
+        });
+
+        ui.add_space(16.0);
+
+        // Technical details — demoted, always visible, small & muted
+        ui.label(egui::RichText::new("Details").color(app_theme.text_muted).size(11.0));
+        ui.add_space(4.0);
+        egui::Grid::new("tech_details_grid")
+            .num_columns(2)
+            .spacing([24.0, 4.0])
+            .show(ui, |ui| {
+                ui.label(egui::RichText::new("File Size").color(app_theme.text_muted).size(10.0));
+                ui.label(
+                    egui::RichText::new(format_file_size(entry.file_size_bytes))
+                        .color(app_theme.text_muted)
+                        .size(10.0),
+                );
+                ui.end_row();
+
+                ui.label(egui::RichText::new("CRC32").color(app_theme.text_muted).size(10.0));
+                ui.label(
+                    egui::RichText::new(format!("{:08X}", entry.crc32))
+                        .color(app_theme.text_muted)
+                        .size(10.0),
+                );
+                ui.end_row();
+
+                ui.label(egui::RichText::new("Mapping").color(app_theme.text_muted).size(10.0));
+                ui.label(egui::RichText::new(&entry.mapping).color(app_theme.text_muted).size(10.0));
+                ui.end_row();
+
+                ui.label(egui::RichText::new("Coprocessor").color(app_theme.text_muted).size(10.0));
+                ui.label(
+                    egui::RichText::new(&entry.coprocessor)
+                        .color(app_theme.text_muted)
+                        .size(10.0),
+                );
+                ui.end_row();
+            }
+        );
+
+        ui.add_space(16.0);
+
+        // Play / Load State button, bottom-right
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::BOTTOM), |ui| {
+            if let Some(slot) = state.selected_save_state {
+                let load_button = egui::Button::new(
+                    egui::RichText::new(format!("▶  Load State {}", slot + 1))
+                        .size(16.0)
+                        .color(egui::Color32::WHITE),
+                )
+                .fill(app_theme.warning)
+                .corner_radius(app_theme.widget_corner_radius as f32);
+
+                if ui.add_sized(Vec2::new(160.0, 40.0), load_button).clicked() {
+                    *action = Some(GameDetailAction::Play);
+                }
+
+                ui.add_space(8.0);
+
+                let delete_slot_button = egui::Button::new(
+                    egui::RichText::new(format!("🗑 Delete State {}", slot + 1))
+                        .size(16.0)
+                        .color(app_theme.error),
+                )
+                .corner_radius(app_theme.widget_corner_radius as f32)
+                .stroke(egui::Stroke::new(2.0, app_theme.error));
+
+                if ui.add_sized(Vec2::new(160.0, 40.0), delete_slot_button).clicked() {
+                    state.delete_confirm = Some(DeleteConfirm::SaveState(slot));
+                }
+            } else {
+                let play_button = egui::Button::new(
+                    egui::RichText::new("▶  Play").size(16.0).color(egui::Color32::WHITE),
+                )
+                .fill(app_theme.success)
+                .corner_radius(app_theme.widget_corner_radius as f32);
+
+                if ui.add_sized(Vec2::new(120.0, 40.0), play_button).clicked() {
+                    *action = Some(GameDetailAction::Play);
+                }
+            }
+        });
+    }
+
+    fn render_delete_confirm_dialog(
+        ctx: &egui::Context,
+        entry: &LibraryEntry,
+        state: &mut GameDetailState,
+        app_theme: &AppTheme,
+        action: &mut Option<GameDetailAction>,
+    ) {
+        if state.delete_confirm.is_none() { return; }
+
+        let prompt = match state.delete_confirm.unwrap() {
+            DeleteConfirm::SaveData => format!(
+                    "Are you sure you want to delete the save data for \"{}\"? This cannot be undone.",
+                    entry.display_name
+                ),
+            DeleteConfirm::SaveState(slot) => format!(
+                    "Are you sure you want to delete the data for \"{}\" save state slot {}? This cannot be undone.",
+                    entry.display_name,
+                    slot,
+                ),
+        };
+
+        let delete_action = match state.delete_confirm.unwrap() {
+            DeleteConfirm::SaveData => GameDetailAction::DeleteSave,
+            DeleteConfirm::SaveState(slot) => GameDetailAction::DeleteSlot(slot),
+        };
+
+        egui::Window::new("Please Confirm")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.label(prompt);
+                ui.add_space(12.0);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let delete_button = egui::Button::new(egui::RichText::new("Delete").color(egui::Color32::WHITE))
+                        .fill(app_theme.warning);
+
+                    if ui.add(delete_button).clicked() {
+                        *action = Some(delete_action);
+                        state.delete_confirm = None;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        state.delete_confirm = None;
+                    }
+                });
+            });
+    }
+
+    fn render_box_art(ui: &mut Ui, rect: egui::Rect, entry: &mut LibraryEntry, app_theme: &AppTheme) {
+        let cr = app_theme.corner_radius as f32;
+        let painter = ui.painter();
+        painter.rect_filled(rect, cr, app_theme.bg_tertiary);
+        painter.rect_stroke(rect, cr, egui::Stroke::new(1.0, app_theme.border), egui::StrokeKind::Outside);
+
         match &mut entry.thumbnail {
+            ThumbnailState::Ready(path) => {
+                let uri = format!("file:///{}", path.to_string_lossy().replace('\\', "/"));
+                let image = egui::Image::new(&uri).fit_to_exact_size(rect.size()).corner_radius(cr);
+                match image.load_for_size(ui.ctx(), rect.size()) {
+                    Ok(_) => { ui.put(rect, image); }
+                    Err(e) => {
+                        log::error!("box art load failed for {}: {e:?}", &uri);
+                        entry.thumbnail = ThumbnailState::NotFound;
+                    }
+                }
+            }
             ThumbnailState::Loading => {
                 // Spinning arc loader
-                let center = thumb_rect.center();
+                let center = rect.center();
                 let radius = 14.0;
                 let t = ui.ctx().input(|i| i.time) as f32;
                 let start_angle = t * 2.5;
@@ -315,125 +832,25 @@ impl LibraryView {
 
                 ui.ctx().request_repaint();
             }
-            ThumbnailState::Ready(thumb_path) => {
-                let path_str = thumb_path.to_string_lossy().replace('\\', "/");
-                let uri = format!("file:///{}", path_str);
-
-                let image = egui::Image::new(&uri)
-                    .fit_to_exact_size(thumbnail_size)
-                    .corner_radius(cr);
-
-                match image.load_for_size(ui.ctx(), thumb_rect.size()) {
-                    Ok(_) => { ui.put(thumb_rect, image); }
-                    Err(e) => {
-                        log::error!("thumbnail load failed for {}: {e:?}", &uri);
-
-                        entry.thumbnail = ThumbnailState::NotFound;
-                    }
-                }
-            }
             ThumbnailState::NotFound => {
-                let initial = entry.display_name.chars().next()
+                let initial = entry
+                    .display_name
+                    .chars()
+                    .next()
                     .and_then(|c| c.to_uppercase().next())
                     .unwrap_or('?');
                 painter.text(
-                    thumb_rect.center(),
+                    rect.center(),
                     egui::Align2::CENTER_CENTER,
                     initial.to_string(),
-                    egui::FontId::proportional(48.0),
+                    egui::FontId::proportional(64.0),
                     app_theme.text_muted,
                 );
             }
         }
-
-        let painter = ui.painter();
-
-        // Column layout
-        let col_sav_w    = 40.0;
-        let col_states_w = 80.0;
-        let col_played_w = 110.0;
-        let col_time_w   = 90.0;
-
-        let text_x = thumb_rect.max.x + 10.0;
-        let mid_y = rect.center().y;
-
-        // Title + subtitle
-        painter.text(
-            egui::pos2(text_x, mid_y - 9.0),
-            egui::Align2::LEFT_CENTER,
-            &entry.display_name,
-            app_theme.font_bold.clone(),
-            if is_selected { app_theme.text_primary } else { app_theme.text_secondary },
-        );
-        let stem = entry.path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        if stem != entry.display_name {
-            painter.text(
-                egui::pos2(text_x, mid_y + 9.0),
-                egui::Align2::LEFT_CENTER,
-                stem,
-                egui::FontId::proportional(10.0),
-                app_theme.text_muted,
-            );
-        }
-
-        // Right columns
-        let mut col_right_x = rect.max.x - THUMBNAIL_MARGIN;
-
-        col_right_x -= col_time_w;
-        painter.text(
-            egui::pos2(col_right_x + col_time_w / 2.0, mid_y),
-            egui::Align2::CENTER_CENTER,
-            format_play_time(entry.play_time_secs),
-            egui::FontId::proportional(11.0),
-            app_theme.text_muted,
-        );
-
-        col_right_x -= col_played_w;
-        painter.text(
-            egui::pos2(col_right_x + col_played_w / 2.0, mid_y),
-            egui::Align2::CENTER_CENTER,
-            entry.last_played.map(format_timestamp).unwrap_or_else(|| "Never".to_string()),
-            egui::FontId::proportional(11.0),
-            app_theme.text_muted,
-        );
-
-        col_right_x -= col_states_w;
-        painter.text(
-            egui::pos2(col_right_x + col_states_w / 2.0, mid_y),
-            egui::Align2::CENTER_CENTER,
-            if entry.used_slots.is_empty() {
-                "—".to_string()
-            } else {
-                format!("{} state{}", entry.used_slots.len(), if entry.used_slots.len() == 1 { "" } else { "s" })
-            },
-            egui::FontId::proportional(11.0),
-            app_theme.text_muted,
-        );
-
-        col_right_x -= col_sav_w;
-        if entry.has_sav {
-            let badge_center = egui::pos2(col_right_x + col_sav_w / 2.0, mid_y);
-            let badge_rect = egui::Rect::from_center_size(badge_center, Vec2::new(28.0, 16.0));
-            painter.rect_filled(badge_rect, app_theme.widget_corner_radius as f32, app_theme.success.linear_multiply(0.25));
-            painter.rect_stroke(
-                badge_rect, 
-                app_theme.widget_corner_radius as f32, 
-                egui::Stroke::new(0.5, app_theme.success.linear_multiply(0.6)),
-                egui::StrokeKind::Outside,
-            );
-            painter.text(
-                badge_center,
-                egui::Align2::CENTER_CENTER,
-                "SAV",
-                egui::FontId::proportional(9.0),
-                app_theme.success,
-            );
-        }
-
-        response
     }
-
 }
+
 fn format_play_time(secs: u64) -> String {
     if secs == 0 { return "—".to_string(); }
     let h = secs / 3600;
@@ -451,4 +868,24 @@ fn format_timestamp(unix_secs: u64) -> String {
     let month = (day_of_year / 30).min(11) + 1;
     let day   = (day_of_year % 30) + 1;
     format!("{:04}-{:02}-{:02}", year, month, day)
+}
+
+fn format_file_size(size: usize) -> String {
+    const MB: usize = 1024 * 1024;
+    const KB: usize = 1024;
+
+    let mb = size / MB;
+    let kb = (size % MB) / KB;
+
+    if mb == 0 {
+        return format!("{kb} KiB");
+    }
+
+    if kb == 0 {
+        return format!("{mb} MiB");
+    }
+
+    let mb = (mb as f32) + (kb as f32) / 1024.0;
+
+    format!("{mb:.02} MiB")
 }

@@ -26,6 +26,19 @@ pub enum Coprocessor {
 }
 
 impl Coprocessor {
+    pub fn from_id(id: u8) -> Option<Self> {
+        match id {
+            0 => Some(Coprocessor::Dsp1(dsp::Dsp1::new())),
+            1 => Some(Coprocessor::SuperFx(superfx::SuperFx::new())),
+            // 2 => CoprocessorKind::ObC1,
+            // 3 => CoprocessorKind::Sa1,
+            // 4 => CoprocessorKind::SDd1,
+            // 5 => CoprocessorKind::Rtc,
+            // x => CoprocessorKind::Other(x),
+            _ => None,
+        }
+    }
+
     pub fn label(&self) -> &'static str {
         match self {
             Coprocessor::Dsp1(_)     => "DSP-1",

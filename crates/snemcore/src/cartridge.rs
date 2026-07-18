@@ -246,16 +246,7 @@ impl Cartridge {
         };
 
         cart.coprocessor = if has_coprocessor {
-            match header_bytes[0x16] >> 4 {
-                0 => Some(Coprocessor::Dsp1(dsp::Dsp1::new())),
-                1 => Some(Coprocessor::SuperFx(superfx::SuperFx::new())),
-                // 2 => CoprocessorKind::ObC1,
-                // 3 => CoprocessorKind::Sa1,
-                // 4 => CoprocessorKind::SDd1,
-                // 5 => CoprocessorKind::Rtc,
-                // x => CoprocessorKind::Other(x),
-                x => return Err(format!("Unimplemented coprocessor {x}")),
-            }
+            Coprocessor::from_id(header_bytes[0x16] >> 4)
         } else {
             None
         };
@@ -662,14 +653,76 @@ fn find_header(cart_rom: &[u8]) -> Result<usize, String> {
     }
 }
 
-pub fn get_rom_title(rom: &[u8]) -> Option<String> {
-    let padded_rom = pad_rom(rom).ok()?;
-    let header_pos = find_header(&padded_rom).ok()?;
-    if header_pos + 0x15 >= padded_rom.len() {
-        return None;
+pub struct RomMeta {
+    pub title: String,
+    pub saves_game: bool,
+    pub rom_size_bytes: usize,
+    pub coprocessor_name: String,
+    pub mapping_name: String,
+}
+
+pub fn get_rom_meta(rom: Option<&[u8]>) -> RomMeta {
+    let mut rom_meta = RomMeta {
+        title: "???".to_owned(),
+        saves_game: false,
+        rom_size_bytes: rom.map_or(0, |r| r.len()),
+        coprocessor_name: "Unknown".to_owned(),
+        mapping_name: "Unknown".to_owned()
+    };
+
+    if rom.is_none() {
+        return rom_meta;
     }
+
+    let rom = rom.unwrap();
+
+    let Some(padded_rom) = pad_rom(rom).ok() else {
+        return rom_meta;
+    };
+
+    let Some(header_pos) = find_header(&padded_rom).ok() else {
+        return rom_meta;
+    };
+    
+    if header_pos + 0x16 >= padded_rom.len() {
+        return rom_meta
+    }
+
+    let best_mapping = best_mapping_mode(rom);
+
+    let mapping_name = match best_mapping {
+        MappingMode::LoROM => "LoRom",
+        MappingMode::HiROM => "HiRom",
+        MappingMode::ExHiROM => "ExHiRom",
+    }.to_owned();
+
+    let (saves_game, has_coprocessor) = match padded_rom[header_pos + 0x16] & 0x0F {
+        0 => (false, false),
+        1 => (false, false),
+        2 => (true, false),
+        3 => (false, true),
+        4 => (false, true),
+        5 => (true, true),
+        6 => (false, true),
+        _ => (false, false), // Should not happen?
+    };
+
+    let coprocessor_name = if !has_coprocessor {
+        "None"
+    } else {
+        Coprocessor::from_id(padded_rom[header_pos + 0x16] >> 4)
+            .map_or("Unimplemented", |c| c.label())
+    }.to_owned();
+
     let title_bytes = &padded_rom[header_pos..header_pos + 0x15];
-    Some(String::from_utf8_lossy(title_bytes).to_string())
+    let title = String::from_utf8_lossy(title_bytes).to_string();
+
+    rom_meta.title = title;
+    rom_meta.saves_game = saves_game;
+    rom_meta.coprocessor_name = coprocessor_name;
+    rom_meta.mapping_name = mapping_name;
+
+    rom_meta
 }
 
 // Compute the checksum of the cartridge using the proper mirroring

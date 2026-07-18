@@ -7,6 +7,10 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "debug")]
 use snemcore::Snemulator;
 
+pub fn bold_font(scale: f32) -> egui::FontId {
+    egui::FontId::new(scale, egui::FontFamily::Name("Bold".into()))
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct AppTheme {
     // Base colors
@@ -82,9 +86,6 @@ pub struct AppTheme {
     // Widget styling
     pub corner_radius: u8,
     pub widget_corner_radius: u8,
-
-    pub font_default: egui::FontId,
-    pub font_bold: egui::FontId,
 }
 
 impl AppTheme {
@@ -190,9 +191,6 @@ impl AppTheme {
             // Styling
             corner_radius: 6,
             widget_corner_radius: 4,
-
-            font_default: egui::FontId::proportional(14.0),
-            font_bold: egui::FontId::new(14.0, egui::FontFamily::Name("Bold".into())),
         }
     }
     
@@ -270,9 +268,6 @@ impl AppTheme {
             // Styling
             corner_radius: 6,
             widget_corner_radius: 4,
-
-            font_default: egui::FontId::proportional(14.0),
-            font_bold: egui::FontId::new(14.0, egui::FontFamily::Name("Bold".into())),
         }
     }
     
@@ -350,9 +345,6 @@ impl AppTheme {
             // Styling - sharper for retro feel
             corner_radius: 2,
             widget_corner_radius: 2,
-
-            font_default: egui::FontId::proportional(14.0),
-            font_bold: egui::FontId::new(14.0, egui::FontFamily::Name("Bold".into())),
         }
     }
     

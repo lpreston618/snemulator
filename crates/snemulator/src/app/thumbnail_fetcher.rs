@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use crate::app::rom_paths::RomPaths;
+use crate::app::rom_paths::{RomPathStem, RomPaths};
 use crate::app::settings::Settings;
 use std::sync::mpsc::Sender;
 
@@ -14,12 +14,12 @@ const RAW_BASE_URL: &str =
 const MIN_SIMILARITY: f64 = 0.35;
 
 pub struct ThumbnailResult {
-    pub stem: String,
+    pub stem: RomPathStem,
     pub path: Option<PathBuf>, // None = not found
 }
 
 pub fn spawn_thumbnail_resolver(
-    stems: Vec<(String, PathBuf)>, // (stem, rom_path) for each Loading entry
+    stems: Vec<(RomPathStem, PathBuf)>, // (stem, rom_path) for each Loading entry
     tx: Sender<ThumbnailResult>,
 ) {
     std::thread::spawn(move || {
@@ -42,16 +42,16 @@ pub fn spawn_thumbnail_resolver(
 }
 
 /// Fetches and writes a single thumbnail. Returns the saved path on success.
-fn try_fetch_thumbnail(stem: &str, index: &[String]) -> Option<PathBuf> {
+fn try_fetch_thumbnail(stem: &RomPathStem, index: &[String]) -> Option<PathBuf> {
     let rom_paths = RomPaths::new(stem)?;
-    let candidates = best_matches(stem, index, 3);
+    let candidates = best_matches(stem.raw_name(), index, 3);
 
     for candidate in candidates {
         let Some(bytes) = fetch_valid_png_data(&candidate) else { continue };
 
         let dest = rom_paths.thumbnail_path();
         if std::fs::write(&dest, &bytes).is_err() {
-            log::warn!("Failed to write thumbnail for '{}'", stem);
+            log::warn!("Failed to write thumbnail for '{}'", stem.sanitized_name());
             continue;
         }
 
@@ -60,7 +60,7 @@ fn try_fetch_thumbnail(stem: &str, index: &[String]) -> Option<PathBuf> {
         manifest.thumbnail_path = Some(dest.clone());
         rom_paths.write_manifest(&manifest);
 
-        log::info!("Fetched thumbnail for '{}' -> '{}'", stem, candidate);
+        log::info!("Fetched thumbnail for '{}' -> '{}'", stem.sanitized_name(), candidate);
         return Some(dest);
     }
 

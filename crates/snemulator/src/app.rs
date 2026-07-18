@@ -4,7 +4,7 @@ use crate::app::audio::AudioManager;
 use crate::app::controller::ControllerManager;
 use crate::app::messages::{MessageKind, MessageQueue};
 use crate::app::resampler::AudioResampler;
-use crate::app::rom_paths::RomManifest;
+use crate::app::rom_paths::{RomManifest, RomPathStem};
 #[cfg(feature = "debug")]
 use crate::debug::{harness::MainDebugHarness, window::DebugWindow};
 use crate::ui_window::UiWindow;
@@ -89,7 +89,7 @@ pub enum AppAction {
     OpenDebug(Option<PathBuf>),
 }
 
-pub struct RomMetadata {
+pub struct AppRomMetadata {
     pub crc32_hash: u32,
     pub paths: RomPaths,
     pub used_save_state_slots: [bool; MAX_SAVE_STATE_SLOTS],
@@ -110,7 +110,7 @@ pub struct AppState {
     pub is_minimized: bool,
     pub fps: f32,
     pub display_fps: usize,
-    pub loaded_rom_data: Option<RomMetadata>,
+    pub loaded_rom_data: Option<AppRomMetadata>,
 
     #[cfg(feature = "debug")]
     pub debug_active: bool,
@@ -312,7 +312,29 @@ impl SnemulatorApp {
             }
         }
 
+        if args.refresh_manifests {
+            Self::remove_old_manifests();
+        }
+
         Ok(())
+    }
+
+    fn remove_old_manifests() {
+        let Some(data_dir) = Settings::data_dir() else { return; };
+        let Ok(dir) = std::fs::read_dir(data_dir) else { return; };
+
+        for entry in dir {
+            let Ok(entry) = entry else { continue; };
+
+            let path = entry.path();
+            if path.is_dir() {
+                let manifest_path = path.join("manifest.json");
+
+                if std::fs::exists(&manifest_path).ok().unwrap_or(false) {
+                    let _ = std::fs::remove_file(&manifest_path);
+                }
+            }
+        }
     }
 
     fn apply_settings(&mut self, new_settings: Settings) {
@@ -883,15 +905,11 @@ impl SnemulatorApp {
 
             let session_secs = now.saturating_sub(rom_data.last_load_time);
             let manifest_path = rom_data.paths.manifest_path();
-            let stem = manifest_path
-                .parent()
-                .and_then(|p| p.file_name())
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
+            let stem = RomPathStem::from_path(&manifest_path);
 
-            if !stem.is_empty() {
+            if !stem.sanitized_name().is_empty() {
                 let mut manifest =
-                    RomPaths::find_manifest_by_stem(stem).unwrap_or_else(|| RomManifest {
+                    RomPaths::find_manifest_by_stem(&stem).unwrap_or_else(|| RomManifest {
                         rom_crc: rom_data.crc32_hash,
                         display_name: rom_data.title.clone(),
                         ..Default::default()
@@ -960,14 +978,15 @@ impl SnemulatorApp {
         let data = std::fs::read(path)?;
         let crc = crc32fast::hash(&data);
 
-        let rom_name = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .ok_or_else(|| anyhow!("Invalid ROM filename"))?;
+        let stem = RomPathStem::from_path(&path);
+
+        if stem.sanitized_name().is_empty() {
+            return Err(anyhow!("Invalid ROM filename"));
+        }
 
         // Prefer existing folder by hash, fall back to name
         let rom_paths = RomPaths::find_by_hash(crc)
-            .or_else(|| RomPaths::new(rom_name))
+            .or_else(|| RomPaths::new(&stem))
             .ok_or_else(|| anyhow!("Could not resolve data directory"))?;
 
         rom_paths.ensure_dirs()?;
@@ -990,7 +1009,7 @@ impl SnemulatorApp {
         let used_save_state_slots: [bool; MAX_SAVE_STATE_SLOTS] =
             std::array::from_fn(|slot| rom_paths.state_path(slot as u32).exists());
 
-        self.state.loaded_rom_data = Some(RomMetadata {
+        self.state.loaded_rom_data = Some(AppRomMetadata {
             crc32_hash: crc,
             paths: rom_paths,
             used_save_state_slots,
@@ -1001,7 +1020,7 @@ impl SnemulatorApp {
 
         self.message_queue.push(
             MessageKind::Success,
-            format!("Loaded ROM '{rom_name}'"),
+            format!("Loaded ROM '{}'", stem.sanitized_name()),
             Duration::from_secs(3),
             Some(log::Level::Info),
         );

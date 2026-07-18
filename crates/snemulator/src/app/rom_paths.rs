@@ -2,14 +2,32 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::app::settings::Settings;
+
+pub struct RomPathStem {
+    raw_stem: String,
+    sanitized_stem: String,
+}
+
+impl RomPathStem {
+    pub fn from_path(rom_path: &PathBuf) -> Self {
+        let raw_stem = rom_path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+        let sanitized_stem = sanitize_name(&raw_stem);
+        
+        Self { raw_stem, sanitized_stem }
+    }
+
+    pub fn raw_name(&self) -> &str { &self.raw_stem }
+    pub fn sanitized_name(&self) -> &str { &self.sanitized_stem }
+}
+
 pub struct RomPaths {
     rom_dir: PathBuf,  // Data directory for this ROM (where to store save states, thumbnail, metadata)
 }
 
 impl RomPaths {
-    pub fn new(rom_name: &str) -> Option<Self> {
-        let sanitized = sanitize_name(rom_name);
-        let rom_dir = crate::app::settings::Settings::data_dir()?.join(sanitized);
+    pub fn new(stem: &RomPathStem) -> Option<Self> {
+        let rom_dir = crate::app::settings::Settings::data_dir()?.join(&stem.sanitized_stem);
         Some(Self { rom_dir })
     }
 
@@ -45,6 +63,10 @@ impl RomPaths {
         self.rom_dir.join("manifest.json")
     }
 
+    pub fn manifest_path_from_stem(stem: &RomPathStem) -> Option<PathBuf> {
+        Some(Settings::data_dir()?.join(&stem.sanitized_stem).join("manifest.json"))
+    }
+
     pub fn thumbnail_path(&self) -> PathBuf {
         self.rom_dir.join("thumbnail.png")
     }
@@ -55,10 +77,9 @@ impl RomPaths {
         }
     }
 
-    /// Finds a manifest by the sanitized ROM stem name (used during library scan).
-    pub fn find_manifest_by_stem(stem: &str) -> Option<RomManifest> {
-        let dir = crate::app::settings::Settings::data_dir()?.join(sanitize_name(stem));
-        let text = std::fs::read_to_string(dir.join("manifest.json")).ok()?;
+    /// Finds a manifest by the ROM path
+    pub fn find_manifest_by_stem(stem: &RomPathStem) -> Option<RomManifest> {
+        let text = std::fs::read_to_string(Self::manifest_path_from_stem(stem)?).ok()?;
         serde_json::from_str(&text).ok()
     }
 }
@@ -73,6 +94,10 @@ pub struct RomManifest {
     pub play_time_secs: u64,
     #[serde(default)]
     pub thumbnail_path: Option<PathBuf>,
+    pub saves_game: bool,
+    pub coprocessor: String,
+    pub mapping: String,
+    pub rom_size_bytes: usize,
 }
 
 fn sanitize_name(name: &str) -> String {

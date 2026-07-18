@@ -31,6 +31,9 @@ pub struct SnemulatorArgs {
     #[arg(long)]
     pub noresample: bool,
 
+    #[arg(long)]
+    pub refresh_manifests: bool,
+
     /// Start in debug mode
     #[cfg(feature = "debug")]
     #[arg(long)]
