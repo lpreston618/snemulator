@@ -9,9 +9,42 @@ use crate::{
     app::{controller::ControllerManager, library::LibraryViewMode, theme::{AppTheme, ThemePreset}}, ui_window::UiWindow,
 };
 
-pub const SETTINGS_WINDOW_WIDTH: u32 = 600;
-pub const SETTINGS_WINDOW_HEIGHT: u32 = 400;
+pub const SETTINGS_WINDOW_WIDTH: u32 = 780;
+pub const SETTINGS_WINDOW_HEIGHT: u32 = 560;
 const MAX_RECENT_ROMS: usize = 5;
+
+#[derive(Clone)]
+struct ChipAnchor {
+    pub input: SnesInput,
+    pub button_pos: (f32, f32),   // normalized (x, y) on the controller image
+    pub midpoint_pos: Option<(f32, f32)>, // normalized (x, y) for a midpoint pos of the line between button and label
+    pub label_pos: (f32, f32),    // normalized (x, y) for the chip; may fall outside 0..1
+}
+
+const CHIP_LAYOUT: &[ChipAnchor] = &[
+    ChipAnchor { input: SnesInput::L,      button_pos: (0.300, 0.200), midpoint_pos: None, label_pos: (0.35, 0.00) },
+    ChipAnchor { input: SnesInput::R,      button_pos: (0.700, 0.200), midpoint_pos: None, label_pos: (0.65, 0.00) },
+    ChipAnchor { input: SnesInput::Up,     button_pos: (0.247, 0.420), midpoint_pos: None, label_pos: (0.05, 0.10) },
+    ChipAnchor { input: SnesInput::Left,   button_pos: (0.200, 0.500), midpoint_pos: None, label_pos: (-0.05, 0.35) },
+    ChipAnchor { input: SnesInput::Down,   button_pos: (0.247, 0.580), midpoint_pos: None, label_pos: (-0.05, 0.60) },
+    ChipAnchor { input: SnesInput::Right,  button_pos: (0.295, 0.500), midpoint_pos: Some((0.295, 0.700)), label_pos: (0.08, 0.88) },
+    ChipAnchor { input: SnesInput::Select, button_pos: (0.440, 0.550), midpoint_pos: None, label_pos: (0.38, 0.92) },
+    ChipAnchor { input: SnesInput::Start,  button_pos: (0.530, 0.550), midpoint_pos: None, label_pos: (0.62, 0.92) },
+    ChipAnchor { input: SnesInput::B,      button_pos: (0.755, 0.620), midpoint_pos: None, label_pos: (1.05, 0.60) },
+    ChipAnchor { input: SnesInput::A,      button_pos: (0.820, 0.505), midpoint_pos: None, label_pos: (1.05, 0.35) },
+    ChipAnchor { input: SnesInput::X,      button_pos: (0.741, 0.380), midpoint_pos: None, label_pos: (0.95, 0.10) },
+    ChipAnchor { input: SnesInput::Y,      button_pos: (0.675, 0.495), midpoint_pos: Some((0.675, 0.680)), label_pos: (0.92, 0.88) },
+];
+
+pub const SNES_CONTROLLER: egui::ImageSource<'static> = egui::include_image!("../../assets/snes_controller.svg");
+
+fn chip_label(input: SnesInput) -> &'static str {
+    match input {
+        SnesInput::Up => "Up", SnesInput::Down => "Down",
+        SnesInput::Left => "Left", SnesInput::Right => "Right",
+        _ => input.label(),
+    }
+}
 
 #[derive(Default, Serialize, Deserialize, PartialEq, Clone, Copy)]
 pub enum AspectMode {
@@ -74,12 +107,6 @@ pub enum SnesInput {
 }
 
 impl SnesInput {
-    /// SNES-shaped layout order, grouped for the remap grid UI.
-    pub const DPAD: [SnesInput; 4] = [Self::Up, Self::Down, Self::Left, Self::Right];
-    pub const FACE: [SnesInput; 4] = [Self::Y, Self::X, Self::B, Self::A];
-    pub const SHOULDERS: [SnesInput; 2] = [Self::L, Self::R];
-    pub const SYSTEM: [SnesInput; 2] = [Self::Select, Self::Start];
-
     pub fn label(self) -> &'static str {
         match self {
             SnesInput::Up => "D-Pad Up",
@@ -390,11 +417,6 @@ impl Settings {
             .bindings = bindings;
         self.save();
     }
-
-    // pub fn delete_profile(&mut self, name: &str) {
-    //     self.profiles.retain(|p| p.name != name);
-    //     self.save();
-    // }
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -410,9 +432,7 @@ pub struct SettingsWindow {
     egui_window: UiWindow,
     current_tab: SettingsTab,
     new_settings: Settings,
-    /// Which physical controller is currently shown in the Controls tab's
-    /// remap grid, identified by its hex UUID key.
-    selected_controller: Option<String>,
+    active_player: ControllerPlayer,
     new_profile_name: String,
 }
 
@@ -422,7 +442,7 @@ impl SettingsWindow {
             egui_window,
             current_tab: SettingsTab::General,
             new_settings: settings.clone(),
-            selected_controller: None,
+            active_player: ControllerPlayer::Player1,
             new_profile_name: String::new(),
         })
     }
@@ -442,12 +462,13 @@ impl SettingsWindow {
         app_theme: &AppTheme,
     ) -> Option<Settings> {
         let current_tab = &mut self.current_tab;
-        let selected_controller = &mut self.selected_controller;
+        let active_player = &mut self.active_player;
         let mut apply_settings = false;
 
         let full_output = self.egui_window.update_ui(|ctx| {
             egui::Panel::left("settings_tab_strip")
                 .resizable(false)
+                .min_size(128.0)
                 .show(ctx, |ui| {
                     ui.selectable_value(current_tab, SettingsTab::General, "⚙ General");
                     ui.selectable_value(current_tab, SettingsTab::Video, "🖵 Video");
@@ -464,7 +485,7 @@ impl SettingsWindow {
                     ui,
                     live_settings,
                     controller_manager,
-                    selected_controller,
+                    active_player,
                     &mut self.new_profile_name,
                 ),
                 SettingsTab::Emulation => Self::render_emulation_tab(ui, &mut self.new_settings),
@@ -524,144 +545,131 @@ impl SettingsWindow {
         ui: &mut egui::Ui,
         settings: &mut Settings,
         controller_manager: &mut ControllerManager,
-        selected: &mut Option<String>,
+        active_player: &mut ControllerPlayer,
         new_profile_name: &mut String,
     ) {
-        let controllers = controller_manager.connected_controllers();
-
-        if controllers.is_empty() {
-            ui.vertical_centered(|ui| {
-                ui.add_space(40.0);
-                ui.label("Plug in a controller to configure it.");
-            });
-            return;
-        }
-
-        // Keep the selection valid; default to the first connected controller.
-        let selection_valid = selected
-            .as_deref()
-            .is_some_and(|sel| controllers.iter().any(|c| c.uuid_key == sel));
-        if !selection_valid {
-            *selected = Some(controllers[0].uuid_key.clone());
-        }
-
         ui.horizontal(|ui| {
-            // Left panel: which physical controller is connected.
-            ui.vertical(|ui| {
-                ui.set_width(180.0);
-                for info in &controllers {
-                    let is_selected = selected.as_deref() == Some(info.uuid_key.as_str());
-                    let badge = match info.assigned_player {
-                        Some(ControllerPlayer::Player1) => " (P1)",
-                        Some(ControllerPlayer::Player2) => " (P2)",
-                        None => "",
-                    };
-                    let label = format!("{}{}", info.name, badge);
-                    if ui.selectable_label(is_selected, label).clicked() {
-                        *selected = Some(info.uuid_key.clone());
-                    }
+            ui.selectable_value(active_player, ControllerPlayer::Player1, "Player 1");
+            ui.selectable_value(active_player, ControllerPlayer::Player2, "Player 2");
+        });
+        ui.separator();
+
+        let controllers = controller_manager.connected_controllers();
+        let selected = controllers.iter().find(|c| c.assigned_player == Some(*active_player));
+
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                ui.label("Controller:");
+                egui::ComboBox::new("controller_select", "")
+                    .selected_text(selected.map(|c| c.name.as_str()).unwrap_or("None"))
+                    .show_ui(ui, |ui| {
+                        for info in &controllers {
+                            let is_selected = selected.is_some_and(|s| s.uuid_key == info.uuid_key);
+                            if ui.selectable_label(is_selected, &info.name).clicked() {
+                                controller_manager.assign_player(info.id, *active_player, settings);
+                            }
+                        }
+                    });
+    
+                ui.separator();
+                
+                if ui.add_enabled(selected.is_some(), egui::Button::new("Reset to Defaults")).clicked() {
+                    settings.reset_binding(&selected.unwrap().uuid_key);
                 }
             });
 
-            ui.separator();
+            ui.horizontal(|ui| {
+                ui.add(egui::TextEdit::singleline(new_profile_name).hint_text("Profile name").desired_width(120.0));
+                let name_valid = !new_profile_name.trim().is_empty() && selected.is_some();
+                if ui.add_enabled(name_valid, egui::Button::new("Save as Profile")).clicked() {
+                    let info = selected.unwrap();
+                    let binding = settings.binding_for(&info.uuid_key, &info.name);
+                    settings.save_profile(new_profile_name.trim().to_string(), binding.bindings);
+                    new_profile_name.clear();
+                }
+                if !settings.profiles.is_empty() && selected.is_some() {
+                    ui.label("Load Profile:");
 
-            // Right panel: remap grid, shaped like the physical pad so it
-            // reads at a glance instead of as a flat settings list.
-            ui.vertical(|ui| {
-                let Some(sel_key) = selected.clone() else { return };
-                let Some(info) = controllers.iter().find(|c| c.uuid_key == sel_key) else {
-                    return;
-                };
-
-                ui.horizontal(|ui| {
-                    ui.heading(&info.name);
-                    if ui.button("Set as Player 1").clicked() {
-                        controller_manager.assign_player(info.id, ControllerPlayer::Player1, settings);
-                    }
-                    if ui.button("Set as Player 2").clicked() {
-                        controller_manager.assign_player(info.id, ControllerPlayer::Player2, settings);
-                    }
-                    if ui.button("Reset to Defaults").clicked() {
-                        settings.reset_binding(&sel_key);
-                    }
-                });
-
-                ui.horizontal(|ui| {
-                    ui.add(egui::TextEdit::singleline(new_profile_name).hint_text("Profile name"));
-                    let name_valid = !new_profile_name.trim().is_empty();
-                    if ui.add_enabled(name_valid, egui::Button::new("Save as Profile")).clicked() {
-                        let binding = settings.binding_for(&sel_key, &info.name);
-                        settings.save_profile(new_profile_name.trim().to_string(), binding.bindings);
-                        new_profile_name.clear();
-                    }
-
-                    if !settings.profiles.is_empty() {
-                        egui::ComboBox::new("profile_select", "Load Profile")
-                            .selected_text("Choose…")
-                            .show_ui(ui, |ui| {
-                                for profile in settings.profiles.clone() {
-                                    if ui.selectable_label(false, &profile.name).clicked() {
-                                        settings.apply_profile(&sel_key, &info.name, &profile.name);
-                                    }
-                                }
-                            });
-                    }
-                });
-
-                ui.separator();
-
-                let capturing = controller_manager.capturing_for(info.id);
-                let binding = settings.binding_for(&sel_key, &info.name);
-
-                let mut remap_row = |ui: &mut egui::Ui, input: SnesInput| {
-                    ui.horizontal(|ui| {
-                        ui.set_width(220.0);
-                        ui.label(input.label());
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if capturing == Some(input) {
-                                ui.colored_label(egui::Color32::YELLOW, "Press a button…");
-                                if ui.small_button("Cancel").clicked() {
-                                    controller_manager.cancel_remap();
-                                }
-                            } else {
-                                let current = binding
-                                    .bindings
-                                    .get(&input)
-                                    .map(|s| s.label())
-                                    .unwrap_or_else(|| "Unbound".to_string());
-                                ui.label(current);
-                                if ui.small_button("Rebind").clicked() {
-                                    controller_manager.begin_remap(info.id, input);
+                    egui::ComboBox::new("profile_load", "")
+                        .selected_text("Choose…")
+                        .show_ui(ui, |ui| {
+                            for profile in settings.profiles.clone() {
+                                if ui.selectable_label(false, &profile.name).clicked() {
+                                    let info = selected.unwrap();
+                                    settings.apply_profile(&info.uuid_key, &info.name, &profile.name);
                                 }
                             }
                         });
-                    });
-                };
-
-                ui.label(egui::RichText::new("D-Pad").strong());
-                for input in SnesInput::DPAD {
-                    remap_row(ui, input);
-                }
-
-                ui.add_space(8.0);
-                ui.label(egui::RichText::new("Face Buttons").strong());
-                for input in SnesInput::FACE {
-                    remap_row(ui, input);
-                }
-
-                ui.add_space(8.0);
-                ui.label(egui::RichText::new("Shoulders").strong());
-                for input in SnesInput::SHOULDERS {
-                    remap_row(ui, input);
-                }
-
-                ui.add_space(8.0);
-                ui.label(egui::RichText::new("System").strong());
-                for input in SnesInput::SYSTEM {
-                    remap_row(ui, input);
                 }
             });
         });
+
+        ui.separator();
+
+        let Some(info) = selected else {
+            ui.centered_and_justified(|ui| {
+                ui.label(if controllers.is_empty() {
+                    "Plug in a controller to configure it."
+                } else {
+                    "Select a controller above to configure this player."
+                });
+            });
+            return;
+        };
+
+        let capturing = controller_manager.capturing_for(info.id);
+        let binding = settings.binding_for(&info.uuid_key, &info.name);
+
+        const SIDE_MARGIN: f32 = 90.0;
+        const TOP_MARGIN: f32 = 70.0;
+
+        ui.add_space(TOP_MARGIN);
+        let image_rect = ui.horizontal(|ui| {
+            ui.add_space(SIDE_MARGIN);
+            let image_w = (ui.available_width() - SIDE_MARGIN).clamp(280.0, 460.0);
+            let image_h = image_w * (240.0 / 400.0);
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(image_w, image_h), egui::Sense::hover());
+            egui::Image::new(SNES_CONTROLLER).paint_at(ui, rect);
+            rect
+        }).inner;
+
+        for chip in CHIP_LAYOUT {
+            let button_pt = image_rect.min + image_rect.size() * egui::vec2(chip.button_pos.0, chip.button_pos.1);
+            let label_pt = image_rect.min + image_rect.size() * egui::vec2(chip.label_pos.0, chip.label_pos.1);
+            
+            if let Some(midpt) = chip.midpoint_pos {
+                let mid_pt = image_rect.min + image_rect.size() * egui::vec2(midpt.0, midpt.1);
+
+                ui.painter().line_segment([button_pt, mid_pt], (1.0, egui::Color32::GRAY));
+                ui.painter().line_segment([mid_pt, label_pt], (1.0, egui::Color32::GRAY));
+            } else {
+                ui.painter().line_segment([button_pt, label_pt], (1.0, egui::Color32::GRAY));
+            }
+
+            let is_capturing = capturing == Some(chip.input);
+            let bound_text = if is_capturing {
+                "Unbound".to_string()
+            } else {
+                binding.bindings.get(&chip.input).map(|s| s.label()).unwrap_or_else(|| "Unbound".to_string())
+            };
+
+            let bound_text = if bound_text.len() <= 11 { bound_text } else {
+                bound_text.chars().take(10).collect::<String>() + "…"
+            };
+
+            let chip_rect = egui::Rect::from_center_size(label_pt, egui::vec2(100.0, 32.0));
+            let resp = ui.put(
+                chip_rect,
+                egui::Button::new(format!("{}\n{}", chip_label(chip.input), bound_text)).small(),
+            );
+            if resp.clicked() {
+                if is_capturing {
+                    controller_manager.cancel_remap();
+                } else {
+                    controller_manager.begin_remap(info.id, chip.input);
+                }
+            }
+        }
     }
 
     fn render_video_tab(ui: &mut egui::Ui, settings: &mut Settings) {

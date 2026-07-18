@@ -22,7 +22,7 @@ pub enum JoypadButton {
     R1 = 1 << 11,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ControllerPlayer {
     Player1,
     Player2,
