@@ -79,7 +79,12 @@ impl RomPaths {
 
     /// Finds a manifest by the ROM path
     pub fn find_manifest_by_stem(stem: &RomPathStem) -> Option<RomManifest> {
-        let text = std::fs::read_to_string(Self::manifest_path_from_stem(stem)?).ok()?;
+        let manifest_path = Self::manifest_path_from_stem(stem)?;
+        Self::read_manifest(&manifest_path)
+    }
+
+    pub fn read_manifest(manifest_path: &PathBuf) -> Option<RomManifest> {
+        let text = std::fs::read_to_string(manifest_path).ok()?;
         serde_json::from_str(&text).ok()
     }
 }

@@ -93,6 +93,8 @@ pub struct Cartridge {
     pub irq_vec_n: u16,
 
     pub rom_hash: u32,
+
+    pub header_meta: RomHeaderMeta,
 }
 
 impl Cartridge {
@@ -164,6 +166,8 @@ impl Cartridge {
             irq_vec_n: 0u16,
 
             rom_hash: 0u32,
+
+            header_meta: RomHeaderMeta::default(),
         };
 
         cart.force_write(Address::from_u32(0x00FFFC), reset_vec as u8);
@@ -205,6 +209,8 @@ impl Cartridge {
             rom: cart_rom,
             ..Default::default()
         };
+
+        cart.header_meta = get_rom_meta(Some(&cart.rom));
 
         cart.rom_hash = rom_hash;
 
@@ -653,6 +659,7 @@ fn find_header(cart_rom: &[u8]) -> Result<usize, String> {
     }
 }
 
+#[derive(Default, Clone)]
 pub struct RomHeaderMeta {
     pub title: String,
     pub saves_game: bool,

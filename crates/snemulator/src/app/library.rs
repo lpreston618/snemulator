@@ -835,14 +835,14 @@ impl LibraryView {
 
         let prompt = match state.delete_confirm.unwrap() {
             DeleteConfirm::SaveData => format!(
-                    "Are you sure you want to delete the save data for \"{}\"? This cannot be undone.",
-                    entry.display_name
-                ),
+                "Are you sure you want to delete the save data for \"{}\"? This cannot be undone.",
+                entry.display_name
+            ),
             DeleteConfirm::SaveState(slot) => format!(
-                    "Are you sure you want to delete the data for \"{}\" save state slot {}? This cannot be undone.",
-                    entry.display_name,
-                    slot,
-                ),
+                "Are you sure you want to delete the data for \"{}\" save state slot {}? This cannot be undone.",
+                entry.display_name,
+                slot,
+            ),
         };
 
         let delete_action = match state.delete_confirm.unwrap() {

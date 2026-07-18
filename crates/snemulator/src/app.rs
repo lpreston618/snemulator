@@ -9,6 +9,7 @@ use crate::app::rom_paths::{RomManifest, RomPathStem};
 use crate::debug::{harness::MainDebugHarness, window::DebugWindow};
 use crate::ui_window::UiWindow;
 use sdl3::VideoSubsystem;
+use snemcore::cartridge::RomHeaderMeta;
 #[cfg(not(feature = "debug"))]
 use snemcore::debug::NullHarness;
 use snemcore::savestate::SaveState;
@@ -90,11 +91,11 @@ pub enum AppAction {
 
 pub struct AppRomMetadata {
     pub crc32_hash: u32,
+    pub rom_path: PathBuf,
     pub paths: RomPaths,
     pub used_save_state_slots: [bool; MAX_SAVE_STATE_SLOTS],
     pub last_load_time: u64,
-    pub rom_path: PathBuf,
-    pub title: String,
+    pub header_data: RomHeaderMeta,
 }
 
 pub struct AppState {
@@ -944,24 +945,25 @@ impl SnemulatorApp {
 
             let session_secs = now.saturating_sub(rom_data.last_load_time);
             let manifest_path = rom_data.paths.manifest_path();
-            let stem = RomPathStem::from_path(&manifest_path);
 
-            if !stem.sanitized_name().is_empty() {
-                let mut manifest =
-                    RomPaths::find_manifest_by_stem(&stem).unwrap_or_else(|| RomManifest {
-                        rom_crc: rom_data.crc32_hash,
-                        display_name: rom_data.title.clone(),
-                        ..Default::default()
-                    });
+            let mut manifest = RomPaths::read_manifest(&manifest_path).unwrap_or(
+                RomManifest {
+                    rom_crc: rom_data.crc32_hash,
+                    last_played: Some(now),
+                    play_time_secs: 0,
+                    thumbnail_path: Some(rom_data.paths.thumbnail_path()),
+                    display_name: rom_data.header_data.title.clone(),
+                    saves_game: rom_data.header_data.saves_game,
+                    coprocessor: rom_data.header_data.coprocessor_name.clone(),
+                    mapping: rom_data.header_data.mapping_name.clone(),
+                    rom_size_bytes: rom_data.header_data.rom_size_bytes,
+                }
+            );
 
-                manifest.last_played = Some(now);
-                manifest.play_time_secs += session_secs;
-                rom_data.paths.write_manifest(&manifest);
-
-                self.main_window.library.update_entry(
-                    &rom_data.rom_path,
-                );
-            }
+            manifest.play_time_secs += session_secs;
+            rom_data.paths.write_manifest(&manifest);
+            
+            self.main_window.library.update_entry(&rom_data.rom_path);
         }
 
         self.save_cartridge_save_ram(false);
@@ -1054,7 +1056,7 @@ impl SnemulatorApp {
             used_save_state_slots,
             last_load_time: std::time::UNIX_EPOCH.elapsed().unwrap().as_secs(),
             rom_path: path.clone(),
-            title: self.snem_core.get_loaded_rom_title().unwrap(),
+            header_data: self.snem_core.cart.as_ref().unwrap().header_meta.clone(),
         });
 
         self.message_queue.push(
