@@ -164,7 +164,7 @@ impl MainWindow {
     fn render_messages(messages: &Vec<Message>, ctx: &egui::Context, app_theme: &AppTheme) {
         let screen = ctx.viewport_rect();
 
-        let anchor_x = screen.max.x - 20.0; // desired RIGHT edge of boxes
+        let anchor_x = 20.0; // desired LEFT edge of boxes
         let anchor_y = screen.max.y - 10.0; // desired BOTTOM edge of lowest box
 
         let mut cursor_y = anchor_y;
@@ -184,9 +184,9 @@ impl MainWindow {
             let height = ctx
                 .data(|d| d.get_temp::<f32>(msg_id.with("h")))
                 .unwrap_or(28.0);
-            let width = ctx
-                .data(|d| d.get_temp::<f32>(msg_id.with("w")))
-                .unwrap_or(320.0);
+            // let width = ctx
+            //     .data(|d| d.get_temp::<f32>(msg_id.with("w")))
+            //     .unwrap_or(320.0);
 
             let target_bottom = cursor_y;
             cursor_y -= height + STACK_SPACING;
@@ -201,7 +201,7 @@ impl MainWindow {
 
             // fixed_pos = top-left corner, so convert from right/bottom edges.
             let box_top = animated_bottom - height;
-            let pos = egui::pos2(anchor_x - width + slide_x, box_top);
+            let pos = egui::pos2(anchor_x + slide_x, box_top);
 
             let fade_color = move |c: egui::Color32| {
                 egui::Color32::from_rgba_unmultiplied(
@@ -213,8 +213,7 @@ impl MainWindow {
             let (accent, bg) = message.kind.colors(app_theme);
 
             let response = egui::Area::new(msg_id)
-                .fixed_pos(pos)          // <-- keep this
-                // .anchor(...)          // <-- REMOVED: this was overriding fixed_pos
+                .fixed_pos(pos)
                 .interactable(false)
                 .order(egui::Order::Foreground)
                 .show(ctx, |ui| {

@@ -648,7 +648,7 @@ impl SettingsWindow {
 
             let is_capturing = capturing == Some(chip.input);
             let bound_text = if is_capturing {
-                "Unbound".to_string()
+                "Waiting…".to_string()
             } else {
                 binding.bindings.get(&chip.input).map(|s| s.label()).unwrap_or_else(|| "Unbound".to_string())
             };

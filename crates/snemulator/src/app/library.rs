@@ -428,30 +428,39 @@ impl LibraryView {
             for (i, entry) in self.entries.iter_mut().enumerate() {
                 let is_selected = self.selected_entry == Some(i);
                 
-                let response = Self::render_list_entry(ui, entry, is_selected, app_theme);
+                let (response, quick_play_clicked) = Self::render_list_entry(ui, entry, is_selected, app_theme);
                 
-                if response.clicked() {
-                    if self.selected_entry != Some(i) {
-                        self.selected_entry = Some(i);
+                if quick_play_clicked {
+                    action = Some(AppAction::LoadRomFromPath { path: entry.path.clone() });
+                } else {
+                    if response.clicked() {
+                        if self.selected_entry != Some(i) {
+                            self.selected_entry = Some(i);
+                        }
+                        
+                        self.detail_view_state = Some(GameDetailState::new());
                     }
-                    
-                    self.detail_view_state = Some(GameDetailState::new());
+    
+                    #[cfg(feature = "debug")]
+                    response.context_menu(|ui| {
+                        if ui.button("Debug").clicked() {
+                            action = Some(AppAction::OpenDebug(Some(entry.path.clone())));
+                            ui.close();
+                        }
+                    });
                 }
-
-                #[cfg(feature = "debug")]
-                response.context_menu(|ui| {
-                    if ui.button("Debug").clicked() {
-                        action = Some(AppAction::OpenDebug(Some(entry.path.clone())));
-                        ui.close();
-                    }
-                });
             }
         });
 
         action
     }
 
-    fn render_list_entry(ui: &mut Ui, entry: &mut LibraryEntry, is_selected: bool, app_theme: &AppTheme) -> egui::Response {
+    fn render_list_entry(
+        ui: &mut Ui,
+        entry: &mut LibraryEntry,
+        is_selected: bool,
+        app_theme: &AppTheme,
+    ) -> (egui::Response, bool) {
         const THUMBNAIL_SCALE: f32 = 0.75;
         const SCALED_THUMBNAIL_HEIGHT: f32 = THUMBNAIL_SCALE * STANDARD_THUMBNAIL_HEIGHT;
         const SCALED_THUMBNAIL_WIDTH: f32 = THUMBNAIL_SCALE * STANDARD_THUMBNAIL_WIDTH;
@@ -467,7 +476,7 @@ impl LibraryView {
         );
 
         if !ui.is_rect_visible(rect) {
-            return response;
+            return (response, false);
         }
 
         let painter = ui.painter();
@@ -518,7 +527,7 @@ impl LibraryView {
 
         // Title + subtitle
         painter.text(
-            egui::pos2(text_x, mid_y - 9.0),
+            egui::pos2(text_x, mid_y - 16.0),
             egui::Align2::LEFT_CENTER,
             &entry.display_name,
             app::theme::bold_font(title_size),
@@ -535,7 +544,7 @@ impl LibraryView {
         };
         if stem != entry.display_name {
             painter.text(
-                egui::pos2(text_x, mid_y + 9.0),
+                egui::pos2(text_x, mid_y + 3.0),
                 egui::Align2::LEFT_CENTER,
                 trimmed_stem,
                 egui::FontId::proportional(filename_size),
@@ -543,6 +552,34 @@ impl LibraryView {
             );
         }
 
+        // Quick Play Button
+        const QUICK_PLAY_SIZE: f32 = 24.0;
+        let quick_play_rect = egui::Rect::from_min_size(
+            egui::pos2(text_x, mid_y + 16.0),
+            Vec2::splat(QUICK_PLAY_SIZE),
+        );
+
+        let quick_play_id = response.id.with("quick_play");
+        let quick_play_response = ui.interact(quick_play_rect, quick_play_id, egui::Sense::click());
+
+        let button_fill = if quick_play_response.hovered() {
+            app_theme.success.linear_multiply(1.15)
+        } else {
+            app_theme.success
+        };
+
+        painter.rect_filled(quick_play_rect, app_theme.widget_corner_radius as f32, button_fill);
+        painter.text(
+            quick_play_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "▶",
+            egui::FontId::proportional(11.0),
+            egui::Color32::WHITE,
+        );
+
+        let quick_play_clicked = quick_play_response.clicked();
+
+        // Additional Play Data (Right side)
         const RIGHT_MARGIN: f32 = 24.0;
         const LINE_HEIGHT: f32 = 20.0;
 
@@ -604,7 +641,7 @@ impl LibraryView {
             app_theme.text_muted,
         );
 
-        response
+        (response, quick_play_clicked)
     }
 
     fn render_game_detail_panel(
@@ -614,34 +651,6 @@ impl LibraryView {
         app_theme: &AppTheme,
         action: &mut Option<GameDetailAction>,
     ) {
-        // let back_button = egui::Button::new(
-        // egui::RichText::new("✕")
-        //     .color(app_theme.text_muted)
-        //     .font(egui::FontId::proportional(18.0))
-        // )
-        // .frame(false)
-        // .fill(egui::Color32::from_black_alpha(0))
-        // .corner_radius(app_theme.widget_corner_radius as f32)
-        // .stroke(egui::Stroke::new(1.0, app_theme.text_muted));
-
-        // if ui.add_sized(Vec2::new(30.0, 30.0), back_button).clicked() {
-        //     *action = Some(GameDetailAction::Close);
-        // }
-        
-        // Header: close button, right-aligned
-        // ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
-        //     if ui
-        //         .add(egui::Button::new(
-        //             egui::RichText::new("✕")
-        //                 .color(app_theme.text_muted)
-        //                 .font(egui::FontId::proportional(14.0))
-        //             ).frame(false))
-        //         .clicked()
-        //     {
-        //         *action = Some(GameDetailAction::Close);
-        //     }
-        // });
-
         ui.add_space(8.0);
 
         // Box art
