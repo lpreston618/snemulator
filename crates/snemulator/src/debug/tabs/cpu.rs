@@ -157,7 +157,7 @@ impl CpuTab {
                         let cart = core.cart.as_mut().unwrap();
                         
                         for (addr, value) in self.rom_changes.iter() {
-                            cart.force_write(scpu::Address::from_u32(*addr), *value);
+                            // cart.force_write(scpu::Address::from_u32(*addr), *value);
                         }
                         
                         self.rom_changes.clear();
@@ -499,7 +499,7 @@ impl CpuTab {
                 
                 let mut addr = earliest_in_changed;
                 while self.rom_changes.contains_key(&addr) {
-                    cart.force_write(scpu::Address::from_u32(addr), self.rom_changes[&addr]);
+                    // cart.force_write(scpu::Address::from_u32(addr), self.rom_changes[&addr]);
                     self.rom_changes.remove(&addr);
                     addr += 1;
                 }
@@ -513,7 +513,7 @@ impl CpuTab {
                 for i in 0..line.bytes.len() {
                     let addr = line.addr + i as u32;
                     self.rom_changes.insert(addr, cart.read(scpu::Address::from_u32(addr)));
-                    cart.force_write(scpu::Address::from_u32(addr), NOP);
+                    // cart.force_write(scpu::Address::from_u32(addr), NOP);
                 }
                 
                 ui.close();

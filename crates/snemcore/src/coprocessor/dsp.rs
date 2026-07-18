@@ -275,9 +275,7 @@ impl Dsp1 {
     }
 
     /// CPU read from the Command/Data register.
-    pub fn read(&mut self) -> u8 {
-        // log::debug!("Read from DSP-1 Data");
-
+    pub fn data(&mut self) -> u8 {
         if self.output_pos >= self.output.len() {
             return 0;
         }

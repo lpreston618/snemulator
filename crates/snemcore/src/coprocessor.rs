@@ -40,3 +40,19 @@ impl Coprocessor {
         }
     }
 }
+
+impl std::fmt::Debug for Coprocessor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            Coprocessor::Dsp1(_) => "Dsp1",
+            Coprocessor::Dsp2 => "Dsp2",
+            // Coprocessor::Dsp3 => "Dsp3",
+            // Coprocessor::Dsp4 => "Dsp4",
+            Coprocessor::SuperFx(_) => "SuperFx",
+            Coprocessor::Sa1 => "Sa1",
+            Coprocessor::Cx4 => "Cx4",
+        };
+
+        f.write_str(name)
+    }
+}

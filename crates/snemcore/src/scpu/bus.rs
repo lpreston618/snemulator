@@ -60,7 +60,7 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
                 // WRAM mirror (first 8KB)
                 0x0000..=0x1FFF => self.wram[addr.offset as usize],
 
-                0x2000..=0x20FF => 0, // Unused
+                0x2000..=0x20FF => *self.open_bus_value, // Unused
 
                 // PPU registers
                 0x2100..=0x213F => self.read_ppu_regs(addr.offset),
@@ -145,10 +145,10 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
 
                 0x4380..=0x5FFF => { *self.open_bus_value = value; }
 
-                0x6000..=0x7FFF => self.cart.write(addr, value), // Cartridge expansion region
+                0x6000..=0x7FFF => { let _ = self.cart.write(addr, value); }, // Cartridge expansion region
 
                 // Cartridge (SRAM, mapper registers)
-                0x8000..=0xFFFF => self.cart.write(addr, value),
+                0x8000..=0xFFFF => { let _ = self.cart.write(addr, value); },
             },
 
             // WRAM direct access

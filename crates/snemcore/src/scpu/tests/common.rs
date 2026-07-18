@@ -4,7 +4,7 @@
 // Test harness helpers
 // ---------------------------------------------------------------------------
 
-use crate::{cartridge::{Cartridge, MappingMode}, controller::ControllerData, debug::NullHarness, scpu::ioregs::CpuIoRegs, sppu::{Color, OAMSprite, regs::PpuRegs}, ssmp::ioports::ApuIoPorts, sysinfo::{CGRAM_SIZE, OAM_SIZE, OAM_SPRITE_COUNT, VRAM_SIZE, WRAM_SIZE}};
+use crate::{cartridge::{Cartridge, AddressMode}, controller::ControllerData, debug::NullHarness, scpu::ioregs::CpuIoRegs, sppu::{Color, OAMSprite, regs::PpuRegs}, ssmp::ioports::ApuIoPorts, sysinfo::{CGRAM_SIZE, OAM_SIZE, OAM_SPRITE_COUNT, VRAM_SIZE, WRAM_SIZE}};
 
 use crate::scpu::*;
 
@@ -44,7 +44,7 @@ impl TestBacking {
             ppu_regs: PpuRegs::default(),
             cpu_regs: CpuIoRegs::default(),
             apu_ports: ApuIoPorts::default(),
-            cart: Cartridge::test_blank(name, MappingMode::LoROM, reset_vec),
+            cart: Cartridge::test_blank(name, AddressMode::LoRom, reset_vec),
             controller_data: ControllerData::default(),
         }
     }
@@ -75,7 +75,7 @@ impl TestBacking {
 /// Used for opcode/operand setup since `read_prg` fetches from cartridge.
 pub(super) fn write_rom(bus: &mut CpuBus<NullHarness>, mut addr: Address, bytes: &[u8]) {
     for &b in bytes {
-        bus.cart.force_write(addr, b);
+        // bus.cart.force_write(addr, b);
         addr.offset = addr.offset.wrapping_add(1);
     }
 }
