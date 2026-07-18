@@ -696,14 +696,52 @@ pub fn get_rom_meta(rom: Option<&[u8]>) -> RomMeta {
         MappingMode::ExHiROM => "ExHiRom",
     }.to_owned();
 
+
+
+    //     00h     ROM             ;if gamecode="042J" --> ROM+SGB2
+    //     01h     ROM+RAM (if any such produced?)
+    //     02h     ROM+RAM+Battery ;if gamecode="XBND" --> ROM+RAM+Batt+XBandModem
+    //                             ;if gamecode="MENU" --> ROM+RAM+Batt+Nintendo Power
+    //     03h     ROM+DSP
+    //     04h     ROM+DSP+RAM (no such produced)
+    //     05h     ROM+DSP+RAM+Battery
+    //     13h     ROM+MarioChip1/ExpansionRAM (and "hacked version of OBC1")
+    //     14h     ROM+GSU+RAM                    ;\ROM size up to 1MByte -> GSU1
+    //     15h     ROM+GSU+RAM+Battery            ;/ROM size above 1MByte -> GSU2
+    //     1Ah     ROM+GSU1+RAM+Battery+Fast Mode? (Stunt Race)
+    //     25h     ROM+OBC1+RAM+Battery
+    //     32h     ROM+SA1+RAM+Battery (?) "F1 Grand Prix Sample (J)"
+    //     34h     ROM+SA1+RAM (?) "Dragon Ball Z - Hyper Dimension"
+    //     35h     ROM+SA1+RAM+Battery
+    //     43h     ROM+S-DD1
+    //     45h     ROM+S-DD1+RAM+Battery
+    //     55h     ROM+S-RTC+RAM+Battery
+    //     E3h     ROM+Super Gameboy      (SGB)
+    //     E5h     ROM+Satellaview BIOS   (BS-X)
+    //     F5h.00h ROM+Custom+RAM+Battery     (SPC7110)
+    //     F9h.00h ROM+Custom+RAM+Battery+RTC (SPC7110+RTC)
+    //     F6h.01h ROM+Custom+Battery         (ST010/ST011)
+    //     F5h.02h ROM+Custom+RAM+Battery     (ST018)
+    //     F3h.10h ROM+Custom                 (CX4)
+
     let (saves_game, has_coprocessor) = match padded_rom[header_pos + 0x16] & 0x0F {
-        0 => (false, false),
-        1 => (false, false),
-        2 => (true, false),
-        3 => (false, true),
-        4 => (false, true),
-        5 => (true, true),
-        6 => (false, true),
+        0x00 => (false, false),
+        0x01 => (false, false),
+        0x02 => (true, false),
+        0x03 => (false, true),
+        0x04 => (false, true),
+        0x05 => (true, true),
+        0x06 => (false, true),
+        0x15 => (true, true),
+        0x1A => (true, true),
+        0x25 => (true, true),
+        0x32 => (true, true),
+        0x35 => (true, true),
+        0x45 => (true, true),
+        0x55 => (true, true),
+        0xF5 => (true, true),
+        0xF6 => (true, true),
+        0xF9 => (true, true),
         _ => (false, false), // Should not happen?
     };
 

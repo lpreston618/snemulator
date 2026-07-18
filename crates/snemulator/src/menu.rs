@@ -46,7 +46,7 @@ impl MainMenuBar {
                                     .and_then(|n| n.to_str())
                                     .unwrap_or("Unknown");
                                 if ui.button(label).clicked() {
-                                    app_action = Some(AppAction::LoadRomFromPath(path.clone()));
+                                    app_action = Some(AppAction::LoadRomFromPath { path: path.clone() });
                                     ui.close();
                                 }
                             }

@@ -280,16 +280,20 @@ impl LibraryView {
                                 slot,
                             });
                         } else {
-                            action = Some(AppAction::LoadRomFromPath(entry.path.clone()))
+                            action = Some(AppAction::LoadRomFromPath{ path: entry.path.clone() })
                         }
                     }
-                    GameDetailAction::DeleteSave => {},
+                    GameDetailAction::DeleteSave => {
+                        action = Some(AppAction::DeleteSaveData { path: entry.path.clone() });
+
+                        entry.has_save = false;
+                    },
                     GameDetailAction::DeleteSlot(slot) => {
                         action = Some(AppAction::DeleteStateForRom {
                             path: entry.path.clone(),
                             slot,
                         });
-                        
+
                         entry.used_slots.retain(|&s| s != slot);
 
                         if let Some(detail_view_state) = &mut self.detail_view_state {
@@ -623,7 +627,7 @@ impl LibraryView {
             if entry.uses_save && entry.has_save {
                 ui.add_space(8.0);
                 if ui
-                    .add(egui::Button::new(egui::RichText::new("🗑").color(app_theme.text_muted)).frame(false))
+                    .add(egui::Button::new(egui::RichText::new("🗑").color(app_theme.error)).frame(false))
                     .on_hover_text("Delete save data")
                     .clicked()
                 {
@@ -687,7 +691,7 @@ impl LibraryView {
                         .size(16.0)
                         .color(egui::Color32::WHITE),
                 )
-                .fill(app_theme.warning)
+                .fill(app_theme.success)
                 .corner_radius(app_theme.widget_corner_radius as f32);
 
                 if ui.add_sized(Vec2::new(160.0, 40.0), load_button).clicked() {

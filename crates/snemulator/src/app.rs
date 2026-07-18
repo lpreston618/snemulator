@@ -70,7 +70,7 @@ pub enum AppAction {
     ToggleFullscreen,
     SelectRomsFolder,
     LoadRom,
-    LoadRomFromPath(PathBuf),
+    LoadRomFromPath { path: PathBuf },
     LoadRomAndState { path: PathBuf, slot: u32 },
     UnloadRom,
     ResetCore,
@@ -78,6 +78,7 @@ pub enum AppAction {
     SaveState { slot: u32 },
     LoadState { slot: u32 },
     DeleteStateForRom { path: PathBuf, slot: u32 },
+    DeleteSaveData { path: PathBuf },
     OpenSettings,
     Exit,
 
@@ -703,7 +704,7 @@ impl SnemulatorApp {
                 }
             }
             AppAction::LoadRom => self.load_rom(),
-            AppAction::LoadRomFromPath(path) => {
+            AppAction::LoadRomFromPath { path } => {
                 if let Err(e) = self.try_load_rom_from_path(&path) {
                     self.settings.remove_recent_rom(&path);
 
@@ -793,20 +794,10 @@ impl SnemulatorApp {
                 }
             }
             AppAction::DeleteStateForRom { path, slot } => {
-                match self.delete_state(path, slot) {
-                    Ok(_) => self.message_queue.push(
-                        MessageKind::Success,
-                        format!("Deleted save state {slot}"),
-                        Duration::from_secs(3),
-                        Some(log::Level::Debug),
-                    ),
-                    Err(_) => self.message_queue.push(
-                        MessageKind::Error,
-                        format!("Failed to delete save state slot {slot}"),
-                        Duration::from_secs(5),
-                        None,
-                    ),
-                }
+                self.delete_state(path, slot);
+            }
+            AppAction::DeleteSaveData { path } => {
+                self.delete_save_data(path);
             }
             AppAction::ResetCore => self.reset_emulation(false),
             AppAction::PowerOnCore => self.reset_emulation(true),
@@ -1274,20 +1265,70 @@ impl SnemulatorApp {
         Ok(())
     }
 
-    fn delete_state(&mut self, path: PathBuf, slot: u32) -> Result<()> {
+    fn delete_state(&mut self, path: PathBuf, slot: u32) {
         let stem = RomPathStem::from_path(&path);
-        let Some(rom_paths) = RomPaths::new(&stem) else { return Err(anyhow!("")); };
+        let Some(rom_paths) = RomPaths::new(&stem) else {
+            self.message_queue.push(
+                MessageKind::Error,
+                format!("Failed to delete save data for '{}'", stem.sanitized_name()),
+                Duration::from_secs(5),
+                None,
+            );
+
+            return;
+        };
 
         let state_path = rom_paths.state_path(slot);
 
         if std::fs::exists(&state_path).ok().unwrap_or(false) {
             match std::fs::remove_file(&state_path) {
-                Ok(_) => {},
-                Err(_) => return Err(anyhow!("")),
+                Ok(_) => self.message_queue.push(
+                    MessageKind::Success,
+                    format!("Deleted save state {slot}"),
+                    Duration::from_secs(3),
+                    Some(log::Level::Debug),
+                ),
+                Err(_) => self.message_queue.push(
+                    MessageKind::Error,
+                    format!("Failed to delete save data for '{}'", stem.sanitized_name()),
+                    Duration::from_secs(5),
+                    None,
+                ),
             }
         }
+    }
 
-        Ok(())
+    fn delete_save_data(&mut self, path: PathBuf) {
+        let stem = RomPathStem::from_path(&path);
+        let Some(rom_paths) = RomPaths::new(&stem) else {
+            self.message_queue.push(
+                MessageKind::Error,
+                format!("Failed to delete save data for '{}'", stem.sanitized_name()),
+                Duration::from_secs(5),
+                None,
+            );
+
+            return;
+        };
+
+        let save_path = rom_paths.sav_path();
+
+        if std::fs::exists(&save_path).ok().unwrap_or(false) {
+            match std::fs::remove_file(&save_path) {
+                Ok(_) => self.message_queue.push(
+                    MessageKind::Success,
+                    format!("Deleted save data for '{}'", stem.sanitized_name()),
+                    Duration::from_secs(3),
+                    Some(log::Level::Debug),
+                ),
+                Err(_) => self.message_queue.push(
+                    MessageKind::Error,
+                    format!("Failed to delete save data for '{}'", stem.sanitized_name()),
+                    Duration::from_secs(5),
+                    None,
+                ),
+            }
+        }
     }
 
     fn toggle_fullscreen(&mut self) {
