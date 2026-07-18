@@ -653,7 +653,7 @@ fn find_header(cart_rom: &[u8]) -> Result<usize, String> {
     }
 }
 
-pub struct RomMeta {
+pub struct RomHeaderMeta {
     pub title: String,
     pub saves_game: bool,
     pub rom_size_bytes: usize,
@@ -661,8 +661,8 @@ pub struct RomMeta {
     pub mapping_name: String,
 }
 
-pub fn get_rom_meta(rom: Option<&[u8]>) -> RomMeta {
-    let mut rom_meta = RomMeta {
+pub fn get_rom_meta(rom: Option<&[u8]>) -> RomHeaderMeta {
+    let mut rom_meta = RomHeaderMeta {
         title: "???".to_owned(),
         saves_game: false,
         rom_size_bytes: rom.map_or(0, |r| r.len()),

@@ -22,8 +22,6 @@ impl MainMenuBar {
         {
             debug_active = false;
         }
-
-
     
         // Top menu bar
         egui::Panel::top("menu_bar").show(ui, |ui| {

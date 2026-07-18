@@ -318,18 +318,99 @@ impl LibraryView {
         let mut action: Option<GameDetailAction> = None;
 
         let screen_rect = ctx.content_rect();
+        
+        let tab_width = 24.0;
+        let tab_height = 64.0;
+        let content_width = 640.0;
+        let total_width = tab_width + content_width;
 
         egui::Window::new("game_detail_panel")
             .title_bar(false)
             .resizable(false)
             .collapsible(false)
-            .fixed_size(Vec2::new(640.0, screen_rect.height()))
-            .fixed_pos(egui::pos2(screen_rect.right() - 640.0, screen_rect.top()))
-            .frame(egui::Frame::NONE.fill(app_theme.bg_elevated).inner_margin(16.0))
+            .fixed_size(Vec2::new(total_width, screen_rect.height()))
+            .fixed_pos(egui::pos2(screen_rect.right() - total_width, screen_rect.top()))
+            .frame(egui::Frame::NONE)
             .show(ctx, |ui| {
-                Self::render_game_detail_panel(ui, entry, state, app_theme, &mut action);
+                let available_rect = ui.available_rect_before_wrap();
+                
+                // Define the tab rect (vertically centered on the left edge)
+                let tab_rect = egui::Rect::from_center_size(
+                    egui::pos2(
+                        available_rect.min.x + tab_width / 2.0,
+                        available_rect.center().y,
+                    ),
+                    Vec2::new(tab_width, tab_height),
+                );
+                
+                // Define the content rect (right side, full height)
+                let content_rect = egui::Rect::from_min_size(
+                    egui::pos2(available_rect.min.x + tab_width, available_rect.min.y),
+                    Vec2::new(content_width, available_rect.height()),
+                );
+                
+                // Fill background for content area first (so tab appears on top)
+                ui.painter().rect_filled(content_rect, 0.0, app_theme.bg_elevated);
+                
+                // Draw and handle tab
+                let tab_response = ui.allocate_rect(tab_rect, egui::Sense::click());
+                let painter = ui.painter();
+                
+                let tab_bg = if tab_response.hovered() {
+                    app_theme.bg_elevated.linear_multiply(1.3)
+                } else {
+                    app_theme.bg_elevated
+                };
+                
+                // Rounded corners only on the left side
+                let tab_corner_radius = egui::CornerRadius {
+                    nw: 8,
+                    sw: 8,
+                    ne: 0,
+                    se: 0,
+                };
+                
+                painter.rect_filled(tab_rect, tab_corner_radius, tab_bg);
+                
+                // Optional: subtle border around the tab
+                painter.rect_stroke(
+                    tab_rect,
+                    tab_corner_radius,
+                    egui::Stroke::new(1.0, app_theme.border),
+                    egui::StrokeKind::Outside,
+                );
+                
+                let chevron_color = if tab_response.hovered() {
+                    app_theme.text_primary
+                } else {
+                    app_theme.text_muted
+                };
+                
+                painter.text(
+                    tab_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "❯",
+                    egui::FontId::proportional(16.0),
+                    chevron_color,
+                );
+                
+                if tab_response.clicked() {
+                    action = Some(GameDetailAction::Close);
+                }
+                
+                // Create a child UI for the content area
+                let mut content_ui = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(content_rect)
+                        .layout(egui::Layout::top_down(egui::Align::LEFT))
+                );
+                
+                egui::Frame::NONE
+                    .inner_margin(16.0)
+                    .show(&mut content_ui, |ui| {
+                        Self::render_game_detail_panel(ui, entry, state, app_theme, &mut action);
+                    });
             });
-
 
         if state.delete_confirm.is_some() {
             Self::render_delete_confirm_dialog(ctx, entry, state, app_theme, &mut action);
@@ -533,15 +614,33 @@ impl LibraryView {
         app_theme: &AppTheme,
         action: &mut Option<GameDetailAction>,
     ) {
+        // let back_button = egui::Button::new(
+        // egui::RichText::new("✕")
+        //     .color(app_theme.text_muted)
+        //     .font(egui::FontId::proportional(18.0))
+        // )
+        // .frame(false)
+        // .fill(egui::Color32::from_black_alpha(0))
+        // .corner_radius(app_theme.widget_corner_radius as f32)
+        // .stroke(egui::Stroke::new(1.0, app_theme.text_muted));
+
+        // if ui.add_sized(Vec2::new(30.0, 30.0), back_button).clicked() {
+        //     *action = Some(GameDetailAction::Close);
+        // }
+        
         // Header: close button, right-aligned
-        ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
-            if ui
-                .add(egui::Button::new(egui::RichText::new("✕").color(app_theme.text_muted)).frame(false))
-                .clicked()
-            {
-                *action = Some(GameDetailAction::Close);
-            }
-        });
+        // ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
+        //     if ui
+        //         .add(egui::Button::new(
+        //             egui::RichText::new("✕")
+        //                 .color(app_theme.text_muted)
+        //                 .font(egui::FontId::proportional(14.0))
+        //             ).frame(false))
+        //         .clicked()
+        //     {
+        //         *action = Some(GameDetailAction::Close);
+        //     }
+        // });
 
         ui.add_space(8.0);
 
@@ -752,6 +851,7 @@ impl LibraryView {
         };
 
         egui::Window::new("Please Confirm")
+            .max_height(64.0)
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
