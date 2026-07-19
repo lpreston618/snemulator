@@ -485,6 +485,7 @@ impl Cartridge {
     }
 
     pub fn read(&mut self, addr: Address) -> u8 {
+<<<<<<< Updated upstream
         if let Some(target) = self.layout.map_addr(addr) {
             match target {
                 BusTarget::Rom(addr)  => self.rom[addr],
@@ -508,6 +509,15 @@ impl Cartridge {
                     },
                     c => todo!("Unimplemented coprocessor {c:?}"),
                 }
+=======
+        // Check for / perform coprocessor register reads
+        if let Some(Coprocessor::Dsp1(dsp)) = self.coprocessor.as_mut() {
+            if let Some(reg) = dsp_register(self.mapping_mode, addr) {
+                return match reg {
+                    DspRegister::Command => dsp.get_dr(),
+                    DspRegister::Status => dsp.get_sr(),
+                };
+>>>>>>> Stashed changes
             }
         } else {
             0
@@ -515,6 +525,7 @@ impl Cartridge {
     }
 
     pub fn write(&mut self, addr: Address, value: u8) {
+<<<<<<< Updated upstream
         if let Some(target) = self.layout.map_addr(addr) {
             match target {
                 BusTarget::Rom(addr)  => { self.rom[addr] = value; },
@@ -537,6 +548,54 @@ impl Cartridge {
                         }
                     },
                     c => todo!("Unimplemented coprocessor {c:?}"),
+=======
+        // Check for / perform coprocessor register writes
+        if let Some(Coprocessor::Dsp1(dsp)) = self.coprocessor.as_mut() {
+            if let Some(reg) = dsp_register(self.mapping_mode, addr) {
+                // Status is read-only; writes to it are ignored on real hardware.
+                if reg == DspRegister::Command {
+                    dsp.set_dr(value);
+                }
+                return;
+            }
+        }
+
+        // Check for / perform SRAM write
+        match self.mapping_mode {
+            MappingMode::LoROM => {
+                if addr.bank >= 0x70 && addr.bank <= 0x7D && addr.offset < 0x8000 {
+                    if self.ram_size != 0 {
+                        let sram_addr = self.map_sram_addr(addr);
+                        self.ram[sram_addr] = value;
+                        self.ram_written = true;
+                    }
+                }
+            }
+            MappingMode::HiROM => {
+                if addr.bank >= 0x30
+                    && addr.bank <= 0x3F
+                    && addr.offset >= 0x6000
+                    && addr.offset <= 0x7FFF
+                {
+                    if self.ram_size != 0 {
+                        let sram_addr = self.map_sram_addr(addr);
+                        self.ram[sram_addr] = value;
+                        self.ram_written = true;
+                    }
+                }
+            }
+            MappingMode::ExHiROM => {
+                if addr.bank >= 0x80
+                    && addr.bank <= 0xBF
+                    && addr.offset >= 0x6000
+                    && addr.offset <= 0x7FFF
+                {
+                    if self.ram_size != 0 {
+                        let sram_addr = self.map_sram_addr(addr);
+                        self.ram[sram_addr] = value;
+                        self.ram_written = true;
+                    }
+>>>>>>> Stashed changes
                 }
             }
         }
