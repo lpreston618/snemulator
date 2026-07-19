@@ -776,7 +776,7 @@ impl LibraryView {
                         painter.text(
                             rect.center(),
                             egui::Align2::CENTER_CENTER,
-                            format!("{}", slot + 1),
+                            format!("{}", slot),
                             egui::FontId::proportional(11.0),
                             app_theme.text_secondary,
                         );
@@ -795,7 +795,7 @@ impl LibraryView {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::BOTTOM), |ui| {
             if let Some(slot) = state.selected_save_state {
                 let load_button = egui::Button::new(
-                    egui::RichText::new(format!("▶  Load State {}", slot + 1))
+                    egui::RichText::new(format!("▶  Load State {}", slot))
                         .size(16.0)
                         .color(egui::Color32::WHITE),
                 )
@@ -809,7 +809,7 @@ impl LibraryView {
                 ui.add_space(8.0);
 
                 let delete_slot_button = egui::Button::new(
-                    egui::RichText::new(format!("🗑 Delete State {}", slot + 1))
+                    egui::RichText::new(format!("🗑 Delete State {}", slot))
                         .size(16.0)
                         .color(app_theme.error),
                 )
