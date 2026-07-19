@@ -184,12 +184,9 @@ impl MainWindow {
             let height = ctx
                 .data(|d| d.get_temp::<f32>(msg_id.with("h")))
                 .unwrap_or(28.0);
-<<<<<<< Updated upstream
             let width = ctx
                 .data(|d| d.get_temp::<f32>(msg_id.with("w")))
                 .unwrap_or(320.0);
-=======
->>>>>>> Stashed changes
 
             let target_bottom = cursor_y;
             cursor_y -= height + STACK_SPACING;

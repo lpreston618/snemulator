@@ -1221,34 +1221,6 @@ impl Dsp1 {
             } else {
                 self.dr = (self.dr & 0xff00) | (*data as u16);
             }
-<<<<<<< Updated upstream
-            self.run_active_command(&params);
-        }
-    }
-
-    /// Runs the active command's exec function and stores its output. If the
-    /// command produces no output bytes, there's no read() call that will ever
-    /// come along to drain it and return us to "ready for a new opcode" - reset
-    /// here instead. (RASTER_CMD's output is never empty, so this doesn't
-    /// interfere with its self-advancing behavior in read().)
-    fn run_active_command(&mut self, params: &[i16]) {
-        let spec = self.active_spec.as_ref().unwrap();
-        let result = (spec.exec)(&mut self.state, params);
-        self.output = write_i16s(&result);
-        self.output_pos = 0;
-
-        if self.output.is_empty() {
-            self.active_opcode = None;
-            self.active_spec = None;
-        }
-    }
-
-    /// CPU read from the Command/Data register.
-    pub fn data(&mut self) -> u8 {
-        if self.output_pos >= self.output.len() {
-            return 0;
-=======
->>>>>>> Stashed changes
         }
 
         match self.state {
