@@ -919,7 +919,7 @@ impl Ppu5C7x {
         let scroll_y = bg_settings.scroll_y;
 
         let mut shifted_x = (self.x as u16 + scroll_x) & scroll_range;
-        let mut shifted_y = (self.y as u16 + scroll_y) & scroll_range;
+        let mut shifted_y = (self.scanline as u16 + scroll_y) & scroll_range;
 
         // If using offset per tile and not on the first 8-pixel column
         if use_offset_per_tile && self.x >= 8 {
@@ -1847,7 +1847,7 @@ impl Ppu5C7x {
             *bus.hblank_end = true;
 
             // Start of visible scanline
-            if 0 < self.scanline && self.scanline < VBLANK_START_SCANLINE {
+            if self.y < 224 {
                 self.render_scanline_sprites(bus);
             }
         }
