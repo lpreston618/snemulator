@@ -218,7 +218,7 @@ static DISASSEMBLE_TABLE: [DisassembleData; 256] = [
     DisassembleData {mnemonic: "stx", addr_mode: AddressingMode::Direct},
     DisassembleData {mnemonic: "sta", addr_mode: AddressingMode::DirectIndirectLong},
     DisassembleData {mnemonic: "dey", addr_mode: AddressingMode::Implied},
-    DisassembleData {mnemonic: "bit", addr_mode: AddressingMode::Immediate8},
+    DisassembleData {mnemonic: "bit", addr_mode: AddressingMode::ImmediateM},
     DisassembleData {mnemonic: "txa", addr_mode: AddressingMode::Implied},
     DisassembleData {mnemonic: "phb", addr_mode: AddressingMode::Implied},
     DisassembleData {mnemonic: "sty", addr_mode: AddressingMode::Absolute},

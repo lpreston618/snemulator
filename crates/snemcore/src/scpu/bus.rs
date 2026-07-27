@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::cartridge::Cartridge;
-use crate::controller::{ControllerData, JoypadCmd};
+use crate::controller::ControllerData;
 use crate::dma::DmaController;
 use crate::dma::{AddressIncMode, Direction, TransferPattern};
 use crate::debug::DebugHarness;
@@ -599,11 +599,12 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
             0x4000..=0x4015 => *self.open_bus_value, // Write-only/Open Bus
 
             0x4016 => {
-                self.controller_data.joypad_cmd = Some(JoypadCmd::ClockJoy1);
-
                 let open_bus = *self.open_bus_value & 0xFC;
                 let joy1_data1 = (self.controller_data.joy1_latch & 1) as u8;
                 let joy1_data2 = 0x00; // unused for joypads
+
+                self.controller_data.joy1_latch >>= 1;
+                self.controller_data.joy1_latch |= 0x8000;
 
                 open_bus | joy1_data2 | joy1_data1
             }
@@ -611,11 +612,12 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
             0x4017 => {
                 const ALWAYS_ON: u8 = 0x1C;
 
-                self.controller_data.joypad_cmd = Some(JoypadCmd::ClockJoy2);
-
                 let open_bus = *self.open_bus_value & 0xE0;
                 let joy2_data1 = (self.controller_data.joy2_latch & 1) as u8;
                 let joy2_data2 = 0x00; // unused for joypads
+
+                self.controller_data.joy2_latch >>= 1;
+                self.controller_data.joy2_latch |= 0x8000;
 
                 open_bus | ALWAYS_ON | joy2_data2 | joy2_data1
             }

@@ -1,11 +1,3 @@
-pub enum JoypadCmd {
-    LatchJoypads,
-    EnableAutoread,
-    DisableAutoread,
-    ClockJoy1,
-    ClockJoy2,
-}
-
 #[derive(Debug, Clone, Copy)]
 pub enum JoypadButton {
     B = 1 << 0,
@@ -63,5 +55,4 @@ pub struct ControllerData {
     pub joy2_data2_auto: u16,
     pub joypad_autoread_step: u8,
     pub cycles_until_autoread: usize,
-    pub joypad_cmd: Option<JoypadCmd>,
 }

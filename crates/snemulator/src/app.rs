@@ -841,12 +841,9 @@ impl SnemulatorApp {
                     app_action = AppAction::ToggleFullscreen;
                 }
             }
-            Keycode::Q => {
-                if keymod.contains(Mod::LCTRLMOD) {
-                    log::info!("Ctrl+Q pressed, exiting");
-
-                    app_action = AppAction::Exit;
-                }
+            Keycode::Q if keymod.contains(Mod::LCTRLMOD) => {
+                log::info!("Ctrl+Q pressed, exiting");
+                app_action = AppAction::Exit;
             }
 
             Keycode::Up => {
@@ -872,6 +869,22 @@ impl SnemulatorApp {
             Keycode::X => {
                 self.snem_core
                     .set_button(ControllerPlayer::Player1, JoypadButton::B, true)
+            }
+            Keycode::A => {
+                self.snem_core
+                    .set_button(ControllerPlayer::Player1, JoypadButton::Y, true);
+            }
+            Keycode::S => {
+                self.snem_core
+                    .set_button(ControllerPlayer::Player1, JoypadButton::X, true);
+            }
+            Keycode::Q => {
+                self.snem_core
+                    .set_button(ControllerPlayer::Player1, JoypadButton::L1, true);
+            }
+            Keycode::W => {
+                self.snem_core
+                    .set_button(ControllerPlayer::Player1, JoypadButton::R1, true);
             }
             Keycode::Return => {
                 self.snem_core
@@ -913,6 +926,22 @@ impl SnemulatorApp {
             Keycode::X => {
                 self.snem_core
                     .set_button(ControllerPlayer::Player1, JoypadButton::B, false)
+            }
+            Keycode::A => {
+                self.snem_core
+                    .set_button(ControllerPlayer::Player1, JoypadButton::Y, false);
+            }
+            Keycode::S => {
+                self.snem_core
+                    .set_button(ControllerPlayer::Player1, JoypadButton::X, false);
+            }
+            Keycode::Q => {
+                self.snem_core
+                    .set_button(ControllerPlayer::Player1, JoypadButton::L1, false);
+            }
+            Keycode::W => {
+                self.snem_core
+                    .set_button(ControllerPlayer::Player1, JoypadButton::R1, false);
             }
             Keycode::Return => {
                 self.snem_core

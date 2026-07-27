@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use cartridge::Cartridge;
-use controller::{ControllerPlayer, JoypadButton, JoypadCmd, SnemController};
+use controller::{ControllerPlayer, JoypadButton, SnemController};
 use dma::DmaController;
 use scpu::bus::CpuBus;
 use scpu::ioregs::CpuIoRegs;
@@ -347,7 +347,6 @@ impl Snemulator {
         self.controller_data.joy2_data1_auto = 0;
         self.controller_data.joy1_data2_auto = 0;
         self.controller_data.joy2_data2_auto = 0;
-        self.controller_data.joypad_cmd = None;
         self.cpu_interrupt = None;
         self.frame_ready = false;
         self.frame = 0;
@@ -465,7 +464,6 @@ impl Snemulator {
 
     fn cycle_cpu<H: DebugHarness>(&mut self, harness: &mut H) {
         self.cpu.stopped = false;
-        self.controller_data.joypad_cmd = None;
 
         if self.dma.hdma_needs_init && self.ppu.scanline == 0 {
             self.dma.hdma_needs_init = false;
@@ -490,12 +488,6 @@ impl Snemulator {
         //         harness.on_fblank_end(self);
         //     }
         // }
-
-        match self.controller_data.joypad_cmd {
-            Some(JoypadCmd::ClockJoy1) => self.controller_data.joy1_latch >>= 1,
-            Some(JoypadCmd::ClockJoy2) => self.controller_data.joy2_latch >>= 1,
-            _ => {}
-        }
 
         if self.cpu_regs.latch_controllers {
             self.controller_data.joy1_latch = self.p1_controller.read_state();
