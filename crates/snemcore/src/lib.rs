@@ -439,10 +439,18 @@ impl Snemulator {
 
         self.ssmp.cycle(clocks, audio_buffer, &mut self.apu_ports, harness);
 
+        if self.ppu.scanline == VBLANK_START_SCANLINE
+            && self.cpu_regs.joypad_autoread_en
+            && !self.cpu_regs.joypad_autoread_flag
+        {
+            self.controller_data.cycles_until_autoread = 0;
+            self.controller_data.joypad_autoread_step = 0;
+            self.cpu_regs.joypad_autoread_flag = true;
+        }
+
         if self.cpu_regs.joypad_autoread_flag {
             if clocks >= self.controller_data.cycles_until_autoread {
-                self.controller_data.cycles_until_autoread +=
-                    CLOCKS_BETWEEN_AUTOREAD_STEPS - clocks;
+                self.controller_data.cycles_until_autoread += CLOCKS_BETWEEN_AUTOREAD_STEPS - clocks;
 
                 self.do_joypad_autoread_step();
             } else {
@@ -492,14 +500,6 @@ impl Snemulator {
         if self.cpu_regs.latch_controllers {
             self.controller_data.joy1_latch = self.p1_controller.read_state();
             self.controller_data.joy2_latch = self.p2_controller.read_state();
-        }
-
-        if self.ppu.scanline == VBLANK_START_SCANLINE
-            && self.cpu_regs.joypad_autoread_en
-            && !self.cpu_regs.joypad_autoread_flag
-        {
-            self.controller_data.joypad_autoread_step = 0;
-            self.cpu_regs.joypad_autoread_flag = true;
         }
     }
 

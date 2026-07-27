@@ -1,5 +1,4 @@
 use snemcore::Snemulator;
-use snemcore::sppu::BgMode;
 
 use crate::debug::harness::MainDebugHarness;
 use crate::app::theme::AppTheme;

@@ -33,8 +33,8 @@ pub const SLOW_TIMER_CLOCK_PERIOD: usize = 128;
 pub const AUDIO_SAMPLE_HZ: usize = 32000;
 
 /// Number of master clocks between joypad autoread steps. Autoread takes 4224
-/// master clocks, four 16-bit regs need filling.
-pub const CLOCKS_BETWEEN_AUTOREAD_STEPS: usize = 4224 / 16 * 4;
+/// master clocks, each step fills one bit in a set of 16-bit regs.
+pub const CLOCKS_BETWEEN_AUTOREAD_STEPS: usize = 4224 / 16;
 
 pub const FRAMES_PER_SECOND: f32 = 60.0;
 
