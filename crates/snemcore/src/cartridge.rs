@@ -11,50 +11,195 @@ const RESET_VEC_OFFSET: usize = 0x3C;
 const MAPPING_MODE_OFFSET: usize = 0x15;
 const LAST_TITLE_CHAR_OFFSET: usize = 0x14;
 
-#[derive(Debug, Clone, Copy, Default)]
-pub enum MappingMode {
-    #[default]
-    LoROM,
-    HiROM,
-    ExHiROM,
+#[derive(Clone, Copy, Debug)]
+pub enum AddressMode {
+    LoRom,
+    HiRom,
+    ExHiRom,
 }
 
-/// Which DSP-1 register a given CPU address refers to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DspRegister {
-    /// Command/Data register - RW, drives the chip's command protocol.
-    Command,
-    /// Status register - read-only, bit 7 is the Data Request (RQM) flag.
-    Status,
+#[derive(Clone, Copy)]
+pub enum SramWindow {
+    Full64k,   // old boards: SRAM fills the whole 0000-FFFF of 70-7D/F0-FF
+    Lower32k,  // new/BigLoROM boards: SRAM only in 0000-7FFF, upper 32k is more ROM
+    HiRomBank, // HiROM-with-SRAM: 6000-7FFF window in banks 20-3F/A0-BF etc.
 }
 
-/// Classifies a CPU address as a DSP-1 command or status register access, if it
-/// is one, for the given mapping mode. Addresses per the SNESdev wiki:
-///   Mode 20 (LoROM): Command $30-$3F/$B0-$BF:$8000-$BFFF, Status $30-$3F/$B0-$BF:$C000-$FFFF
-///   Mode 21 (HiROM): Command $00-$0F/$80-$8F:$6000-$6FFF, Status $00-$0F/$80-$8F:$7000-$7FFF
-/// This is the "Super Mario Kart"-style DSP-1 mapping used by the large majority of
-/// DSP-1/1A/1B/2/3/4 games. A handful of titles (e.g. Pilotwings) use a different board
-/// with different addresses - if you hit one of those, this will need a per-game override.
-fn dsp_register(mapping_mode: MappingMode, addr: Address) -> Option<DspRegister> {
+enum BusTarget {
+    Rom(usize),
+    Sram(usize),
+    Chip(u16), // routed to coprocessor handler
+}
+
+pub struct CartridgeLayout {
+    pub mode: AddressMode,
+    pub rom_mask: usize,     // rom.len().next_power_of_two() - 1
+    pub sram_mask: usize,    // sram size - 1 (0 if none)
+    pub sram_window: Option<SramWindow>,
+    pub coprocessor: Option<Coprocessor>,
+}
+
+impl Default for CartridgeLayout {
+    fn default() -> Self {
+        Self {
+            mode: AddressMode::LoRom,
+            rom_mask: 0,
+            sram_mask: 0,
+            sram_window: None,
+            coprocessor: None,
+        }
+    }
+}
+
+impl CartridgeLayout {
+    fn map_addr(&self, addr: Address) -> Option<BusTarget> {
+        if let Some(coprocessor) = &self.coprocessor {
+            match coprocessor {
+                Coprocessor::Dsp1(_) => {
+                    if is_dsp_register(self.mode, addr) {
+                        return Some(BusTarget::Chip(addr.offset));
+                    }
+                }
+                c => todo!("Unimplemented coprocessor {c:?}"),
+            }
+        }
+
+        if let Some(sram_addr) = self.map_sram_addr(addr) {
+            return Some(BusTarget::Sram(sram_addr));
+        }
+
+        match self.mode {
+            AddressMode::LoRom => self.map_lorom(addr),
+            AddressMode::HiRom => self.map_hirom(addr),
+            AddressMode::ExHiRom => self.map_exhirom(addr),
+        }
+    }
+
+    fn map_lorom(&self, addr: Address) -> Option<BusTarget> {
+        let (bank, offset) = (addr.bank, addr.offset);
+
+        // Plain ROM at 8000-FFFF (banks 00-7D/80-FF), mirrored into
+        // 0000-7FFF for banks 40-7D/C0-FF (chip only decodes A0-A14+bank).
+        let bank_lo7 = (bank & 0x7F) as usize;
+        if bank_lo7 >= 0x7E {
+            return None;
+        }
+        let in_rom_window = offset >= 0x8000;
+        let in_mirror_window = offset < 0x8000 && (0x40..=0x7D).contains(&bank_lo7);
+        if in_rom_window || in_mirror_window {
+            let raw = bank_lo7 * 0x8000 + (offset as usize & 0x7FFF);
+            return Some(BusTarget::Rom(raw & self.rom_mask));
+        }
+
+        None
+    }
+
+    fn map_hirom(&self, addr: Address) -> Option<BusTarget> {
+        let (bank, offset) = (addr.bank, addr.offset);
+
+        // 40-7D/C0-FF are the "real" 64K-per-bank ROM chip; 00-3F/80-BF only
+        // see the upper half (8000-FFFF) as a mirror. Banks 00-3F/80-BF at
+        // 6000-7FFF are *not* ROM even though bank & 0x3F would compute a
+        // valid index — without an SRAM chip that range is just unwired.
+        let is_main = matches!(bank, 0x40..=0x7D | 0xC0..=0xFF);
+        let is_mirror = matches!(bank, 0x00..=0x3F | 0x80..=0xBF) && offset >= 0x8000;
+        if !(is_main || is_mirror) {
+            return None;
+        }
+
+        let bank_idx = (bank & 0x3F) as usize;
+        let raw = bank_idx * 0x10000 + offset as usize;
+        Some(BusTarget::Rom(raw & self.rom_mask))
+    }
+
+    fn map_exhirom(&self, addr: Address) -> Option<BusTarget> {        
+        let (bank, offset) = (addr.bank, addr.offset);
+
+        let is_main = matches!(bank, 0x40..=0x7D | 0xC0..=0xFF);
+        let is_mirror = matches!(bank, 0x00..=0x3F | 0x80..=0xBF) && offset >= 0x8000;
+        if !(is_main || is_mirror) {
+            return None;
+        }
+
+        // Bit 7 of the bank picks which 4MB half of the ROM image this
+        // access lands in; bank & 0x3F selects the page within that half,
+        // same mirroring trick as plain HiROM.
+        let half_base = if bank & 0x80 != 0 { 0x000000 } else { 0x400000 };
+        let bank_idx = (bank & 0x3F) as usize;
+        let raw = half_base + bank_idx * 0x10000 + offset as usize;
+        Some(BusTarget::Rom(raw & self.rom_mask))
+    }
+
+    fn map_sram_addr(&self, addr: Address) -> Option<usize> {
+        if self.sram_window.is_none() {
+            return None;
+        }
+
+        let (bank, offset) = (addr.bank, addr.offset);
+
+        let raw = match self.sram_window.unwrap() {
+            // LoROM, old boards: SRAM fills the entire 64K of each bank
+            // in 70-7D/F0-FF.
+            SramWindow::Full64k => {
+                if !matches!(bank, 0x70..=0x7D | 0xF0..=0xFF) {
+                    return None;
+                }
+                let sram_bank = (bank & 0x0F) as usize;
+                sram_bank * 0x10000 + offset as usize
+            }
+
+            // LoROM, BigLoROM-capable boards: SRAM only occupies the
+            // lower 32K of 70-7D/F0-FF; the upper 32K is extra ROM
+            // (handled separately in map_lorom, not here).
+            SramWindow::Lower32k => {
+                if !matches!(bank, 0x70..=0x7D | 0xF0..=0xFF) || offset > 0x7FFF {
+                    return None;
+                }
+                let sram_bank = (bank & 0x0F) as usize;
+                sram_bank * 0x8000 + offset as usize
+            }
+
+            // HiROM / ExHiROM: fixed 6000-7FFF window per bank, but which
+            // banks carry it differs by mode.
+            SramWindow::HiRomBank => {
+                if !(0x6000..=0x7FFF).contains(&offset) {
+                    return None;
+                }
+                let sram_bank = match self.mode {
+                    AddressMode::HiRom if matches!(bank, 0x20..=0x3F | 0xA0..=0xBF) => {
+                        (bank & 0x1F) as usize
+                    }
+                    AddressMode::ExHiRom if matches!(bank, 0x80..=0xBF) => {
+                        (bank & 0x1F) as usize
+                    }
+                    _ => return None,
+                };
+                sram_bank * 0x2000 + (offset as usize - 0x6000)
+            }
+        };
+
+        Some(raw & self.sram_mask)
+    }
+}
+
+fn is_dsp_register(mapping_mode: AddressMode, addr: Address) -> bool {
     match mapping_mode {
-        MappingMode::LoROM => match addr.bank {
+        AddressMode::LoRom => match addr.bank {
             0x30..=0x3F | 0xB0..=0xBF => match addr.offset {
-                0x8000..=0xBFFF => Some(DspRegister::Command),
-                0xC000..=0xFFFF => Some(DspRegister::Status),
-                _ => None,
+                0x8000..=0xFFFF => true,
+                _ => false,
             },
-            _ => None,
+            _ => false,
         },
-        MappingMode::HiROM => match addr.bank {
+        AddressMode::HiRom => match addr.bank {
             0x00..=0x0F | 0x80..=0x8F => match addr.offset {
-                0x6000..=0x6FFF => Some(DspRegister::Command),
-                0x7000..=0x7FFF => Some(DspRegister::Status),
-                _ => None,
+                0x6000..=0x7FFF => true,
+                _ => false,
             },
-            _ => None,
+            _ => false,
         },
-        // No known DSP-1 games use ExHiROM; add a mapping here if you find one that does.
-        MappingMode::ExHiROM => None,
+        // No known DSP-1 games use ExHiROM.
+        AddressMode::ExHiRom => false,
     }
 }
 
@@ -68,11 +213,10 @@ pub struct Cartridge {
     pub title: [u8; 0x15],
 
     pub fast_rom: bool,
-    pub mapping_mode: MappingMode,
+    pub layout: CartridgeLayout,
 
     pub extra_ram: bool,
     pub battery: bool,
-    pub coprocessor: Option<Coprocessor>,
 
     pub rom_size_shift: u8, // ROM size is (1 << rom_size) KiB
     pub ram_size_shift: u8, // RAM size is (1 << ram_size) KiB
@@ -99,7 +243,7 @@ pub struct Cartridge {
 
 impl Cartridge {
     pub fn cycle(&mut self, clocks: usize) -> usize {
-        if let Some(coprocessor) = self.coprocessor.as_mut() {
+        if let Some(coprocessor) = self.layout.coprocessor.as_mut() {
             match coprocessor {
                 Coprocessor::SuperFx(sfx) => sfx.cycle(clocks, &self.rom, &mut self.ram),
                 _ => 0,
@@ -120,11 +264,11 @@ impl Cartridge {
         }
     }
 
-    pub fn mapping_mode(&self) -> MappingMode {
-        self.mapping_mode
+    pub fn mapping_mode(&self) -> AddressMode {
+        self.layout.mode
     }
 
-    pub fn test_blank(title_str: &str, mapping_mode: MappingMode, reset_vec: u16) -> Self {
+    pub fn test_blank(title_str: &str, mapping_mode: AddressMode, reset_vec: u16) -> Self {
         const ROM_SIZE: usize = 0x10000;
 
         let title_str = title_str[..title_str.len().min(0x15)].to_string();
@@ -141,11 +285,16 @@ impl Cartridge {
             title,
 
             fast_rom: false,
-            mapping_mode,
+            layout: CartridgeLayout {
+                mode: mapping_mode,
+                rom_mask: ROM_SIZE - 1,
+                sram_mask: 0,
+                sram_window: None,
+                coprocessor: None,
+            },
 
             extra_ram: false,
             battery: false,
-            coprocessor: None,
 
             rom_size_shift: (ROM_SIZE / 1024).trailing_zeros() as u8,
             ram_size_shift: 0,
@@ -170,8 +319,8 @@ impl Cartridge {
             header_meta: RomHeaderMeta::default(),
         };
 
-        cart.force_write(Address::from_u32(0x00FFFC), reset_vec as u8);
-        cart.force_write(Address::from_u32(0x00FFFD), (reset_vec >> 8) as u8);
+        // cart.force_write(Address::from_u32(0x00FFFC), reset_vec as u8);
+        // cart.force_write(Address::from_u32(0x00FFFD), (reset_vec >> 8) as u8);
 
         cart
     }
@@ -213,13 +362,14 @@ impl Cartridge {
         cart.header_meta = get_rom_meta(Some(&cart.rom));
 
         cart.rom_hash = rom_hash;
+        
+        cart.layout.mode = best_mapping_mode(&cart.rom);
+        cart.layout.rom_mask = cart.rom.len() - 1;
 
-        cart.mapping_mode = best_mapping_mode(&cart.rom);
-
-        let header_start = match cart.mapping_mode {
-            MappingMode::LoROM => LOROM_POS,
-            MappingMode::HiROM => HIROM_POS,
-            MappingMode::ExHiROM => EXHIROM_POS,
+        let header_start = match cart.layout.mode {
+            AddressMode::LoRom => LOROM_POS,
+            AddressMode::HiRom => HIROM_POS,
+            AddressMode::ExHiRom => EXHIROM_POS,
         };
         let header_end = header_start + 0x40 as usize;
         let header_bytes = &cart.rom[header_start..header_end];
@@ -228,14 +378,14 @@ impl Cartridge {
         cart.fast_rom = (header_bytes[0x15] & 0x10) > 0;
 
         let declared_mapping_mode = header_bytes[0x15] & 0xF;
-        let expected_header_mapping_mode = match cart.mapping_mode {
-            MappingMode::LoROM => 0,
-            MappingMode::HiROM => 1,
-            MappingMode::ExHiROM => 5,
+        let expected_header_mapping_mode = match cart.layout.mode {
+            AddressMode::LoRom => 0,
+            AddressMode::HiRom => 1,
+            AddressMode::ExHiRom => 5,
         };
 
         if declared_mapping_mode != expected_header_mapping_mode {
-            log::warn!("Loading ROM with mapping mode {:?} ({expected_header_mapping_mode}), header says mapping mode {declared_mapping_mode}", cart.mapping_mode);
+            log::warn!("Loading ROM with mapping mode {:?} ({expected_header_mapping_mode}), header says mapping mode {declared_mapping_mode}", cart.layout.mode);
         }
 
         let has_coprocessor: bool;
@@ -251,11 +401,12 @@ impl Cartridge {
             _ => (false, false, false), // Should not happen?
         };
 
-        cart.coprocessor = if has_coprocessor {
+        cart.layout.coprocessor = if has_coprocessor {
             Coprocessor::from_id(header_bytes[0x16] >> 4)
         } else {
             None
         };
+
         cart.rom_size_shift = header_bytes[0x17];
         cart.ram_size_shift = header_bytes[0x18];
         if cart.extra_ram {
@@ -264,6 +415,25 @@ impl Cartridge {
         } else {
             cart.ram_size = 0;
         }
+
+        cart.layout.sram_mask = if cart.ram.len() > 0 { cart.ram.len() - 1 } else { 0 };
+
+        cart.layout.sram_window = if !cart.extra_ram {
+            None
+        } else {
+            match cart.layout.mode {
+                AddressMode::LoRom => {
+                    if cart.rom.len() > 0x20_0000 {
+                        Some(SramWindow::Lower32k)
+                    } else {
+                        Some(SramWindow::Full64k)
+                    }
+                }
+                // HiROM and ExHiROM never have the Full64k/Lower32k distinction —
+                // their SRAM lives in a fixed 6000-7FFF window per bank instead.
+                AddressMode::HiRom | AddressMode::ExHiRom => Some(SramWindow::HiRomBank),
+            }
+        };
 
         cart.is_ntsc = header_bytes[0x19] > 0;
         cart.cop_vec_n   = u16::from_le_bytes([header_bytes[0x24], header_bytes[0x25]]);
@@ -284,10 +454,10 @@ impl Cartridge {
         );
         log::trace!("  fast_rom: {}", cart.fast_rom);
         log::trace!("  mapping_mode: {}", declared_mapping_mode);
-        log::trace!("  loaded_as: {:?}", cart.mapping_mode);
+        log::trace!("  loaded_as: {:?}", cart.layout.mode);
         log::trace!("  extra_ram: {}", cart.extra_ram);
         log::trace!("  battery: {}", cart.battery);
-        log::trace!("  coprocessor: {}", cart.coprocessor.as_ref().map_or("None", |c| c.label()));
+        log::trace!("  coprocessor: {}", cart.layout.coprocessor.as_ref().map_or("None", |c| c.label()));
         log::trace!(
             "  rom_size: {} (= {} KiB)",
             cart.rom_size_shift,
@@ -312,117 +482,69 @@ impl Cartridge {
     }
 
     pub fn read(&mut self, addr: Address) -> u8 {
-        // Check for / perform coprocessor register reads
-        if let Some(Coprocessor::Dsp1(dsp)) = self.coprocessor.as_mut() {
-            if let Some(reg) = dsp_register(self.mapping_mode, addr) {
-                return match reg {
-                    DspRegister::Command => dsp.read(),
-                    DspRegister::Status => dsp.status(),
-                };
+        if let Some(target) = self.layout.map_addr(addr) {
+            match target {
+                BusTarget::Rom(addr)  => self.rom[addr],
+                BusTarget::Sram(addr) => self.ram[addr],
+                BusTarget::Chip(addr) => match self.layout.coprocessor.as_mut().unwrap() {
+                    Coprocessor::Dsp1(dsp1) => {
+                        match self.layout.mode {
+                            AddressMode::LoRom =>  match addr {
+                                0x8000..=0xBFFF => dsp1.get_dr(),
+                                0xC000..=0xFFFF => dsp1.get_sr(),
+                                _ => unreachable!(),
+                            },
+                            AddressMode::HiRom => match addr {
+                                0x6000..=0x6FFF => dsp1.get_dr(),
+                                0x7000..=0x7FFF => dsp1.get_sr(),
+                                _ => unreachable!(),
+                            },
+                            // No known DSP-1 games use ExHiROM
+                            AddressMode::ExHiRom => unreachable!(),
+                        }
+                    },
+                    c => todo!("Unimplemented coprocessor {c:?}"),
+                }
             }
+        } else {
+            0
         }
-
-        let mapped_addr = self.map_addr(addr);
-
-        // Check for / perform SRAM reads
-        match self.mapping_mode {
-            MappingMode::LoROM => {
-                if addr.bank >= 0x70 && addr.bank <= 0x7D && addr.offset < 0x8000 {
-                    if self.ram_size != 0 {
-                        let sram_addr = self.map_sram_addr(addr);
-                        return self.ram[sram_addr];
-                    }
-                }
-            }
-            MappingMode::HiROM => {
-                if addr.bank >= 0x30
-                    && addr.bank <= 0x3F
-                    && addr.offset >= 0x6000
-                    && addr.offset <= 0x7FFF
-                {
-                    if self.ram_size != 0 {
-                        let sram_addr = self.map_sram_addr(addr);
-                        return self.ram[sram_addr];
-                    }
-                }
-            }
-            MappingMode::ExHiROM => {
-                if addr.bank >= 0x80
-                    && addr.bank <= 0xBF
-                    && addr.offset >= 0x6000
-                    && addr.offset <= 0x7FFF
-                {
-                    if self.ram_size != 0 {
-                        let sram_addr = self.map_sram_addr(addr);
-                        return self.ram[sram_addr];
-                    }
-                }
-            }
-        };
-
-        // If not SRAM, read from ROM
-        let mapped_addr = (mapped_addr as usize) & (self.rom.len() - 1);
-        self.rom[mapped_addr]
     }
 
     pub fn write(&mut self, addr: Address, value: u8) {
-        // Check for / perform coprocessor register writes
-        if let Some(Coprocessor::Dsp1(dsp)) = self.coprocessor.as_mut() {
-            if let Some(reg) = dsp_register(self.mapping_mode, addr) {
-                // Status is read-only; writes to it are ignored on real hardware.
-                if reg == DspRegister::Command {
-                    dsp.write(value);
-                }
-                return;
-            }
-        }
-
-        // Check for / perform SRAM write
-        match self.mapping_mode {
-            MappingMode::LoROM => {
-                if addr.bank >= 0x70 && addr.bank <= 0x7D && addr.offset < 0x8000 {
-                    if self.ram_size != 0 {
-                        let sram_addr = self.map_sram_addr(addr);
-                        self.ram[sram_addr] = value;
-                        self.ram_written = true;
-                    }
-                }
-            }
-            MappingMode::HiROM => {
-                if addr.bank >= 0x30
-                    && addr.bank <= 0x3F
-                    && addr.offset >= 0x6000
-                    && addr.offset <= 0x7FFF
-                {
-                    if self.ram_size != 0 {
-                        let sram_addr = self.map_sram_addr(addr);
-                        self.ram[sram_addr] = value;
-                        self.ram_written = true;
-                    }
-                }
-            }
-            MappingMode::ExHiROM => {
-                if addr.bank >= 0x80
-                    && addr.bank <= 0xBF
-                    && addr.offset >= 0x6000
-                    && addr.offset <= 0x7FFF
-                {
-                    if self.ram_size != 0 {
-                        let sram_addr = self.map_sram_addr(addr);
-                        self.ram[sram_addr] = value;
-                        self.ram_written = true;
-                    }
+        if let Some(target) = self.layout.map_addr(addr) {
+            match target {
+                BusTarget::Rom(addr)  => { self.rom[addr] = value; },
+                BusTarget::Sram(addr) => { self.ram[addr] = value; },
+                BusTarget::Chip(addr) => match self.layout.coprocessor.as_mut().unwrap() {
+                    Coprocessor::Dsp1(dsp1) => {
+                        match self.layout.mode {
+                            AddressMode::LoRom =>  match addr {
+                                0x8000..=0xBFFF => dsp1.set_dr(value),
+                                0xC000..=0xFFFF => {},
+                                _ => unreachable!(),
+                            },
+                            AddressMode::HiRom => match addr {
+                                0x6000..=0x6FFF => dsp1.set_dr(value),
+                                0x7000..=0x7FFF => {},
+                                _ => unreachable!(),
+                            },
+                            // No known DSP-1 games use ExHiROM
+                            AddressMode::ExHiRom => unreachable!(),
+                        }
+                    },
+                    c => todo!("Unimplemented coprocessor {c:?}"),
                 }
             }
         }
     }
 
     /// Can overwrite ROM data.
-    pub fn force_write(&mut self, addr: Address, value: u8) {
-        let mapped_addr = self.map_addr(addr);
-        let mapped_addr = (mapped_addr as usize) & (self.rom.len() - 1);
-        self.rom[mapped_addr] = value;
-    }
+    // pub fn force_write(&mut self, addr: Address, value: u8) {
+    //     let mapped_addr = self.map_addr(addr);
+    //     let mapped_addr = (mapped_addr as usize) & (self.rom.len() - 1);
+    //     self.rom[mapped_addr] = value;
+    // }
 
     pub fn sram_slice(&self) -> &[u8] {
         &self.ram[..]
@@ -436,58 +558,58 @@ impl Cartridge {
         &mut self.rom[..]
     }
 
-    pub fn map_addr(&self, addr: Address) -> usize {
-        let addr = addr.to_u32();
+    // pub fn map_addr(&self, addr: Address) -> usize {
+    //     let addr = addr.to_u32();
 
-        if let Some(coprocessor) = &self.coprocessor {
-            match coprocessor {
-                Coprocessor::SuperFx(_) => {
-                    // Super FX exposes the whole ROM linearly (no 32KB fold) at banks
-                    // $40-$5F and their mirror $C0-$DF, for the GSU's own direct access.
-                    let bank = (addr >> 16) & 0xFF;
-                    if (0x40..=0x5F).contains(&bank) || (0xC0..=0xDF).contains(&bank) {
-                        let mapped_addr = addr & 0x1FFFFF; // linear, unfolded
+    //     if let Some(coprocessor) = &self.coprocessor {
+    //         match coprocessor {
+    //             Coprocessor::SuperFx(_) => {
+    //                 // Super FX exposes the whole ROM linearly (no 32KB fold) at banks
+    //                 // $40-$5F and their mirror $C0-$DF, for the GSU's own direct access.
+    //                 let bank = (addr >> 16) & 0xFF;
+    //                 if (0x40..=0x5F).contains(&bank) || (0xC0..=0xDF).contains(&bank) {
+    //                     let mapped_addr = addr & 0x1FFFFF; // linear, unfolded
 
-                        Some((mapped_addr as usize) & (self.rom.len() - 1))
-                    } else {
-                        None
-                    }
-                }
-                _ => None,
-            }.unwrap_or({
-                let mapped_addr = match self.mapping_mode {
-                    MappingMode::LoROM => ((addr & 0x7F0000) >> 1) | (addr & 0x7FFF),
-                    MappingMode::HiROM => addr & 0x3FFFFF,
-                    MappingMode::ExHiROM => (((addr & 0x800000) ^ 0x800000) >> 1) | (addr & 0x3FFFFF),
-                };
+    //                     Some((mapped_addr as usize) & (self.rom.len() - 1))
+    //                 } else {
+    //                     None
+    //                 }
+    //             }
+    //             _ => None,
+    //         }.unwrap_or({
+    //             let mapped_addr = match self.mapping_mode {
+    //                 AddressMode::LoRom => ((addr & 0x7F0000) >> 1) | (addr & 0x7FFF),
+    //                 AddressMode::HiRom => addr & 0x3FFFFF,
+    //                 AddressMode::ExHiRom => (((addr & 0x800000) ^ 0x800000) >> 1) | (addr & 0x3FFFFF),
+    //             };
 
-                (mapped_addr as usize) & (self.rom.len() - 1)
-            })
-        } else {
-            let mapped_addr = match self.mapping_mode {
-                MappingMode::LoROM => ((addr & 0x7F0000) >> 1) | (addr & 0x7FFF),
-                MappingMode::HiROM => addr & 0x3FFFFF,
-                MappingMode::ExHiROM => (((addr & 0x800000) ^ 0x800000) >> 1) | (addr & 0x3FFFFF),
-            };
+    //             (mapped_addr as usize) & (self.rom.len() - 1)
+    //         })
+    //     } else {
+    //         let mapped_addr = match self.mapping_mode {
+    //             AddressMode::LoRom => ((addr & 0x7F0000) >> 1) | (addr & 0x7FFF),
+    //             AddressMode::HiRom => addr & 0x3FFFFF,
+    //             AddressMode::ExHiRom => (((addr & 0x800000) ^ 0x800000) >> 1) | (addr & 0x3FFFFF),
+    //         };
 
-            (mapped_addr as usize) & (self.rom.len() - 1)
-        }
-    }
+    //         (mapped_addr as usize) & (self.rom.len() - 1)
+    //     }
+    // }
 
-    // Take an address and map it into an SRAM / extra cart ram vector address.
-    // Assumes that the given address is actually a valid SRAM address - up to cart.read()/write() to validate this.
-    fn map_sram_addr(&self, addr: Address) -> usize {
-        let mapped_addr = match self.mapping_mode {
-            MappingMode::LoROM => addr.offset as usize + 0x8000 * (addr.bank as usize - 0x7F),
-            MappingMode::HiROM => {
-                0x2000 * (addr.bank as usize - 0x30) + addr.offset as usize - 0x6000
-            }
-            MappingMode::ExHiROM => {
-                0x2000 * (addr.bank as usize - 0x80) + addr.offset as usize - 0x6000
-            }
-        };
-        mapped_addr & (self.ram_size - 1)
-    }
+    // // Take an address and map it into an SRAM / extra cart ram vector address.
+    // // Assumes that the given address is actually a valid SRAM address - up to cart.read()/write() to validate this.
+    // fn map_sram_addr(&self, addr: Address) -> usize {
+    //     let mapped_addr = match self.mapping_mode {
+    //         AddressMode::LoRom => addr.offset as usize + 0x8000 * (addr.bank as usize - 0x7F),
+    //         AddressMode::HiRom => {
+    //             0x2000 * (addr.bank as usize - 0x30) + addr.offset as usize - 0x6000
+    //         }
+    //         AddressMode::ExHiRom => {
+    //             0x2000 * (addr.bank as usize - 0x80) + addr.offset as usize - 0x6000
+    //         }
+    //     };
+    //     mapped_addr & (self.ram_size - 1)
+    // }
 }
 
 /// Pad the ROM data to a power of two size, correctly mirroring the smaller
@@ -538,13 +660,13 @@ fn pad_rom(rom: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 /// Evaluate the likelihood of a ROM header being located at the given position
-fn score_header(cart_rom: &[u8], map: MappingMode, checksum: u16, complement: u16) -> i32 {
+fn score_header(cart_rom: &[u8], map: AddressMode, checksum: u16, complement: u16) -> i32 {
     let mut score = 0;
 
     let addr = match map {
-        MappingMode::LoROM => LOROM_POS,
-        MappingMode::HiROM => HIROM_POS,
-        MappingMode::ExHiROM => EXHIROM_POS,
+        AddressMode::LoRom => LOROM_POS,
+        AddressMode::HiRom => HIROM_POS,
+        AddressMode::ExHiRom => EXHIROM_POS,
     };
 
     let rom_mirror = cart_rom.len() - 1;
@@ -592,9 +714,9 @@ fn score_header(cart_rom: &[u8], map: MappingMode, checksum: u16, complement: u1
 
     let maybe_map = read_rom(addr + MAPPING_MODE_OFFSET) & 0x0F;
 
-    if maybe_map == 0 && matches!(map, MappingMode::LoROM)
-        || maybe_map == 1 && matches!(map, MappingMode::HiROM)
-        || maybe_map == 5 && matches!(map, MappingMode::ExHiROM)
+    if maybe_map == 0 && matches!(map, AddressMode::LoRom)
+        || maybe_map == 1 && matches!(map, AddressMode::HiRom)
+        || maybe_map == 5 && matches!(map, AddressMode::ExHiRom)
     {
         score += 8;
     }
@@ -603,27 +725,27 @@ fn score_header(cart_rom: &[u8], map: MappingMode, checksum: u16, complement: u1
 }
 
 // Returns the most likely mapping mode for the rom based on various heuristics
-fn best_mapping_mode(cart_rom: &[u8]) -> MappingMode {
+fn best_mapping_mode(cart_rom: &[u8]) -> AddressMode {
     let checksum = compute_checksum(cart_rom);
     let complement = !checksum;
 
-    let lorom_score = score_header(cart_rom, MappingMode::LoROM, checksum, complement);
-    let hirom_score = score_header(cart_rom, MappingMode::HiROM, checksum, complement);
-    let exhirom_score = score_header(cart_rom, MappingMode::ExHiROM, checksum, complement);
+    let lorom_score = score_header(cart_rom, AddressMode::LoRom, checksum, complement);
+    let hirom_score = score_header(cart_rom, AddressMode::HiRom, checksum, complement);
+    let exhirom_score = score_header(cart_rom, AddressMode::ExHiRom, checksum, complement);
 
     if lorom_score >= hirom_score && lorom_score >= exhirom_score {
-        return MappingMode::LoROM;
+        return AddressMode::LoRom;
     }
 
     if hirom_score > lorom_score && hirom_score >= exhirom_score {
-        return MappingMode::HiROM;
+        return AddressMode::HiRom;
     }
 
     if exhirom_score > lorom_score && exhirom_score > hirom_score {
-        return MappingMode::ExHiROM;
+        return AddressMode::ExHiRom;
     }
 
-    MappingMode::LoROM
+    AddressMode::LoRom
 }
 
 /// Returns the address of the header in cartridge ROM
@@ -631,9 +753,9 @@ fn find_header(cart_rom: &[u8]) -> Result<usize, String> {
     let checksum = compute_checksum(cart_rom);
     let complement = !checksum;
 
-    let lorom_score = score_header(cart_rom, MappingMode::LoROM, checksum, complement);
-    let hirom_score = score_header(cart_rom, MappingMode::HiROM, checksum, complement);
-    let exhirom_score = score_header(cart_rom, MappingMode::ExHiROM, checksum, complement);
+    let lorom_score = score_header(cart_rom, AddressMode::LoRom, checksum, complement);
+    let hirom_score = score_header(cart_rom, AddressMode::HiRom, checksum, complement);
+    let exhirom_score = score_header(cart_rom, AddressMode::ExHiRom, checksum, complement);
 
     log::trace!(
         "Header search: lo {}, hi {}, exhi {}",
@@ -698,12 +820,10 @@ pub fn get_rom_meta(rom: Option<&[u8]>) -> RomHeaderMeta {
     let best_mapping = best_mapping_mode(rom);
 
     let mapping_name = match best_mapping {
-        MappingMode::LoROM => "LoRom",
-        MappingMode::HiROM => "HiRom",
-        MappingMode::ExHiROM => "ExHiRom",
+        AddressMode::LoRom => "LoRom",
+        AddressMode::HiRom => "HiRom",
+        AddressMode::ExHiRom => "ExHiRom",
     }.to_owned();
-
-
 
     //     00h     ROM             ;if gamecode="042J" --> ROM+SGB2
     //     01h     ROM+RAM (if any such produced?)
