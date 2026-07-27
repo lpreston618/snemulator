@@ -116,7 +116,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
     }
 
     /// Update the background texture from current PPU state
-    pub fn update(&mut self, core: &Snemulator, harness: &mut MainDebugHarness) {
+    pub fn update(&mut self, core: &Snemulator, harness: &mut MainDebugHarness, mode7_chr_sheet: bool) {
         // Only re-render when VRAM/CGRAM/tilemap registers change
         if !self.needs_update(core, harness) {
             return;
@@ -126,19 +126,28 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
 
         if color_depth == 0 {
             self.texture = None;
-            
             return;
         }
 
         // Render the background layer
-        self.rendered_size = self.renderer.render_bg_layer(
-            &mut self.pixel_buffer,
-            &core.vram,
-            &core.ppu_regs.bg_settings[BG_LAYER],
-            &core.cgram,
-            color_depth,
-            core.ppu_regs.use_direct_col,
-        );
+        self.rendered_size = if BG_LAYER == 0 && matches!(core.ppu_regs.bg_mode, BgMode::Mode7) {
+            self.renderer.render_bg1_mode7_layer(
+                &mut self.pixel_buffer,
+                &core.vram,
+                &core.cgram,
+                core.ppu_regs.use_direct_col,
+                mode7_chr_sheet,
+            )
+        } else {
+            self.renderer.render_bg_layer(
+                &mut self.pixel_buffer,
+                &core.vram,
+                &core.ppu_regs.bg_settings[BG_LAYER],
+                &core.cgram,
+                color_depth,
+                core.ppu_regs.use_direct_col,
+            )
+        };
         
         // Invalidate texture so it gets re-uploaded on next render
         self.texture = None;
@@ -149,7 +158,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
     }
 
     /// Render the debug view UI
-    pub fn render(&mut self, ui: &mut egui::Ui, core: &Snemulator, app_theme: &AppTheme, render_settings: &mut BgDebugViewSettings) {
+    pub fn render(&mut self, ui: &mut egui::Ui, core: &Snemulator, app_theme: &AppTheme, render_settings: &mut BgDebugViewSettings, mode7_chr_sheet: bool) {
         let bg_settings = &core.ppu_regs.bg_settings[BG_LAYER];
 
         // Controls panel
@@ -192,7 +201,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
             .resizable(true)
             .min_size(160.0)
             .show(ui, |ui| {
-                self.render_tile_info_panel(ui, core, app_theme);
+                self.render_tile_info_panel(ui, core, app_theme, mode7_chr_sheet);
             });
 
         // Background tilemap view fills all remaining space
@@ -455,9 +464,13 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
     }
 
     /// Render the tile info panel shown to the right of the background view.
-    fn render_tile_info_panel(&mut self, ui: &mut egui::Ui, core: &Snemulator, app_theme: &AppTheme) {
-        let bg_settings = &core.ppu_regs.bg_settings[BG_LAYER];
-
+    fn render_tile_info_panel(
+        &mut self,
+        ui: &mut egui::Ui,
+        core: &Snemulator,
+        app_theme: &AppTheme,
+        mode7_chr_sheet: bool,
+    ) {
         if self.selected_tile.is_none() && self.hovered_tile.is_none() {
             ui.label(
                 egui::RichText::new("Click a tile to inspect it.")
@@ -486,6 +499,25 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
             (tile_x, tile_y) = self.hovered_tile.unwrap();
         }
 
+        let is_mode7_bg = (BG_LAYER == 0 || BG_LAYER == 1) && matches!(core.ppu_regs.bg_mode, BgMode::Mode7);
+
+        if is_mode7_bg {
+            self.render_mode7_tile_preview(ui, core, app_theme, tile_x, tile_y, mode7_chr_sheet);
+        } else {
+            self.render_tile_preview(ui, core, app_theme, tile_x, tile_y);
+        }        
+    }
+
+    fn render_tile_preview(
+        &mut self,
+        ui: &mut egui::Ui,
+        core: &Snemulator,
+        app_theme: &AppTheme,
+        tile_x: u32,
+        tile_y: u32,
+    ) {
+        let bg_settings = &core.ppu_regs.bg_settings[BG_LAYER];
+
         let tilemap_addr = self.renderer.calc_tilemap_addr(bg_settings, tile_x, tile_y);
         let entry = core.vram[(tilemap_addr & 0x7FFF) as usize];
 
@@ -503,6 +535,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
 
             let mut buf = vec![0u8; 4 * 8 * 8];
             BgRenderer::fill_checkerboard(&mut buf, 8, 8);
+            
             let chr_addr = self.renderer.calc_chr_addr(bg_settings, tile_num, 0, 0, color_depth);
             self.renderer.render_8x8_tile(
                 &mut buf, &core.vram, &core.cgram,
@@ -511,7 +544,7 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
                 0, 0, 8,
                 core.ppu_regs.use_direct_col,
             );
-
+            
             let pixels: Vec<Color32> = buf.chunks(4)
                 .map(|p| Color32::from_rgba_unmultiplied(p[0], p[1], p[2], p[3]))
                 .collect();
@@ -548,6 +581,58 @@ impl<const BG_LAYER: usize> BgDebugView<BG_LAYER> {
         app_theme.debugger_separator(ui);
         ui.horizontal(|ui| { ui.label(key("Tilemap: ")); ui.label(addr(format!("0x{:04X}", tilemap_addr))); });
         ui.horizontal(|ui| { ui.label(key("Entry:   ")); ui.label(addr(format!("0x{:04X}", entry))); });
+
+        let _ = (mono, val); // suppress unused warnings if some branches aren't hit
+    }
+
+    fn render_mode7_tile_preview(
+        &mut self,
+        ui: &mut egui::Ui,
+        core: &Snemulator,
+        app_theme: &AppTheme,
+        tile_x: u32,
+        tile_y: u32,
+        mode7_chr_sheet: bool
+    ) {
+        let mut buf = vec![0u8; 4 * 8 * 8];
+        BgRenderer::fill_checkerboard(&mut buf, 8, 8);
+
+        let tile_num = if mode7_chr_sheet {
+            ((tile_y * 16) + tile_x) as u16
+        } else {
+            let tilemap_idx = (tile_y * 128) + tile_x;
+            core.vram[tilemap_idx as usize] & 0xFF
+        };
+        let tile_base = tile_num * 64;
+
+        self.renderer.render_8x8_tile_mode7(
+            &mut buf, &core.vram, &core.cgram,
+            tile_base, 0, 0, 8,
+            core.ppu_regs.use_direct_col
+        );
+
+        // --- Magnified tile preview (re-rendered every frame to reflect live VRAM changes) ---
+        let preview_size = 128.0;
+        
+        let pixels: Vec<Color32> = buf.chunks(4)
+            .map(|p| Color32::from_rgba_unmultiplied(p[0], p[1], p[2], p[3]))
+            .collect();
+        let tex = ui.ctx().load_texture(
+            format!("bg{}_tile_preview", BG_LAYER + 1),
+            ColorImage { size: [8, 8], pixels, source_size: egui::Vec2::splat(8.0) },
+            TextureOptions::NEAREST,
+        );
+        ui.image(egui::load::SizedTexture::new(tex.id(), egui::vec2(preview_size, preview_size)));
+    
+        // --- Tile metadata ---
+        app_theme.debugger_separator(ui);
+
+        let mono = |s: String| egui::RichText::new(s).monospace().color(app_theme.text_primary);
+        let key  = |s: &str|   egui::RichText::new(s).monospace().color(app_theme.syntax_register);
+        let val  = |s: String| egui::RichText::new(s).monospace().color(app_theme.syntax_number);
+
+        ui.horizontal(|ui| { ui.label(key("Tile:    ")); ui.label(val(format!("({}, {})", tile_x, tile_y))); });
+        ui.horizontal(|ui| { ui.label(key("Chr #:  ")); ui.label(val(format!("0x{:03X}  ({}, {})", tile_num, tile_num % 16, tile_num / 16))); });
 
         let _ = (mono, val); // suppress unused warnings if some branches aren't hit
     }
@@ -665,6 +750,46 @@ impl BgRenderer {
         (width_px, height_px)
     }
 
+    /// Returns (width, height) in pixels
+    pub fn render_bg1_mode7_layer(
+        &mut self,
+        pixel_buffer: &mut Vec<u8>,
+        vram: &[u16; VRAM_SIZE],
+        cgram: &[Color; 256],
+        direct_color: bool,
+        mode7_chr_sheet: bool,
+    ) -> (u32, u32) {
+        let size_tiles = if mode7_chr_sheet {
+            16
+        } else {
+            128
+        };
+
+        // Output dimensions in pixels
+        let size_px = size_tiles * 8;
+
+        pixel_buffer.resize(4 * (size_px * size_px) as usize, 0);
+        Self::fill_checkerboard(pixel_buffer, size_px, size_px);
+
+        // Iterate over tilemap entries
+        for tile_x in 0..size_tiles {
+            for tile_y in 0..size_tiles {
+                self.render_mode7_tilemap_entry(
+                    pixel_buffer,
+                    vram,
+                    cgram,
+                    tile_y,
+                    tile_x,
+                    size_px,
+                    direct_color,
+                    mode7_chr_sheet,
+                );
+            }
+        }
+
+        (size_px, size_px)
+    }
+
     /// Render a single tilemap entry (handles both 8x8 and 16x16 tile modes)
     fn render_tilemap_entry(
         &self,
@@ -722,6 +847,35 @@ impl BgRenderer {
                 stride, direct_color,
             );
         }
+    }
+
+    fn render_mode7_tilemap_entry(
+        &self,
+        pixel_buffer: &mut [u8],
+        vram: &[u16; VRAM_SIZE],
+        cgram: &[Color; 256],
+        tile_x: u32,
+        tile_y: u32,
+        stride: u32,
+        direct_color: bool,
+        mode7_chr_sheet: bool,
+    ) {
+        let tile_base = if mode7_chr_sheet {
+            (((tile_y * 16) + tile_x) * 64) as u16
+        } else {
+            let tilemap_idx = (tile_y * 128) + tile_x;
+            let tilemap_entry = vram[tilemap_idx as usize] & 0xFF;
+            tilemap_entry * 64
+        };
+
+        let output_x = tile_x * 8;
+        let output_y = tile_y * 8;
+
+        self.render_8x8_tile_mode7(
+            pixel_buffer, vram, cgram, tile_base,
+            output_x, output_y,
+            stride, direct_color,
+        );
     }
 
     /// Calculate tilemap word address for a given tile coordinate
@@ -827,6 +981,45 @@ impl BgRenderer {
                     self.write_pixels_8bpp(dst, cgram, row_data, flip_x, direct_color, palette);
                 }
                 _ => {}
+            }
+        }
+    }
+
+    /// Render a single 8x8 tile to the pixel buffer
+    pub(super) fn render_8x8_tile_mode7(
+        &self,
+        pixel_buffer: &mut [u8],
+        vram: &[u16; VRAM_SIZE],
+        cgram: &[Color; 256],
+        chr_addr: u16,
+        output_x: u32,
+        output_y: u32,
+        stride: u32,
+        direct_color: bool,
+    ) {
+        for row in 0..8u32 {
+            let dst_y = output_y + row;
+            let dst_start = 4 * (dst_y * stride + output_x) as usize;
+            let dst_end = dst_start + 4 * 8;
+            let dst = &mut pixel_buffer[dst_start..dst_end];
+
+            for col in 0..8u32 {
+                let pixel_addr = (chr_addr as usize) + (row as usize) * 8 + col as usize;
+                let pal_idx = (vram[pixel_addr] >> 8) as u8;
+
+                let color = if direct_color {
+                    // treat our color index as color information: BBGGGRRR -> RRR00 GGG00 BB000
+                    let r = (pal_idx & 0x7) << 2;
+                    let g = (pal_idx & 0x38) >> 1;
+                    let b = (pal_idx & 0xC0) >> 3;
+                    Color { r: r, g: g, b: b }
+                } else {
+                    cgram[pal_idx as usize]
+                };
+
+                let dst_idx = (col as usize) * 4;
+
+                dst[dst_idx..dst_idx + 4].copy_from_slice(&color.to_rgba_bytes());
             }
         }
     }

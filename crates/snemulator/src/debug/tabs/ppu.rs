@@ -1,4 +1,5 @@
 use snemcore::Snemulator;
+use snemcore::sppu::BgMode;
 
 use crate::debug::harness::MainDebugHarness;
 use crate::app::theme::AppTheme;
@@ -39,6 +40,7 @@ pub struct PpuTab {
     bg_view_settings: layers::BgDebugViewSettings,
     // obj_viewer: layers::LayerView,
     selected_tab: PpuSubTab,
+    show_mode7_chr_sheet: bool,
 }
 
 impl PpuTab {
@@ -53,12 +55,13 @@ impl PpuTab {
             // obj_viewer: layers::LayerView::new(painter),
             // layer_viewer: layers::LayerViewer::new(painter),
             selected_tab: PpuSubTab::Chr,
+            show_mode7_chr_sheet: false,
         }
     }
     
     pub fn render(&mut self, ui: &mut egui::Ui, core: &Snemulator, harness: &mut MainDebugHarness, app_theme: &AppTheme) {
         ui.vertical(|ui| {
-            egui::Panel::top("tabs").show(ui, |ui| {
+            egui::Panel::top("ppu_subtabs").show(ui, |ui| {
                 ui.horizontal(|ui| {
                     for tab in [
                         PpuSubTab::Chr,
@@ -78,20 +81,28 @@ impl PpuTab {
             match self.selected_tab {
                 PpuSubTab::Chr => self.chr_viewer.render(ui, core, app_theme),
                 PpuSubTab::Bg1 => {
-                    self.bg1_viewer.update(core, harness);
-                    self.bg1_viewer.render(ui, core, app_theme, &mut self.bg_view_settings);
+                    if matches!(core.ppu_regs.bg_mode, BgMode::Mode7) {
+                        ui.toggle_value(&mut self.show_mode7_chr_sheet, "Chr View");
+                    }
+
+                    self.bg1_viewer.update(core, harness, self.show_mode7_chr_sheet);
+                    self.bg1_viewer.render(ui, core, app_theme, &mut self.bg_view_settings, self.show_mode7_chr_sheet);
                 }
                 PpuSubTab::Bg2 => {
-                    self.bg2_viewer.update(core, harness);
-                    self.bg2_viewer.render(ui, core, app_theme, &mut self.bg_view_settings);
+                    if matches!(core.ppu_regs.bg_mode, BgMode::Mode7) {
+                        ui.toggle_value(&mut self.show_mode7_chr_sheet, "Chr View");
+                    }
+
+                    self.bg2_viewer.update(core, harness, self.show_mode7_chr_sheet);
+                    self.bg2_viewer.render(ui, core, app_theme, &mut self.bg_view_settings, self.show_mode7_chr_sheet);
                 }
                 PpuSubTab::Bg3 => {
-                    self.bg3_viewer.update(core, harness);
-                    self.bg3_viewer.render(ui, core, app_theme, &mut self.bg_view_settings);
+                    self.bg3_viewer.update(core, harness, false);
+                    self.bg3_viewer.render(ui, core, app_theme, &mut self.bg_view_settings, self.show_mode7_chr_sheet);
                 }
                 PpuSubTab::Bg4 => {
-                    self.bg4_viewer.update(core, harness);
-                    self.bg4_viewer.render(ui, core, app_theme, &mut self.bg_view_settings);
+                    self.bg4_viewer.update(core, harness, false);
+                    self.bg4_viewer.render(ui, core, app_theme, &mut self.bg_view_settings, self.show_mode7_chr_sheet);
                 }
                 // PpuSubTab::Obj => self.obj_viewer.render(ui, &core.probe.as_ref().unwrap().layer_buffers.obj[..]),
                 _ => {}
