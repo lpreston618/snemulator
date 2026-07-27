@@ -276,7 +276,7 @@ impl Cartridge {
         let mut title = [0; 0x15];
         title[..title_str.len()].copy_from_slice(title_str.as_bytes());
 
-        let mut cart = Self {
+        Self {
             rom: vec![0; ROM_SIZE],
             ram: Vec::new(),
 
@@ -310,19 +310,14 @@ impl Cartridge {
             abort_vec_n: 0u16,
             nmi_vec_e: 0u16,
             nmi_vec_n: 0u16,
-            reset_vec: 0u16,
+            reset_vec,
             irq_vec_e: 0u16,
             irq_vec_n: 0u16,
 
             rom_hash: 0u32,
 
             header_meta: RomHeaderMeta::default(),
-        };
-
-        // cart.force_write(Address::from_u32(0x00FFFC), reset_vec as u8);
-        // cart.force_write(Address::from_u32(0x00FFFD), (reset_vec >> 8) as u8);
-
-        cart
+        }
     }
 
     /// Try to load a cartridges save RAM. Returns Err if the provided vec is of a different
@@ -539,12 +534,12 @@ impl Cartridge {
         }
     }
 
-    /// Can overwrite ROM data.
-    // pub fn force_write(&mut self, addr: Address, value: u8) {
-    //     let mapped_addr = self.map_addr(addr);
-    //     let mapped_addr = (mapped_addr as usize) & (self.rom.len() - 1);
-    //     self.rom[mapped_addr] = value;
-    // }
+    /// Overwrite ROM data. Only writes to ROM go thru.
+    pub fn write_rom(&mut self, addr: Address, value: u8) {
+        if let Some(BusTarget::Rom(mapped_addr)) = self.layout.map_addr(addr) {
+            self.rom[mapped_addr] = value;
+        }
+    }
 
     pub fn sram_slice(&self) -> &[u8] {
         &self.ram[..]

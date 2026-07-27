@@ -75,8 +75,8 @@ impl TestBacking {
 /// Used for opcode/operand setup since `read_prg` fetches from cartridge.
 pub(super) fn write_rom(bus: &mut CpuBus<NullHarness>, mut addr: Address, bytes: &[u8]) {
     for &b in bytes {
-        // bus.cart.force_write(addr, b);
-        addr.offset = addr.offset.wrapping_add(1);
+        bus.cart.write_rom(addr, b);
+        addr.offset += 1;
     }
 }
 
@@ -86,7 +86,7 @@ pub(super) fn write_rom(bus: &mut CpuBus<NullHarness>, mut addr: Address, bytes:
 pub(super) fn write_ram<H: DebugHarness>(cpu: &mut Cpu65c816, bus: &mut CpuBus<H>, mut addr: Address, bytes: &[u8]) {
     for &b in bytes {
         cpu.write(bus, addr, b);
-        addr.offset = addr.offset.wrapping_add(1);
+        addr.offset += 1;
     }
     cpu.clocks = 0;
 }
