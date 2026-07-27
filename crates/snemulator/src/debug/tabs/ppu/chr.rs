@@ -339,8 +339,6 @@ impl ChrViewer {
         pixels: &mut [u8],
         core: &Snemulator,
     ) {
-        log::debug!("Here");
-
         let words_per_tile = 64;
 
         let tile_count = ATLAS_TILES_WIDE * ATLAS_TILES_TALL;
