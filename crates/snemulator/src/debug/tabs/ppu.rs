@@ -14,7 +14,7 @@ enum PpuSubTab {
     Bg2,
     Bg3,
     Bg4,
-    Obj,
+    // Obj,
 }
 
 impl PpuSubTab {
@@ -25,22 +25,20 @@ impl PpuSubTab {
             PpuSubTab::Bg2 => "BG2",
             PpuSubTab::Bg3 => "BG3",
             PpuSubTab::Bg4 => "BG4",
-            PpuSubTab::Obj => "Obj",
+            // PpuSubTab::Obj => "Obj",
         }
     }
 }
 
 pub struct PpuTab {
     chr_viewer: chr::ChrViewer,
-    // layer_viewer: layers::LayerView,
     bg1_viewer: layers::BgDebugView<0>,
     bg2_viewer: layers::BgDebugView<1>,
     bg3_viewer: layers::BgDebugView<2>,
     bg4_viewer: layers::BgDebugView<3>,
-    bg_view_settings: layers::BgDebugViewSettings,
     // obj_viewer: layers::LayerView,
+    bg_view_settings: layers::BgDebugViewSettings,
     selected_tab: PpuSubTab,
-    show_mode7_chr_sheet: bool,
 }
 
 impl PpuTab {
@@ -51,11 +49,9 @@ impl PpuTab {
             bg2_viewer: layers::BgDebugView::new(),
             bg3_viewer: layers::BgDebugView::new(),
             bg4_viewer: layers::BgDebugView::new(),
+            // obj_viewer: layers::LayerView::new(),
             bg_view_settings: layers::BgDebugViewSettings { zoom: 1.0, show_viewport: true },
-            // obj_viewer: layers::LayerView::new(painter),
-            // layer_viewer: layers::LayerViewer::new(painter),
             selected_tab: PpuSubTab::Chr,
-            show_mode7_chr_sheet: false,
         }
     }
     
@@ -69,7 +65,7 @@ impl PpuTab {
                         PpuSubTab::Bg2,
                         PpuSubTab::Bg3,
                         PpuSubTab::Bg4,
-                        PpuSubTab::Obj,
+                        // PpuSubTab::Obj,
                     ] {
                         ui.selectable_value(&mut self.selected_tab, tab, tab.label());
                     }
@@ -81,31 +77,21 @@ impl PpuTab {
             match self.selected_tab {
                 PpuSubTab::Chr => self.chr_viewer.render(ui, core, app_theme),
                 PpuSubTab::Bg1 => {
-                    if matches!(core.ppu_regs.bg_mode, BgMode::Mode7) {
-                        ui.toggle_value(&mut self.show_mode7_chr_sheet, "Chr View");
-                    }
-
-                    self.bg1_viewer.update(core, harness, self.show_mode7_chr_sheet);
-                    self.bg1_viewer.render(ui, core, app_theme, &mut self.bg_view_settings, self.show_mode7_chr_sheet);
+                    self.bg1_viewer.update(core, harness);
+                    self.bg1_viewer.render(ui, core, app_theme, &mut self.bg_view_settings);
                 }
                 PpuSubTab::Bg2 => {
-                    if matches!(core.ppu_regs.bg_mode, BgMode::Mode7) {
-                        ui.toggle_value(&mut self.show_mode7_chr_sheet, "Chr View");
-                    }
-
-                    self.bg2_viewer.update(core, harness, self.show_mode7_chr_sheet);
-                    self.bg2_viewer.render(ui, core, app_theme, &mut self.bg_view_settings, self.show_mode7_chr_sheet);
+                    self.bg2_viewer.update(core, harness);
+                    self.bg2_viewer.render(ui, core, app_theme, &mut self.bg_view_settings);
                 }
                 PpuSubTab::Bg3 => {
-                    self.bg3_viewer.update(core, harness, false);
-                    self.bg3_viewer.render(ui, core, app_theme, &mut self.bg_view_settings, self.show_mode7_chr_sheet);
+                    self.bg3_viewer.update(core, harness);
+                    self.bg3_viewer.render(ui, core, app_theme, &mut self.bg_view_settings);
                 }
                 PpuSubTab::Bg4 => {
-                    self.bg4_viewer.update(core, harness, false);
-                    self.bg4_viewer.render(ui, core, app_theme, &mut self.bg_view_settings, self.show_mode7_chr_sheet);
+                    self.bg4_viewer.update(core, harness);
+                    self.bg4_viewer.render(ui, core, app_theme, &mut self.bg_view_settings);
                 }
-                // PpuSubTab::Obj => self.obj_viewer.render(ui, &core.probe.as_ref().unwrap().layer_buffers.obj[..]),
-                _ => {}
             }
         });
     }

@@ -1,5 +1,5 @@
 use snemcore::Snemulator;
-use snemcore::sppu::{BgMode, ColorDepth};
+use snemcore::sppu::{BgMode, Color, ColorDepth};
 use crate::app::theme::AppTheme;
 
 const ATLAS_TILES_WIDE: usize = 16;
@@ -142,20 +142,29 @@ impl ChrViewer {
         let idx = tab.atlas_index();
         let (base_addr, _, is_bg) = tab.resolve(core);
         let bpp = if is_bg { self.bpp_mode } else { ColorDepth::Bpp4 };
+        let is_mode7 = matches!(core.ppu_regs.bg_mode, BgMode::Mode7) && matches!(tab, ChrTab::Bg1 | ChrTab::Bg2);
 
         // Controls
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("BPP:").color(app_theme.text_primary));
 
-            let mut bpp = if is_bg { self.bpp_mode } else { ColorDepth::Bpp4 };
+            let mut bpp = self.bpp_mode;
 
-            ui.add_enabled_ui(is_bg, |ui| {
+            if is_bg {
+                bpp = ColorDepth::Bpp4;
+            }
+
+            if is_mode7 {
+                bpp = ColorDepth::Bpp8;
+            }
+
+            ui.add_enabled_ui(is_bg && !is_mode7, |ui| {
                 ui.selectable_value(&mut bpp, ColorDepth::Bpp2, "2bpp");
                 ui.selectable_value(&mut bpp, ColorDepth::Bpp4, "4bpp");
                 ui.selectable_value(&mut bpp, ColorDepth::Bpp8, "8bpp");
             });
 
-            if is_bg {
+            if is_bg && !is_mode7 {
                 self.bpp_mode = bpp;
             }
 
@@ -177,7 +186,11 @@ impl ChrViewer {
 
         ui.separator();
 
-        Self::update_atlas(&mut self.atlas_pixels[idx], core, base_addr, bpp, self.palette_index);
+        if is_mode7 {
+            Self::update_mode7_atlas(&mut self.atlas_pixels[idx], core);
+        } else {
+            Self::update_atlas(&mut self.atlas_pixels[idx], core, base_addr, bpp, self.palette_index);
+        }
 
         let color_image = egui::ColorImage::from_rgba_unmultiplied(
             [ATLAS_PIXELS_WIDE, ATLAS_PIXELS_TALL],
@@ -219,7 +232,7 @@ impl ChrViewer {
 
     fn update_atlas(
         pixels: &mut [u8],
-        snem_core: &Snemulator,
+        core: &Snemulator,
         base_addr: usize,
         bpp: ColorDepth,
         palette_idx: usize,
@@ -240,18 +253,18 @@ impl ChrViewer {
                 let base_addr = (base_addr + tile_idx * words_per_tile + row) & 0x7FFF;
 
                 let (bp01, bp23, bp45, bp67) = match bpp {
-                    ColorDepth::Bpp2 => (snem_core.vram[base_addr], 0u16, 0u16, 0u16),
+                    ColorDepth::Bpp2 => (core.vram[base_addr], 0u16, 0u16, 0u16),
                     ColorDepth::Bpp4 => (
-                        snem_core.vram[base_addr],
-                        snem_core.vram[base_addr + 8],
+                        core.vram[base_addr],
+                        core.vram[base_addr + 8],
                         0u16,
                         0u16,
                     ),
                     ColorDepth::Bpp8 => (
-                        snem_core.vram[base_addr],
-                        snem_core.vram[base_addr + 8],
-                        snem_core.vram[base_addr + 16],
-                        snem_core.vram[base_addr + 24],
+                        core.vram[base_addr],
+                        core.vram[base_addr + 8],
+                        core.vram[base_addr + 16],
+                        core.vram[base_addr + 24],
                     ),
                 };
 
@@ -298,7 +311,7 @@ impl ChrViewer {
                         ColorDepth::Bpp8 => pal_idx as usize,
                     };
 
-                    let color = snem_core.cgram[cgram_addr];
+                    let color = core.cgram[cgram_addr];
 
                     let px = tile_x + col;
                     let py = tile_y + row;
@@ -317,6 +330,48 @@ impl ChrViewer {
                         pixels[pixel_idx..pixel_idx + 4]
                             .copy_from_slice(&[color.r, color.g, color.b, 255]);
                     }
+                }
+            }
+        }
+    }
+
+    fn update_mode7_atlas(
+        pixels: &mut [u8],
+        core: &Snemulator,
+    ) {
+        log::debug!("Here");
+
+        let words_per_tile = 64;
+
+        let tile_count = ATLAS_TILES_WIDE * ATLAS_TILES_TALL;
+
+        for tile_idx in 0..tile_count {
+            let tile_y = tile_idx / ATLAS_TILES_WIDE;
+            let tile_x = tile_idx % ATLAS_TILES_WIDE;
+            
+            let chr_addr = tile_idx * words_per_tile;
+
+            for row in 0..8usize {
+                for col in 0..8usize {
+                    let pixel_addr = (chr_addr as usize) + (row * 8) + col;
+                    let pal_idx = (core.vram[pixel_addr] >> 8) as u8;
+
+                    let color = if core.ppu_regs.use_direct_col {
+                        // treat our color index as color information: BBGGGRRR -> RRR00 GGG00 BB000
+                        let r = (pal_idx & 0x7) << 2;
+                        let g = (pal_idx & 0x38) >> 1;
+                        let b = (pal_idx & 0xC0) >> 3;
+                        Color { r: r, g: g, b: b }
+                    } else {
+                        core.cgram[pal_idx as usize]
+                    };
+
+                    let pixel_y = tile_y * 8 + row;
+                    let pixel_x = tile_x * 8 + col;
+
+                    let dst_idx = 4 * (pixel_y * ATLAS_PIXELS_WIDE + pixel_x);
+
+                    pixels[dst_idx..dst_idx + 4].copy_from_slice(&color.to_rgba_bytes());
                 }
             }
         }
