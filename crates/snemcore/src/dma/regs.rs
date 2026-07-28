@@ -45,8 +45,8 @@ pub struct DmaRegs {
 
     pub hdma_entry_just_loaded: bool, // Whether an HDMA entry was just loaded this cycle, used to determine when to decrement scanlines_left
     pub hdma_do_transfer: bool, // Set on entry load, cleared after first transfer for non-repeat entries
-
     pub dma_bytes_transferred: usize, // Mostly for debug purposes
+    pub hdma_finished: bool,
 }
 
 impl DmaRegs {

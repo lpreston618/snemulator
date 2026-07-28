@@ -464,9 +464,7 @@ impl Snemulator {
     fn cycle_cpu<H: DebugHarness>(&mut self, harness: &mut H) {
         self.cpu.stopped = false;
 
-        if self.dma.hdma_needs_init
-            && self.ppu.scanline == 0
-            && self.dma.regs.iter().any(|ch| ch.hdma_en)
+        if self.dma.hdma_needs_init && self.ppu.scanline == 0
         {
             self.dma.hdma_needs_init = false;
             let mut bus = dma_bus!(self, harness);

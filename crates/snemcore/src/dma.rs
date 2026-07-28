@@ -217,8 +217,8 @@ impl DmaController {
         let mut num_bytes = 0;
         
         for ch in 0..8 {
-            // Channel innactive, skip
-            if !self.regs[ch].hdma_en { continue; }
+            // Channel innactive or done, skip
+            if !self.regs[ch].hdma_en || self.regs[ch].hdma_finished { continue; }
 
             num_bytes += self.do_hdma_transfer(ch, bus);
 
@@ -226,6 +226,7 @@ impl DmaController {
             if self.regs[ch].scanlines_left == 0 {
                 // No more table entries, disable channel and go to next
                 if !self.hdma_load_entry(ch, bus) {
+                    self.regs[ch].hdma_finished = true;
                     continue;
                 }
             }
@@ -246,9 +247,9 @@ impl DmaController {
             // Reset table pointer to the base A-bus address for this frame
             self.regs[ch].hdma_table_offset = self.regs[ch].a_bus_addr.offset;
             
-            self.hdma_load_entry(ch, bus);
+            let has_valid_entry = self.hdma_load_entry(ch, bus);
 
-            // self.regs[ch].hdma_initialized = true;
+            self.regs[ch].hdma_finished = !has_valid_entry;
             
             if H::IS_DEBUGGING_HARNESS && H::TRACK_HDMA {
                 bus.harness.on_hdma_init(self, ch);
