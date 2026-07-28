@@ -363,7 +363,7 @@ impl SnemulatorApp {
         if !new_settings.audio_enabled || new_settings.master_volume == 0.0 {
             self.audio_manager.pause();
             self.audio_manager.clear_playing_samples();
-        } else if self.settings.master_volume != new_settings.master_volume {
+        } else {
             self.audio_manager.resume();
             self.audio_manager.set_volume(new_settings.master_volume);
         }
