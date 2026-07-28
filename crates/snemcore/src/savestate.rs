@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{scpu::Address, sppu::{AddressRemapping, BgMode, BgSettings, CMathOperator, Color, IncrSize, LayerSettings, M7FillMode, MasterSlave, ObjectSizeSelect, VideoType, VramIncMode, WindowColorRegion, WindowSettings}, ssmp::sdsp::{ADSRStage, GainMode}};
+use crate::{controller::ControllerData, coprocessor::Coprocessor, scpu::{Address, ioregs::HVTimerIRQ}, sppu::{AddressRemapping, BgMode, BgSettings, CMathOperator, Color, IncrSize, LayerSettings, M7FillMode, MasterSlave, ObjectSizeSelect, VideoType, VramIncMode, WindowColorRegion, WindowSettings}, ssmp::{ioports::ApuIoPorts, sdsp::{ADSRStage, GainMode}}};
 
 pub const MAGIC_SAVE_STATE_STRING: &[u8; 16] = b"SnemulatorSave:)"; 
 pub const SAVE_STATE_VERSION: u32 = 0;
@@ -20,9 +20,13 @@ pub struct SaveState {
     pub cgram: Vec<u8>,
     pub oam: Vec<u8>,
     pub cpu_open_bus: u8,
-    pub apuio: [u8; 4],
-    pub cpuio: [u8; 4],
+    pub apu_ports: ApuIoPorts,
+    pub cpu_io: CpuIoState,
+    pub controller_data: ControllerData,
+    pub coprocessor: Option<Coprocessor>,
     pub rom_hash: u32,
+    pub frame: u64,
+    pub frame_ready: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -41,6 +45,39 @@ pub struct CpuState {
     pub stopped: bool,
     pub waiting_for_interrupt: bool,
     pub clocks: usize,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct CpuIoState {
+    pub wram_address: usize,
+    pub latch_controllers: bool,
+    pub vblank_nmi_en: bool,
+    pub hv_timer_irq_mode: HVTimerIRQ,
+    pub joypad_autoread_en: bool,
+    pub mult_factor1: u8,
+    pub mult_factor2: u8,
+    pub div_numer: u16,
+    pub div_denom: u8,
+    pub h_counter_target: u16,
+    pub v_counter_target: u16,
+    pub fast_rom_en: bool,
+    pub vblank_nmi_flag: bool,
+    pub hv_timer_irq_flag: bool,
+    pub vblank_flag: bool,
+    pub hblank_flag: bool,
+    pub joypad_autoread_flag: bool,
+    pub raw_rdwrio: u8,
+    pub joy1_io: bool,
+    pub joy2_io: bool,
+    pub div_quotient: u16,
+    pub mult_result: u16,
+    pub nmi_pending: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ApuPortState {
+    pub apuio: [u8; 4],
+    pub cpuio: [u8; 4],
 }
 
 #[derive(Serialize, Deserialize)]

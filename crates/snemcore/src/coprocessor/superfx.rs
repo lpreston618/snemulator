@@ -1,3 +1,6 @@
+use serde::{Serialize, Deserialize};
+use serde_big_array::BigArray;
+
 use crate::{get_bit_n, sysinfo::MASTER_CLOCK_HZ};
 
 const GSU_CLOCK_HZ_SLOW: usize = 10_738_636; // CLSR.bit0 = 0
@@ -23,6 +26,7 @@ mod sfr_bits {
     pub const IRQ: u16 = 1 << 15; // Set to 1 when GSU caused an interrupt. Set to 0 when read by 65c816.
 }
 
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SuperFx {
     /// R0-R13 are general purpose. R14 doubles as the ROM buffer address latch
     /// (any write to it kicks off a ROM fetch into the buffer). R15 is the PC;
@@ -61,6 +65,7 @@ pub struct SuperFx {
     // CACHE and lazily fill lines on miss. Functionally equivalent for the
     // common "CACHE; loop body; LOOP" pattern, but not cycle-accurate for
     // partial-cache scenarios - revisit if a game depends on that.
+    #[serde(with = "BigArray")]
     cache: [u8; 512],
     cache_valid: [bool; 32],
 

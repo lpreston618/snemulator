@@ -1,8 +1,11 @@
+use serde::{Deserialize, Serialize};
+
 use crate::coprocessor::{dsp::Dsp1, superfx::SuperFx};
 
 pub mod superfx;
 pub mod dsp;
 
+#[derive(Serialize, Deserialize, Clone)]
 pub enum Coprocessor {
     // Versions of DSP-1:
     // - DSP-1: Several

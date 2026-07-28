@@ -1,4 +1,4 @@
-use crate::{coprocessor::Coprocessor, scpu::{CpuInterrupt, bus::Address}};
+use crate::{coprocessor::Coprocessor, savestate, scpu::{CpuInterrupt, bus::Address}};
 
 // Positions of the start of the header for different memory mappings
 const LOROM_POS: usize = 0x007FC0;
@@ -242,6 +242,10 @@ pub struct Cartridge {
 }
 
 impl Cartridge {
+    pub fn load_state(&mut self, state: &savestate::SaveState) {
+
+    }
+
     pub fn cycle(&mut self, clocks: usize) -> usize {
         if let Some(coprocessor) = self.layout.coprocessor.as_mut() {
             match coprocessor {

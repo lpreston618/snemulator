@@ -5,6 +5,9 @@
 // reference in preference to the crazysmart.net.au DSP1/1A/1B writeup,
 // since the latter contains several transcription bugs (see notes below).
 
+use serde::{Deserialize, Serialize};
+use serde_big_array::BigArray;
+
 pub const DSP_VERSION_1: usize = 0;
 pub const DSP_VERSION_1A: usize = 0;
 pub const DSP_VERSION_1B: usize = 1;
@@ -187,10 +190,10 @@ const DATAROM: [i16; 1024] = [
 ];
 type Mat3 = [[i16; 3]; 3];
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Serialize, Deserialize)]
 struct Vec3 { x: i16, y: i16, z: i16 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Serialize, Deserialize)]
 struct DspSharedData {
     a: Mat3,          // attitude matrix A
     b: Mat3,
@@ -1131,19 +1134,14 @@ const COMMAND_TABLE: [Command; 0x40] = [
     Command { callback: Some(cmd_memory_dump), reads: 1, writes: 1024 }, // 0x3f
 ];
 
-// ------------------------------------------------------------------------
-// FSM / register-level emulation (mirrors Dsp1::getSr/getDr/setDr/reset/
-// fsmStep). This is the piece your bus struct calls .read()/.write() on;
-// it doesn't know anything about the SNES memory map itself.
-// ------------------------------------------------------------------------
-
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 enum FsmState {
     WaitCommand,
     ReadData,
     WriteData,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Dsp1 {
     sr: u8,
     sr_low_byte_access: bool,
@@ -1152,6 +1150,7 @@ pub struct Dsp1 {
     command: u8,
     data_counter: usize,
     read_buffer: [i16; MAX_READS],
+    #[serde(with = "BigArray")]
     write_buffer: [i16; MAX_WRITES],
     freeze: bool,
     shared: DspSharedData,

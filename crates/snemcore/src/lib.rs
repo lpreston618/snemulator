@@ -17,7 +17,7 @@ use rand::rngs::StdRng;
 
 use crate::controller::ControllerData;
 use crate::debug::DebugHarness;
-use crate::savestate::SaveState;
+use crate::savestate::{ApuPortState, SaveState};
 use crate::sppu::{OAMSprite, VBLANK_START_SCANLINE};
 use crate::sysinfo::{CLOCKS_BETWEEN_AUTOREAD_STEPS, DRAM_REFRESH_CLOCKS, DRAM_REFRESH_START_DOT, OAM_SPRITE_COUNT};
 
@@ -109,25 +109,22 @@ pub struct Snemulator {
     pub cpu: Cpu65c816,
     pub ppu: Ppu5C7x,
     pub ssmp: Ssmp,
+    pub cart: Option<Cartridge>,
 
     pub wram: Box<[u8; WRAM_SIZE]>,
     pub vram: Box<[u16; VRAM_SIZE]>,
     pub cgram: Box<[Color; CGRAM_SIZE]>,
     pub oam: Box<[OAMSprite; OAM_SPRITE_COUNT]>,
     pub raw_oam: Box<[u8; OAM_SIZE]>,
+
     pub ppu_regs: PpuRegs,
     pub cpu_regs: CpuIoRegs,
     pub apu_ports: ApuIoPorts,
     pub cpu_open_bus: u8,
 
     pub dma: DmaController,
-
     pub controller_data: ControllerData,
-    pub cpu_interrupt: Option<CpuInterrupt>,
-
     pub frame_ready: bool,
-
-    pub cart: Option<Cartridge>,
     pub total_cycles: u64,
     pub frame: u64,
 
@@ -160,7 +157,6 @@ impl Snemulator {
             dma: DmaController::new(),
 
             controller_data: ControllerData::default(),
-            cpu_interrupt: None,
 
             frame_ready: false,
 
@@ -196,19 +192,13 @@ impl Snemulator {
             cgram: self.cgram.clone().map(|c| c.to_rgba_bytes()).as_flattened().to_vec(),
             oam: self.raw_oam.clone().to_vec(),
             cpu_open_bus: self.cpu_open_bus,
-            apuio: [
-                self.apu_ports.apuio0,
-                self.apu_ports.apuio1,
-                self.apu_ports.apuio2,
-                self.apu_ports.apuio3,
-            ],
-            cpuio: [
-                self.apu_ports.cpuio0,
-                self.apu_ports.cpuio1,
-                self.apu_ports.cpuio2,
-                self.apu_ports.cpuio3,
-            ],
+            apu_ports: self.apu_ports.clone(),
+            cpu_io: self.cpu_regs.save_state(),
+            controller_data: self.controller_data.clone(),
+            coprocessor: self.cart.as_ref().unwrap().layout.coprocessor.clone(),
             rom_hash: self.cart.as_ref().map_or(0u32, |cart| cart.rom_hash),
+            frame: self.frame,
+            frame_ready: self.frame_ready,
         }
     }
 
@@ -229,6 +219,9 @@ impl Snemulator {
             return Err(anyhow!("invalid version number {}, newest is {}", state.version, savestate::SAVE_STATE_VERSION));
         }
 
+        // pub controller_data: ControllerData,
+        // pub cart: Option<Cartridge>,
+
         match state.version {
             0 => {
                 self.cpu.load_state(&state.cpu, state.version);
@@ -247,6 +240,12 @@ impl Snemulator {
                 );
                 self.raw_oam.copy_from_slice(&state.oam);
                 self.cpu_open_bus = state.cpu_open_bus;
+                self.apu_ports = state.apu_ports.clone();
+                self.cpu_regs.load_state(&state.cpu_io, state.version);
+                self.controller_data = state.controller_data.clone();
+                self.cart.as_mut().unwrap().layout.coprocessor = state.coprocessor;
+                self.frame = state.frame;
+                self.frame_ready = state.frame_ready;
 
                 self.fill_oam_from_raw();
             },
@@ -347,7 +346,6 @@ impl Snemulator {
         self.controller_data.joy2_data1_auto = 0;
         self.controller_data.joy1_data2_auto = 0;
         self.controller_data.joy2_data2_auto = 0;
-        self.cpu_interrupt = None;
         self.frame_ready = false;
         self.frame = 0;
         self.total_cycles = 0;
@@ -500,8 +498,6 @@ impl Snemulator {
     }
 
     fn cycle_ppu<H: DebugHarness>(&mut self, frame_buffer: &mut [u8], harness: &mut H) {
-        self.cpu_interrupt = None;
-
         let mut vblank_start_flag = false;
         let mut vblank_end_flag = false;
         let mut hblank_start_flag = false;

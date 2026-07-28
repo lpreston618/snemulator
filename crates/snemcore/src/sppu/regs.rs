@@ -405,8 +405,6 @@ impl PpuRegs {
             7 => BgMode::Mode7,
             _ => unreachable!(),
         };
-
-        log::debug!("Bg Mode: {:?}", self.bg_mode);
     }
 
     pub fn write_2106(&mut self, value: u8) {
@@ -860,8 +858,6 @@ impl PpuRegs {
         self.overscan_en = get_bit_n!(value, 2);
         self.obj_interlace_en = get_bit_n!(value, 1);
         self.screen_interlace_en = get_bit_n!(value, 0);
-
-        log::debug!("Scr interlace: {}, Obj interlace: {}", self.screen_interlace_en, self.obj_interlace_en);
     }
 
     pub fn update_multiply_result(&mut self) {
