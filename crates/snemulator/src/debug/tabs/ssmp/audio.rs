@@ -71,7 +71,7 @@ impl SdspAudioTab {
                 append(&mut stop_job, &label, FontId::monospace(12.0), app_theme.warning);
                 if ui.button(stop_job).clicked() {
                     self.playing_track = None;
-                    let _ = audio_manager.clear_playing_samples();
+                    audio_manager.clear_playing_samples();
                 }
             }
         });
@@ -150,9 +150,10 @@ impl SdspAudioTab {
                 })).clicked() {
                     if is_playing {
                         self.playing_track = None;
-                        let _ = audio_manager.clear_playing_samples();
+                        audio_manager.clear_playing_samples();
                     } else {
                         self.playing_track = Some(track);
+                        audio_manager.clear_playing_samples();
                         self.upload_samples_to_stream(audio_manager, left_rb, right_rb);
                     }
                 }
@@ -168,7 +169,7 @@ impl SdspAudioTab {
                 right_rb.clear();
                 if is_playing {
                     self.playing_track = None;
-                    let _ = audio_manager.clear_playing_samples();
+                    audio_manager.clear_playing_samples();
                 }
             }
         });

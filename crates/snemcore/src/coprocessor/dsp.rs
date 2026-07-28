@@ -254,7 +254,7 @@ const fn sum3(a: i16, b: i16, c: i16) -> i16 {
 /// unsigned value rather than subtracting -- this widens to i32 first to
 /// avoid that.
 fn datarom_at(base: i16, offset: i16) -> i16 {
-    DATAROM[((base as i32) + (offset as i32)) as usize]
+    DATAROM[(((base as i32) + (offset as i32)) as usize) & 0x3FF]
 }
 
 /// Counts the number of leading bits (below the sign bit) that match the

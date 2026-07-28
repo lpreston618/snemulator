@@ -6,7 +6,7 @@ use anyhow::Result;
 use snemcore::controller::ControllerPlayer;
 
 use crate::{
-    app::{controller::ControllerManager, library::LibraryViewMode, theme::{AppTheme, ThemePreset}}, ui_window::UiWindow,
+    app::{AppAction, controller::ControllerManager, library::LibraryViewMode, theme::{AppTheme, ThemePreset}}, ui_window::UiWindow,
 };
 
 pub const SETTINGS_WINDOW_WIDTH: u32 = 780;
@@ -460,10 +460,10 @@ impl SettingsWindow {
         controller_manager: &mut ControllerManager,
         live_settings: &mut Settings,
         app_theme: &AppTheme,
-    ) -> Option<Settings> {
+    ) -> Option<AppAction> {
         let current_tab = &mut self.current_tab;
         let active_player = &mut self.active_player;
-        let mut apply_settings = false;
+        let mut app_action: Option<AppAction> = None;
 
         let full_output = self.egui_window.update_ui(|ctx| {
             egui::Panel::left("settings_tab_strip")
@@ -496,7 +496,15 @@ impl SettingsWindow {
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
                         if ui.button("Apply").clicked() {
-                            apply_settings = true;
+                            app_action = Some(AppAction::ApplySettings(Box::new(self.new_settings.clone())));
+                        }
+
+                        if ui.button("Cancel").clicked() {
+                            app_action = Some(AppAction::CloseSettings(None));
+                        }
+
+                        if ui.button("Ok").clicked() {
+                            app_action = Some(AppAction::CloseSettings(Some(Box::new(self.new_settings.clone()))));
                         }
                     });
                 });
@@ -505,11 +513,7 @@ impl SettingsWindow {
         self.egui_window.clear(app_theme);
         self.egui_window.render(full_output);
 
-        if apply_settings {
-            Some(self.new_settings.clone())
-        } else {
-            None
-        }
+        app_action
     }
 
     fn render_general_tab(ui: &mut egui::Ui, settings: &mut Settings) {

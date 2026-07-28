@@ -1,7 +1,7 @@
 use anyhow::Result;
 use snemcore::Snemulator;
 
-use crate::app;
+use crate::app::{self, AppAction};
 use crate::app::audio::AudioManager;
 use crate::debug::harness::{MainDebugHarness, StopCondition};
 // use crate::core;
@@ -121,8 +121,8 @@ impl DebugWindow {
         app_theme: &AppTheme,
         harness: &mut MainDebugHarness,
         audio_manager: &mut AudioManager,
-    ) -> app::AppAction {
-        let mut app_action = app::AppAction::Continue;
+    ) -> Option<AppAction> {
+        let mut app_action: Option<AppAction> = None;
 
         let mut egui_window = self.egui_window.take().unwrap();
         let mut debug_action: Option<DebugAction> = None;
@@ -164,13 +164,13 @@ impl DebugWindow {
         if let Some(action) = debug_action {
             match action {
                 DebugAction::SetPaused(paused) => {
-                    app_action = app::AppAction::SetPaused(paused);
+                    app_action = Some(AppAction::SetPaused(paused));
                 }
                 DebugAction::Reset => {
-                    app_action = app::AppAction::ResetCore;
+                    app_action = Some(AppAction::ResetCore);
                 }
                 DebugAction::HardReset => {
-                    app_action = app::AppAction::PowerOnCore;
+                    app_action = Some(AppAction::PowerOnCore);
                 }
                 DebugAction::SingleStep if app_state.is_paused => {
                     // core.cycle_instruction(frame_buffer);

@@ -65,8 +65,9 @@ fn create_harness() -> NullHarness {
     NullHarness {}
 }
 
+
+
 pub enum AppAction {
-    Continue,
     SetPaused(bool),
     ToggleFullscreen,
     SelectRomsFolder,
@@ -81,6 +82,8 @@ pub enum AppAction {
     DeleteStateForRom { path: PathBuf, slot: u32 },
     DeleteSaveData { path: PathBuf },
     OpenSettings,
+    ApplySettings(Box<Settings>),
+    CloseSettings(Option<Box<Settings>>),
     Exit,
 
     #[cfg(feature = "debug")]
@@ -337,7 +340,7 @@ impl SnemulatorApp {
         }
     }
 
-    fn apply_settings(&mut self, new_settings: Settings) {
+    fn apply_settings(&mut self, new_settings: &Settings) {
         if self.settings.vsync_en != new_settings.vsync_en {
             let res = self.video_subsystem.gl_set_swap_interval(
                 if self.settings.vsync_en {
@@ -357,7 +360,7 @@ impl SnemulatorApp {
             }
         }
 
-        if !new_settings.audio_enabled {
+        if !new_settings.audio_enabled || new_settings.master_volume == 0.0 {
             self.audio_manager.pause();
             self.audio_manager.clear_playing_samples();
         } else if self.settings.master_volume != new_settings.master_volume {
@@ -374,7 +377,7 @@ impl SnemulatorApp {
             self.apply_new_theme();
         }
 
-        self.settings = new_settings;
+        self.settings = new_settings.clone();
 
         self.message_queue.push(
             MessageKind::Success,
@@ -445,25 +448,24 @@ impl SnemulatorApp {
                 &mut self.message_queue,
             );
 
-            let app_action = self.handle_input();
-
-            match app_action {
-                AppAction::Continue => {}
-                AppAction::Exit => break 'running,
-                _ => {
-                    self.do_action(app_action);
+            if let Some(app_action) = self.handle_input() {
+                match app_action {
+                    AppAction::Exit => break 'running,
+                    _ => {
+                        self.do_action(app_action);
+                    }
                 }
             }
 
             if let Some(settings_window) = &mut self.settings_window {
-                let new_settings = settings_window.update_and_render(
+                let settings_action = settings_window.update_and_render(
                     &mut self.controller_manager,
                     &mut self.settings,
                     &self.theme,
                 );
 
-                if let Some(settings) = new_settings {
-                    self.apply_settings(settings);
+                if let Some(action) = settings_action {
+                    self.do_action(action);
                 }
             }
             
@@ -579,11 +581,9 @@ impl SnemulatorApp {
     fn update_emulator(&mut self) {
         if self.state.loaded_rom_data.is_some()
             && !self.state.is_paused
-            && self.settings_window.is_none()
+            // && self.settings_window.is_none()
             && (!self.state.is_minimized || !self.settings.pause_on_minimize)
         {
-            // let audio_buf = if self.settings.audio_enabled { Some(&mut self.audio_buffer) } else { None };
-
             self.snem_core.run_frame(
                 &mut self.frame_buffer[..],
                 &mut self.audio_buffer,
@@ -597,13 +597,18 @@ impl SnemulatorApp {
             return;
         }
 
-        let samples_uploaded = self.audio_manager.upload_samples(&self.audio_buffer);
+        let muted = !self.settings.audio_enabled || self.settings.master_volume == 0.0;
 
-        self.audio_buffer.drain(..samples_uploaded);
+        if !muted {
+            let samples_uploaded = self.audio_manager.upload_samples(&self.audio_buffer);
+            self.audio_buffer.drain(..samples_uploaded);
+        } else {
+            self.audio_buffer.clear();
+        }
     }
 
-    fn handle_input(&mut self) -> AppAction {
-        let mut app_action = AppAction::Continue;
+    fn handle_input(&mut self) -> Option<AppAction> {
+        let mut app_action: Option<AppAction> = None;
 
         let mut event_pump = self.event_pump.take().unwrap();
         let keyboard_state = event_pump.keyboard_state();
@@ -651,7 +656,7 @@ impl SnemulatorApp {
                     self.settings.save();
                     self.settings_window = None;
 
-                    app_action = AppAction::Exit;
+                    app_action = Some(AppAction::Exit);
                 }
 
                 Event::KeyDown {
@@ -803,6 +808,16 @@ impl SnemulatorApp {
             AppAction::ResetCore => self.reset_emulation(false),
             AppAction::PowerOnCore => self.reset_emulation(true),
             AppAction::OpenSettings => self.show_settings(),
+            AppAction::ApplySettings(settings) => {
+                self.apply_settings(&settings);
+            }
+            AppAction::CloseSettings(new_settings) => {
+                if let Some(settings) = new_settings {
+                    self.apply_settings(&settings);
+                }
+
+                self.settings_window = None;
+            }
             AppAction::ToggleFullscreen => self.toggle_fullscreen(),
             AppAction::SetPaused(paused) => self.set_paused(paused),
             #[cfg(feature = "debug")]
@@ -822,6 +837,11 @@ impl SnemulatorApp {
             }
             #[cfg(feature = "debug")]
             AppAction::CloseDebug => {
+                if self.state.is_paused {
+                    // Clear samples possibly playing from audio tab
+                    self.audio_manager.clear_playing_samples();
+                }
+
                 self.debug_window = None;
             }
 
@@ -829,21 +849,21 @@ impl SnemulatorApp {
         }
     }
 
-    fn handle_keydown(&mut self, keycode: Keycode, keymod: Mod) -> AppAction {
-        let mut app_action = AppAction::Continue;
+    fn handle_keydown(&mut self, keycode: Keycode, keymod: Mod) -> Option<AppAction> {
+        let mut app_action: Option<AppAction> = None;
 
         match keycode {
             Keycode::F11 => {
-                app_action = AppAction::ToggleFullscreen;
+                app_action = Some(AppAction::ToggleFullscreen);
             }
             Keycode::Escape => {
                 if self.state.is_fullscreen {
-                    app_action = AppAction::ToggleFullscreen;
+                    app_action = Some(AppAction::ToggleFullscreen);
                 }
             }
             Keycode::Q if keymod.contains(Mod::LCTRLMOD) => {
                 log::info!("Ctrl+Q pressed, exiting");
-                app_action = AppAction::Exit;
+                app_action = Some(AppAction::Exit);
             }
 
             Keycode::Up => {
@@ -872,11 +892,11 @@ impl SnemulatorApp {
             }
             Keycode::A => {
                 self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::Y, true);
+                    .set_button(ControllerPlayer::Player1, JoypadButton::X, true);
             }
             Keycode::S => {
                 self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::X, true);
+                    .set_button(ControllerPlayer::Player1, JoypadButton::Y, true);
             }
             Keycode::Q => {
                 self.snem_core
@@ -929,11 +949,11 @@ impl SnemulatorApp {
             }
             Keycode::A => {
                 self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::Y, false);
+                    .set_button(ControllerPlayer::Player1, JoypadButton::X, false);
             }
             Keycode::S => {
                 self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::X, false);
+                    .set_button(ControllerPlayer::Player1, JoypadButton::Y, false);
             }
             Keycode::Q => {
                 self.snem_core
@@ -1464,17 +1484,19 @@ impl SnemulatorApp {
             &mut self.audio_manager,
         );
 
-        match debug_action {
-            AppAction::SetPaused(paused) => {
-                self.set_paused(paused);
+        if let Some(action) = debug_action {
+            match action {
+                AppAction::SetPaused(paused) => {
+                    self.set_paused(paused);
+                }
+                AppAction::ResetCore => {
+                    self.reset_emulation(false);
+                }
+                AppAction::PowerOnCore => {
+                    self.reset_emulation(true);
+                }
+                _ => {}
             }
-            AppAction::ResetCore => {
-                self.reset_emulation(false);
-            }
-            AppAction::PowerOnCore => {
-                self.reset_emulation(true);
-            }
-            _ => {}
         }
     }
 
