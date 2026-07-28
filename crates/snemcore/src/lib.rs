@@ -390,6 +390,7 @@ impl Snemulator {
         &mut self,
         frame_buffer: &mut [u8],
         audio_buffer: &mut Vec<i16>,
+        audio_sample_skip: usize,
         harness: &mut H,
     ) {
         self.frame_ready = false;
@@ -399,14 +400,20 @@ impl Snemulator {
                 return;
             }
 
-            self.cycle(frame_buffer, audio_buffer, harness);
+            self.cycle(frame_buffer, audio_buffer, audio_sample_skip, harness);
         }
 
         self.dma.hdma_needs_init = true;
         self.frame += 1;
     }
 
-    fn cycle<H: DebugHarness>(&mut self, frame_buffer: &mut [u8], audio_buffer: &mut Vec<i16>, harness: &mut H) {
+    fn cycle<H: DebugHarness>(
+        &mut self,
+        frame_buffer: &mut [u8],
+        audio_buffer: &mut Vec<i16>,
+        audio_sample_skip: usize,
+        harness: &mut H
+    ) {
         let clocks = self.cpu.clocks.min(self.ppu.clocks);
 
         self.cpu.clocks -= clocks;
@@ -435,7 +442,7 @@ impl Snemulator {
             self.cycle_cpu(harness);
         }
 
-        self.ssmp.cycle(clocks, audio_buffer, &mut self.apu_ports, harness);
+        self.ssmp.cycle(clocks, audio_buffer, &mut self.apu_ports, audio_sample_skip, harness);
 
         if self.ppu.scanline == VBLANK_START_SCANLINE
             && self.cpu_regs.joypad_autoread_en

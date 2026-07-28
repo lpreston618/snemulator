@@ -418,7 +418,7 @@ impl SuperDSP {
         (left_fir, right_fir)
     }
 
-    pub fn generate_sample(&mut self, audio_buffer: &mut Vec<i16>, bus: &mut SdspBus) {
+    pub fn generate_samples(&mut self, bus: &mut SdspBus) -> (i16, i16) {
         let mut left_sample: i16 = 0;
         let mut right_sample: i16 = 0;
 
@@ -495,8 +495,7 @@ impl SuperDSP {
         self.last_generated_left = left_sample;
         self.last_generated_right = right_sample;
 
-        audio_buffer.push(left_sample);
-        audio_buffer.push(right_sample);
+        (left_sample, right_sample)
     }
 
     fn generate_voice_sample(&mut self, bus: &mut SdspBus, voice_idx: usize) -> (i16, i16) {

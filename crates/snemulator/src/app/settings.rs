@@ -265,6 +265,7 @@ pub struct Settings {
     pub hotkeys: Hotkeys,
 
     // Emulation settings
+    pub fast_forward_en: bool,
     pub fast_forward_speed: u32,
     // pub rewind_enabled: bool,
     pub pause_on_minimize: bool,
@@ -308,6 +309,7 @@ impl Default for Settings {
 
             hotkeys: Hotkeys::default(),
 
+            fast_forward_en: false,
             fast_forward_speed: 4,
             // rewind_enabled: false,
             pause_on_minimize: true,
@@ -704,14 +706,12 @@ impl SettingsWindow {
     }
 
     fn render_emulation_tab(ui: &mut egui::Ui, settings: &mut Settings) {
+        ui.checkbox(&mut settings.fast_forward_en, "Enable fast forward");
         ui.add(
             egui::Slider::new(&mut settings.fast_forward_speed, 2..=8)
                 .text("Fast forward speed (x)"),
         );
         // ui.checkbox(&mut settings.rewind_enabled, "Enable rewind");
-        // ui.add(
-        //     egui::Slider::new(&mut settings.save_state_slots, 1..=10).text("Save state slots"),
-        // );
     }
     
     pub fn id(&self) -> u32 {

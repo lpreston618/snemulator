@@ -32,6 +32,8 @@ pub struct Ssmp {
 
     sample_cycle_accumulator: usize,
     spc_cycle_accumulator: usize,
+
+    sample_skip_counter: usize,
 }
 
 impl Ssmp {
@@ -52,6 +54,8 @@ impl Ssmp {
 
             sample_cycle_accumulator: 0,
             spc_cycle_accumulator: 0,
+
+            sample_skip_counter: 0,
         }
     }
 
@@ -136,7 +140,14 @@ impl Ssmp {
 
     /// Clocks the sound processor, checking if it is time to generate a new
     /// sample and/or clock the S-DSP and SPC700 processors.
-    pub fn cycle<H: DebugHarness>(&mut self, clocks: usize, audio_buffer: &mut Vec<i16>, apu_regs: &mut ApuIoPorts, harness: &mut H) {
+    pub fn cycle<H: DebugHarness>(
+        &mut self,
+        clocks: usize,
+        audio_buffer: &mut Vec<i16>,
+        apu_regs: &mut ApuIoPorts,
+        audio_sample_skip: usize,
+        harness: &mut H,
+    ) {
         self.sample_cycle_accumulator += clocks * AUDIO_SAMPLE_HZ;
         self.spc_cycle_accumulator += clocks * SPC_CLOCK_HZ;
 
@@ -150,7 +161,20 @@ impl Ssmp {
             };
 
             self.sdsp.clock_envelopes(&mut sdsp_bus, harness);
-            self.sdsp.generate_sample(audio_buffer, &mut sdsp_bus);
+            
+            let (left_sample, right_sample) = self.sdsp.generate_samples(&mut sdsp_bus);
+
+            if audio_sample_skip > 0 {
+                self.sample_skip_counter += 1;
+                self.sample_skip_counter %= audio_sample_skip;
+            } else {
+                self.sample_skip_counter = 0;
+            }
+
+            if self.sample_skip_counter == 0 {
+                audio_buffer.push(left_sample);
+                audio_buffer.push(right_sample);
+            }
 
             self.samples_generated += 1;
 

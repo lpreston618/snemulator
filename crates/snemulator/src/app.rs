@@ -581,14 +581,25 @@ impl SnemulatorApp {
     fn update_emulator(&mut self) {
         if self.state.loaded_rom_data.is_some()
             && !self.state.is_paused
-            // && self.settings_window.is_none()
             && (!self.state.is_minimized || !self.settings.pause_on_minimize)
         {
-            self.snem_core.run_frame(
-                &mut self.frame_buffer[..],
-                &mut self.audio_buffer,
-                &mut self.debug_harness,
-            );
+            if self.settings.fast_forward_en {
+                for _ in 0..self.settings.fast_forward_speed {
+                    self.snem_core.run_frame(
+                        &mut self.frame_buffer[..],
+                        &mut self.audio_buffer,
+                        self.settings.fast_forward_speed as usize,
+                        &mut self.debug_harness,
+                    );
+                }
+            } else {
+                self.snem_core.run_frame(
+                    &mut self.frame_buffer[..],
+                    &mut self.audio_buffer,
+                    0,
+                    &mut self.debug_harness,
+                );
+            }
         }
     }
 
@@ -1397,7 +1408,7 @@ impl SnemulatorApp {
             return;
         }
 
-        self.set_paused(true);
+        // self.set_paused(true);
 
         let settings_egui_window = Self::create_window(
             "Settings",
