@@ -93,7 +93,9 @@ impl Ppu5C7x {
             obj_sprite_size: regs.obj_sprite_size,
             name_base_addr: regs.name_base_addr,
             name_secondary_base_addr: regs.name_secondary_base_addr,
-            oam_write_high_table: regs.oam_address_high_table,
+            oam_high_table_reload: regs.oam_high_table_reload,
+            oam_address_high_table: regs.oam_address_high_table,
+            oam_addr_reload: regs.oam_addr_reload,
             internal_oam_addr: regs.internal_oam_addr,
             priority_rotation: regs.priority_rotation_en,
             priority_rotation_idx: regs.priority_rotation_idx,
@@ -176,7 +178,9 @@ impl Ppu5C7x {
         regs.obj_sprite_size = state.obj_sprite_size;
         regs.name_base_addr = state.name_base_addr;
         regs.name_secondary_base_addr = state.name_secondary_base_addr;
-        regs.oam_address_high_table = state.oam_write_high_table;
+        regs.oam_high_table_reload = state.oam_high_table_reload;
+        regs.oam_address_high_table = state.oam_address_high_table;
+        regs.oam_addr_reload = state.oam_addr_reload;
         regs.internal_oam_addr = state.internal_oam_addr;
         regs.priority_rotation_en = state.priority_rotation;
         regs.priority_rotation_idx = state.priority_rotation_idx;

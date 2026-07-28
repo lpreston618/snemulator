@@ -148,7 +148,6 @@ pub struct PpuRegs {
     pub cgram_addr: u8,
     pub cgram_latch: u8,
 
-
     // $2126    LLLL LLLL    Write Only
     //       - Window 1 left position (L)
     pub w1_left_pos: u8,
