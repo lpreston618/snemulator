@@ -214,14 +214,17 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
 
                 ppu_regs.counter_toggle = true;
 
-                0 // CPU OPEN BUS
+                *self.open_bus_value
             }
 
             0x2138 => {
-                let data = self.raw_oam[ppu_regs.internal_oam_addr as usize];
-                
-                ppu_regs.internal_oam_addr += 1;
-                ppu_regs.internal_oam_addr %= OAM_SIZE as u16;
+                let data = if ppu_regs.oam_address_high_table {
+                    self.raw_oam[0x200 | (ppu_regs.internal_oam_addr & 0x1F) as usize]
+                } else {
+                    self.raw_oam[(ppu_regs.internal_oam_addr & 0x1FF) as usize]
+                };
+
+                ppu_regs.inc_oam_addr();
 
                 data
             }
@@ -332,10 +335,15 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
 
         match offset {
             0x2100 => {
-                // let old_fblank = self.ppu_regs.in_fblank;
+                let old_fblank = self.ppu_regs.in_fblank;
                 self.ppu_regs.in_fblank = get_bit_n!(value, 7);
                 self.ppu_regs.screen_brightness = value & 0x0F;
 
+                if old_fblank && !self.ppu_regs.in_fblank {
+                    self.ppu_regs.internal_oam_addr = self.ppu_regs.oam_addr_reload;
+                    self.ppu_regs.oam_address_high_table = self.ppu_regs.oam_high_table_reload;
+                }
+                
                 // if H::IS_DEBUGGING_HARNESS && H::TRACK_FBLANK {
                 //     if !old_fblank && self.ppu_regs.in_fblank {
                 //         *self.fblank_start = true;
@@ -361,13 +369,17 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
 
                 if internal_oam_addr & 1 == 0 {
                     ppu_regs.oam_data_latch = value;
-                } else if !ppu_regs.oam_write_high_table {
+                } else if !ppu_regs.oam_address_high_table {
                     self.raw_oam[internal_oam_addr - 1] = ppu_regs.oam_data_latch;
                     self.raw_oam[internal_oam_addr] = value;
 
                     let sprite_idx = (internal_oam_addr - 1) >> 2;
                     let sprite_byte = (internal_oam_addr - 1) & 3;
                     let sprite = &mut self.oam[sprite_idx];
+
+                    if sprite_idx == 0 && sprite_byte == 2 {
+                        log::debug!("Write to OAM[${internal_oam_addr:03X}] (Sprite {sprite_idx} tile) w/ 0x{:02X}", ppu_regs.oam_data_latch);
+                    }
 
                     match sprite_byte {
                         0 => sprite.write_byte0(ppu_regs.oam_data_latch),
@@ -381,6 +393,10 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
                     let sprite_byte = internal_oam_addr & 3;
                     let sprite = &mut self.oam[sprite_idx];
 
+                    if sprite_idx == 0 && sprite_byte == 2 {
+                        log::debug!("Write to OAM[${internal_oam_addr:03X}] (Sprite {sprite_idx} tile) w/ 0x{value:02X}");
+                    }
+
                     match sprite_byte {
                         0 => sprite.write_byte0(value),
                         1 => sprite.write_byte1(value),
@@ -390,7 +406,7 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
                     }
                 }
 
-                if ppu_regs.oam_write_high_table {
+                if ppu_regs.oam_address_high_table {
                     self.raw_oam[0x200 | internal_oam_addr & 0x1F] = value;
 
                     let sprite_idx = (internal_oam_addr & 0x1F) << 2;
@@ -405,12 +421,7 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
                     }
                 }
 
-                ppu_regs.internal_oam_addr += 1;
-                ppu_regs.internal_oam_addr &= 0x1FF;
-
-                if ppu_regs.internal_oam_addr == 0 {
-                    ppu_regs.oam_write_high_table = !ppu_regs.oam_write_high_table;
-                }
+                ppu_regs.inc_oam_addr();
             }
 
             0x2105 => {

@@ -93,7 +93,7 @@ impl Ppu5C7x {
             obj_sprite_size: regs.obj_sprite_size,
             name_base_addr: regs.name_base_addr,
             name_secondary_base_addr: regs.name_secondary_base_addr,
-            oam_write_high_table: regs.oam_write_high_table,
+            oam_write_high_table: regs.oam_address_high_table,
             internal_oam_addr: regs.internal_oam_addr,
             priority_rotation: regs.priority_rotation,
             priority_rotation_idx: regs.priority_rotation_idx,
@@ -176,7 +176,7 @@ impl Ppu5C7x {
         regs.obj_sprite_size = state.obj_sprite_size;
         regs.name_base_addr = state.name_base_addr;
         regs.name_secondary_base_addr = state.name_secondary_base_addr;
-        regs.oam_write_high_table = state.oam_write_high_table;
+        regs.oam_address_high_table = state.oam_write_high_table;
         regs.internal_oam_addr = state.internal_oam_addr;
         regs.priority_rotation = state.priority_rotation;
         regs.priority_rotation_idx = state.priority_rotation_idx;
@@ -1918,6 +1918,9 @@ impl Ppu5C7x {
             if cpu_regs.vblank_nmi_en {
                 bus.cpu_regs.nmi_pending = true;
             }
+
+            bus.ppu_regs.internal_oam_addr = bus.ppu_regs.oam_addr_reload;
+            bus.ppu_regs.oam_address_high_table = bus.ppu_regs.oam_high_table_reload;
 
             self.frame += 1;
             *bus.frame_ready = true;

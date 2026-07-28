@@ -30,7 +30,9 @@ pub struct PpuRegs {
     //       - OAM word address (A)
     //       - Priority rotation (P)
     //       - Address high bit / table select (B)
-    pub oam_write_high_table: bool,
+    pub oam_high_table_reload: bool,
+    pub oam_address_high_table: bool,
+    pub oam_addr_reload: u16,
     pub internal_oam_addr: u16,
     pub priority_rotation: bool,
     pub priority_rotation_idx: u8,
@@ -360,12 +362,14 @@ impl PpuRegs {
 
     pub fn write_2102(&mut self, value: u8) {
         self.priority_rotation_idx = value & 0xFE;
-        self.internal_oam_addr = (value as u16) << 1;
+        self.oam_addr_reload = (value as u16) << 1;
+        self.internal_oam_addr = self.oam_addr_reload;
     }
 
     pub fn write_2103(&mut self, value: u8) {
-        self.oam_write_high_table = get_bit_n!(value, 0);
+        self.oam_high_table_reload = get_bit_n!(value, 0);
         self.priority_rotation = get_bit_n!(value, 7);
+        self.oam_address_high_table = self.oam_high_table_reload;
     }
 
     pub fn write_2105(&mut self, value: u8) {
@@ -856,6 +860,8 @@ impl PpuRegs {
         self.overscan_en = get_bit_n!(value, 2);
         self.obj_interlace_en = get_bit_n!(value, 1);
         self.screen_interlace_en = get_bit_n!(value, 0);
+
+        log::debug!("Scr interlace: {}, Obj interlace: {}", self.screen_interlace_en, self.obj_interlace_en);
     }
 
     pub fn update_multiply_result(&mut self) {
@@ -904,6 +910,20 @@ impl PpuRegs {
         };
 
         self.vram_addr += inc;
+    }
+
+    pub fn inc_oam_addr(&mut self) {
+        self.internal_oam_addr += 1;
+
+        if self.oam_address_high_table {
+            self.internal_oam_addr &= 0x1F;
+        } else {
+            self.internal_oam_addr &= 0x1FF;
+        }
+
+        if self.internal_oam_addr == 0 {
+            self.oam_address_high_table = !self.oam_address_high_table;
+        }
     }
 
     pub fn apply_window_signal(&self, win_settings: &WindowSettings) -> bool {
