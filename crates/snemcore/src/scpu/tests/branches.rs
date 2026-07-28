@@ -41,6 +41,11 @@ fn test_bra_relative_forward() {
     assert_eq!(cpu.pb, 0x00);
     assert_eq!(cpu.pc, 0x8012, "BRA forward: 0x8002 + 0x10 = 0x8012");
     assert!(cpu.branch_taken, "BRA must set branch_taken");
+    // BRA is 3 cycles here (3+e*p, e=1 emulation mode, p=0 no page cross).
+    // 2 cycles move a byte over the bus (opcode fetch, operand fetch), the
+    // remaining 1 (adding the offset to PC) is internal:
+    // 2 * 8 + 1 * 6 = 22 master clocks.
+    assert_eq!(cpu.clocks, 22, "BRA (no page cross, emulation mode) must take 22 master clocks (2 bus bytes + 1 internal cycle)");
 }
 
 /// Test 40: BRA — Relative 8-bit addressing (backward)
@@ -66,6 +71,9 @@ fn test_bra_relative_backward() {
     assert_eq!(cpu.pb, 0x00);
     assert_eq!(cpu.pc, 0x8000, "BRA backward: 0x8002 + (-2) = 0x8000");
     assert!(cpu.branch_taken);
+    // Same page as the forward case, so p=0; e=1. 2 bus bytes + 1 internal
+    // cycle: 2 * 8 + 1 * 6 = 22 master clocks.
+    assert_eq!(cpu.clocks, 22, "BRA (no page cross, emulation mode) must take 22 master clocks (2 bus bytes + 1 internal cycle)");
 }
 
 /// Test 41: BRL — Relative long 16-bit addressing (forward)
@@ -92,6 +100,10 @@ fn test_brl_relative_long_forward() {
     assert_eq!(cpu.pb, 0x00);
     assert_eq!(cpu.pc, 0x9003, "BRL forward: 0x8003 + 0x1000 = 0x9003");
     assert!(cpu.branch_taken, "BRL must set branch_taken");
+    // BRL is a fixed 4-cycle instruction. 3 cycles move a byte over the bus
+    // (opcode fetch + 2 operand bytes), 1 is internal (adding the 16-bit
+    // offset to PC): 3 * 8 + 1 * 6 = 30 master clocks.
+    assert_eq!(cpu.clocks, 30, "BRL must take 30 master clocks (3 bus bytes + 1 internal cycle)");
 }
 
 /// Test 42: BRL — Relative long 16-bit addressing (backward)
@@ -118,6 +130,7 @@ fn test_brl_relative_long_backward() {
     assert_eq!(cpu.pb, 0x00);
     assert_eq!(cpu.pc, 0x8000, "BRL backward: 0x8003 + (-3) = 0x8000");
     assert!(cpu.branch_taken);
+    assert_eq!(cpu.clocks, 30, "BRL must take 30 master clocks (3 bus bytes + 1 internal cycle)");
 }
 
 /// Test 43: BRL — Relative long 16-bit addressing (large forward)
@@ -144,4 +157,5 @@ fn test_brl_relative_long_max_forward() {
     assert_eq!(cpu.pb, 0x00);
     assert_eq!(cpu.pc, 0xFFFF, "BRL: 0x8003 + 0x7FFC = 0xFFFF");
     assert!(cpu.branch_taken);
+    assert_eq!(cpu.clocks, 30, "BRL must take 30 master clocks (3 bus bytes + 1 internal cycle)");
 }

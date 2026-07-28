@@ -65,6 +65,12 @@ fn test_mvn_block_move_single_byte() {
     assert_eq!(cpu.y, 0x2001, "Y must be incremented");
     assert_eq!(cpu.db, 0x7E, "DBR must be set to destination bank");
     assert_eq!(cpu.pc, 0x8003, "PC advances past MVN once A wraps");
+    // MVN is a fixed 7-cycle instruction per byte moved. 5 cycles move a
+    // byte over the bus (opcode fetch, dst-bank operand, src-bank operand,
+    // source data read, destination data write); the remaining 2 (decrement
+    // A, increment X/Y and set DBR) are internal:
+    // 5 * 8 + 2 * 6 = 52 master clocks.
+    assert_eq!(cpu.clocks, 52, "MVN single-byte step must take 52 master clocks (5 bus bytes + 2 internal cycles)");
     let mut bus = backing.bus(&mut harness);
     assert_eq!(
         cpu.read(&mut bus, addr(0x7E, 0x2000)),
@@ -115,6 +121,9 @@ fn test_mvn_block_move_multi_byte_steps() {
     assert_eq!(cpu.a, 0x0001);
     assert_eq!(cpu.x, 0x1001);
     assert_eq!(cpu.y, 0x2001);
+    // Each MVN step is 52 master clocks (see single-byte test: 5 bus bytes +
+    // 2 internal cycles). clocks is not reset between steps, so this accumulates.
+    assert_eq!(cpu.clocks, 52, "After step 1, clocks must reflect one MVN step (52 master clocks)");
 
     // Step 2
     {
@@ -125,6 +134,7 @@ fn test_mvn_block_move_multi_byte_steps() {
     assert_eq!(cpu.a, 0x0000);
     assert_eq!(cpu.x, 0x1002);
     assert_eq!(cpu.y, 0x2002);
+    assert_eq!(cpu.clocks, 104, "After step 2, clocks must reflect two MVN steps (104 master clocks)");
 
     // Step 3 (final — A wraps to 0xFFFF, PC advances)
     {
@@ -136,6 +146,7 @@ fn test_mvn_block_move_multi_byte_steps() {
     assert_eq!(cpu.x, 0x1003);
     assert_eq!(cpu.y, 0x2003);
     assert_eq!(cpu.db, 0x7E);
+    assert_eq!(cpu.clocks, 156, "After step 3, clocks must reflect three MVN steps (156 master clocks)");
 
     let mut bus = backing.bus(&mut harness);
     assert_eq!(cpu.read(&mut bus, addr(0x7E, 0x2000)), 0x11);

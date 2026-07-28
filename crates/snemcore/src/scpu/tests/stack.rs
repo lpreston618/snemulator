@@ -46,6 +46,14 @@ fn test_pha_emulation_stack_wrap() {
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.sp, 0x01FF, "SP must wrap to 0x01FF after push at 0x0100");
+    // On the 65816, cycles that don't move a byte over the bus are pure
+    // internal cycles (fixed 6 master clocks), not dummy bus transfers like
+    // on the NMOS 6502. PHA (m=1) is 3 cycles total; 2 of those move a byte
+    // over the bus (opcode fetch, stack-push write), so 1 is internal:
+    // 2 * 8 (slow ROM/WRAM access) + 1 * 6 (internal) = 22 master clocks.
+    // Checked before the verification read below, since that read is itself
+    // an instrumented bus access that would add its own clocks.
+    assert_eq!(cpu.clocks, 22, "PHA (emulation mode, 8-bit) must take 22 master clocks (2 bus bytes + 1 internal cycle)");
     let mut bus = backing.bus(&mut harness);
     let pushed = cpu.read(&mut bus, addr(0x00, 0x0100));
     assert_eq!(pushed, 0xAB, "Byte should land at 0x0100 (the pre-decrement slot)");
@@ -75,6 +83,10 @@ fn test_pla_emulation_stack_wrap() {
     }
     assert_eq!(cpu.sp, 0x0100, "SP must wrap to 0x0100 after pull at 0x01FF");
     assert_eq!(cpu.a & 0x00FF, 0x0077);
+    // PLA (m=1) is 4 cycles total (5-m). Only 2 cycles move a byte over the
+    // bus (opcode fetch, pull read); the other 2 (SP increment, register
+    // load) are internal: 2 * 8 + 2 * 6 = 28 master clocks.
+    assert_eq!(cpu.clocks, 28, "PLA (emulation mode, 8-bit) must take 28 master clocks (2 bus bytes + 2 internal cycles)");
 }
 
 /// Test 12: PHA — Native mode push does not force page 1
@@ -102,6 +114,10 @@ fn test_pha_native_no_page1_forcing() {
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.sp, 0x1FFE);
+    // Same as the emulation-mode case: PHA (m=1) is 3 cycles, 2 of which move
+    // a byte over the bus (opcode fetch, push write), 1 internal.
+    // 2 * 8 + 1 * 6 = 22 master clocks. Checked before the verification read below.
+    assert_eq!(cpu.clocks, 22, "PHA (native mode, 8-bit) must take 22 master clocks (2 bus bytes + 1 internal cycle)");
     let mut bus = backing.bus(&mut harness);
     assert_eq!(cpu.read(&mut bus, addr(0x00, 0x1FFF)), 0xCD);
 }
@@ -132,6 +148,11 @@ fn test_phd_emulation_no_wrap() {
         cpu.execute(&mut bus);
     }
     assert_eq!(cpu.sp, 0x01FE, "SP must be wrapped after instruction in emulation mode");
+    // PHD is a fixed 4-cycle instruction, pushing 2 bytes (16-bit D register).
+    // 3 cycles move a byte over the bus (opcode fetch + 2 push bytes),
+    // 1 is internal: 3 * 8 + 1 * 6 = 30 master clocks.
+    // Checked before the verification reads below.
+    assert_eq!(cpu.clocks, 30, "PHD must take 30 master clocks (3 bus bytes + 1 internal cycle)");
     let mut bus = backing.bus(&mut harness);
     assert_eq!(cpu.read(&mut bus, addr(0x00, 0x0100)), 0xBE);
     assert_eq!(cpu.read(&mut bus, addr(0x00, 0x00FF)), 0xEF, "PHD must not wrap SP during instruction in emulation mode");
