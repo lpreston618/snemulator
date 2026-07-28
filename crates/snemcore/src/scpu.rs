@@ -60,9 +60,9 @@ pub struct Cpu65c816 {
 // SNES System Functionality
 impl Cpu65c816 {
     /// Number of system clocks in a single slow cpu cycle (e.g. a typical bus read/write)
-    const SLOW_CYCLE_CLOCKS: usize = 8;
+    pub const SLOW_CYCLE_CLOCKS: usize = 8;
     /// Number of system clocks in a single cpu cycle
-    const CYCLE_CLOCKS: usize = 6;
+    pub const CYCLE_CLOCKS: usize = 6;
 
     // Creates a new, uninitialized 65c816 CPU
     pub fn new() -> Self {

@@ -75,12 +75,6 @@ pub struct CpuIoState {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct ApuPortState {
-    pub apuio: [u8; 4],
-    pub cpuio: [u8; 4],
-}
-
-#[derive(Serialize, Deserialize)]
 pub struct PpuState {
     pub dot: usize,
     pub scanline: usize,

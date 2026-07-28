@@ -4,7 +4,7 @@ use controller::{ControllerPlayer, JoypadButton, SnemController};
 use dma::DmaController;
 use scpu::bus::CpuBus;
 use scpu::ioregs::CpuIoRegs;
-use scpu::{Cpu65c816, CpuInterrupt};
+use scpu::Cpu65c816;
 use sppu::bus::PpuBus;
 use sppu::color::Color;
 use sppu::regs::PpuRegs;
@@ -17,7 +17,7 @@ use rand::rngs::StdRng;
 
 use crate::controller::ControllerData;
 use crate::debug::DebugHarness;
-use crate::savestate::{ApuPortState, SaveState};
+use crate::savestate::SaveState;
 use crate::sppu::{OAMSprite, VBLANK_START_SCANLINE};
 use crate::sysinfo::{CLOCKS_BETWEEN_AUTOREAD_STEPS, DRAM_REFRESH_CLOCKS, DRAM_REFRESH_START_DOT, OAM_SPRITE_COUNT};
 
@@ -245,6 +245,7 @@ impl Snemulator {
                 self.controller_data = state.controller_data.clone();
                 self.cart.as_mut().unwrap().layout.coprocessor = state.coprocessor;
                 self.frame = state.frame;
+                self.ppu.frame = self.frame as usize;
                 self.frame_ready = state.frame_ready;
 
                 self.fill_oam_from_raw();
@@ -434,7 +435,7 @@ impl Snemulator {
                 
                 let bytes_transferred = self.dma.do_hdma(&mut bus);
             
-                self.cpu.clocks += bytes_transferred * 6; // TODO: Update with actual cycle counts
+                self.cpu.clocks += bytes_transferred * Cpu65c816::CYCLE_CLOCKS;
             }
         }
 
@@ -471,11 +472,10 @@ impl Snemulator {
     fn cycle_cpu<H: DebugHarness>(&mut self, harness: &mut H) {
         self.cpu.stopped = false;
 
-        if self.dma.hdma_needs_init && self.ppu.scanline == 0
-        {
-            self.dma.hdma_needs_init = false;
+        if self.dma.hdma_needs_init && self.ppu.scanline == 0 {
             let mut bus = dma_bus!(self, harness);
             self.dma.hdma_init_channels(&mut bus);
+            self.dma.hdma_needs_init = false;
         }
 
         self.cpu.stopped = if self.dma.dma_active_ch < 8 {

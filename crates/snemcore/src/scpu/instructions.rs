@@ -214,9 +214,9 @@ impl Cpu65c816 {
         0, 2, 1, 2, 2, 2, 2, 1, 1, 1, 1, 1, 0, 1, 1, 0,
         0, 2, 0, 1, 1, 1, 1, 1, 1, 0, 1, 2, 0, 0, 0, 1,
         0, 2, 1, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 0,
-        0, 2, 1, 1, 1, 1, 2, 1, 1, 0, 1, 2, 0, 0, 1, 1,
+        0, 2, 1, 1, 1, 1, 1, 1, 1, 0, 1, 2, 0, 0, 1, 1,
         0, 2, 1, 2, 1, 2, 3, 1, 1, 1, 1, 2, 0, 1, 2, 0,
-        0, 2, 1, 1, 1, 1, 2, 1, 1, 0, 1, 2, 0, 0, 1, 1,
+        0, 2, 1, 1, 1, 1, 1, 1, 1, 0, 1, 2, 0, 0, 1, 1,
         0, 2, 1, 2, 0, 2, 3, 1, 1, 1, 2, 1, 1, 1, 2, 0,
     ];
 
@@ -489,7 +489,7 @@ impl Cpu65c816 {
         if self.branch_taken {
             self.clocks += Self::CYCLE_CLOCKS;
 
-            if self.e {
+            if self.e && self.page_crossed {
                 self.clocks += Self::CYCLE_CLOCKS;
             }
         }
@@ -593,6 +593,8 @@ impl Cpu65c816 {
     }
 
     fn direct<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
+        if self.dp & 0xFF != 0 { self.clocks += Self::CYCLE_CLOCKS };
+
         Address {
             bank: 0,
             offset: self.dp + self.read_prg(bus) as u16,
@@ -600,6 +602,8 @@ impl Cpu65c816 {
     }
 
     fn direct_x<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
+        if self.dp & 0xFF != 0 { self.clocks += Self::CYCLE_CLOCKS };
+
         let data = self.read_prg(bus);
 
         let offset = if self.e && (self.dp & 0xFF) == 0 {
@@ -612,6 +616,8 @@ impl Cpu65c816 {
     }
 
     fn direct_y<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
+        if self.dp & 0xFF != 0 { self.clocks += Self::CYCLE_CLOCKS };
+
         let data = self.read_prg(bus);
 
         let offset = if self.e && (self.dp & 0xFF) == 0 {
@@ -624,6 +630,8 @@ impl Cpu65c816 {
     }
 
     fn direct_indirect<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
+        if self.dp & 0xFF != 0 { self.clocks += Self::CYCLE_CLOCKS };
+
         let data = self.read_prg(bus);
 
         let ptr_lo = self.dp + data as u16;
@@ -655,6 +663,8 @@ impl Cpu65c816 {
     }
 
     fn direct_indirect_long<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
+        if self.dp & 0xFF != 0 { self.clocks += Self::CYCLE_CLOCKS };
+
         let data = self.read_prg(bus);
 
         let ptr_lo = self.dp + data as u16;
@@ -690,6 +700,8 @@ impl Cpu65c816 {
     }
 
     fn direct_x_indirect<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> Address {
+        if self.dp & 0xFF != 0 { self.clocks += Self::CYCLE_CLOCKS };
+
         let data = self.read_prg(bus);
 
         let ptr_lo = if self.e && (self.dp & 0xFF) == 0 {
