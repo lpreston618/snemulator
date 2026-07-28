@@ -405,6 +405,8 @@ impl PpuRegs {
             7 => BgMode::Mode7,
             _ => unreachable!(),
         };
+
+        log::debug!("Bg Mode: {:?}", self.bg_mode);
     }
 
     pub fn write_2106(&mut self, value: u8) {

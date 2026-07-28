@@ -44,7 +44,6 @@ pub struct DmaRegs {
     pub unused: u8,
 
     pub hdma_entry_just_loaded: bool, // Whether an HDMA entry was just loaded this cycle, used to determine when to decrement scanlines_left
-    pub hdma_initialized: bool,
     pub hdma_do_transfer: bool, // Set on entry load, cleared after first transfer for non-repeat entries
 
     pub dma_bytes_transferred: usize, // Mostly for debug purposes
@@ -65,7 +64,6 @@ impl DmaRegs {
             scanlines_left: self.scanlines_left,
             unused: self.unused,
             hdma_entry_just_loaded: self.hdma_entry_just_loaded,
-            hdma_initialized: self.hdma_initialized,
             hdma_do_transfer: self.hdma_do_transfer,
             dma_bytes_transferred: self.dma_bytes_transferred,
         }
@@ -109,7 +107,6 @@ impl DmaRegs {
         self.scanlines_left = state.scanlines_left;
         self.unused = state.unused;
         self.hdma_entry_just_loaded = state.hdma_entry_just_loaded;
-        self.hdma_initialized = state.hdma_initialized;
         self.hdma_do_transfer = state.hdma_do_transfer;
         self.dma_bytes_transferred = state.dma_bytes_transferred;
     }

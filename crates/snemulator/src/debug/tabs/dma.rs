@@ -218,7 +218,6 @@ impl DmaTab {
             detail_row(ui, t, "Lines Left",   &format_scanlines_left(regs.scanlines_left, t));
             detail_row(ui, t, "Repeat",       &format_bool(regs.hdma_repeat_flag, t));
             detail_row(ui, t, "Do Transfer",  &format_bool(regs.hdma_do_transfer, t));
-            detail_row(ui, t, "Initialized",  &format_bool(regs.hdma_initialized, t));
             detail_row(ui, t, "Entry Loaded", &format_bool(regs.hdma_entry_just_loaded, t));
         });
         ui.add_space(4.0);

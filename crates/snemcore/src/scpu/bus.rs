@@ -343,7 +343,7 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
                     self.ppu_regs.internal_oam_addr = self.ppu_regs.oam_addr_reload;
                     self.ppu_regs.oam_address_high_table = self.ppu_regs.oam_high_table_reload;
                 }
-                
+
                 // if H::IS_DEBUGGING_HARNESS && H::TRACK_FBLANK {
                 //     if !old_fblank && self.ppu_regs.in_fblank {
                 //         *self.fblank_start = true;
@@ -377,10 +377,6 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
                     let sprite_byte = (internal_oam_addr - 1) & 3;
                     let sprite = &mut self.oam[sprite_idx];
 
-                    if sprite_idx == 0 && sprite_byte == 2 {
-                        log::debug!("Write to OAM[${internal_oam_addr:03X}] (Sprite {sprite_idx} tile) w/ 0x{:02X}", ppu_regs.oam_data_latch);
-                    }
-
                     match sprite_byte {
                         0 => sprite.write_byte0(ppu_regs.oam_data_latch),
                         1 => sprite.write_byte1(ppu_regs.oam_data_latch),
@@ -392,10 +388,6 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
                     let sprite_idx = internal_oam_addr >> 2;
                     let sprite_byte = internal_oam_addr & 3;
                     let sprite = &mut self.oam[sprite_idx];
-
-                    if sprite_idx == 0 && sprite_byte == 2 {
-                        log::debug!("Write to OAM[${internal_oam_addr:03X}] (Sprite {sprite_idx} tile) w/ 0x{value:02X}");
-                    }
 
                     match sprite_byte {
                         0 => sprite.write_byte0(value),

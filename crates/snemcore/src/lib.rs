@@ -404,6 +404,7 @@ impl Snemulator {
             self.cycle(frame_buffer, audio_buffer, harness);
         }
 
+        self.dma.hdma_needs_init = true;
         self.frame += 1;
     }
 
@@ -465,7 +466,10 @@ impl Snemulator {
     fn cycle_cpu<H: DebugHarness>(&mut self, harness: &mut H) {
         self.cpu.stopped = false;
 
-        if self.dma.hdma_needs_init && self.ppu.scanline == 0 {
+        if self.dma.hdma_needs_init
+            && self.ppu.scanline == 0
+            && self.dma.regs.iter().any(|ch| ch.hdma_en)
+        {
             self.dma.hdma_needs_init = false;
             let mut bus = dma_bus!(self, harness);
             self.dma.hdma_init_channels(&mut bus);

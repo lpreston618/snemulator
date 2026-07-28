@@ -236,7 +236,6 @@ pub struct DmaChannelState {
     pub scanlines_left: u8,
     pub unused: u8,
     pub hdma_entry_just_loaded: bool,
-    pub hdma_initialized: bool,
     pub hdma_do_transfer: bool,
     pub dma_bytes_transferred: usize,
 }

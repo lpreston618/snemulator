@@ -11,6 +11,8 @@ pub use regs::DmaRegs;
 
 pub struct DmaController {
     pub regs: [DmaRegs; 8],
+    /// Set once per frame so HDMA is initialized the next frame if need be.
+    /// HDMA is only initialized if there is a channel with HDMA enabled.
     pub hdma_needs_init: bool,
     pub dma_active_ch: usize,
     pub hdma_active_ch: usize,
@@ -92,9 +94,9 @@ impl DmaController {
     pub fn write_420C(&mut self, value: u8) {
         for i in 0..8 {
             self.regs[i].hdma_en = get_bit_n!(value, i);
-            self.regs[i].hdma_initialized = false; // Mark all as needing init
+            // self.regs[i].hdma_initialized = false; // Mark all as needing init
         }
-        self.hdma_needs_init = true;
+        // self.hdma_needs_init = true;
     }
 
     /// Returns whether a dma transfer occured
@@ -246,7 +248,7 @@ impl DmaController {
             
             self.hdma_load_entry(ch, bus);
 
-            self.regs[ch].hdma_initialized = true;
+            // self.regs[ch].hdma_initialized = true;
             
             if H::IS_DEBUGGING_HARNESS && H::TRACK_HDMA {
                 bus.harness.on_hdma_init(self, ch);
@@ -270,7 +272,6 @@ impl DmaController {
         regs.hdma_table_offset += 1;
 
         if scanline_count == 0 {
-            regs.hdma_en = false;
             return false;
         }
 
