@@ -3,7 +3,7 @@ use crate::scpu::ioregs::HVTimerIRQ;
 use crate::sppu::bus::PpuBus;
 use crate::sppu::regs::PpuRegs;
 use crate::sppu::utils::{interleave_2bpp, interleave_4bpp, interleave_8bpp};
-use crate::sysinfo::{SCREEN_HEIGHT, SCREEN_WIDTH};
+use crate::sysinfo::{OAM_SPRITE_COUNT, SCREEN_HEIGHT, SCREEN_WIDTH};
 use crate::{get_bit_n, savestate};
 
 pub use color::Color;
@@ -95,7 +95,7 @@ impl Ppu5C7x {
             name_secondary_base_addr: regs.name_secondary_base_addr,
             oam_write_high_table: regs.oam_address_high_table,
             internal_oam_addr: regs.internal_oam_addr,
-            priority_rotation: regs.priority_rotation,
+            priority_rotation: regs.priority_rotation_en,
             priority_rotation_idx: regs.priority_rotation_idx,
             oam_data_latch: regs.oam_data_latch,
             bg3_mode1_priority: regs.bg3_mode1_priority,
@@ -178,7 +178,7 @@ impl Ppu5C7x {
         regs.name_secondary_base_addr = state.name_secondary_base_addr;
         regs.oam_address_high_table = state.oam_write_high_table;
         regs.internal_oam_addr = state.internal_oam_addr;
-        regs.priority_rotation = state.priority_rotation;
+        regs.priority_rotation_en = state.priority_rotation;
         regs.priority_rotation_idx = state.priority_rotation_idx;
         regs.oam_data_latch = state.oam_data_latch;
         regs.bg3_mode1_priority = state.bg3_mode1_priority;
@@ -1965,7 +1965,18 @@ impl Ppu5C7x {
             self.y
         };
 
-        'find_scanline_sprites: for (sprite_idx, sprite) in bus.oam.iter().enumerate() {
+        let pri_rotation_en = regs.priority_rotation_en;
+        let pri_rotation_idx = regs.priority_rotation_idx as usize;
+
+        // Re-order all 128 OAM sprites to put priority_rotation_idx sprite
+        // as highest priority (if priority rotation enabled)
+        let oam_in_priority_order = bus.oam.iter()
+            .enumerate()
+            .cycle()
+            .skip(if pri_rotation_en { pri_rotation_idx } else { 0 })
+            .take(OAM_SPRITE_COUNT);
+
+        'find_scanline_sprites: for (sprite_idx, sprite) in oam_in_priority_order {
             let (spr_w, spr_h) = sprite.sprite_size(regs.obj_sprite_size);
 
             let max_x = sprite.x + spr_w as i16;

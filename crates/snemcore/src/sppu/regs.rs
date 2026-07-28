@@ -34,7 +34,7 @@ pub struct PpuRegs {
     pub oam_address_high_table: bool,
     pub oam_addr_reload: u16,
     pub internal_oam_addr: u16,
-    pub priority_rotation: bool,
+    pub priority_rotation_en: bool,
     pub priority_rotation_idx: u8,
 
     // $2104    DDDD DDDD    Write x2 Only
@@ -368,7 +368,7 @@ impl PpuRegs {
 
     pub fn write_2103(&mut self, value: u8) {
         self.oam_high_table_reload = get_bit_n!(value, 0);
-        self.priority_rotation = get_bit_n!(value, 7);
+        self.priority_rotation_en = get_bit_n!(value, 7);
         self.oam_address_high_table = self.oam_high_table_reload;
     }
 
@@ -405,8 +405,6 @@ impl PpuRegs {
             7 => BgMode::Mode7,
             _ => unreachable!(),
         };
-
-        log::debug!("Write to $2105 w/ {value:02X}, bg mode: {:?}", self.bg_mode);
     }
 
     pub fn write_2106(&mut self, value: u8) {
