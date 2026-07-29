@@ -59,9 +59,8 @@ impl CartridgeLayout {
                     if is_dsp_register(self.mode, addr) {
                         return Some(BusTarget::Chip(addr.offset));
                     }
-                }
-                Coprocessor::SuperFx(sfx) => { return None; },
-                c => todo!("Unimplemented coprocessor {c:?}"),
+                },
+                _ => panic!("unimplemented coprocessesor"),
             }
         }
 
@@ -243,16 +242,15 @@ pub struct Cartridge {
 }
 
 impl Cartridge {
-    pub fn cycle(&mut self, clocks: usize) -> usize {
-        if let Some(coprocessor) = self.layout.coprocessor.as_mut() {
-            match coprocessor {
-                Coprocessor::SuperFx(sfx) => sfx.cycle(clocks, &self.rom, &mut self.ram),
-                _ => 0,
-            }
-        } else {
-            0
-        }
-    }
+    // pub fn cycle(&mut self, clocks: usize) -> usize {
+    //     if let Some(coprocessor) = self.layout.coprocessor.as_mut() {
+    //         match coprocessor {
+    //             _ => 0,
+    //         }
+    //     } else {
+    //         0
+    //     }
+    // }
 
     pub fn interrupt_vector(&self, interrupt: CpuInterrupt, e: bool) -> u16 {
         match interrupt {
@@ -398,10 +396,16 @@ impl Cartridge {
         };
 
         cart.layout.coprocessor = if has_coprocessor {
-            Coprocessor::from_id(header_bytes[0x16] >> 4)
+            Some(Coprocessor::from_id(header_bytes[0x16] >> 4))
         } else {
             None
         };
+
+        if let Some(c) = &cart.layout.coprocessor {
+            if !c.is_implemented() {
+                return Err(format!("unimplemented coprocessor {}", c.label()));
+            }
+        }
 
         cart.rom_size_shift = header_bytes[0x17];
         cart.ram_size_shift = header_bytes[0x18];
@@ -499,8 +503,7 @@ impl Cartridge {
                             AddressMode::ExHiRom => unreachable!(),
                         }
                     },
-                    Coprocessor::SuperFx(sfx) => { 0 },
-                    c => todo!("Unimplemented coprocessor {c:?}"),
+                    _ => panic!("unimplemented coprocessesor"),
                 }
             }
         } else {
@@ -530,8 +533,7 @@ impl Cartridge {
                             AddressMode::ExHiRom => unreachable!(),
                         }
                     },
-                    Coprocessor::SuperFx(sfx) => {},
-                    c => todo!("Unimplemented coprocessor {c:?}"),
+                    _ => panic!("unimplemented coprocessesor"),
                 }
             }
         }
@@ -873,8 +875,7 @@ pub fn get_rom_meta(rom: Option<&[u8]>) -> RomHeaderMeta {
     let coprocessor_name = if !has_coprocessor {
         "None"
     } else {
-        Coprocessor::from_id(padded_rom[header_pos + 0x16] >> 4)
-            .map_or("Unimplemented", |c| c.label())
+        Coprocessor::from_id(padded_rom[header_pos + 0x16] >> 4).label()
     }.to_owned();
 
     let title_bytes = &padded_rom[header_pos..header_pos + 0x15];
