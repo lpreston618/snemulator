@@ -171,8 +171,12 @@ impl Cpu65c816 {
             return;
         }
 
-        if self.stopped || self.halted || self.waiting_for_interrupt {
+        if self.halted || self.waiting_for_interrupt {
             self.clocks += Self::CYCLE_CLOCKS;
+            return;
+        }
+
+        if self.stopped {
             return;
         }
 

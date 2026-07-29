@@ -183,7 +183,7 @@ impl Ssmp {
             }
         }
 
-        while self.spc_cycle_accumulator >= MASTER_CLOCK_HZ {
+        if self.spc_cycle_accumulator >= MASTER_CLOCK_HZ {
             self.spc_cycle_accumulator -= MASTER_CLOCK_HZ;
 
             let mut spc_bus = SpcBus {

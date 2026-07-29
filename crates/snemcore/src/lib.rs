@@ -478,12 +478,14 @@ impl Snemulator {
             self.dma.hdma_needs_init = false;
         }
 
-        self.cpu.stopped = if self.dma.dma_active_ch < 8 {
+        if self.dma.dma_active_ch < 8 {
             let mut bus = dma_bus!(self, harness);
-            self.dma.do_dma(&mut bus)
-        } else {
-            false
-        };
+            self.cpu.stopped = self.dma.do_dma(&mut bus);
+            
+            if self.cpu.stopped {
+                self.cpu.clocks += Cpu65c816::SLOW_CYCLE_CLOCKS;
+            }
+        }
 
         let mut bus = cpu_bus!(self, harness);
         self.cpu.cycle(&mut bus);

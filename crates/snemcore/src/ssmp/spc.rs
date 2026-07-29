@@ -99,7 +99,7 @@ impl Spc700 {
     }
 
     pub fn clock<H: DebugHarness>(&mut self, bus: &mut SpcBus<H>) {
-        if self.clocks == 0 {            
+        if self.clocks == 0 {
             self.exec_instr(bus);
 
             if H::IS_DEBUGGING_HARNESS && H::TRACK_SPC_INSTRUCTIONS {
