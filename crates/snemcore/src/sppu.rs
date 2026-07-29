@@ -646,17 +646,21 @@ impl Ppu5C7x {
         if !use_transparent_color {
             let bg_pal_idx = Self::mode7_color_idx(bus, tx, ty, do_tilemap_lookup);
 
-            if bus.ppu_regs.use_direct_col {
-                // treat our color index as color information: BBGGGRRR -> RRR00 GGG00 BB000
-                let r = (bg_pal_idx & 0x7) << 2;
-                let g = (bg_pal_idx & 0x38) >> 1;
-                let b = (bg_pal_idx & 0xC0) >> 3;
-                bg1_col = Some(Color { r: r, g: g, b: b });
+            if bg_pal_idx != 0 {
+                if bus.ppu_regs.use_direct_col {
+                    // treat our color index as color information: BBGGGRRR -> RRR00 GGG00 BB000
+                    let r = (bg_pal_idx & 0x7) << 2;
+                    let g = (bg_pal_idx & 0x38) >> 1;
+                    let b = (bg_pal_idx & 0xC0) >> 3;
+                    bg1_col = Some(Color { r: r, g: g, b: b });
+                } else {
+                    bg1_col = Some(bus.cgram[bg_pal_idx as usize]);
+                }
             } else {
-                bg1_col = Some(bus.cgram[bg_pal_idx as usize]);
+                bg1_col = None;
             }
 
-            if bus.ppu_regs.ext_bg_en {
+            if bus.ppu_regs.ext_bg_en && (bg_pal_idx & 0x7F) != 0 {
                 bg2_col = Some(bus.cgram[(bg_pal_idx & 0x7F) as usize]);
                 bg2_pri = get_bit_n!(bg_pal_idx, 7);
             } else {
