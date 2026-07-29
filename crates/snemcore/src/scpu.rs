@@ -225,18 +225,8 @@ impl Cpu65c816 {
 impl Cpu65c816 {
     /// Read a byte from the bus at a given address. Adds to cpu clocks.
     fn read<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address) -> u8 {
-        let cycles_taken = if bus.cpu_regs.fast_rom_en {
-            if addr.bank >= 0xC0 || (addr.bank >= 0x80 && addr.offset >= 0x8000) {
-                Self::CYCLE_CLOCKS
-            } else {
-                Self::SLOW_CYCLE_CLOCKS
-            }
-        } else {
-            Self::SLOW_CYCLE_CLOCKS
-        };
-
-        self.clocks += cycles_taken;
-        let value = bus.read(addr);
+        let (value, clocks_taken) = bus.read(addr);
+        self.clocks += clocks_taken;
 
         if H::IS_DEBUGGING_HARNESS && H::TRACK_MEMORY {
             bus.harness.on_memory_read(self, addr, value);
@@ -247,17 +237,16 @@ impl Cpu65c816 {
 
     /// Write a byte to the bus at a given address. Adds to cpu clocks.
     fn write<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>, addr: Address, value: u8) {
-        let cycles_taken = if bus.cpu_regs.fast_rom_en {
-            if addr.bank >= 0xC0 || (addr.bank >= 0x80 && addr.offset >= 0x8000) {
-                Self::CYCLE_CLOCKS
-            } else {
-                Self::SLOW_CYCLE_CLOCKS
-            }
+        let is_mmio = (addr.bank & 0x7F) <= 0x3F && (0x2000 <= addr.offset && addr.offset <= 0x7FFF);
+        let is_fast_rom = bus.cpu_regs.fast_rom_en && (addr.bank >= 0xC0 || (addr.bank >= 0x80 && addr.offset >= 0x8000));
+
+        let clocks_taken = if is_mmio || is_fast_rom {
+            Self::CYCLE_CLOCKS
         } else {
             Self::SLOW_CYCLE_CLOCKS
         };
 
-        self.clocks += cycles_taken;
+        self.clocks += clocks_taken;
         bus.write(addr, value);
 
         if H::IS_DEBUGGING_HARNESS && H::TRACK_MEMORY {
@@ -266,13 +255,12 @@ impl Cpu65c816 {
     }
 
     fn read_prg<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) -> u8 {
-        let pc = self.pc;
-        self.pc += 1;
-        self.clocks += Self::SLOW_CYCLE_CLOCKS;
-        let value = bus.read(Address {
+        let value = self.read(bus, Address {
             bank: self.pb,
-            offset: pc,
+            offset: self.pc,
         });
+        
+        self.pc += 1;
 
         if H::IS_DEBUGGING_HARNESS {
             self.prg_bytes.push(value);

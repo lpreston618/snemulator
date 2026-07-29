@@ -157,7 +157,7 @@ impl DmaController {
         dma_ch_regs.transfer_pattern_step %= dma_ch_regs.transfer_pattern_length();
         dma_ch_regs.inc_a_bus_addr();
 
-        let value = bus.read(src_addr);
+        let (value, _) = bus.read(src_addr);
         bus.write(dst_addr, value);
 
         if H::IS_DEBUGGING_HARNESS && H::TRACK_DMA {
@@ -199,7 +199,7 @@ impl DmaController {
                     Direction::BtoA => (b_bus_addr, a_bus_addr),
                 };
 
-                let value = bus.read(src_addr);
+                let (value, _) = bus.read(src_addr);
                 bus.write(dst_addr, value);
                 
                 hdma_ch_regs.transfer_pattern_step += 1;
@@ -269,7 +269,7 @@ impl DmaController {
             offset: regs.hdma_table_offset,
         };
 
-        let scanline_count = bus.read(table_addr);
+        let (scanline_count, _) = bus.read(table_addr);
         regs.hdma_table_offset += 1;
 
         if scanline_count == 0 {
@@ -288,10 +288,10 @@ impl DmaController {
                 bank: regs.a_bus_addr.bank,
                 offset: regs.hdma_table_offset,
             };
-            let lo = bus.read(lo_addr);
+            let (lo, _) = bus.read(lo_addr);
 
             let hi_addr = Address { offset: lo_addr.offset + 1, ..lo_addr };
-            let hi = bus.read(hi_addr);
+            let (hi, _) = bus.read(hi_addr);
 
             regs.hdma_table_offset += 2;
 

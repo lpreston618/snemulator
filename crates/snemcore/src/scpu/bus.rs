@@ -5,6 +5,7 @@ use crate::controller::ControllerData;
 use crate::dma::DmaController;
 use crate::dma::{AddressIncMode, Direction, TransferPattern};
 use crate::debug::DebugHarness;
+use crate::scpu::Cpu65c816;
 use crate::scpu::ioregs::CpuIoRegs;
 use crate::sppu::color::Color;
 use crate::sppu::regs::PpuRegs;
@@ -53,7 +54,8 @@ pub struct CpuBus<'a, H: DebugHarness> {
 }
 
 impl<'a, H: DebugHarness> CpuBus<'a, H> {
-    pub fn read(&mut self, addr: Address) -> u8 {
+    /// Returns value read and clocks taken
+    pub fn read(&mut self, addr: Address) -> (u8, usize) {
         let value = match addr.bank {
             // Banks $00-$3F: LoROM mapping
             0x00..=0x3F | 0x80..=0xBF => match addr.offset {
@@ -110,7 +112,16 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
 
         *self.open_bus_value = value;
 
-        value
+        let is_mmio = (addr.bank & 0x7F) <= 0x3F && (0x2000 <= addr.offset && addr.offset <= 0x7FFF);
+        let is_fast_rom = self.cpu_regs.fast_rom_en && (addr.bank >= 0xC0 || (addr.bank >= 0x80 && addr.offset >= 0x8000));
+
+        let clocks_taken = if is_mmio || is_fast_rom {
+            Cpu65c816::CYCLE_CLOCKS
+        } else {
+            Cpu65c816::SLOW_CYCLE_CLOCKS
+        };
+
+        (value, clocks_taken)
     }
 
     pub fn write(&mut self, addr: Address, value: u8) {
