@@ -11,7 +11,7 @@ const RAW_BASE_URL: &str =
     "https://raw.githubusercontent.com/libretro-thumbnails/\
      Nintendo_-_Super_Nintendo_Entertainment_System/master/Named_Boxarts";
 
-const MIN_SIMILARITY: f64 = 0.35;
+const MIN_SIMILARITY: f64 = 0.50;
 
 pub struct ThumbnailResult {
     pub stem: RomPathStem,

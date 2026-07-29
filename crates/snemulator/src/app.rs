@@ -260,6 +260,8 @@ impl SnemulatorApp {
             debug_window: None,
         };
 
+        app.settings.fast_forward_en = false;
+
         app.handle_args(args)?;
 
         app.random_seed = app.snem_core.get_random_seed();
