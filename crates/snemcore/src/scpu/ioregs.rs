@@ -190,6 +190,10 @@ impl CpuIoRegs {
             _ => unreachable!(),
         };
 
+        if matches!(self.hv_timer_irq_mode, HVTimerIRQ::None) {
+            self.hv_timer_irq_flag = false;
+        }
+
         if self.vblank_nmi_en && !old_nmi_en && self.vblank_nmi_flag {
             self.nmi_pending = true;
         }

@@ -47,6 +47,8 @@ pub struct Cpu65c816 {
     pub halted: bool,
     pub stopped: bool,
     pub waiting_for_interrupt: bool,
+    pub handle_nmi: bool,
+    pub handle_irq: bool,
 
     /// The number of clocks before the next instruction is executed
     pub clocks: usize,
@@ -81,6 +83,8 @@ impl Cpu65c816 {
             // Internal state
             halted: false,
             waiting_for_interrupt: false,
+            handle_nmi: false,
+            handle_irq: false,
 
             // Cycle tracking
             clocks: 0,
@@ -108,6 +112,7 @@ impl Cpu65c816 {
             halted: self.halted,
             stopped: self.stopped,
             waiting_for_interrupt: self.waiting_for_interrupt,
+            handle_nmi: self.handle_nmi,
             clocks: self.clocks,
         }
     }
@@ -126,6 +131,7 @@ impl Cpu65c816 {
         self.halted = state.halted;
         self.stopped = state.stopped;
         self.waiting_for_interrupt = state.waiting_for_interrupt;
+        self.handle_nmi = state.handle_nmi;
         self.clocks = state.clocks;
     }
 
@@ -159,16 +165,26 @@ impl Cpu65c816 {
         }
 
         if bus.cpu_regs.nmi_pending {
-            self.handle_interrupt(bus, CpuInterrupt::NMI);
-            bus.cpu_regs.nmi_pending = false;
-            self.waiting_for_interrupt = false;
-            return;
+            if self.handle_nmi {
+                self.handle_interrupt(bus, CpuInterrupt::NMI);
+                bus.cpu_regs.nmi_pending = false;
+                self.waiting_for_interrupt = false;
+                self.handle_nmi = false;
+                return;
+            }
+
+            self.handle_nmi = true; // Will handle NMI next cycle
         }
 
         if bus.cpu_regs.hv_timer_irq_flag && !self.is_flag_set(Flag::FlagI) {
-            self.handle_interrupt(bus, CpuInterrupt::IRQ);
-            self.waiting_for_interrupt = false;
-            return;
+            if self.handle_irq {
+                self.handle_interrupt(bus, CpuInterrupt::IRQ);
+                self.waiting_for_interrupt = false;
+                self.handle_irq = false;
+                return;
+            }
+
+            self.handle_irq = true;
         }
 
         if self.halted || self.waiting_for_interrupt {
@@ -211,6 +227,7 @@ impl Cpu65c816 {
         self.set_flag_to_bool(Flag::FlagD, false);
 
         let vector = bus.cart.interrupt_vector(interrupt, self.e);
+        self.clocks += 2 * Self::SLOW_CYCLE_CLOCKS; // Time taken to read interrupt vector
 
         self.pb = 0;
         self.pc = vector;

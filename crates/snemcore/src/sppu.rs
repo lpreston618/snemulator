@@ -1890,7 +1890,7 @@ impl Ppu5C7x {
         }
 
         // End of v-blank, scanline 0 is not visible
-        if self.dot == 0 && self.scanline == 0 {
+        if self.dot == 0x1E && self.scanline == 0 {
             cpu_regs.vblank_flag = false;
             cpu_regs.vblank_nmi_flag = false;
             *bus.vblank_end = true;
@@ -1918,7 +1918,7 @@ impl Ppu5C7x {
         }
 
         // Start of v-blank
-        if self.dot == 0 && self.scanline == VBLANK_START_SCANLINE {
+        if self.dot == 0x16 && self.scanline == VBLANK_START_SCANLINE {
             cpu_regs.vblank_flag = true;
             cpu_regs.vblank_nmi_flag = true;
             *bus.vblank_start = true;

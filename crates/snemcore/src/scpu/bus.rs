@@ -68,12 +68,14 @@ impl<'a, H: DebugHarness> CpuBus<'a, H> {
                 0x2100..=0x213F => self.read_ppu_regs(addr.offset),
 
                 // APU ports
-                0x2140..=0x217F => match addr.offset & 3 {
-                    0 => self.apu_ports.apuio0,
-                    1 => self.apu_ports.apuio1,
-                    2 => self.apu_ports.apuio2,
-                    3 => self.apu_ports.apuio3,
-                    _ => unreachable!(),
+                0x2140..=0x217F => {                
+                    match addr.offset & 3 {
+                        0 => self.apu_ports.apuio0,
+                        1 => self.apu_ports.apuio1,
+                        2 => self.apu_ports.apuio2,
+                        3 => self.apu_ports.apuio3,
+                        _ => unreachable!(),
+                    }
                 },
 
                 // S-WRAM access registers

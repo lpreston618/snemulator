@@ -44,6 +44,7 @@ pub struct CpuState {
     pub halted: bool,
     pub stopped: bool,
     pub waiting_for_interrupt: bool,
+    pub handle_nmi: bool,
     pub clocks: usize,
 }
 
