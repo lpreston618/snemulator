@@ -82,7 +82,7 @@ impl DebugWindow {
     pub fn new(
         egui_window: UiWindow,
     ) -> Result<Self> {
-        log::debug!("Debugging started");
+        log::trace!("Debugging started");
 
         let mut debug_window = Self {
             egui_window: None,

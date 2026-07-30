@@ -266,7 +266,7 @@ impl SnemulatorApp {
 
         app.random_seed = app.snem_core.get_random_seed();
 
-        log::debug!("Random Seed: {}", app.random_seed);
+        log::trace!("Random Seed: {}", app.random_seed);
 
         app.main_window.rescan_library(&app.settings.roms_library_dir);
 

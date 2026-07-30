@@ -67,6 +67,7 @@ pub struct LibraryEntry {
     pub crc32: u32,
     pub mapping: String,
     pub coprocessor: String,
+    pub egui_id: usize,
 }
 
 pub struct LibraryView {
@@ -74,6 +75,7 @@ pub struct LibraryView {
     selected_entry: Option<usize>,
     detail_view_state: Option<GameDetailState>,
     thumbnail_rx: Option<Receiver<ThumbnailResult>>,
+    next_entry_id: usize,
 }
 
 impl LibraryView {
@@ -83,6 +85,7 @@ impl LibraryView {
             selected_entry: None,
             detail_view_state: None,
             thumbnail_rx: None,
+            next_entry_id: 0,
         }
     }
 
@@ -111,7 +114,7 @@ impl LibraryView {
         self.entries.clear();
         self.selected_entry = None;
         let Some(lib_dir) = roms_library_dir else { return };
-        Self::scan_dir(lib_dir, 0, &mut self.entries);
+        Self::scan_dir(lib_dir, 0, &mut self.entries, &mut self.next_entry_id);
         self.entries.sort_by(|a, b| a.display_name.cmp(&b.display_name));
 
         // Collect stems that need thumbnails (all Loading entries after scan)
@@ -123,23 +126,23 @@ impl LibraryView {
             })
             .collect();
 
-        log::debug!("Stems found with no thumbnails: {}", stems.len());
+        log::trace!("Stems found with no thumbnails: {}", stems.len());
 
         if !stems.is_empty() {
             let (tx, rx) = mpsc::channel();
             self.thumbnail_rx = Some(rx);
             thumbnail_fetcher::spawn_thumbnail_resolver(stems, tx);
-            log::debug!("Spawned thumbnail fetcher thread");
+            log::trace!("Spawned thumbnail fetcher thread");
         }
     }
 
-    fn scan_dir(dir: &PathBuf, depth: usize, entries: &mut Vec<LibraryEntry>) {
+    fn scan_dir(dir: &PathBuf, depth: usize, entries: &mut Vec<LibraryEntry>, next_id: &mut usize) {
         let Ok(read_dir) = std::fs::read_dir(dir) else { return };
 
         for entry in read_dir.flatten() {
             let path = entry.path();
             if path.is_dir() && depth < MAX_ROM_DIR_SEARCH_DEPTH {
-                Self::scan_dir(&path, depth + 1, entries);
+                Self::scan_dir(&path, depth + 1, entries, next_id);
                 continue;
             }
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -186,7 +189,7 @@ impl LibraryView {
                     .collect()
             }).unwrap_or_default();
 
-            log::debug!("Read manifest for '{}', thumbnail_path: {:?}, exists: {:?}",
+            log::trace!("Read manifest for '{}', thumbnail_path: {:?}, exists: {:?}",
                 stem.sanitized_name(),
                 &manifest.thumbnail_path,
                 manifest.thumbnail_path.as_ref().map(|p| std::fs::exists(p))
@@ -214,7 +217,10 @@ impl LibraryView {
                 crc32: manifest.rom_crc,
                 mapping: manifest.mapping,
                 coprocessor: manifest.coprocessor,
+                egui_id: *next_id
             });
+
+            *next_id += 1;
         }
     }
 
@@ -223,7 +229,7 @@ impl LibraryView {
             'receive_thumbnails: loop {
                 match rx.try_recv() {
                     Ok(result) => {
-                        log::debug!("Received thumbnail: found={}, path={:?}", result.path.is_some(), result.path);
+                        log::trace!("Received thumbnail: found={}, path={:?}", result.path.is_some(), result.path);
         
                         if let Some(entry) = self.entries.iter_mut()
                             .find(|e| RomPathStem::from_path(&e.path).raw_name() == result.stem.raw_name())
@@ -427,28 +433,32 @@ impl LibraryView {
 
             for (i, entry) in self.entries.iter_mut().enumerate() {
                 let is_selected = self.selected_entry == Some(i);
-                
-                let (response, quick_play_clicked) = Self::render_list_entry(ui, entry, is_selected, app_theme);
-                
-                if quick_play_clicked {
-                    action = Some(AppAction::LoadRomFromPath { path: entry.path.clone() });
-                } else {
-                    if response.clicked() {
-                        if self.selected_entry != Some(i) {
-                            self.selected_entry = Some(i);
+                let entry_id = entry.egui_id;
+
+                ui.push_id(entry_id, |ui| {
+                    let (response, quick_play_clicked) = Self::render_list_entry(ui, entry, is_selected, app_theme);
+                    
+                    if quick_play_clicked {
+                        action = Some(AppAction::LoadRomFromPath { path: entry.path.clone() });
+                    } else {
+                        if response.clicked() {
+                            if self.selected_entry != Some(i) {
+                                self.selected_entry = Some(i);
+                            }
+                            
+                            self.detail_view_state = Some(GameDetailState::new());
                         }
-                        
-                        self.detail_view_state = Some(GameDetailState::new());
+        
+                        #[cfg(feature = "debug")]
+                        response.context_menu(|ui| {
+                            if ui.button("Debug").clicked() {
+                                action = Some(AppAction::OpenDebug(Some(entry.path.clone())));
+                                ui.close();
+                            }
+                        });
                     }
-    
-                    #[cfg(feature = "debug")]
-                    response.context_menu(|ui| {
-                        if ui.button("Debug").clicked() {
-                            action = Some(AppAction::OpenDebug(Some(entry.path.clone())));
-                            ui.close();
-                        }
-                    });
-                }
+                });
+
             }
         });
 
@@ -751,40 +761,42 @@ impl LibraryView {
         ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
             for slot in 0..MAX_SAVE_STATE_SLOTS as u32 {
-                let used = entry.used_slots.contains(&slot);
-                let selected = state.selected_save_state == Some(slot);
-                
-                ui.add_enabled_ui(used, |ui| {
-                    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(28.0), egui::Sense::click());
-                    let painter = ui.painter();
-    
-                    let fill = if resp.hovered() {
-                        app_theme.accent.linear_multiply(0.45)
-                    } else {
-                        app_theme.accent.linear_multiply(0.3)
-                    };
-    
-                    painter.rect_filled(rect, 4.0, fill);
+                ui.push_id(slot, |ui| {
+                    let used = entry.used_slots.contains(&slot);
+                    let selected = state.selected_save_state == Some(slot);
                     
-                    if used && selected {
-                        painter.rect_stroke(rect, 6.0, egui::Stroke::new(1.0, app_theme.border_focused), egui::StrokeKind::Outside);
-                    } else {
-                        painter.rect_stroke(rect, 4.0, egui::Stroke::new(1.0, app_theme.border), egui::StrokeKind::Outside);
-                    }
-                    
-                    if used {
-                        painter.text(
-                            rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            format!("{}", slot),
-                            egui::FontId::proportional(11.0),
-                            app_theme.text_secondary,
-                        );
-                    }
-    
-                    if resp.clicked() {
-                        state.selected_save_state = if selected { None } else { Some(slot) };
-                    }
+                    ui.add_enabled_ui(used, |ui| {
+                        let (rect, resp) = ui.allocate_exact_size(Vec2::splat(28.0), egui::Sense::click());
+                        let painter = ui.painter();
+        
+                        let fill = if resp.hovered() {
+                            app_theme.accent.linear_multiply(0.45)
+                        } else {
+                            app_theme.accent.linear_multiply(0.3)
+                        };
+        
+                        painter.rect_filled(rect, 4.0, fill);
+                        
+                        if used && selected {
+                            painter.rect_stroke(rect, 6.0, egui::Stroke::new(1.0, app_theme.border_focused), egui::StrokeKind::Outside);
+                        } else {
+                            painter.rect_stroke(rect, 4.0, egui::Stroke::new(1.0, app_theme.border), egui::StrokeKind::Outside);
+                        }
+                        
+                        if used {
+                            painter.text(
+                                rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                format!("{}", slot),
+                                egui::FontId::proportional(11.0),
+                                app_theme.text_secondary,
+                            );
+                        }
+        
+                        if resp.clicked() {
+                            state.selected_save_state = if selected { None } else { Some(slot) };
+                        }
+                    });
                 });
             }
         });

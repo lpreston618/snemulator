@@ -37,7 +37,7 @@ pub fn spawn_thumbnail_resolver(
             // tx.send failing just means the receiver was dropped (app closed), safe to ignore
         }
 
-        log::debug!("Finished fetching thumbnails, closing thread.");
+        log::trace!("Finished fetching thumbnails, closing thread.");
     });
 }
 
@@ -47,7 +47,7 @@ fn try_fetch_thumbnail(stem: &RomPathStem, index: &[String]) -> Option<PathBuf> 
     let dest = rom_paths.thumbnail_path();
 
     if std::fs::read(&dest).ok().filter(|b| is_valid_png(b)).is_some() {
-        log::debug!("Existing thumbnail for '{}' is valid, reusing", stem.sanitized_name());
+        log::trace!("Existing thumbnail for '{}' is valid, reusing", stem.sanitized_name());
         update_manifest_thumbnail(stem, &rom_paths, &dest);
         return Some(dest);
     }
@@ -234,7 +234,7 @@ fn fetch_valid_png_data(filename: &str) -> Option<Vec<u8>> {
     if is_valid_png(&bytes) {
         Some(bytes)
     } else {
-        log::debug!("'{filename}' failed PNG validation (likely a git-lfs pointer)");
+        log::trace!("'{filename}' failed PNG validation (likely a git-lfs pointer)");
         None
     }
 }
