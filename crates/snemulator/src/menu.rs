@@ -9,7 +9,7 @@ pub struct MainMenuBar;
 impl MainMenuBar {
     pub fn new() -> Self { Self {} }
 
-    pub fn render(&self, ui: &mut egui::Ui, app_state: &AppState, app_settings: &mut Settings) -> Option<AppAction> {
+    pub fn render(&self, ui: &mut egui::Ui, app_state: &mut AppState, app_settings: &mut Settings) -> Option<AppAction> {
         let mut app_action: Option<AppAction> = None;
 
         let debug_active;
@@ -22,11 +22,13 @@ impl MainMenuBar {
         {
             debug_active = false;
         }
-    
+
+        let mut any_menu_open = false;
+
         // Top menu bar
         egui::Panel::top("menu_bar").show(ui, |ui| {
-            egui::MenuBar::new().ui(ui, |ui| {                
-                ui.menu_button("File", |ui| {
+            let menu = egui::MenuBar::new().ui(ui, |ui| {
+                let file_menu = ui.menu_button("File", |ui| {
                     ui.set_width(120.0);
                                         
                     ui.add_enabled_ui(!debug_active, |ui| {
@@ -72,11 +74,11 @@ impl MainMenuBar {
                         ui.menu_button("Load State", |ui| {
                             for slot in 0..MAX_SAVE_STATE_SLOTS {
                                 let save_exists = app_state.loaded_rom_data.as_ref().unwrap().used_save_state_slots[slot];
-    
+
                                 let resp = ui.add_enabled_ui(save_exists, |ui| {
                                     ui.button(format!("Slot {}", slot))
                                 }).inner;
-    
+
                                 if resp.clicked() {
                                     app_action = Some(AppAction::LoadState { slot: slot as u32 });
                                     ui.close();
@@ -102,7 +104,11 @@ impl MainMenuBar {
                     }
                 });
                 
-                ui.menu_button("Emulation", |ui| {
+                if file_menu.inner.is_some() || file_menu.response.hovered() {
+                    any_menu_open = true;
+                }
+
+                let emulation_menu = ui.menu_button("Emulation", |ui| {
                     ui.set_width(100.0);
                     
                     ui.add_enabled_ui(!debug_active, |ui| {
@@ -139,7 +145,11 @@ impl MainMenuBar {
                     }
                 });
                 
-                ui.menu_button("View", |ui| {
+                if emulation_menu.inner.is_some() || emulation_menu.response.hovered() {
+                    any_menu_open = true;
+                }
+
+                let view_menu = ui.menu_button("View", |ui| {
                     ui.set_width(100.0);
                     
                     let window_size_text = if app_state.is_fullscreen { "Windowed" } else { "Fullscreen" };
@@ -154,9 +164,15 @@ impl MainMenuBar {
                         ui.close();
                     }
                 });
-            });
+
+                if view_menu.inner.is_some() || view_menu.response.hovered() {
+                    any_menu_open = true;
+                }
+            }).response;
+
+            app_state.menu_in_use = menu.hovered() || any_menu_open;
         });
-    
+
         app_action
     }
 }

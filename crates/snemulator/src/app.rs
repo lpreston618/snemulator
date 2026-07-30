@@ -106,6 +106,7 @@ pub struct AppState {
     pub last_mouse_input_frame: u64,
     pub last_display_fps_update_frame: u64,
     pub last_sram_autosave_frame: u64,
+    pub menu_in_use: bool,
     pub show_menu: bool,
     pub show_mouse: bool,
     pub is_paused: bool,
@@ -158,6 +159,7 @@ impl SnemulatorApp {
             last_mouse_input_frame: 0,
             last_display_fps_update_frame: 0,
             last_sram_autosave_frame: 0,
+            menu_in_use: false,
             show_menu: true,
             show_mouse: true,
             is_paused: false,
@@ -476,7 +478,7 @@ impl SnemulatorApp {
             self.render_audio();
 
             let app_action = self.main_window.update_and_render(
-                &self.state,
+                &mut self.state,
                 &self.theme,
                 &mut self.settings,
                 &mut self.message_queue,
@@ -517,6 +519,9 @@ impl SnemulatorApp {
                 self.state.show_mouse = true;
                 self.state.show_menu = true;
             }
+
+            self.state.show_menu |= self.state.menu_in_use;
+            self.state.show_mouse |= self.state.menu_in_use;
 
             self.sdl_context.mouse().show_cursor(self.state.show_mouse);
 
