@@ -1,4 +1,11 @@
+use std::collections::HashMap;
+
 use gilrs::{Axis, Button, Event, EventType, GamepadId, Gilrs};
+
+// NOTE: adjust this import to match wherever your SDL3 bindings expose
+// KeyboardState / Scancode (e.g. `sdl3::keyboard` if you're using the
+// `sdl3` crate).
+use sdl3::keyboard::{KeyboardState, Keycode, Scancode};
 
 use snemcore::controller::{ControllerPlayer, JoypadButton, SnemController};
 
@@ -16,27 +23,60 @@ const BUTTON_LOW_THRESHOLD: f32 = 0.2;
 /// Value considered "high" for normal buttons or axis-style high direction
 const BUTTON_HIGH_THRESHOLD: f32 = 0.8;
 
+/// The (SnesInput, JoypadButton) pairs read every frame. Shared between the
+/// gamepad and keyboard button-resolution paths so they stay in sync.
+const INPUT_BUTTON_PAIRS: [(SnesInput, JoypadButton); 12] = [
+    (SnesInput::Up, JoypadButton::Up),
+    (SnesInput::Down, JoypadButton::Down),
+    (SnesInput::Left, JoypadButton::Left),
+    (SnesInput::Right, JoypadButton::Right),
+    (SnesInput::A, JoypadButton::A),
+    (SnesInput::B, JoypadButton::B),
+    (SnesInput::X, JoypadButton::X),
+    (SnesInput::Y, JoypadButton::Y),
+    (SnesInput::L, JoypadButton::L1),
+    (SnesInput::R, JoypadButton::R1),
+    (SnesInput::Start, JoypadButton::Start),
+    (SnesInput::Select, JoypadButton::Select),
+];
+
+/// The input device backing a player slot. A player can be driven by the
+/// keyboard or by a specific connected gamepad.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayerInputDevice {
+    Keyboard,
+    Gamepad(GamepadId),
+}
+
 /// A connected gamepad, surfaced to the settings UI so it can list and
 /// select controllers without touching gilrs types directly.
 pub struct ConnectedControllerInfo {
     pub id: GamepadId,
     pub name: String,
     pub uuid_key: String,
-    pub assigned_player: Option<ControllerPlayer>,
+    // pub assigned_player: Option<ControllerPlayer>,
 }
 
-/// Owns the gilrs context, maps connected gamepads to SNES player slots (0
-/// and 1), and handles the "press a button to bind it" remap capture flow
-/// used by the Controls settings tab.
+/// Owns the gilrs context, maps connected gamepads (or the keyboard) to
+/// SNES player slots (0 and 1), and handles the "press a button to bind
+/// it" remap capture flow used by the Controls settings tab.
+///
+/// Player 1 defaults to the keyboard, matching the previous hardcoded
+/// behavior. Either slot can be reassigned to the keyboard or to any
+/// connected gamepad via `assign_player`.
 pub struct ControllerManager {
     gilrs: Gilrs,
-    p1_controller: Option<GamepadId>,
-    p2_controller: Option<GamepadId>,
+    p1_device: Option<PlayerInputDevice>,
+    p2_device: Option<PlayerInputDevice>,
     connected_gamepads: Vec<GamepadId>,
     pending_remap: Option<(GamepadId, SnesInput)>,
     /// Baseline button values captured when remap begins, used to detect
     /// axis-style d-pads vs normal buttons
-    remap_baselines: std::collections::HashMap<Button, f32>,
+    remap_baselines: HashMap<Button, f32>,
+    /// SNES input currently waiting for the next keyboard press to bind
+    /// it, set by `begin_keyboard_remap` and resolved by
+    /// `try_capture_keyboard`.
+    pending_keyboard_remap: Option<SnesInput>,
 }
 
 impl ControllerManager {
@@ -45,15 +85,16 @@ impl ControllerManager {
 
         Ok(Self {
             gilrs,
-            p1_controller: None,
-            p2_controller: None,
+            p1_device: Some(PlayerInputDevice::Keyboard),
+            p2_device: None,
             connected_gamepads: Vec::new(),
             pending_remap: None,
-            remap_baselines: std::collections::HashMap::new(),
+            remap_baselines: HashMap::new(),
+            pending_keyboard_remap: None,
         })
     }
 
-    pub fn init_controllers(&mut self, settings: &Settings, message_queue: &mut MessageQueue) {
+    pub fn init_controllers(&mut self, settings: &mut Settings, message_queue: &mut MessageQueue) {
         // Log what mapping source each controller is using
         for (_id, gamepad) in self.gilrs.gamepads() {
             let mapping_source = gamepad.mapping_source();
@@ -63,6 +104,12 @@ impl ControllerManager {
                 gamepad.uuid(),
                 mapping_source
             );
+        }
+
+        if Some("keyboard".to_string()) == settings.preferred_p1 {
+            self.assign_player(PlayerInputDevice::Keyboard, ControllerPlayer::Player1, settings);
+        } else if Some("keyboard".to_string()) == settings.preferred_p2 {
+            self.assign_player(PlayerInputDevice::Keyboard, ControllerPlayer::Player2, settings);
         }
 
         let gamepads = Vec::from_iter(self.gilrs.gamepads().map(|(id, _gamepad)| id));
@@ -77,12 +124,19 @@ impl ControllerManager {
     /// internal event queue (cheap -- no blocking I/O happens here), keeps
     /// slot assignments in sync with connect/disconnect events, resolves
     /// any pending remap capture, and feeds current button state into the
-    /// emulator core using each connected controller's saved binding.
+    /// emulator core using each slot's assigned device (keyboard or
+    /// gamepad) and saved binding.
+    ///
+    /// `keyboard` is a per-frame snapshot of keyboard state -- e.g. from
+    /// `event_pump.keyboard_state()` in your SDL3 main loop. Grab it fresh
+    /// each frame and pass it in here; ControllerManager does not own an
+    /// SDL3 event pump itself.
     pub fn update(
         &mut self,
         core: &mut snemcore::Snemulator,
         settings: &mut Settings,
         message_queue: &mut MessageQueue,
+        keyboard: &KeyboardState,
     ) {
         while let Some(Event { id, event, .. }) = self.gilrs.next_event() {
             match event {
@@ -112,16 +166,18 @@ impl ControllerManager {
             }
         }
 
-        if let Some(p1_buttons) = self.buttons(ControllerPlayer::Player1, settings) {
+        if let Some(p1_buttons) = self.buttons(ControllerPlayer::Player1, settings, keyboard) {
             core.p1_controller = p1_buttons;
         }
 
-        if let Some(p2_buttons) = self.buttons(ControllerPlayer::Player2, settings) {
+        if let Some(p2_buttons) = self.buttons(ControllerPlayer::Player2, settings, keyboard) {
             core.p2_controller = p2_buttons;
         }
     }
 
     /// All currently connected gamepads, for the Controls settings tab.
+    /// (The keyboard is always "connected" and isn't listed here -- surface
+    /// it as a separate, permanently-available option in the UI.)
     pub fn connected_controllers(&self) -> Vec<ConnectedControllerInfo> {
         self.connected_gamepads
             .iter()
@@ -131,42 +187,59 @@ impl ControllerManager {
                     id,
                     name: gamepad.name().to_string(),
                     uuid_key: uuid_key(gamepad.uuid()),
-                    assigned_player: self.slot_of(id),
+                    // assigned_player: self.slot_of(id),
                 }
             })
             .collect()
     }
 
-    pub fn slot_of(&self, id: GamepadId) -> Option<ControllerPlayer> {
-        if self.p1_controller == Some(id) {
-            Some(ControllerPlayer::Player1)
-        } else if self.p2_controller == Some(id) {
-            Some(ControllerPlayer::Player2)
-        } else {
-            None
+    /// Which player slot (if any) a specific gamepad is currently driving.
+    // pub fn slot_of(&self, id: GamepadId) -> Option<ControllerPlayer> {
+    //     let device = PlayerInputDevice::Gamepad(id);
+    //     if self.p1_device == Some(device) {
+    //         Some(ControllerPlayer::Player1)
+    //     } else if self.p2_device == Some(device) {
+    //         Some(ControllerPlayer::Player2)
+    //     } else {
+    //         None
+    //     }
+    // }
+
+    /// The device (keyboard or gamepad) currently assigned to a player
+    /// slot, for the Controls settings tab.
+    pub fn device_for(&self, player: ControllerPlayer) -> Option<PlayerInputDevice> {
+        match player {
+            ControllerPlayer::Player1 => self.p1_device,
+            ControllerPlayer::Player2 => self.p2_device,
         }
     }
 
-    /// Explicitly assigns a connected gamepad to a player slot, swapping
-    /// with whatever was already there (if anything), and remembers this
-    /// controller as the preferred one for that slot on future launches.
-    pub fn assign_player(&mut self, id: GamepadId, player: ControllerPlayer, settings: &mut Settings) {
-        if self.p1_controller == Some(id) {
-            self.p1_controller = None;
+    /// Explicitly assigns a device (keyboard or a connected gamepad) to a
+    /// player slot, swapping with whatever already had that device (if
+    /// anything), and remembers a gamepad choice as the preferred one for
+    /// that slot on future launches. Assigning the keyboard clears any
+    /// remembered gamepad preference for that slot.
+    pub fn assign_player(&mut self, device: PlayerInputDevice, player: ControllerPlayer, settings: &mut Settings) {
+        if self.p1_device == Some(device) {
+            self.p1_device = None;
         }
-        if self.p2_controller == Some(id) {
-            self.p2_controller = None;
+        if self.p2_device == Some(device) {
+            self.p2_device = None;
         }
 
-        let key = uuid_key(self.gilrs.gamepad(id).uuid());
+        let preferred = match device {
+            PlayerInputDevice::Gamepad(id) => Some(uuid_key(self.gilrs.gamepad(id).uuid())),
+            PlayerInputDevice::Keyboard => Some("keyboard".to_string()),
+        };
+
         match player {
             ControllerPlayer::Player1 => {
-                self.p1_controller = Some(id);
-                settings.preferred_p1 = Some(key);
+                self.p1_device = Some(device);
+                settings.preferred_p1 = preferred;
             }
             ControllerPlayer::Player2 => {
-                self.p2_controller = Some(id);
-                settings.preferred_p2 = Some(key);
+                self.p2_device = Some(device);
+                settings.preferred_p2 = preferred;
             }
         }
         settings.save();
@@ -177,11 +250,11 @@ impl ControllerManager {
     /// drive the "Press a button..." prompt, and `cancel_remap` to abort.
     pub fn begin_remap(&mut self, id: GamepadId, input: SnesInput) {
         self.pending_remap = Some((id, input));
-        
+
         // Snapshot current button values as baselines
         self.remap_baselines.clear();
         let gamepad = self.gilrs.gamepad(id);
-        
+
         for button in [
             Button::DPadUp, Button::DPadDown, Button::DPadLeft, Button::DPadRight,
             Button::South, Button::East, Button::North, Button::West,
@@ -206,6 +279,33 @@ impl ControllerManager {
     pub fn capturing_for(&self, id: GamepadId) -> Option<SnesInput> {
         self.pending_remap
             .and_then(|(pending_id, input)| (pending_id == id).then_some(input))
+    }
+
+    /// Starts listening for the next keyboard press, to bind it to
+    /// `input`. Call `keyboard_capturing` each frame to drive the "Press a
+    /// key..." prompt, and `cancel_keyboard_remap` to abort.
+    pub fn begin_keyboard_remap(&mut self, input: SnesInput) {
+        self.pending_keyboard_remap = Some(input);
+    }
+
+    pub fn cancel_keyboard_remap(&mut self) {
+        self.pending_keyboard_remap = None;
+    }
+
+    /// If a keyboard remap capture is in progress, returns which SNES
+    /// input it's waiting to bind.
+    pub fn keyboard_capturing(&self) -> Option<SnesInput> {
+        self.pending_keyboard_remap
+    }
+
+    /// If a keyboard remap capture is pending, binds `keycode` to the waiting
+    /// SnesInput and clears the capture.
+    pub fn try_capture_keyboard(&mut self, scancode: Scancode, settings: &mut Settings) {
+        let Some(input) = self.pending_keyboard_remap else { return };
+
+        settings.keyboard_bindings.insert(input, scancode.to_i32());
+        settings.save();
+        self.pending_keyboard_remap = None;
     }
 
     fn try_capture_button(
@@ -240,7 +340,7 @@ impl ControllerManager {
 
         let Some(remap_button) = to_remap_button(button) else { return };
         let baseline = self.remap_baselines.get(&button).copied().unwrap_or(0.0);
-        
+
         // Determine if this is a meaningful press based on movement from baseline
         let source = if baseline > 0.3 && baseline < 0.7 {
             // Baseline is near middle → axis-style d-pad
@@ -261,7 +361,7 @@ impl ControllerManager {
                 return; // Release or noise, ignore
             }
         };
-        
+
         self.commit_binding(id, input, source, settings);
     }
 
@@ -307,6 +407,7 @@ impl ControllerManager {
         let key = uuid_key(self.gilrs.gamepad(id).uuid());
         let wants_p1 = settings.preferred_p1.as_deref() == Some(key.as_str());
         let wants_p2 = settings.preferred_p2.as_deref() == Some(key.as_str());
+        let device = PlayerInputDevice::Gamepad(id);
 
         if wants_p1 {
             message_queue.push(
@@ -316,20 +417,22 @@ impl ControllerManager {
                 Some(log::Level::Debug),
             );
 
-            if self.p2_controller.is_none() {
-                self.p2_controller = self.p1_controller;
+            if self.p2_device.is_none() {
+                // Bump whatever (keyboard or another gamepad) was on
+                // Player 1 down to Player 2, rather than dropping it.
+                self.p2_device = self.p1_device.take();
 
-                if let Some(p2_id) = self.p2_controller {
+                if let Some(bumped) = self.p2_device {
                     message_queue.push(
                         MessageKind::Info,
-                        format!("Set gamepad {} as Player 2", self.gilrs.gamepad(p2_id).name()),
+                        format!("Set {} as Player 2", self.device_name(bumped)),
                         std::time::Duration::from_secs(3),
                         Some(log::Level::Debug),
                     );
                 }
             }
 
-            self.p1_controller = Some(id);
+            self.p1_device = Some(device);
         } else if wants_p2 {
             message_queue.push(
                 MessageKind::Info,
@@ -338,30 +441,30 @@ impl ControllerManager {
                 Some(log::Level::Debug),
             );
 
-            if self.p1_controller.is_none() {
-                self.p1_controller = self.p2_controller;
+            if self.p1_device.is_none() {
+                self.p1_device = self.p2_device.take();
 
-                if let Some(p1_id) = self.p1_controller {
+                if let Some(bumped) = self.p1_device {
                     message_queue.push(
                         MessageKind::Info,
-                        format!("Set gamepad {} as Player 1", self.gilrs.gamepad(p1_id).name()),
+                        format!("Set {} as Player 1", self.device_name(bumped)),
                         std::time::Duration::from_secs(3),
                         Some(log::Level::Debug),
                     );
                 }
             }
 
-            self.p2_controller = Some(id);
-        } else if self.p1_controller.is_none() {
-            self.p1_controller = Some(id);
+            self.p2_device = Some(device);
+        } else if self.p1_device.is_none() {
+            self.p1_device = Some(device);
             message_queue.push(
                 MessageKind::Info,
                 format!("Added gamepad {} as Player 1", self.gilrs.gamepad(id).name()),
                 std::time::Duration::from_secs(3),
                 Some(log::Level::Debug),
             );
-        } else if self.p2_controller.is_none() {
-            self.p2_controller = Some(id);
+        } else if self.p2_device.is_none() {
+            self.p2_device = Some(device);
             message_queue.push(
                 MessageKind::Info,
                 format!("Added gamepad {} as Player 2", self.gilrs.gamepad(id).name()),
@@ -372,8 +475,10 @@ impl ControllerManager {
     }
 
     fn free_slot(&mut self, id: GamepadId, message_queue: &mut MessageQueue) {
-        if Some(id) == self.p1_controller {
-            self.p1_controller = None;
+        let device = PlayerInputDevice::Gamepad(id);
+
+        if self.p1_device == Some(device) {
+            self.p1_device = None;
 
             message_queue.push(
                 MessageKind::Info,
@@ -381,8 +486,8 @@ impl ControllerManager {
                 std::time::Duration::from_secs(3),
                 Some(log::Level::Debug),
             );
-        } else if Some(id) == self.p2_controller {
-            self.p2_controller = None;
+        } else if self.p2_device == Some(device) {
+            self.p2_device = None;
 
             message_queue.push(
                 MessageKind::Info,
@@ -393,55 +498,101 @@ impl ControllerManager {
         }
     }
 
-    /// Current SNES-mapped button state for a player, using that
-    /// controller's saved (or default) binding. Returns `None` if no
-    /// controller is assigned to that slot.
-    fn buttons(&mut self, player: ControllerPlayer, settings: &Settings) -> Option<SnemController> {
-        let id = match player {
-            ControllerPlayer::Player1 => self.p1_controller,
-            ControllerPlayer::Player2 => self.p2_controller,
+    fn device_name(&self, device: PlayerInputDevice) -> String {
+        match device {
+            PlayerInputDevice::Keyboard => "Keyboard".to_string(),
+            PlayerInputDevice::Gamepad(id) => self.gilrs.gamepad(id).name().to_string(),
+        }
+    }
+
+    /// Current SNES-mapped button state for a player, from whichever
+    /// device (keyboard or gamepad) is assigned to that slot. Returns
+    /// `None` if no device is assigned to that slot.
+    fn buttons(
+        &mut self,
+        player: ControllerPlayer,
+        settings: &Settings,
+        keyboard: &KeyboardState,
+    ) -> Option<SnemController> {
+        let device = match player {
+            ControllerPlayer::Player1 => self.p1_device,
+            ControllerPlayer::Player2 => self.p2_device,
         }?;
 
-        let gamepad = self.gilrs.gamepad(id);
+        match device {
+            PlayerInputDevice::Keyboard => Some(keyboard_buttons(settings, keyboard)),
+            PlayerInputDevice::Gamepad(id) => {
+                let gamepad = self.gilrs.gamepad(id);
 
-        // If the gamepad is disconnected, remove it from the list of connected gamepads and free the slot.
-        if !gamepad.is_connected() {
-            self.connected_gamepads.retain(|&gid| gid != id);
+                // If the gamepad is disconnected, remove it from the list of
+                // connected gamepads and free the slot.
+                if !gamepad.is_connected() {
+                    self.connected_gamepads.retain(|&gid| gid != id);
 
-            match player {
-                ControllerPlayer::Player1 => self.p1_controller = None,
-                ControllerPlayer::Player2 => self.p2_controller = None,
+                    match player {
+                        ControllerPlayer::Player1 => self.p1_device = None,
+                        ControllerPlayer::Player2 => self.p2_device = None,
+                    }
+
+                    return None;
+                }
+
+                let key = uuid_key(gamepad.uuid());
+                let binding = settings.binding_for(&key, gamepad.name());
+
+                let mut controller = SnemController::default();
+                for (input, joypad_button) in INPUT_BUTTON_PAIRS {
+                    let pressed = binding
+                        .bindings
+                        .get(&input)
+                        .is_some_and(|source| is_source_active(&gamepad, *source));
+                    controller.set_button(joypad_button, pressed);
+                }
+
+                Some(controller)
             }
-
-            return None;
         }
+    }
 
-        let key = uuid_key(gamepad.uuid());
-        let binding = settings.binding_for(&key, gamepad.name());
+}
 
-        let mut controller = SnemController::default();
-        for (input, joypad_button) in [
-            (SnesInput::Up, JoypadButton::Up),
-            (SnesInput::Down, JoypadButton::Down),
-            (SnesInput::Left, JoypadButton::Left),
-            (SnesInput::Right, JoypadButton::Right),
-            (SnesInput::A, JoypadButton::A),
-            (SnesInput::B, JoypadButton::B),
-            (SnesInput::X, JoypadButton::X),
-            (SnesInput::Y, JoypadButton::Y),
-            (SnesInput::L, JoypadButton::L1),
-            (SnesInput::R, JoypadButton::R1),
-            (SnesInput::Start, JoypadButton::Start),
-            (SnesInput::Select, JoypadButton::Select),
-        ] {
-            let pressed = binding
-                .bindings
-                .get(&input)
-                .is_some_and(|source| is_source_active(&gamepad, *source));
-            controller.set_button(joypad_button, pressed);
-        }
+/// Current SNES-mapped button state read from the keyboard, using
+/// `settings.keyboard_bindings` (falling back to `default_scancode_for`
+/// for any SnesInput the user hasn't remapped yet -- mirrors how
+/// `Settings::binding_for` falls back to `ControllerBinding::default_for`
+/// for gamepads).
+fn keyboard_buttons(settings: &Settings, keyboard: &KeyboardState) -> SnemController {
+    let mut controller = SnemController::default();
+    for (input, joypad_button) in INPUT_BUTTON_PAIRS {
+        let scancode = settings
+            .keyboard_bindings
+            .get(&input)
+            .and_then(|&code| Scancode::from_i32(code as i32))
+            .unwrap_or_else(|| default_scancode_for(input));
+        controller.set_button(joypad_button, keyboard.is_scancode_pressed(scancode));
+    }
+    controller
+}
 
-        Some(controller)
+/// Fixed default keyboard layout, used for any SnesInput not present in
+/// `settings.keyboard_bindings` (i.e. before the user has remapped it).
+/// Public so the Controls settings tab can show the same default in its
+/// "Unbound" label rather than a value that disagrees with actual runtime
+/// behavior.
+pub fn default_scancode_for(input: SnesInput) -> Scancode {
+    match input {
+        SnesInput::Up => Scancode::Up,
+        SnesInput::Down => Scancode::Down,
+        SnesInput::Left => Scancode::Left,
+        SnesInput::Right => Scancode::Right,
+        SnesInput::A => Scancode::X,
+        SnesInput::B => Scancode::Z,
+        SnesInput::X => Scancode::S,
+        SnesInput::Y => Scancode::A,
+        SnesInput::L => Scancode::Q,
+        SnesInput::R => Scancode::W,
+        SnesInput::Start => Scancode::Return,
+        SnesInput::Select => Scancode::RShift,
     }
 }
 

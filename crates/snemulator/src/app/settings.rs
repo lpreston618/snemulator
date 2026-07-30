@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use serde::{Serialize, Deserialize};
@@ -8,6 +9,8 @@ use snemcore::controller::ControllerPlayer;
 use crate::{
     app::{AppAction, controller::ControllerManager, library::LibraryViewMode, theme::{AppTheme, ThemePreset}}, ui_window::UiWindow,
 };
+
+use crate::app::controller::{PlayerInputDevice, default_scancode_for};
 
 pub const SETTINGS_WINDOW_WIDTH: u32 = 780;
 pub const SETTINGS_WINDOW_HEIGHT: u32 = 560;
@@ -61,30 +64,105 @@ pub enum ScalingFilter {
     Bilinear,
 }
 
-// Placeholder — you'll replace with your own struct per our earlier note.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Hotkeys {
-    pub save_state: egui::Key,
-    pub load_state: egui::Key,
-    pub toggle_fast_forward: egui::Key,
-    pub toggle_rewind: egui::Key,
-    pub reset: egui::Key,
-    pub screenshot: egui::Key,
-    pub toggle_fullscreen: egui::Key,
-    pub toggle_mute: egui::Key,
+    pub save_state: u32,
+    pub load_state: u32,
+    pub toggle_fast_forward: u32,
+    // pub toggle_rewind: u32,
+    pub reset: u32,
+    // pub screenshot: u32,
+    pub toggle_fullscreen: u32,
+    pub toggle_mute: u32,
 }
 
 impl Default for Hotkeys {
     fn default() -> Self {
         Self {
-            save_state: egui::Key::F5,
-            load_state: egui::Key::F7,
-            toggle_fast_forward: egui::Key::F9,
-            toggle_rewind: egui::Key::F8,
-            reset: egui::Key::F1,
-            screenshot: egui::Key::F12,
-            toggle_fullscreen: egui::Key::F11,
-            toggle_mute: egui::Key::M,
+            save_state: sdl3::keyboard::Keycode::F5 as u32,
+            load_state: sdl3::keyboard::Keycode::F7 as u32,
+            toggle_fast_forward: sdl3::keyboard::Keycode::F9 as u32,
+            // toggle_rewind: sdl3::keyboard::Scancode::F8.to_i32(),
+            reset: sdl3::keyboard::Keycode::F1 as u32,
+            // screenshot: sdl3::keyboard::Scancode::F12.to_i32(),
+            toggle_fullscreen: sdl3::keyboard::Keycode::F11 as u32,
+            toggle_mute: sdl3::keyboard::Keycode::M as u32,
+        }
+    }
+}
+
+impl Hotkeys {
+    pub fn to_app_action(&self, scancode: sdl3::keyboard::Keycode) -> Option<AppAction> {
+        let scancode = scancode as u32;
+
+        if scancode == self.save_state {
+            Some(AppAction::SaveState { slot: 0 })
+        } else if scancode == self.load_state {
+            Some(AppAction::LoadState { slot: 0 })
+        } else if scancode == self.toggle_fast_forward {
+            Some(AppAction::ToggleFastForward)
+        } else if scancode == self.reset {
+            Some(AppAction::ResetCore)
+        } else if scancode == self.toggle_fullscreen {
+            Some(AppAction::ToggleFullscreen)
+        } else if scancode == self.toggle_mute {
+            Some(AppAction::ToggleMute)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum HotkeyAction {
+    SaveState,
+    LoadState,
+    ToggleFastForward,
+    Reset,
+    ToggleFullscreen,
+    ToggleMute,
+}
+
+impl HotkeyAction {
+    const ALL: [HotkeyAction; 6] = [
+        HotkeyAction::SaveState,
+        HotkeyAction::LoadState,
+        HotkeyAction::ToggleFastForward,
+        HotkeyAction::Reset,
+        HotkeyAction::ToggleFullscreen,
+        HotkeyAction::ToggleMute,
+    ];
+
+    fn label(&self) -> &'static str {
+        match self {
+            HotkeyAction::SaveState => "Save State",
+            HotkeyAction::LoadState => "Load State",
+            HotkeyAction::ToggleFastForward => "Toggle Fast Forward",
+            HotkeyAction::Reset => "Reset",
+            HotkeyAction::ToggleFullscreen => "Toggle Fullscreen",
+            HotkeyAction::ToggleMute => "Toggle Mute",
+        }
+    }
+
+    fn get(&self, hotkeys: &Hotkeys) -> u32 {
+        match self {
+            HotkeyAction::SaveState => hotkeys.save_state,
+            HotkeyAction::LoadState => hotkeys.load_state,
+            HotkeyAction::ToggleFastForward => hotkeys.toggle_fast_forward,
+            HotkeyAction::Reset => hotkeys.reset,
+            HotkeyAction::ToggleFullscreen => hotkeys.toggle_fullscreen,
+            HotkeyAction::ToggleMute => hotkeys.toggle_mute,
+        }
+    }
+
+    fn set(&self, hotkeys: &mut Hotkeys, code: u32) {
+        match self {
+            HotkeyAction::SaveState => hotkeys.save_state = code,
+            HotkeyAction::LoadState => hotkeys.load_state = code,
+            HotkeyAction::ToggleFastForward => hotkeys.toggle_fast_forward = code,
+            HotkeyAction::Reset => hotkeys.reset = code,
+            HotkeyAction::ToggleFullscreen => hotkeys.toggle_fullscreen = code,
+            HotkeyAction::ToggleMute => hotkeys.toggle_mute = code,
         }
     }
 }
@@ -279,7 +357,9 @@ pub struct Settings {
     /// Per-controller button remaps, keyed by the controller's hex-encoded
     /// UUID. Absent entries fall back to `ControllerBinding::default_for`.
     #[serde(default)]
-    pub controller_bindings: std::collections::HashMap<String, ControllerBinding>,
+    pub controller_bindings: HashMap<String, ControllerBinding>,
+    #[serde(default)]
+    pub keyboard_bindings: HashMap<SnesInput, i32>,
 
     #[serde(default)]
     pub profiles: Vec<ControllerProfile>,
@@ -317,7 +397,8 @@ impl Default for Settings {
             recent_roms: Vec::new(),
             roms_library_dir: None,
 
-            controller_bindings: std::collections::HashMap::new(),
+            controller_bindings: HashMap::new(),
+            keyboard_bindings: HashMap::new(),
             profiles: Vec::new(),
             preferred_p1: None,
             preferred_p2: None,
@@ -427,6 +508,7 @@ enum SettingsTab {
     Video,
     Audio,
     Controls,
+    Hotkeys,
     Emulation,
 }
 
@@ -436,6 +518,7 @@ pub struct SettingsWindow {
     new_settings: Settings,
     active_player: ControllerPlayer,
     new_profile_name: String,
+    rebinding_hotkey: Option<HotkeyAction>,
 }
 
 impl SettingsWindow {
@@ -446,6 +529,7 @@ impl SettingsWindow {
             new_settings: settings.clone(),
             active_player: ControllerPlayer::Player1,
             new_profile_name: String::new(),
+            rebinding_hotkey: None,
         })
     }
 
@@ -476,6 +560,7 @@ impl SettingsWindow {
                     ui.selectable_value(current_tab, SettingsTab::Video, "🖵 Video");
                     ui.selectable_value(current_tab, SettingsTab::Audio, "🔊 Audio");
                     ui.selectable_value(current_tab, SettingsTab::Controls, "🎮 Controls");
+                    ui.selectable_value(current_tab, SettingsTab::Hotkeys, "🖮 Hotkeys");
                     ui.selectable_value(current_tab, SettingsTab::Emulation, "⏱ Emulation");
                 });
 
@@ -490,6 +575,7 @@ impl SettingsWindow {
                     active_player,
                     &mut self.new_profile_name,
                 ),
+                SettingsTab::Hotkeys => Self::render_hotkeys_tab(ui, &mut self.new_settings, &mut self.rebinding_hotkey),
                 SettingsTab::Emulation => Self::render_emulation_tab(ui, &mut self.new_settings),
             });
 
@@ -561,39 +647,83 @@ impl SettingsWindow {
         ui.separator();
 
         let controllers = controller_manager.connected_controllers();
-        let selected = controllers.iter().find(|c| c.assigned_player == Some(*active_player));
+        let current_device = controller_manager.device_for(*active_player);
+
+        // The gamepad info backing `current_device`, if any. Profiles and the
+        // per-button binding lookup below are keyed off a gamepad's
+        // uuid/name, so both need this rather than `current_device` directly.
+        let selected_gamepad = match current_device {
+            Some(PlayerInputDevice::Gamepad(id)) => controllers.iter().find(|c| c.id == id),
+            _ => None,
+        };
+
+        let selected_text = match current_device {
+            Some(PlayerInputDevice::Keyboard) => "Keyboard".to_string(),
+            Some(PlayerInputDevice::Gamepad(_)) => selected_gamepad
+                .map(|c| c.name.clone())
+                .unwrap_or_else(|| "Unknown Gamepad".to_string()),
+            None => "None".to_string(),
+        };
 
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 ui.label("Controller:");
+
                 egui::ComboBox::new("controller_select", "")
-                    .selected_text(selected.map(|c| c.name.as_str()).unwrap_or("None"))
+                    .selected_text(&selected_text)
                     .show_ui(ui, |ui| {
+                        let keyboard_selected = current_device == Some(PlayerInputDevice::Keyboard);
+                        if ui.selectable_label(keyboard_selected, "Keyboard").clicked() {
+                            controller_manager.assign_player(PlayerInputDevice::Keyboard, *active_player, settings);
+                        }
+
                         for info in &controllers {
-                            let is_selected = selected.is_some_and(|s| s.uuid_key == info.uuid_key);
+                            let is_selected = current_device == Some(PlayerInputDevice::Gamepad(info.id));
+
                             if ui.selectable_label(is_selected, &info.name).clicked() {
-                                controller_manager.assign_player(info.id, *active_player, settings);
+                                controller_manager.assign_player(PlayerInputDevice::Gamepad(info.id), *active_player, settings);
                             }
                         }
                     });
-    
+
                 ui.separator();
-                
-                if ui.add_enabled(selected.is_some(), egui::Button::new("Reset to Defaults")).clicked() {
-                    settings.reset_binding(&selected.unwrap().uuid_key);
+
+                if ui.add_enabled(current_device.is_some(), egui::Button::new("Reset to Defaults")).clicked() {
+                    match current_device {
+                        Some(PlayerInputDevice::Gamepad(id)) => {
+                            if let Some(info) = controllers.iter().find(|c| c.id == id) {
+                                settings.reset_binding(&info.uuid_key);
+                            }
+                        }
+                        Some(PlayerInputDevice::Keyboard) => {
+                            settings.keyboard_bindings.clear();
+                            settings.save();
+                        }
+                        None => {}
+                    }
                 }
             });
 
+            // Profiles store gamepad button/axis bindings (InputSource), which
+            // don't map onto keyboard scancodes -- so profile save/load is
+            // only available when a gamepad, not the keyboard, is selected.
             ui.horizontal(|ui| {
-                ui.add(egui::TextEdit::singleline(new_profile_name).hint_text("Profile name").desired_width(120.0));
-                let name_valid = !new_profile_name.trim().is_empty() && selected.is_some();
+                ui.add(
+                    egui::TextEdit::singleline(new_profile_name)
+                        .hint_text("Profile name")
+                        .desired_width(120.0)
+                    );
+
+                let name_valid = !new_profile_name.trim().is_empty() && selected_gamepad.is_some();
+
                 if ui.add_enabled(name_valid, egui::Button::new("Save as Profile")).clicked() {
-                    let info = selected.unwrap();
+                    let info = selected_gamepad.unwrap();
                     let binding = settings.binding_for(&info.uuid_key, &info.name);
                     settings.save_profile(new_profile_name.trim().to_string(), binding.bindings);
                     new_profile_name.clear();
                 }
-                if !settings.profiles.is_empty() && selected.is_some() {
+
+                if !settings.profiles.is_empty() && selected_gamepad.is_some() {
                     ui.label("Load Profile:");
 
                     egui::ComboBox::new("profile_load", "")
@@ -601,7 +731,7 @@ impl SettingsWindow {
                         .show_ui(ui, |ui| {
                             for profile in settings.profiles.clone() {
                                 if ui.selectable_label(false, &profile.name).clicked() {
-                                    let info = selected.unwrap();
+                                    let info = selected_gamepad.unwrap();
                                     settings.apply_profile(&info.uuid_key, &info.name, &profile.name);
                                 }
                             }
@@ -612,7 +742,7 @@ impl SettingsWindow {
 
         ui.separator();
 
-        let Some(info) = selected else {
+        if current_device.is_none() {
             ui.centered_and_justified(|ui| {
                 ui.label(if controllers.is_empty() {
                     "Plug in a controller to configure it."
@@ -621,10 +751,35 @@ impl SettingsWindow {
                 });
             });
             return;
+        }
+
+        // Which SnesInput (if any) is currently waiting for a press, resolved
+        // per device type.
+        let capturing = match current_device {
+            Some(PlayerInputDevice::Gamepad(id)) => controller_manager.capturing_for(id),
+            Some(PlayerInputDevice::Keyboard) => controller_manager.keyboard_capturing(),
+            None => None,
         };
 
-        let capturing = controller_manager.capturing_for(info.id);
-        let binding = settings.binding_for(&info.uuid_key, &info.name);
+        let gamepad_binding = selected_gamepad.map(|info| settings.binding_for(&info.uuid_key, &info.name));
+
+        let bound_label = |input: SnesInput| -> String {
+            match current_device {
+                Some(PlayerInputDevice::Gamepad(_)) => gamepad_binding
+                    .as_ref()
+                    .and_then(|b| b.bindings.get(&input))
+                    .map(|s| s.label())
+                    .unwrap_or_else(|| "Unbound".to_string()),
+                Some(PlayerInputDevice::Keyboard) => settings
+                    .keyboard_bindings
+                    .get(&input)
+                    .and_then(|&code| sdl3::keyboard::Scancode::from_i32(code as i32))
+                    .unwrap_or_else(|| default_scancode_for(input))
+                    .name()
+                    .to_string(),
+                None => "Unbound".to_string(),
+            }
+        };
 
         const SIDE_MARGIN: f32 = 90.0;
         const TOP_MARGIN: f32 = 70.0;
@@ -642,7 +797,7 @@ impl SettingsWindow {
         for chip in CHIP_LAYOUT {
             let button_pt = image_rect.min + image_rect.size() * egui::vec2(chip.button_pos.0, chip.button_pos.1);
             let label_pt = image_rect.min + image_rect.size() * egui::vec2(chip.label_pos.0, chip.label_pos.1);
-            
+
             if let Some(midpt) = chip.midpoint_pos {
                 let mid_pt = image_rect.min + image_rect.size() * egui::vec2(midpt.0, midpt.1);
 
@@ -656,7 +811,7 @@ impl SettingsWindow {
             let bound_text = if is_capturing {
                 "Waiting…".to_string()
             } else {
-                binding.bindings.get(&chip.input).map(|s| s.label()).unwrap_or_else(|| "Unbound".to_string())
+                bound_label(chip.input)
             };
 
             let bound_text = if bound_text.len() <= 11 { bound_text } else {
@@ -670,12 +825,60 @@ impl SettingsWindow {
             );
             if resp.clicked() {
                 if is_capturing {
-                    controller_manager.cancel_remap();
+                    match current_device {
+                        Some(PlayerInputDevice::Gamepad(_)) => controller_manager.cancel_remap(),
+                        Some(PlayerInputDevice::Keyboard) => controller_manager.cancel_keyboard_remap(),
+                        None => {}
+                    }
                 } else {
-                    controller_manager.begin_remap(info.id, chip.input);
+                    match current_device {
+                        Some(PlayerInputDevice::Gamepad(id)) => controller_manager.begin_remap(id, chip.input),
+                        Some(PlayerInputDevice::Keyboard) => controller_manager.begin_keyboard_remap(chip.input),
+                        None => {}
+                    }
                 }
             }
         }
+    }
+
+    fn render_hotkeys_tab(
+        ui: &mut egui::Ui,
+        settings: &mut Settings,
+        rebinding: &mut Option<HotkeyAction>,
+    ) {
+        ui.label("Click \"Rebind\" then press the desired key. Press Esc to cancel.");
+        ui.separator();
+
+        egui::Grid::new("hotkeys_grid")
+            .num_columns(3)
+            .spacing([16.0, 8.0])
+            .striped(true)
+            .show(ui, |ui| {
+                for action in HotkeyAction::ALL {
+                    let is_rebinding = *rebinding == Some(action);
+
+                    ui.label(action.label());
+
+                    if is_rebinding {
+                        ui.colored_label(egui::Color32::YELLOW, "Press a key...");
+                    } else {
+                        let raw = action.get(&settings.hotkeys);
+                        let keycode = sdl3::keyboard::Keycode::from_u32(raw);
+                        let text = keycode.map_or(format!("Unknown {raw}"), |k| {
+                            format!("{k}")
+                        });
+
+                        ui.label(text);
+                    }
+
+                    let button_text = if is_rebinding { "Cancel" } else { "Rebind" };
+                    if ui.button(button_text).clicked() {
+                        *rebinding = if is_rebinding { None } else { Some(action) };
+                    }
+
+                    ui.end_row();
+                }
+            });
     }
 
     fn render_video_tab(ui: &mut egui::Ui, settings: &mut Settings) {
@@ -721,5 +924,32 @@ impl SettingsWindow {
     pub fn handle_event(&mut self, event: &sdl3::event::Event, modifiers: &egui::Modifiers) {
         self.egui_window.handle_sdl_mouse_event(event, modifiers);
         self.egui_window.handle_sdl_keyboard_event(event);
+
+        match event {
+            sdl3::event::Event::KeyDown {
+                keycode,
+                ..
+            } => {
+                match self.current_tab {
+                    SettingsTab::Hotkeys => {
+                        if let Some(action) = self.rebinding_hotkey {
+                            if Some(sdl3::keyboard::Keycode::Escape) == *keycode {
+                                self.rebinding_hotkey = None;
+                                return;
+                            }
+        
+                            if let Some(keycode) = *keycode {
+                                action.set(&mut self.new_settings.hotkeys, keycode as u32);
+                                self.rebinding_hotkey = None;
+                            }
+                        }
+                    }
+
+                    _ => {}
+                }
+            }
+
+            _ => {}
+        }
     }
 }

@@ -24,7 +24,6 @@ use sdl3::audio::{AudioFormat, AudioSpec};
 use sdl3::event::Event;
 use sdl3::keyboard::{Keycode, Mod};
 use settings::{Settings, SettingsWindow};
-use snemcore::controller::{ControllerPlayer, JoypadButton};
 use snemcore::sysinfo::{self, AUDIO_SAMPLE_HZ, FRAMES_PER_SECOND, FRAMEBUFFER_HEIGHT, FRAMEBUFFER_WIDTH};
 use snemcore::Snemulator;
 use std::path::PathBuf;
@@ -70,6 +69,8 @@ fn create_harness() -> NullHarness {
 pub enum AppAction {
     SetPaused(bool),
     ToggleFullscreen,
+    ToggleMute,
+    ToggleFastForward,
     SelectRomsFolder,
     LoadRom,
     LoadRomFromPath { path: PathBuf },
@@ -272,7 +273,7 @@ impl SnemulatorApp {
 
         app.main_window.rescan_library(&app.settings.roms_library_dir);
 
-        app.controller_manager.init_controllers(&app.settings, &mut app.message_queue);
+        app.controller_manager.init_controllers(&mut app.settings, &mut app.message_queue);
 
         Ok(app)
     }
@@ -450,6 +451,7 @@ impl SnemulatorApp {
                 &mut self.snem_core,
                 &mut self.settings,
                 &mut self.message_queue,
+                &self.event_pump.as_ref().unwrap().keyboard_state(),
             );
 
             if let Some(app_action) = self.handle_input() {
@@ -664,8 +666,7 @@ impl SnemulatorApp {
             }
 
             // Event is for main window
-            self.main_window
-                .handle_event(&event, &modifiers, &mut self.state);
+            self.main_window.handle_event(&event, &modifiers, &mut self.state);
 
             match event {
                 Event::Quit { .. } => {
@@ -680,15 +681,11 @@ impl SnemulatorApp {
                 Event::KeyDown {
                     keycode: Some(keycode),
                     keymod,
+                    repeat: false,
                     ..
                 } => {
                     app_action = self.handle_keydown(keycode, keymod);
                 }
-
-                Event::KeyUp {
-                    keycode: Some(keycode),
-                    ..
-                } => self.handle_keyup(keycode),
 
                 _ => {}
             }
@@ -709,6 +706,18 @@ impl SnemulatorApp {
 
                 self.set_paused(false);
             }
+            Event::KeyDown {
+                scancode: Some(scancode),
+                ..
+            } => {
+                self.controller_manager.try_capture_keyboard(*scancode, &mut self.settings);
+            
+                self.settings_window
+                    .as_mut()
+                    .unwrap()
+                    .handle_event(event, modifiers);
+            }
+
             _ => {
                 self.settings_window
                     .as_mut()
@@ -720,6 +729,7 @@ impl SnemulatorApp {
 
     fn do_action(&mut self, app_action: AppAction) {
         match app_action {
+            AppAction::Exit => {}, // Handled in main loop
             AppAction::SelectRomsFolder => {
                 if let Some(folder) = FileDialog::new().pick_folder() {
                     self.settings.roms_library_dir = Some(folder);
@@ -780,8 +790,10 @@ impl SnemulatorApp {
                     );
                 }
             }
-            AppAction::UnloadRom if self.state.loaded_rom_data.is_some() => {
-                self.unload_rom();
+            AppAction::UnloadRom => {
+                if self.state.loaded_rom_data.is_some() {
+                    self.unload_rom();
+                }
             }
             AppAction::LoadState { slot } => {
                 if let Err(e) = self.try_load_state(slot) {
@@ -837,6 +849,33 @@ impl SnemulatorApp {
                 self.settings_window = None;
             }
             AppAction::ToggleFullscreen => self.toggle_fullscreen(),
+            AppAction::ToggleMute => {
+                self.settings.audio_enabled = !self.settings.audio_enabled;
+
+                if self.settings.audio_enabled && self.settings.master_volume > 0.0 {
+                    self.audio_manager.resume();
+                } else {
+                    self.audio_manager.pause();
+                    self.audio_manager.clear_playing_samples();
+                }
+
+                self.message_queue.push(
+                    MessageKind::Info,
+                    format!("Set Mute to {}", !self.settings.audio_enabled),
+                    Duration::from_secs(3),
+                    Some(log::Level::Trace),
+                );
+            }
+            AppAction::ToggleFastForward => {
+                self.settings.fast_forward_en = !self.settings.fast_forward_en;
+                
+                self.message_queue.push(
+                    MessageKind::Info,
+                    format!("Set Fast Forward to {}", self.settings.fast_forward_en),
+                    Duration::from_secs(3),
+                    Some(log::Level::Trace),
+                );
+            }
             AppAction::SetPaused(paused) => self.set_paused(paused),
             #[cfg(feature = "debug")]
             AppAction::OpenDebug(rom) => {
@@ -862,135 +901,24 @@ impl SnemulatorApp {
 
                 self.debug_window = None;
             }
-
-            _ => {}
         }
     }
 
     fn handle_keydown(&mut self, keycode: Keycode, keymod: Mod) -> Option<AppAction> {
-        let mut app_action: Option<AppAction> = None;
+        let app_action: Option<AppAction>;
 
         match keycode {
-            Keycode::F11 => {
-                app_action = Some(AppAction::ToggleFullscreen);
-            }
-            Keycode::Escape => {
-                if self.state.is_fullscreen {
-                    app_action = Some(AppAction::ToggleFullscreen);
-                }
-            }
             Keycode::Q if keymod.contains(Mod::LCTRLMOD) => {
                 log::info!("Ctrl+Q pressed, exiting");
                 app_action = Some(AppAction::Exit);
             }
 
-            Keycode::Up => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::Up, true)
+            _ => {
+                app_action = self.settings.hotkeys.to_app_action(keycode)
             }
-            Keycode::Down => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::Down, true)
-            }
-            Keycode::Left => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::Left, true)
-            }
-            Keycode::Right => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::Right, true)
-            }
-            Keycode::Z => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::A, true)
-            }
-            Keycode::X => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::B, true)
-            }
-            Keycode::A => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::X, true);
-            }
-            Keycode::S => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::Y, true);
-            }
-            Keycode::Q => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::L1, true);
-            }
-            Keycode::W => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::R1, true);
-            }
-            Keycode::Return => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::Start, true)
-            }
-            Keycode::RShift => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::Select, true)
-            }
-
-            _ => {}
         }
 
         app_action
-    }
-
-    fn handle_keyup(&mut self, keycode: Keycode) {
-        match keycode {
-            Keycode::Up => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::Up, false)
-            }
-            Keycode::Down => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::Down, false)
-            }
-            Keycode::Left => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::Left, false)
-            }
-            Keycode::Right => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::Right, false)
-            }
-            Keycode::Z => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::A, false)
-            }
-            Keycode::X => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::B, false)
-            }
-            Keycode::A => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::X, false);
-            }
-            Keycode::S => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::Y, false);
-            }
-            Keycode::Q => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::L1, false);
-            }
-            Keycode::W => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::R1, false);
-            }
-            Keycode::Return => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::Start, false)
-            }
-            Keycode::RShift => {
-                self.snem_core
-                    .set_button(ControllerPlayer::Player1, JoypadButton::Select, false)
-            }
-            _ => {}
-        }
     }
 
     fn clear_frame_buf(&mut self) {
