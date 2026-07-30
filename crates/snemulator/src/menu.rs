@@ -29,7 +29,7 @@ impl MainMenuBar {
         egui::Panel::top("menu_bar").show(ui, |ui| {
             let menu = egui::MenuBar::new().ui(ui, |ui| {
                 let file_menu = ui.menu_button("File", |ui| {
-                    ui.set_width(120.0);
+                    ui.set_min_width(120.0);
                                         
                     ui.add_enabled_ui(!debug_active, |ui| {
                         if ui.button("Select ROMs Folder").clicked() {
@@ -109,7 +109,7 @@ impl MainMenuBar {
                 }
 
                 let emulation_menu = ui.menu_button("Emulation", |ui| {
-                    ui.set_width(100.0);
+                    ui.set_min_width(120.0);
                     
                     ui.add_enabled_ui(!debug_active, |ui| {
                         let pause_text = if app_state.is_paused { "Resume" } else { "Pause" };
@@ -150,7 +150,7 @@ impl MainMenuBar {
                 }
 
                 let view_menu = ui.menu_button("View", |ui| {
-                    ui.set_width(100.0);
+                    ui.set_min_width(120.0);
                     
                     let window_size_text = if app_state.is_fullscreen { "Windowed" } else { "Fullscreen" };
                     if button_with_shortcut(ui, window_size_text, "F11").clicked() {
