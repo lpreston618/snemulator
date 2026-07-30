@@ -10,7 +10,7 @@ use crate::app::{self, AppAction};
 use crate::app::theme::AppTheme;
 use snemcore::sysinfo;
 use crate::menu::MainMenuBar;
-use crate::app::settings::Settings;
+use crate::app::settings::{AspectMode, ScalingFilter, Settings};
 use crate::ui_window::UiWindow;
 use crate::app::library::LibraryView;
 
@@ -56,19 +56,24 @@ impl MainWindow {
         app_theme.apply(&self.egui_window.egui_ctx);
     }
 
-    fn update_game_texture(&mut self, frame_buffer: &[u8]) {
+    fn update_game_texture(&mut self, app_settings: &Settings, frame_buffer: &[u8]) {
         let image = egui::ColorImage::from_rgba_unmultiplied(
             [sysinfo::FRAMEBUFFER_WIDTH as usize, sysinfo::FRAMEBUFFER_HEIGHT as usize],
             frame_buffer,
         );
 
+        let texture_options = match app_settings.scaling_filter {
+            ScalingFilter::Nearest => egui::TextureOptions::NEAREST,
+            ScalingFilter::Bilinear => egui::TextureOptions::LINEAR,
+        };
+
         match &mut self.game_texture {
-            Some(handle) => handle.set(image, egui::TextureOptions::NEAREST),
+            Some(handle) => handle.set(image, texture_options),
             None => {
                 self.game_texture = Some(self.egui_window.egui_ctx.load_texture(
                     "game_screen",
                     image,
-                    egui::TextureOptions::NEAREST,
+                    texture_options,
                 ));
             }
         }
@@ -86,32 +91,19 @@ impl MainWindow {
         let mut library_action: Option<AppAction> = None;
 
         // Upload texture inside the ui closure so we have access to ctx
-        self.update_game_texture(frame_buffer);
+        self.update_game_texture(app_settings, frame_buffer);
 
         let full_output = self.egui_window.update_ui(|ctx| {
             if app_state.show_menu {
                 menu_action = self.menu.render(ctx, app_state, app_settings);
             }
 
-            let game_aspect = sysinfo::FRAMEBUFFER_WIDTH as f32 / sysinfo::FRAMEBUFFER_HEIGHT as f32;
-
             egui::CentralPanel::default()
                 .frame(egui::Frame::new())
                 .show(ctx, |ui| {
                     if app_state.loaded_rom_data.is_some() {
                         if let Some(texture) = &self.game_texture {
-                            let available = ui.available_size();
-                            let available_aspect = available.x / available.y;
-                            let render_size = if available_aspect > game_aspect {
-                                egui::vec2(available.y * game_aspect, available.y)
-                            } else {
-                                egui::vec2(available.x, available.x / game_aspect)
-                            };
-                            let offset = (available - render_size) / 2.0;
-                            ui.add_space(offset.y);
-                            ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                                ui.image(egui::load::SizedTexture::new(texture.id(), render_size));
-                            });
+                            Self::render_game(ui, app_settings, texture);
                         }
                     } else {
                         // Library mode
@@ -159,6 +151,56 @@ impl MainWindow {
         self.egui_window.render(full_output);
 
         app_action
+    }
+
+    fn render_game(ui: &mut egui::Ui, app_settings: &mut Settings, texture: &TextureHandle) {
+        match app_settings.aspect_mode {
+            AspectMode::Stretch => {
+                let available = ui.available_size();
+
+                ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                    ui.image(egui::load::SizedTexture::new(texture.id(), available));
+                });
+            },
+
+            AspectMode::FourByThree => {
+                let game_aspect = 4.0 / 3.0;
+                let available = ui.available_size();
+                let available_aspect = available.x / available.y;
+    
+                let render_size = if available_aspect > game_aspect {
+                    egui::vec2(available.y * game_aspect, available.y)
+                } else {
+                    egui::vec2(available.x, available.x / game_aspect)
+                };
+    
+                let offset = (available - render_size) / 2.0;
+    
+                ui.add_space(offset.y);
+                ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                    ui.image(egui::load::SizedTexture::new(texture.id(), render_size));
+                });
+            }
+            
+            AspectMode::PixelPerfect => {
+                let game_aspect = sysinfo::FRAMEBUFFER_WIDTH as f32 / sysinfo::FRAMEBUFFER_HEIGHT as f32;
+                let available = ui.available_size();
+                let available_aspect = available.x / available.y;
+    
+                let render_size = if available_aspect > game_aspect {
+                    egui::vec2(available.y * game_aspect, available.y)
+                } else {
+                    egui::vec2(available.x, available.x / game_aspect)
+                };
+    
+                let offset = (available - render_size) / 2.0;
+    
+                ui.add_space(offset.y);
+                ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                    ui.image(egui::load::SizedTexture::new(texture.id(), render_size));
+                });
+            }
+        }
     }
 
     fn render_messages(messages: &Vec<Message>, ctx: &egui::Context, app_theme: &AppTheme) {

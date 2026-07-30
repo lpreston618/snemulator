@@ -5,7 +5,7 @@ use gilrs::{Axis, Button, Event, EventType, GamepadId, Gilrs};
 // NOTE: adjust this import to match wherever your SDL3 bindings expose
 // KeyboardState / Scancode (e.g. `sdl3::keyboard` if you're using the
 // `sdl3` crate).
-use sdl3::keyboard::{KeyboardState, Keycode, Scancode};
+use sdl3::keyboard::{KeyboardState, Scancode};
 
 use snemcore::controller::{ControllerPlayer, JoypadButton, SnemController};
 

@@ -68,6 +68,7 @@ fn create_harness() -> NullHarness {
 
 pub enum AppAction {
     SetPaused(bool),
+    TogglePaused,
     ToggleFullscreen,
     ToggleMute,
     ToggleFastForward,
@@ -877,6 +878,7 @@ impl SnemulatorApp {
                 );
             }
             AppAction::SetPaused(paused) => self.set_paused(paused),
+            AppAction::TogglePaused => self.set_paused(!self.state.is_paused),
             #[cfg(feature = "debug")]
             AppAction::OpenDebug(rom) => {
                 if let Some(rom_path) = rom {

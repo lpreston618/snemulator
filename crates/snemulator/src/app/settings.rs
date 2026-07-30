@@ -68,6 +68,7 @@ pub enum ScalingFilter {
 pub struct Hotkeys {
     pub save_state: u32,
     pub load_state: u32,
+    pub toggle_pause: u32,
     pub toggle_fast_forward: u32,
     // pub toggle_rewind: u32,
     pub reset: u32,
@@ -81,6 +82,7 @@ impl Default for Hotkeys {
         Self {
             save_state: sdl3::keyboard::Keycode::F5 as u32,
             load_state: sdl3::keyboard::Keycode::F7 as u32,
+            toggle_pause: sdl3::keyboard::Keycode::P as u32,
             toggle_fast_forward: sdl3::keyboard::Keycode::F9 as u32,
             // toggle_rewind: sdl3::keyboard::Scancode::F8.to_i32(),
             reset: sdl3::keyboard::Keycode::F1 as u32,
@@ -99,6 +101,8 @@ impl Hotkeys {
             Some(AppAction::SaveState { slot: 0 })
         } else if scancode == self.load_state {
             Some(AppAction::LoadState { slot: 0 })
+        } else if scancode == self.toggle_pause {
+            Some(AppAction::TogglePaused)
         } else if scancode == self.toggle_fast_forward {
             Some(AppAction::ToggleFastForward)
         } else if scancode == self.reset {
@@ -117,6 +121,7 @@ impl Hotkeys {
 enum HotkeyAction {
     SaveState,
     LoadState,
+    TogglePause,
     ToggleFastForward,
     Reset,
     ToggleFullscreen,
@@ -124,9 +129,10 @@ enum HotkeyAction {
 }
 
 impl HotkeyAction {
-    const ALL: [HotkeyAction; 6] = [
+    const ALL: [HotkeyAction; 7] = [
         HotkeyAction::SaveState,
         HotkeyAction::LoadState,
+        HotkeyAction::TogglePause,
         HotkeyAction::ToggleFastForward,
         HotkeyAction::Reset,
         HotkeyAction::ToggleFullscreen,
@@ -137,6 +143,7 @@ impl HotkeyAction {
         match self {
             HotkeyAction::SaveState => "Save State",
             HotkeyAction::LoadState => "Load State",
+            HotkeyAction::TogglePause => "Toggle Pause",
             HotkeyAction::ToggleFastForward => "Toggle Fast Forward",
             HotkeyAction::Reset => "Reset",
             HotkeyAction::ToggleFullscreen => "Toggle Fullscreen",
@@ -148,6 +155,7 @@ impl HotkeyAction {
         match self {
             HotkeyAction::SaveState => hotkeys.save_state,
             HotkeyAction::LoadState => hotkeys.load_state,
+            HotkeyAction::TogglePause => hotkeys.toggle_pause,
             HotkeyAction::ToggleFastForward => hotkeys.toggle_fast_forward,
             HotkeyAction::Reset => hotkeys.reset,
             HotkeyAction::ToggleFullscreen => hotkeys.toggle_fullscreen,
@@ -159,6 +167,7 @@ impl HotkeyAction {
         match self {
             HotkeyAction::SaveState => hotkeys.save_state = code,
             HotkeyAction::LoadState => hotkeys.load_state = code,
+            HotkeyAction::TogglePause => hotkeys.toggle_pause = code,
             HotkeyAction::ToggleFastForward => hotkeys.toggle_fast_forward = code,
             HotkeyAction::Reset => hotkeys.reset = code,
             HotkeyAction::ToggleFullscreen => hotkeys.toggle_fullscreen = code,
