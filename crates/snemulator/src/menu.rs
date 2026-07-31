@@ -1,4 +1,4 @@
-use crate::app::{AppAction, AppState, MAX_SAVE_STATE_SLOTS, settings::Settings};
+use crate::app::{AppAction, AppState, MAX_SAVE_STATE_SLOTS, settings::{HotkeyAction, Settings}};
 
 fn button_with_shortcut(ui: &mut egui::Ui, label: &str, shortcut: &str) -> egui::Response {
     ui.add(egui::Button::new(label).right_text(egui::RichText::new(shortcut).weak()))
@@ -63,6 +63,22 @@ impl MainMenuBar {
                     ui.separator();
 
                     ui.add_enabled_ui(app_state.loaded_rom_data.is_some(), |ui| {
+                        let quick_save_shortcut_text = &app_settings.hotkeys
+                            .action_button_label(HotkeyAction::QuickSave);
+
+                        if button_with_shortcut(ui, "Quick Save", &quick_save_shortcut_text).clicked() {
+                            app_action = Some(AppAction::QuickSave);
+                            ui.close();
+                        }
+
+                        let quick_load_shortcut_text = &app_settings.hotkeys
+                            .action_button_label(HotkeyAction::QuickLoad);
+
+                        if button_with_shortcut(ui, "Quick Load", quick_load_shortcut_text).clicked() {
+                            app_action = Some(AppAction::QuickLoad);
+                            ui.close();
+                        }
+
                         ui.menu_button("Save State", |ui| {
                             for slot in 0..MAX_SAVE_STATE_SLOTS {
                                 if ui.button(format!("Slot {}", slot)).clicked() {
@@ -97,8 +113,6 @@ impl MainMenuBar {
                     ui.separator();
                     
                     if button_with_shortcut(ui, "Exit", "Ctrl + Q").clicked() {
-                        log::info!("Exit button clicked, exiting");
-                        
                         app_action = Some(AppAction::Exit);
                         ui.close();
                     }
@@ -113,15 +127,37 @@ impl MainMenuBar {
                     
                     ui.add_enabled_ui(!debug_active, |ui| {
                         let pause_text = if app_state.is_paused { "Resume" } else { "Pause" };
-                        if ui.button(pause_text).clicked() {
+                        let pause_shortcut_text = &app_settings.hotkeys
+                            .action_button_label(HotkeyAction::TogglePause);
+                        
+                        if button_with_shortcut(ui, pause_text, pause_shortcut_text).clicked() {
                             app_action = Some(AppAction::SetPaused(!app_state.is_paused));
                             ui.close();
                         }
-                        if ui.button("Reset").clicked() {
+
+                        let ff_text = if app_settings.fast_forward_en { "Enable FF" } else { "Disable FF" };
+                        let ff_shortcut_text = &app_settings.hotkeys
+                            .action_button_label(HotkeyAction::ToggleFastForward);
+
+                        if button_with_shortcut(ui, ff_text, ff_shortcut_text).clicked() {
+                            app_action = Some(AppAction::ToggleFastForward);
+                            ui.close();
+                        }
+
+                        ui.separator();
+
+                        let reset_shortcut_text = &app_settings.hotkeys
+                            .action_button_label(HotkeyAction::Reset);
+
+                        if button_with_shortcut(ui, "Reset", reset_shortcut_text).clicked() {
                             app_action = Some(AppAction::ResetCore);
                             ui.close();
                         }
-                        if ui.button("Hard Reset").clicked() {
+
+                        let hard_reset_shortcut_text = &app_settings.hotkeys
+                            .action_button_label(HotkeyAction::HardReset);
+
+                        if button_with_shortcut(ui, "Hard Reset", hard_reset_shortcut_text).clicked() {
                             app_action = Some(AppAction::PowerOnCore);
                             ui.close();
                         }
@@ -153,7 +189,10 @@ impl MainMenuBar {
                     ui.set_min_width(120.0);
                     
                     let window_size_text = if app_state.is_fullscreen { "Windowed" } else { "Fullscreen" };
-                    if button_with_shortcut(ui, window_size_text, "F11").clicked() {
+                    let fullscreen_shortcut_text = &app_settings.hotkeys
+                            .action_button_label(HotkeyAction::ToggleFullscreen);
+
+                    if button_with_shortcut(ui, window_size_text, fullscreen_shortcut_text).clicked() {
                         app_action = Some(AppAction::ToggleFullscreen);
                         ui.close();
                     }

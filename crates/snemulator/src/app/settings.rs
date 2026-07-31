@@ -66,12 +66,13 @@ pub enum ScalingFilter {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Hotkeys {
-    pub save_state: u32,
-    pub load_state: u32,
+    pub quick_save: u32,
+    pub quick_load: u32,
     pub toggle_pause: u32,
     pub toggle_fast_forward: u32,
     // pub toggle_rewind: u32,
     pub reset: u32,
+    pub hard_reset: u32,
     // pub screenshot: u32,
     pub toggle_fullscreen: u32,
     pub toggle_mute: u32,
@@ -80,12 +81,13 @@ pub struct Hotkeys {
 impl Default for Hotkeys {
     fn default() -> Self {
         Self {
-            save_state: sdl3::keyboard::Keycode::F5 as u32,
-            load_state: sdl3::keyboard::Keycode::F7 as u32,
+            quick_save: sdl3::keyboard::Keycode::F5 as u32,
+            quick_load: sdl3::keyboard::Keycode::F7 as u32,
             toggle_pause: sdl3::keyboard::Keycode::P as u32,
             toggle_fast_forward: sdl3::keyboard::Keycode::F9 as u32,
             // toggle_rewind: sdl3::keyboard::Scancode::F8.to_i32(),
             reset: sdl3::keyboard::Keycode::F1 as u32,
+            hard_reset: sdl3::keyboard::Keycode::F2 as u32,
             // screenshot: sdl3::keyboard::Scancode::F12.to_i32(),
             toggle_fullscreen: sdl3::keyboard::Keycode::F11 as u32,
             toggle_mute: sdl3::keyboard::Keycode::M as u32,
@@ -94,58 +96,68 @@ impl Default for Hotkeys {
 }
 
 impl Hotkeys {
-    pub fn to_app_action(&self, scancode: sdl3::keyboard::Keycode) -> Option<AppAction> {
-        let scancode = scancode as u32;
-
-        if scancode == self.save_state {
-            Some(AppAction::SaveState { slot: 0 })
-        } else if scancode == self.load_state {
-            Some(AppAction::LoadState { slot: 0 })
-        } else if scancode == self.toggle_pause {
-            Some(AppAction::TogglePaused)
-        } else if scancode == self.toggle_fast_forward {
-            Some(AppAction::ToggleFastForward)
-        } else if scancode == self.reset {
-            Some(AppAction::ResetCore)
-        } else if scancode == self.toggle_fullscreen {
-            Some(AppAction::ToggleFullscreen)
-        } else if scancode == self.toggle_mute {
-            Some(AppAction::ToggleMute)
-        } else {
-            None
+    pub fn to_app_action(&self, keycode: sdl3::keyboard::Keycode) -> Option<AppAction> {
+        for action in HotkeyAction::ALL {
+            if Some(keycode) == self.key_for_action(action) {
+                return Some(action.to_app_action());
+            }
         }
+
+        None
+    }
+
+    pub fn key_for_action(&self, action: HotkeyAction) -> Option<sdl3::keyboard::Keycode> {
+        let code = match action {
+            HotkeyAction::QuickSave => self.quick_save,
+            HotkeyAction::QuickLoad => self.quick_load,
+            HotkeyAction::TogglePause => self.toggle_pause,
+            HotkeyAction::ToggleFastForward => self.toggle_fast_forward,
+            HotkeyAction::Reset => self.reset,
+            HotkeyAction::HardReset => self.hard_reset,
+            HotkeyAction::ToggleFullscreen => self.toggle_fullscreen,
+            HotkeyAction::ToggleMute => self.toggle_mute,
+        };
+
+        sdl3::keyboard::Keycode::from_u32(code)
+    }
+
+    pub fn action_button_label(&self, action: HotkeyAction) -> String {
+        self.key_for_action(action).map_or(String::new(), |keycode| format!("{keycode}"))
     }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum HotkeyAction {
-    SaveState,
-    LoadState,
+pub enum HotkeyAction {
+    QuickSave,
+    QuickLoad,
     TogglePause,
     ToggleFastForward,
     Reset,
+    HardReset,
     ToggleFullscreen,
     ToggleMute,
 }
 
 impl HotkeyAction {
-    const ALL: [HotkeyAction; 7] = [
-        HotkeyAction::SaveState,
-        HotkeyAction::LoadState,
+    const ALL: [HotkeyAction; 8] = [
+        HotkeyAction::QuickSave,
+        HotkeyAction::QuickLoad,
         HotkeyAction::TogglePause,
         HotkeyAction::ToggleFastForward,
         HotkeyAction::Reset,
+        HotkeyAction::HardReset,
         HotkeyAction::ToggleFullscreen,
         HotkeyAction::ToggleMute,
     ];
 
     fn label(&self) -> &'static str {
         match self {
-            HotkeyAction::SaveState => "Save State",
-            HotkeyAction::LoadState => "Load State",
+            HotkeyAction::QuickSave => "Quick Save",
+            HotkeyAction::QuickLoad => "Quick Load",
             HotkeyAction::TogglePause => "Toggle Pause",
             HotkeyAction::ToggleFastForward => "Toggle Fast Forward",
             HotkeyAction::Reset => "Reset",
+            HotkeyAction::HardReset => "Hard Reset",
             HotkeyAction::ToggleFullscreen => "Toggle Fullscreen",
             HotkeyAction::ToggleMute => "Toggle Mute",
         }
@@ -153,11 +165,12 @@ impl HotkeyAction {
 
     fn get(&self, hotkeys: &Hotkeys) -> u32 {
         match self {
-            HotkeyAction::SaveState => hotkeys.save_state,
-            HotkeyAction::LoadState => hotkeys.load_state,
+            HotkeyAction::QuickSave => hotkeys.quick_save,
+            HotkeyAction::QuickLoad => hotkeys.quick_load,
             HotkeyAction::TogglePause => hotkeys.toggle_pause,
             HotkeyAction::ToggleFastForward => hotkeys.toggle_fast_forward,
             HotkeyAction::Reset => hotkeys.reset,
+            HotkeyAction::HardReset => hotkeys.hard_reset,
             HotkeyAction::ToggleFullscreen => hotkeys.toggle_fullscreen,
             HotkeyAction::ToggleMute => hotkeys.toggle_mute,
         }
@@ -165,13 +178,27 @@ impl HotkeyAction {
 
     fn set(&self, hotkeys: &mut Hotkeys, code: u32) {
         match self {
-            HotkeyAction::SaveState => hotkeys.save_state = code,
-            HotkeyAction::LoadState => hotkeys.load_state = code,
+            HotkeyAction::QuickSave => hotkeys.quick_save = code,
+            HotkeyAction::QuickLoad => hotkeys.quick_load = code,
             HotkeyAction::TogglePause => hotkeys.toggle_pause = code,
             HotkeyAction::ToggleFastForward => hotkeys.toggle_fast_forward = code,
             HotkeyAction::Reset => hotkeys.reset = code,
+            HotkeyAction::HardReset => hotkeys.hard_reset = code,
             HotkeyAction::ToggleFullscreen => hotkeys.toggle_fullscreen = code,
             HotkeyAction::ToggleMute => hotkeys.toggle_mute = code,
+        }
+    }
+
+    fn to_app_action(self) -> AppAction {
+        match self {
+            HotkeyAction::QuickSave => AppAction::QuickSave,
+            HotkeyAction::QuickLoad => AppAction::QuickLoad,
+            HotkeyAction::TogglePause => AppAction::TogglePause,
+            HotkeyAction::ToggleFastForward => AppAction::ToggleFastForward,
+            HotkeyAction::Reset => AppAction::ResetCore,
+            HotkeyAction::HardReset => AppAction::PowerOnCore,
+            HotkeyAction::ToggleFullscreen => AppAction::ToggleFullscreen,
+            HotkeyAction::ToggleMute => AppAction::ToggleMute,
         }
     }
 }

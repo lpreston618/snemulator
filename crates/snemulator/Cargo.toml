@@ -3,6 +3,25 @@ name = "snemulator"
 version = "0.1.0"
 edition = "2021"
 
+[package.metadata.packager]
+name = "snemulator"
+product-name = "Snemulator"
+identifier = "io.github.mrbubblezsz.snemulator"
+before-packaging-command = "cargo build --bin snemulator --release"
+
+icons = [
+    "assets/logo/snemulator-logo.ico",
+    "assets/logo/snemulator-logo.icns",
+    "assets/logo/icons/32x32.png",
+    "assets/logo/icons/128x128.png",
+    "assets/logo/icons/128x128@2x.png",
+    "assets/logo/icons/256x256.png",
+]
+
+[[package.metadata.packager.binaries]]
+path = "snemulator"
+main = true
+
 [dependencies]
 snemcore = { path = "../snemcore" }
 paste = "1.0.15"
@@ -30,3 +49,6 @@ gilrs = "0.11.2"
 
 [features]
 debug = []
+
+[build-dependencies]
+winresource = "0.1"

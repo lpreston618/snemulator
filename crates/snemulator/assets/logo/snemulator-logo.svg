@@ -1,23 +1,17 @@
 <svg viewBox="0 0 360 360" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <filter id="softShadow" x="-50%" y="-50%" width="200%" height="200%">
-      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000000" flood-opacity="0.25"/>
-    </filter>
-  </defs>
-
-  <g filter="url(#softShadow)">
+  <g>
     <circle cx="180" cy="80" r="58" fill="#6C63FF" stroke="#1a1a2e" stroke-width="6"/>
     <path d="M690 0H519L233 433V0H62V702H233L519 267V702H690Z" fill="#ffffff" transform="translate(146.912,110.888) scale(0.088,-0.088)"/>
   </g>
-  <g filter="url(#softShadow)">
+  <g>
     <circle cx="80" cy="180" r="58" fill="#3DB55C" stroke="#1a1a2e" stroke-width="6"/>
     <path d="M42 210H224Q228 171 251.0 150.5Q274 130 311 130Q349 130 371.0 147.5Q393 165 393 196Q393 222 375.5 239.0Q358 256 332.5 267.0Q307 278 260 292Q192 313 149.0 334.0Q106 355 75.0 396.0Q44 437 44 503Q44 601 115.0 656.5Q186 712 300 712Q416 712 487.0 656.5Q558 601 563 502H378Q376 536 353.0 555.5Q330 575 294 575Q263 575 244.0 558.5Q225 542 225 511Q225 477 257.0 458.0Q289 439 357 417Q425 394 467.5 373.0Q510 352 541.0 312.0Q572 272 572 209Q572 149 541.5 100.0Q511 51 453.0 22.0Q395 -7 316 -7Q239 -7 178.0 18.0Q117 43 80.5 92.0Q44 141 42 210Z" fill="#ffffff" transform="translate(52.984,211.020) scale(0.088,-0.088)"/>
   </g>
-  <g filter="url(#softShadow)">
+  <g>
     <circle cx="280" cy="180" r="58" fill="#E1493D" stroke="#1a1a2e" stroke-width="6"/>
     <path d="M857 702V0H686V421L529 0H391L233 422V0H62V702H264L461 216L656 702Z" fill="#ffffff" transform="translate(239.564,210.888) scale(0.088,-0.088)"/>
   </g>
-  <g filter="url(#softShadow)">
+  <g>
     <circle cx="180" cy="280" r="58" fill="#F2C230" stroke="#1a1a2e" stroke-width="6"/>
     <path d="M233 565V423H462V291H233V137H492V0H62V702H492V565Z" fill="#ffffff" transform="translate(155.624,310.888) scale(0.088,-0.088)"/>
   </g>

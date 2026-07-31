@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: # allows manually triggering a run from the Actions tab
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build output
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      # SDL3 is built from source, so CMake needs to be available.
+      # windows-latest and macos-latest already ship with CMake.
+      - name: Install build dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            build-essential \
+            pkg-config \
+            libx11-dev \
+            libxext-dev \
+            libxrandr-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libwayland-dev \
+            libxkbcommon-dev \
+            libgl1-mesa-dev \
+            libasound2-dev \
+            libpulse-dev
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
+
+      - name: Package
+        run: cargo packager --release --packages snemulator
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: snemulator-${{ matrix.os }}
+          # cargo-packager's default out-dir is target/release/
+          path: |
+            target/release/*.exe
+            target/release/*.dmg
+            target/release/*.app
+            target/release/*.deb
+            target/release/*.AppImage
+          if-no-files-found: error
+
+  release:
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
+          draft: true
+          generate_release_notes: true

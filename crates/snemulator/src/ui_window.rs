@@ -15,10 +15,6 @@ pub struct UiWindow {
 }
 
 impl UiWindow {
-    pub fn set_ui_scale(&mut self, ui_scale: f32) {
-        self.egui_ctx.set_pixels_per_point(ui_scale * self.window.display_scale());
-    }
-
     /// Updates the UI with the given function and returns the full output to be used during rendering.
     pub fn update_ui<F>(&mut self, ui_func: F) -> egui::FullOutput
     where
@@ -203,14 +199,6 @@ impl UiWindow {
     
     pub fn window_mut(&mut self) -> &mut sdl3::video::Window {
         &mut self.window
-    }
-    
-    pub fn gl(&self) -> &glow::Context {
-        &self.gl
-    }
-    
-    pub fn ui_scale(&self) -> f32 {
-        self.ui_scale
     }
 }
 

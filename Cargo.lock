@@ -2775,6 +2775,7 @@ dependencies = [
  "snemcore",
  "toml",
  "ureq",
+ "winresource",
 ]
 
 [[package]]
@@ -3579,6 +3580,16 @@ name = "winnow"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0592e1c9d151f854e6fd382574c3a0855250e1d9b2f99d9281c6e6391af352f1"
+
+[[package]]
+name = "winresource"
+version = "0.1.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0986a8b1d586b7d3e4fe3d9ea39fb451ae22869dcea4aa109d287a374d866087"
+dependencies = [
+ "toml",
+ "version_check",
+]
 
 [[package]]
 name = "wit-bindgen"

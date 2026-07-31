@@ -59,6 +59,10 @@ impl RomPaths {
         self.rom_dir.join(format!("state{}.ss", slot))
     }
 
+    pub fn quicksave_path(&self) -> PathBuf {
+        self.rom_dir.join("quicksave.ss")
+    }
+
     pub fn manifest_path(&self) -> PathBuf {
         self.rom_dir.join("manifest.json")
     }

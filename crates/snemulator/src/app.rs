@@ -54,7 +54,7 @@ const FRAMES_BETWEEN_AUTO_SRAM_SAVES: u64 =
 
 pub const MAX_SAVE_STATE_SLOTS: usize = 10;
 
-const SNEMULATOR_LOGO_BYTES: &[u8] = include_bytes!("../assets/snemulator-logo.png");
+const SNEMULATOR_LOGO_BYTES: &[u8] = include_bytes!("../assets/logo/icons/128x128.png");
 
 #[cfg(feature = "debug")]
 fn create_harness() -> MainDebugHarness {
@@ -68,7 +68,7 @@ fn create_harness() -> NullHarness {
 
 pub enum AppAction {
     SetPaused(bool),
-    TogglePaused,
+    TogglePause,
     ToggleFullscreen,
     ToggleMute,
     ToggleFastForward,
@@ -76,9 +76,12 @@ pub enum AppAction {
     LoadRom,
     LoadRomFromPath { path: PathBuf },
     LoadRomAndState { path: PathBuf, slot: u32 },
+    LoadRomAndQuickLoad { path: PathBuf },
     UnloadRom,
     ResetCore,
     PowerOnCore,
+    QuickSave,
+    QuickLoad,
     SaveState { slot: u32 },
     LoadState { slot: u32 },
     DeleteStateForRom { path: PathBuf, slot: u32 },
@@ -739,109 +742,26 @@ impl SnemulatorApp {
                 }
             }
             AppAction::LoadRom => self.load_rom(),
-            AppAction::LoadRomFromPath { path } => {
-                if let Err(e) = self.try_load_rom_from_path(&path) {
-                    self.settings.remove_recent_rom(&path);
-
-                    let file_name = path
-                        .to_str()
-                        .ok_or_else(|| anyhow!("Invalid file name"))
-                        .unwrap()
-                        .to_string();
-
-                    self.message_queue.push(
-                        MessageKind::Error,
-                        format!("Failed to load ROM '{}': {e}", file_name),
-                        Duration::from_secs(5),
-                        Some(log::Level::Error),
-                    );
-                }
-            }
+            AppAction::LoadRomFromPath { path } => self.load_rom_from_path(&path),
             AppAction::LoadRomAndState { path, slot } => {
-                if let Err(e) = self.try_load_rom_from_path(&path) {
-                    self.settings.remove_recent_rom(&path);
-
-                    let file_name = path
-                        .to_str()
-                        .ok_or_else(|| anyhow!("Invalid file name"))
-                        .unwrap()
-                        .to_string();
-
-                    self.message_queue.push(
-                        MessageKind::Error,
-                        format!("Failed to load ROM '{}': {e}", file_name),
-                        Duration::from_secs(5),
-                        Some(log::Level::Error),
-                    );
-                }
-
-                if let Err(e) = self.try_load_state(slot) {
-                    self.message_queue.push(
-                        MessageKind::Error,
-                        format!("Failed to load state: {e}"),
-                        Duration::from_secs(5),
-                        Some(log::Level::Error),
-                    );
-                } else {
-                    self.message_queue.push(
-                        MessageKind::Success,
-                        format!("Loaded save state slot {slot}"),
-                        Duration::from_secs(3),
-                        Some(log::Level::Info),
-                    );
-                }
+                self.load_rom_from_path(&path);
+                self.load_state(slot);
             }
-            AppAction::UnloadRom => {
-                if self.state.loaded_rom_data.is_some() {
-                    self.unload_rom();
-                }
+            AppAction::LoadRomAndQuickLoad { path } => {
+                self.load_rom_from_path(&path);
+                self.load_quicksave();
             }
-            AppAction::LoadState { slot } => {
-                if let Err(e) = self.try_load_state(slot) {
-                    self.message_queue.push(
-                        MessageKind::Error,
-                        format!("Failed to load state: {e}"),
-                        Duration::from_secs(5),
-                        Some(log::Level::Error),
-                    );
-                } else {
-                    self.message_queue.push(
-                        MessageKind::Success,
-                        format!("Loaded save state slot {slot}"),
-                        Duration::from_secs(3),
-                        Some(log::Level::Info),
-                    );
-                }
-            }
-            AppAction::SaveState { slot } => {
-                if let Err(e) = self.try_save_state(slot) {
-                    self.message_queue.push(
-                        MessageKind::Error,
-                        format!("Failed to save state: {e}"),
-                        Duration::from_secs(5),
-                        Some(log::Level::Error),
-                    );
-                } else {
-                    self.message_queue.push(
-                        MessageKind::Success,
-                        format!("Saved state to slot {slot}"),
-                        Duration::from_secs(3),
-                        Some(log::Level::Info),
-                    );
-                }
-            }
-            AppAction::DeleteStateForRom { path, slot } => {
-                self.delete_state(path, slot);
-            }
-            AppAction::DeleteSaveData { path } => {
-                self.delete_save_data(path);
-            }
+            AppAction::UnloadRom => self.unload_rom(),
+            AppAction::QuickSave => self.make_quicksave(),
+            AppAction::QuickLoad => self.load_quicksave(),
+            AppAction::SaveState { slot } => self.save_state(slot),
+            AppAction::LoadState { slot } => self.load_state(slot),
+            AppAction::DeleteStateForRom { path, slot } => self.delete_state(path, slot),
+            AppAction::DeleteSaveData { path } => self.delete_save_data(path),
             AppAction::ResetCore => self.reset_emulation(false),
             AppAction::PowerOnCore => self.reset_emulation(true),
             AppAction::OpenSettings => self.show_settings(),
-            AppAction::ApplySettings(settings) => {
-                self.apply_settings(&settings);
-            }
+            AppAction::ApplySettings(settings) => self.apply_settings(&settings),
             AppAction::CloseSettings(new_settings) => {
                 if let Some(settings) = new_settings {
                     self.apply_settings(&settings);
@@ -878,7 +798,7 @@ impl SnemulatorApp {
                 );
             }
             AppAction::SetPaused(paused) => self.set_paused(paused),
-            AppAction::TogglePaused => self.set_paused(!self.state.is_paused),
+            AppAction::TogglePause => self.set_paused(!self.state.is_paused),
             #[cfg(feature = "debug")]
             AppAction::OpenDebug(rom) => {
                 if let Some(rom_path) = rom {
@@ -980,6 +900,97 @@ impl SnemulatorApp {
                 format!("Failed to load rom: {e}"),
                 Duration::from_secs(5),
                 Some(log::Level::Error),
+            );
+        }
+    }
+
+    fn load_rom_from_path(&mut self, path: &PathBuf) {
+        if let Err(e) = self.try_load_rom_from_path(&path) {
+            self.settings.remove_recent_rom(&path);
+
+            let file_name = path
+                .to_str()
+                .ok_or_else(|| anyhow!("Invalid file name"))
+                .unwrap()
+                .to_string();
+
+            self.message_queue.push(
+                MessageKind::Error,
+                format!("Failed to load ROM '{}': {e}", file_name),
+                Duration::from_secs(5),
+                Some(log::Level::Error),
+            );
+        }
+    }
+
+    fn load_state(&mut self, slot: u32) {
+        if let Err(e) = self.try_load_state(slot) {
+            self.message_queue.push(
+                MessageKind::Error,
+                format!("Failed to load state: {e}"),
+                Duration::from_secs(5),
+                Some(log::Level::Error),
+            );
+        } else {
+            self.message_queue.push(
+                MessageKind::Success,
+                format!("Loaded save state slot {slot}"),
+                Duration::from_secs(3),
+                Some(log::Level::Info),
+            );
+        }
+    }
+
+    fn save_state(&mut self, slot: u32) {
+        if let Err(e) = self.try_save_state(slot) {
+            self.message_queue.push(
+                MessageKind::Error,
+                format!("Failed to save state: {e}"),
+                Duration::from_secs(5),
+                Some(log::Level::Error),
+            );
+        } else {
+            self.message_queue.push(
+                MessageKind::Success,
+                format!("Saved state to slot {slot}"),
+                Duration::from_secs(3),
+                Some(log::Level::Info),
+            );
+        }
+    }
+
+    fn load_quicksave(&mut self) {
+        if let Err(e) = self.try_load_quicksave() {
+            self.message_queue.push(
+                MessageKind::Error,
+                format!("Failed to load quicksave: {e}"),
+                Duration::from_secs(5),
+                Some(log::Level::Error),
+            );
+        } else {
+            self.message_queue.push(
+                MessageKind::Success,
+                format!("Loaded quicksave"),
+                Duration::from_secs(3),
+                Some(log::Level::Info),
+            );
+        }
+    }
+
+    fn make_quicksave(&mut self) {
+        if let Err(e) = self.try_save_quicksave() {
+            self.message_queue.push(
+                MessageKind::Error,
+                format!("Failed to make quicksave: {e}"),
+                Duration::from_secs(5),
+                Some(log::Level::Error),
+            );
+        } else {
+            self.message_queue.push(
+                MessageKind::Success,
+                format!("Made quicksave"),
+                Duration::from_secs(3),
+                Some(log::Level::Info),
             );
         }
     }
@@ -1194,7 +1205,7 @@ impl SnemulatorApp {
         }
 
         if is_auto && !self.snem_core.sram_changed() {
-            log::info!("S-RAM is clean, skipping autosave.");
+            log::trace!("S-RAM is clean, skipping autosave.");
             return;
         }
 
@@ -1259,7 +1270,37 @@ impl SnemulatorApp {
 
         self.snem_core.try_load_state(state)?;
 
-        log::info!("Loaded state from '{}'", path.to_string_lossy());
+        Ok(())
+    }
+
+    fn try_save_quicksave(&mut self) -> Result<()> {
+        let Some(loaded_rom) = &mut self.state.loaded_rom_data else {
+            return Err(anyhow!("cannot make quicksave with no rom loaded"));
+        };
+
+        let path = loaded_rom.paths.quicksave_path();
+        let state = self.snem_core.save_state();
+        let config = bincode_next::config::standard();
+        let bytes: Vec<u8> = bincode_next::serde::encode_to_vec(state, config)?;
+
+        std::fs::write(path.clone(), bytes)?;
+
+        Ok(())
+    }
+
+    fn try_load_quicksave(&mut self) -> Result<()> {
+        let Some(loaded_rom) = &self.state.loaded_rom_data else {
+            return Err(anyhow!("cannot load save with no rom loaded"));
+        };
+
+        let path = loaded_rom.paths.quicksave_path();
+
+        let bytes = std::fs::read(path.clone())?;
+        let config = bincode_next::config::standard();
+        let (state, _bytes_read): (SaveState, usize) =
+            bincode_next::serde::decode_from_slice(&bytes, config)?;
+
+        self.snem_core.try_load_state(state)?;
 
         Ok(())
     }

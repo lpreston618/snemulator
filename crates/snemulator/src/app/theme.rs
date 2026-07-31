@@ -537,22 +537,6 @@ impl ThemePreset {
             ThemePreset::Custom => "Custom",
         }
     }
-    
-    pub fn all() -> &'static [ThemePreset] {
-        &[
-            ThemePreset::Dark,
-            ThemePreset::Light,
-            ThemePreset::Retro,
-        ]
-    }
-    
-    pub fn to_theme(self) -> AppTheme {
-        match self {
-            ThemePreset::Dark | ThemePreset::Custom => AppTheme::dark(),
-            ThemePreset::Light => AppTheme::light(),
-            ThemePreset::Retro => AppTheme::retro(),
-        }
-    }
 }
 
 // Helper widgets using the theme
