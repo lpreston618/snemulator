@@ -1,0 +1,121 @@
+name: Build
+
+on:
+  workflow_call: # this makes it callable from other workflows, not runnable directly
+
+jobs:
+  package:
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build output
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      # SDL3 is built from source, so CMake needs to be available.
+      # windows-latest and macos-latest already ship with CMake.
+      - name: Install build dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            git \
+            make \
+            pkg-config \
+            cmake \
+            ninja-build \
+            gnome-desktop-testing \
+            libasound2-dev \
+            libpulse-dev \
+            libaudio-dev \
+            libfribidi-dev \
+            libjack-dev \
+            libsndio-dev \
+            libx11-dev \
+            libxext-dev \
+            libxrandr-dev \
+            libxcursor-dev \
+            libxfixes-dev \
+            libxi-dev \
+            libxss-dev \
+            libxtst-dev \
+            libxkbcommon-dev \
+            libdrm-dev \
+            libgbm-dev \
+            libgl1-mesa-dev \
+            libgles2-mesa-dev \
+            libegl1-mesa-dev \
+            libdbus-1-dev \
+            libibus-1.0-dev \
+            libudev-dev \
+            libthai-dev \
+            libusb-1.0-0-dev \
+            libpipewire-0.3-dev \
+            libwayland-dev \
+            libdecor-0-dev \
+            liburing-dev
+
+      - name: Install libfuse2 (required for AppImage bundling)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo add-apt-repository universe
+          sudo apt-get update
+          sudo apt-get install -y libfuse2t64
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
+
+      - name: Prefer Git Bash over WSL bash.exe (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: echo "C:\Program Files\Git\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Package
+        run: cargo packager --release --packages snemulator
+
+      - name: Stage release contents (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist-stage | Out-Null
+          Copy-Item README.md dist-stage/
+          Get-ChildItem target/release/*.exe |
+            Where-Object { $_.Name -ne 'snemulator.exe' } |
+            Copy-Item -Destination dist-stage/
+          Compress-Archive -Path dist-stage/* -DestinationPath snemulator-windows.zip
+
+      - name: Stage release contents (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          mkdir dist-stage
+          cp README.md dist-stage/
+          cp target/release/*.dmg dist-stage/
+          cd dist-stage && zip -r ../snemulator-macos.zip . && cd ..
+
+      - name: Stage release contents (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          mkdir dist-stage
+          cp README.md dist-stage/
+          cp target/release/*.deb target/release/*.AppImage dist-stage/
+          cd dist-stage && zip -r ../snemulator-linux.zip . && cd ..
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: snemulator-${{ matrix.os }}
+          path: snemulator-*.zip
+          if-no-files-found: error
