@@ -16,7 +16,7 @@ egui_glow  = "0.35.0"
 egui       = { version = "0.35.0", features = ["serde"] }
 egui_extras = { version = "0.35.0", features = ["svg", "file", "image"] }
 glow       = "0.17.0"
-sdl3 = {version = "0.17.3", features = ["build-from-source"]}
+sdl3 = {version = "0.17.3", features = ["build-from-source", "image"]}
 serde = {version = "1.0.228", features = ["derive"] }
 serde-big-array = "0.5.1"
 image = { version = "0.25.10", features = ["png"] }

@@ -54,6 +54,8 @@ const FRAMES_BETWEEN_AUTO_SRAM_SAVES: u64 =
 
 pub const MAX_SAVE_STATE_SLOTS: usize = 10;
 
+const SNEMULATOR_LOGO_BYTES: &[u8] = include_bytes!("../assets/snemulator-logo.png");
+
 #[cfg(feature = "debug")]
 fn create_harness() -> MainDebugHarness {
     MainDebugHarness::new()
@@ -63,8 +65,6 @@ fn create_harness() -> MainDebugHarness {
 fn create_harness() -> NullHarness {
     NullHarness {}
 }
-
-
 
 pub enum AppAction {
     SetPaused(bool),
@@ -1481,6 +1481,10 @@ impl SnemulatorApp {
             .resizable()
             .build()?;
 
+        if let Err(e) = set_window_icon(&mut window) {
+            log::warn!("failed to set window icon: {e}");
+        }
+
         let win_scale = window.display_scale();
 
         window.set_size(
@@ -1529,4 +1533,27 @@ impl SnemulatorApp {
             ui_scale,
         })
     }
+}
+
+fn set_window_icon(window: &mut sdl3::video::Window) -> Result<(), String> {
+    // Decode the embedded PNG into raw RGBA8 pixels
+    let img = image::load_from_memory(SNEMULATOR_LOGO_BYTES)
+        .map_err(|e| e.to_string())?
+        .into_rgba8();
+    let (w, h) = img.dimensions();
+    let mut pixels = img.into_raw(); // tightly-packed RGBA8
+
+    // Build an SDL surface directly from the pixel buffer
+    let pitch = w * 4;
+    let surface = sdl3::surface::Surface::from_data(
+        &mut pixels,
+        w,
+        h,
+        pitch,
+        sdl3::pixels::PixelFormat::RGBA32,
+    )
+    .map_err(|e| e.to_string())?;
+
+    window.set_icon(&surface);
+    Ok(())
 }
