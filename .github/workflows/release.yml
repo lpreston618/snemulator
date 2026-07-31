@@ -91,6 +91,7 @@ jobs:
           # cargo-packager's default out-dir is target/release/
           path: |
             target/release/*.exe
+            !target/release/snemulator.exe
             target/release/*.dmg
             target/release/*.app
             target/release/*.deb
@@ -100,6 +101,8 @@ jobs:
   release:
     needs: package
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
