@@ -135,7 +135,7 @@ impl MainMenuBar {
                             ui.close();
                         }
 
-                        let ff_text = if app_settings.fast_forward_en { "Enable FF" } else { "Disable FF" };
+                        let ff_text = if app_settings.fast_forward_en { "Disable FF" } else { "Enable FF" };
                         let ff_shortcut_text = &app_settings.hotkeys
                             .action_button_label(HotkeyAction::ToggleFastForward);
 

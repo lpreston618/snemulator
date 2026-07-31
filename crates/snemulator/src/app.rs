@@ -883,6 +883,10 @@ impl SnemulatorApp {
             self.main_window.library.update_entry(&rom_data.rom_path);
         }
 
+        if self.state.loaded_rom_data.is_some() {
+            self.make_quicksave();
+        }
+
         self.save_cartridge_save_ram(false);
         self.snem_core.unload_rom();
         self.state.loaded_rom_data = None;

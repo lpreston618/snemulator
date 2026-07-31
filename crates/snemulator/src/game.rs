@@ -64,7 +64,7 @@ impl MainWindow {
 
         let texture_options = match app_settings.scaling_filter {
             ScalingFilter::Nearest => egui::TextureOptions::NEAREST,
-            ScalingFilter::Bilinear => egui::TextureOptions::LINEAR,
+            ScalingFilter::Linear => egui::TextureOptions::LINEAR,
         };
 
         match &mut self.game_texture {

@@ -61,7 +61,7 @@ pub enum AspectMode {
 pub enum ScalingFilter {
     #[default]
     Nearest,
-    Bilinear,
+    Linear,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -933,7 +933,7 @@ impl SettingsWindow {
         ui.separator();
         ui.label("Scaling filter");
         ui.radio_value(&mut settings.scaling_filter, ScalingFilter::Nearest, "Nearest");
-        ui.radio_value(&mut settings.scaling_filter, ScalingFilter::Bilinear, "Bilinear");
+        ui.radio_value(&mut settings.scaling_filter, ScalingFilter::Linear, "Linear");
     }
 
     fn render_audio_tab(ui: &mut egui::Ui, settings: &mut Settings) {

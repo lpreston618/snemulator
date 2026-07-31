@@ -298,9 +298,6 @@ impl CpuTab {
                             // Render label line if present
                             if let Some(label) = label {
                                 ui.horizontal(|ui| {
-                                    // Empty space for breakpoint gutter alignment
-                                    // ui.add_space(20.0); // Adjust this to match your breakpoint marker width
-                                    
                                     let label_job = self.format_label_line(app_theme, label);
                                     ui.label(label_job);
                                 });

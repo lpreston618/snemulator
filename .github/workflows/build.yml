@@ -8,7 +8,17 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        include:
+          - os: windows-latest
+            label: windows
+          - os: ubuntu-latest
+            label: linux
+          - os: macos-latest
+            label: macos-arm64
+            macos_target: aarch64-apple-darwin
+          - os: macos-latest
+            label: macos-x86_64
+            macos_target: x86_64-apple-darwin
 
     runs-on: ${{ matrix.os }}
 
@@ -84,6 +94,8 @@ jobs:
         run: echo "C:\Program Files\Git\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Package
+        env:
+          MACOS_TARGET: ${{ matrix.macos_target }}
         run: cargo packager --release --packages snemulator
 
       - name: Stage release contents (Windows)
@@ -95,7 +107,7 @@ jobs:
           Get-ChildItem target/release/*.exe |
             Where-Object { $_.Name -ne 'snemulator.exe' } |
             Copy-Item -Destination dist-stage/
-          Compress-Archive -Path dist-stage/* -DestinationPath snemulator-windows.zip
+          Compress-Archive -Path dist-stage/* -DestinationPath snemulator-${{ matrix.label }}.zip
 
       - name: Stage release contents (macOS)
         if: matrix.os == 'macos-latest'
@@ -103,7 +115,7 @@ jobs:
           mkdir dist-stage
           cp README.md dist-stage/
           cp target/release/*.dmg dist-stage/
-          cd dist-stage && zip -r ../snemulator-macos.zip . && cd ..
+          cd dist-stage && zip -r ../snemulator-${{ matrix.label }}.zip . && cd ..
 
       - name: Stage release contents (Linux)
         if: matrix.os == 'ubuntu-latest'
@@ -111,11 +123,11 @@ jobs:
           mkdir dist-stage
           cp README.md dist-stage/
           cp target/release/*.deb target/release/*.AppImage dist-stage/
-          cd dist-stage && zip -r ../snemulator-linux.zip . && cd ..
+          cd dist-stage && zip -r ../snemulator-${{ matrix.label }}.zip . && cd ..
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: snemulator-${{ matrix.os }}
+          name: snemulator-${{ matrix.label }}
           path: snemulator-*.zip
           if-no-files-found: error

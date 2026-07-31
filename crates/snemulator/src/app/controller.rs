@@ -2,9 +2,6 @@ use std::collections::HashMap;
 
 use gilrs::{Axis, Button, Event, EventType, GamepadId, Gilrs};
 
-// NOTE: adjust this import to match wherever your SDL3 bindings expose
-// KeyboardState / Scancode (e.g. `sdl3::keyboard` if you're using the
-// `sdl3` crate).
 use sdl3::keyboard::{KeyboardState, Scancode};
 
 use snemcore::controller::{ControllerPlayer, JoypadButton, SnemController};
@@ -126,11 +123,6 @@ impl ControllerManager {
     /// any pending remap capture, and feeds current button state into the
     /// emulator core using each slot's assigned device (keyboard or
     /// gamepad) and saved binding.
-    ///
-    /// `keyboard` is a per-frame snapshot of keyboard state -- e.g. from
-    /// `event_pump.keyboard_state()` in your SDL3 main loop. Grab it fresh
-    /// each frame and pass it in here; ControllerManager does not own an
-    /// SDL3 event pump itself.
     pub fn update(
         &mut self,
         core: &mut snemcore::Snemulator,
