@@ -7,7 +7,7 @@ edition = "2021"
 name = "snemulator"
 product-name = "Snemulator"
 identifier = "io.github.mrbubblezsz.snemulator"
-before-packaging-command = "cargo build --bin snemulator --release"
+before-packaging-command = "bash scripts/build.sh"
 
 icons = [
     "assets/logo/snemulator-logo.ico",

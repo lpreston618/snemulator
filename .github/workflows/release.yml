@@ -9,7 +9,7 @@ on:
 jobs:
   package:
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
 
@@ -84,18 +84,38 @@ jobs:
       - name: Package
         run: cargo packager --release --packages snemulator
 
+      - name: Stage release contents (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist-stage | Out-Null
+          Copy-Item README.md dist-stage/
+          Get-ChildItem target/release/*.exe |
+            Where-Object { $_.Name -ne 'snemulator.exe' } |
+            Copy-Item -Destination dist-stage/
+          Compress-Archive -Path dist-stage/* -DestinationPath snemulator-windows.zip
+
+      - name: Stage release contents (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          mkdir dist-stage
+          cp README.md dist-stage/
+          cp target/release/*.dmg dist-stage/
+          cd dist-stage && zip -r ../snemulator-macos.zip . && cd ..
+
+      - name: Stage release contents (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          mkdir dist-stage
+          cp README.md dist-stage/
+          cp target/release/*.deb target/release/*.AppImage dist-stage/
+          cd dist-stage && zip -r ../snemulator-linux.zip . && cd ..
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: snemulator-${{ matrix.os }}
-          # cargo-packager's default out-dir is target/release/
-          path: |
-            target/release/*.exe
-            !target/release/snemulator.exe
-            target/release/*.dmg
-            target/release/*.app
-            target/release/*.deb
-            target/release/*.AppImage
+          path: snemulator-*.zip
           if-no-files-found: error
 
   release:
@@ -112,6 +132,6 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/**/*
+          files: dist/**/*.zip
           draft: true
           generate_release_notes: true
