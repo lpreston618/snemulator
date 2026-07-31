@@ -68,15 +68,9 @@ cargo run --bin snemulator -- --help
 
 ## Disclaimer
 
-This emulator is a passion project, not a production-grade emulation solution. A few things to keep in mind:
-
 - Games that rely on most coprocessors (e.g. Super FX, SA-1, etc.) are not supported — don't be surprised if a particular game won't load.
 - This emulator isn't going to match the performance, accuracy, or game compatibility of established emulators like [bsnes](https://github.com/bsnes-emu/bsnes) or [snes9x](https://github.com/snes9xgit/snes9x).
 - If you need reliable, serious emulation, use one of those instead. We're proud of what we built here, but it's a passion project, not a competitor to the best solutions out there.
-
-## Controller Remapping
-
-Controllers can be mapped via the `Controllers` tab in the settings window. Controller profiles can be saved for later use.
 
 ## Contributing
 
@@ -95,3 +89,7 @@ In short, this means:
 - You're free to use, modify, and distribute Snemulator.
 - Any distributed version (including modified forks) must also be licensed under GPLv3, with source code made available.
 See the [LICENSE](LICENSE) file for the full license text.
+
+## Acknowledgements
+
+A huuuuge thanks to the SnesDev community! This project wouldn't have been possible without the hard work of the community members and the guiding lights of NoCash, Anomie, Blargg, byuu/Near, and more.

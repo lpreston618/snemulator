@@ -45,6 +45,7 @@ pub struct CpuState {
     pub stopped: bool,
     pub waiting_for_interrupt: bool,
     pub handle_nmi: bool,
+    pub handle_irq: bool,
     pub clocks: usize,
 }
 
@@ -272,4 +273,5 @@ pub struct DmaChannelState {
     pub hdma_entry_just_loaded: bool,
     pub hdma_do_transfer: bool,
     pub dma_bytes_transferred: usize,
+    pub hdma_finished: bool,
 }

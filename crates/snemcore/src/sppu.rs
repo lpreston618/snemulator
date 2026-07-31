@@ -278,6 +278,10 @@ impl Ppu5C7x {
             self.draw_dot(bus);
         }
 
+        if self.x == 0 && self.y == 0 {
+            log::debug!("Fixed color = {:?}", bus.ppu_regs.fixed_color);
+        }
+
         self.update_dot_and_scanline(bus);
         self.update_hv_timers(bus);
 

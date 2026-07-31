@@ -319,7 +319,7 @@ impl PpuRegs {
         self.write_212F(rng.rand_byte());
         self.write_2130(rng.rand_byte());
         self.write_2131(rng.rand_byte());
-        self.write_2132(rng.rand_byte());
+        self.write_2132(0xE0);
         self.write_2133(0);
 
         self.v_counter = 0;

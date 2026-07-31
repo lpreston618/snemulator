@@ -46,7 +46,7 @@ pub struct DmaRegs {
     pub hdma_entry_just_loaded: bool, // Whether an HDMA entry was just loaded this cycle, used to determine when to decrement scanlines_left
     pub hdma_do_transfer: bool, // Set on entry load, cleared after first transfer for non-repeat entries
     pub dma_bytes_transferred: usize, // Mostly for debug purposes
-    pub hdma_finished: bool,
+    pub hdma_finished: bool, // Whether this HDMA channel is done for this frame
 }
 
 impl DmaRegs {
@@ -66,6 +66,7 @@ impl DmaRegs {
             hdma_entry_just_loaded: self.hdma_entry_just_loaded,
             hdma_do_transfer: self.hdma_do_transfer,
             dma_bytes_transferred: self.dma_bytes_transferred,
+            hdma_finished: self.hdma_finished,
         }
     }
 
@@ -109,6 +110,7 @@ impl DmaRegs {
         self.hdma_entry_just_loaded = state.hdma_entry_just_loaded;
         self.hdma_do_transfer = state.hdma_do_transfer;
         self.dma_bytes_transferred = state.dma_bytes_transferred;
+        self.hdma_finished = state.hdma_finished;
     }
 
     pub fn power_on(&mut self) {
@@ -129,12 +131,14 @@ impl DmaRegs {
         self.scanlines_left = 0x7F;
         self.hdma_repeat_flag = true;
         self.dma_bytes_transferred = 0;
+        self.hdma_finished = true;
     }
     
     pub fn reset(&mut self) {
         self.dma_en = false;
         self.hdma_en = false;
         self.dma_bytes_transferred = 0;
+        self.hdma_finished = true;
     }
     
     // Returns the actual B bus address we read/write based on the base B address

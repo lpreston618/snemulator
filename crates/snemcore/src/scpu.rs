@@ -113,6 +113,7 @@ impl Cpu65c816 {
             stopped: self.stopped,
             waiting_for_interrupt: self.waiting_for_interrupt,
             handle_nmi: self.handle_nmi,
+            handle_irq: self.handle_irq,
             clocks: self.clocks,
         }
     }
@@ -132,6 +133,7 @@ impl Cpu65c816 {
         self.stopped = state.stopped;
         self.waiting_for_interrupt = state.waiting_for_interrupt;
         self.handle_nmi = state.handle_nmi;
+        self.handle_irq = state.handle_irq;
         self.clocks = state.clocks;
     }
 
@@ -148,13 +150,17 @@ impl Cpu65c816 {
         self.e = true;
         self.halted = false;
         self.waiting_for_interrupt = false;
+        self.handle_nmi = false;
+        self.handle_irq = false;
         self.stopped = false;
         self.handle_interrupt(bus, CpuInterrupt::Reset);
     }
 
     pub fn reset<H: DebugHarness>(&mut self, bus: &mut CpuBus<H>) {
-        self.stopped = false;
         self.waiting_for_interrupt = false;
+        self.handle_nmi = false;
+        self.handle_irq = false;
+        self.stopped = false;
         self.handle_interrupt(bus, CpuInterrupt::Reset);
     }
 
